@@ -23,7 +23,7 @@ strategy = FedAvgReproducibleSampling(
     min_evaluate_nodes=1,
     min_available_nodes=1,
     fraction_fit=1.0,
-    evaluate_metrics_aggregation_fn=weighted_average,
+    # evaluate_metrics_aggregation_fn=weighted_average,
 )
 
 # Start Flower server

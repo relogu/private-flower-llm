@@ -159,7 +159,6 @@ class NodeManager(fl.client.NumPyClient):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
 
     def fit(self, parameters, config):
-        print("Fit")
         total_virtual_clients = 10
         with mp.Manager() as manager:
             results = manager.Queue()
@@ -169,7 +168,6 @@ class NodeManager(fl.client.NumPyClient):
                     zip(list_ids, repeat(parameters), repeat(gpu_id), repeat(results))
                 )
                 p.starmap(train, tasks)
-            print(results.qsize())
             # Partial aggregation
             part_agg_weights = (None, 0)
             for _ in range(total_virtual_clients):  # Length of results will vary!!!

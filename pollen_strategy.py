@@ -19,7 +19,6 @@ Paper: https://arxiv.org/abs/1602.05629
 
 from logging import INFO, DEBUG
 from typing import Callable, Dict, List, Optional, Tuple
-import random
 
 from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar, log
 from flwr.server.client_manager import ClientManager
