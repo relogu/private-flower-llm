@@ -1,54 +1,33 @@
 import warnings
 from collections import OrderedDict
 from itertools import repeat
-from typing import Dict, List, Optional, Tuple
-
+from typing import Callable, Dict, List, Optional, Tuple
 
 import flwr as fl
+import hydra
 import nvsmi
 import psutil
 import torch
 import torch.multiprocessing as mp
+from omegaconf import DictConfig
 
 mp.set_start_method("spawn", force=True)
 
 import torch.nn as nn
 import torch.nn.functional as F
-from flwr.common import Config, Scalar, NDArrays
+from flwr.common import Config, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, Normalize, ToTensor
-from torchvision.datasets import CIFAR10
+from hydra.utils import call, get_original_cwd, instantiate, to_absolute_path
 
 # #############################################################################
 # 1. Regular PyTorch pipeline: nn.Module, train, test, and DataLoader
 # #############################################################################
 
 warnings.filterwarnings("ignore", category=UserWarning)
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# results = mp.Queue()
-
-
-class Net(nn.Module):
-    """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
-
-    def __init__(self) -> None:
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
+from models import ShakespeareLeafNet as Net
+from datasets import SHAKESPEARE_LOADED as ShakespeareDataset
 
 
 def partially_aggregate(
@@ -65,45 +44,60 @@ def partially_aggregate(
     return updated_agg, total_num_examples
 
 
-def train(cid, parameters, gpu_id, results):
-    """Train the model on the training set."""
-    print(f"Train {cid}")
-    device = f"cuda:{gpu_id}"
+def gen_client_fit_fn(
+    data_root: str,
+) -> Callable[[str, NDArrays, int, Dict[str, Scalar], mp.Queue], None]:
+    def client_fit_fn(
+        cid,
+        parameters,
+        batch_size,
+        learning_rate,
+        momentum,
+        weight_decay,
+        gpu_id,
+        results_queue,
+    ):
+        """Train the model on the training set."""
+        print(f"Task {cid}")
+        device = f"cuda:{gpu_id}"
+        net = set_parameters(parameters, device)
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.SGD(
+            net.parameters(),
+            lr=learning_rate,
+            momentum=momentum,
+            weight_decay=weight_decay,
+        )
+        trainset = ShakespeareDataset(root=data_root, client_id=cid, dataset="train")
+        trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+        for _ in range(1):
+            num_samples = 0
+            for images, labels in trainloader:
+                num_samples += len(labels)
+                optimizer.zero_grad()
+                criterion(net(images.to(device)), labels.to(device)).backward()
+                optimizer.step()
+        these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
+        results_queue.put((these_weights, num_samples))
+
+    return client_fit_fn
+
+
+def test(parameters, device):
+    """Validate the model on the test set."""
     net = set_parameters(parameters, device)
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-    for _ in range(1):
-        num_samples = 0
-        for images, labels in trainloader:
-            num_samples += len(labels)
-            optimizer.zero_grad()
-            criterion(net(images.to(device)), labels.to(device)).backward()
-            optimizer.step()
-
-    these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
-    results.put((these_weights, num_samples))
-
-
-def test(net, testloader):
-    """Validate the model on the test set."""
-    criterion = torch.nn.CrossEntropyLoss()
+    testset = ShakespeareDataset(root="data", client_id=0, dataset="test")
+    testloader = DataLoader(testset, batch_size=16, shuffle=True)
     correct, loss = 0, 0.0
     with torch.no_grad():
         for images, labels in testloader:
-            outputs = net(images.to(DEVICE))
-            labels = labels.to(DEVICE)
+            outputs = net(images.to(device))
+            labels = labels.to(device)
             loss += criterion(outputs, labels).item()
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
     accuracy = correct / len(testloader.dataset)
     return loss, accuracy
-
-
-def load_data():
-    """Load CIFAR-10 (training and test set)."""
-    trf = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    trainset = CIFAR10("./data", train=True, download=True, transform=trf)
-    testset = CIFAR10("./data", train=False, download=True, transform=trf)
-    return DataLoader(trainset, batch_size=16, shuffle=True), DataLoader(testset)
 
 
 def set_parameters(parameters, device):
@@ -115,23 +109,17 @@ def set_parameters(parameters, device):
     return net
 
 
-# #############################################################################
-# 2. Federation of the pipeline with Flower
-# #############################################################################
-
-# Load model and data (simple CNN, CIFAR-10)
-trainloader, testloader = load_data()
-
-
 # Define Flower client
 class NodeManager(fl.client.NumPyClient):
-    def __init__(self) -> None:
+    def __init__(self, train_fn) -> None:
         super().__init__()
-        self.queue: mp.Queue = mp.Queue()
         self.all_gpus = nvsmi.get_gpus()
-        self.pool: Optional[Dict[str, mp.Pool]] = {
-            gpu.id: mp.Pool(4) for gpu in self.all_gpus
+        self.pool: Optional[
+            Dict[str, mp.Pool]
+        ] = {  # Maybe cudatype_cudaid example: a40_0
+            gpu.id: mp.Pool(10) for gpu in self.all_gpus
         }
+        self.train_fn = train_fn
 
     def get_node_prop(self) -> Dict[str, float]:
         node_prop = {
@@ -159,22 +147,30 @@ class NodeManager(fl.client.NumPyClient):
         return [val.cpu().numpy() for _, val in net.state_dict().items()]
 
     def fit(self, parameters, config):
-        total_virtual_clients = 10
+        print("Fit")
+        total_virtual_clients = 10  # This will come from the config
         with mp.Manager() as manager:
-            results = manager.Queue()
+            results_queue = manager.Queue()
             for gpu_id, p in self.pool.items():
-                list_ids = [i for i in range(total_virtual_clients)]  # Gets from config
+                list_ids_for_this_gpu = [
+                    i for i in range(total_virtual_clients)
+                ]  # Gets from config
                 tasks = list(
-                    zip(list_ids, repeat(parameters), repeat(gpu_id), repeat(results))
+                    zip(
+                        list_ids_for_this_gpu,
+                        repeat(parameters),
+                        repeat(gpu_id),
+                        repeat(results_queue),
+                    )
                 )
-                p.starmap(train, tasks)
+                print(self.train_fn)
+                p.starmap_async(train, tasks)
             # Partial aggregation
             part_agg_weights = (None, 0)
             for _ in range(total_virtual_clients):  # Length of results will vary!!!
-                print("hello")
-                part_agg_weights = partially_aggregate(part_agg_weights, results.get())
-            print(part_agg_weights[0])
-            print(part_agg_weights[1])
+                part_agg_weights = partially_aggregate(
+                    part_agg_weights, results_queue.get()
+                )
 
         return part_agg_weights[0], part_agg_weights[1], {}
 
@@ -187,9 +183,20 @@ class NodeManager(fl.client.NumPyClient):
                 p.close()
 
 
-if __name__ == "__main__":
+@hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
+def main(cfg: DictConfig) -> None:
+    # Load train and evaluate functions
+    # client_train_fn = call(cfg.gen_train_fn)
+    client_fit_fn = gen_client_fit_fn(
+        "/",
+    )
+
     # Start Flower client
     fl.client.start_numpy_client(
         server_address="127.0.0.1:8080",
-        client=NodeManager(),
+        client=NodeManager(client_fit_fn=train_fn),
     )
+
+
+if __name__ == "__main__":
+    main()

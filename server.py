@@ -6,19 +6,20 @@ from pollen_strategy import FedAvgReproducibleSampling
 
 
 # Define metric aggregation function
-def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    # Multiply accuracy of each client by number of examples used
-    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
+# def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+#    # Multiply accuracy of each client by number of examples used
+#    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+#    examples = [num_examples for num_examples, _ in metrics]
 
-    # Aggregate and return custom metric (weighted average)
-    return {"accuracy": sum(accuracies) / sum(examples)}
+#    # Aggregate and return custom metric (weighted average)
+#    return {"accuracy": sum(accuracies) / sum(examples)}
 
 
 # Define strategy
 # strategy = fl.server.strategy.FedAvg(evaluate_metrics_aggregation_fn=weighted_average)
 strategy = FedAvgReproducibleSampling(
-    total_virtual_clients=10,
+    num_total_virtual_clients=10,
+    num_participating_nodes=10,
     min_fit_nodes=1,
     min_evaluate_nodes=1,
     min_available_nodes=1,

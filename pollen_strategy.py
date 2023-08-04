@@ -20,7 +20,7 @@ Paper: https://arxiv.org/abs/1602.05629
 from logging import INFO, DEBUG
 from typing import Callable, Dict, List, Optional, Tuple
 
-from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar, log
+from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
@@ -34,12 +34,13 @@ class FedAvgReproducibleSampling(FedAvg):
     def __init__(
         self,
         *,
-        total_virtual_clients: int,
+        num_total_virtual_clients: int,
+        num_participating_nodes: int,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
-        min_fit_nodes: int = 2,
-        min_evaluate_nodes: int = 2,
-        min_available_nodes: int = 2,
+        min_fit_nodes: int = 1,
+        min_evaluate_nodes: int = 1,
+        min_available_nodes: int = 1,
         evaluate_fn: Optional[
             Callable[
                 [int, NDArrays, Dict[str, Scalar]],
@@ -60,8 +61,10 @@ class FedAvgReproducibleSampling(FedAvg):
 
         Parameters
         ----------
-        total_virtual_clients : int
+        num_total_virtual_clients : int
             Total number of virtual clients used during training.
+        num_participating_nodes: int
+            Total number of nodes participating in the simulations.
         fraction_fit : float, optional
             Fraction of clients used during training. In case `min_fit_clients`
             is larger than `fraction_fit * available_clients`, `min_fit_clients`
@@ -105,7 +108,7 @@ class FedAvgReproducibleSampling(FedAvg):
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
         )
-        self.total_virtual_clients = total_virtual_clients
+        self.num_total_virtual_clients = num_total_virtual_clients
         self.seed = seed
 
     def configure_fit(
@@ -127,6 +130,7 @@ class FedAvgReproducibleSampling(FedAvg):
         )
 
         # Client Allocation Strategy comes here
+        # TODO You need a config per node, with serialized client ids, for loop over nodes
         fit_ins = FitIns(parameters, config)
 
         node_config = list(zip(nodes, [fit_ins] * len(nodes)))

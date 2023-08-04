@@ -1,0 +1,15 @@
+---
+dataset_name: "shakespeare"
+data_root: "data/shakespeare"
+num_classes: 10
+batch_size: 20
+epochs_per_round: 1
+num_clients_per_round: 10
+num_total_clients: 500
+num_rounds: 4000
+
+get_dataset:
+  _target_: datasets.shakespeare.get_shakespeare
+  dataset_name: ${dataset_name}
+  num_total_clients: ${num_total_clients}
+  lda_concentration: ${lda_concentration}
