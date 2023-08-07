@@ -97,7 +97,6 @@ class NodeManager(fl.client.NumPyClient):
                         repeat(results_queue),
                     )
                 )
-                print(f"len(tasks): {len(tasks)}")
                 p.starmap_async(self.client_fit_fn, tasks)
 
             # Partial aggregation

@@ -143,7 +143,6 @@ class FedAvgReproducibleSampling(FedAvg):
         sampled_virtual_clients = random.sample(
             virtual_clients_ids, int(self.fraction_fit * num_virtual_clients)
         )
-        print(len(sampled_virtual_clients))
 
         # Client Allocation Strategy comes here
         # TODO Client Allocation Strategy  produces a dictionary of the form

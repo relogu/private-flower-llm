@@ -94,7 +94,6 @@ def shakespeare_gen_client_fit_fn(
         results_queue: Queue,
     ):
         """Train the model on the training set."""
-        print(f"Task {cid}")
         net = ShakespeareLeafNet()
         net = set_parameters(net, parameters, device)
         criterion = torch.nn.CrossEntropyLoss()
