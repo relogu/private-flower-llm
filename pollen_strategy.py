@@ -17,8 +17,11 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
+from copy import deepcopy
+from itertools import repeat
 from logging import INFO, DEBUG
-from typing import Callable, Dict, List, Optional, Tuple
+import random
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar
 from flwr.server.client_manager import ClientManager
@@ -34,8 +37,8 @@ class FedAvgReproducibleSampling(FedAvg):
     def __init__(
         self,
         *,
-        num_total_virtual_clients: int,
-        num_participating_nodes: int,
+        num_total_virtual_clients: Union[List[int], int],
+        num_participating_nodes: int = 1,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_nodes: int = 1,
@@ -65,8 +68,8 @@ class FedAvgReproducibleSampling(FedAvg):
             Total number of virtual clients used during training.
         num_participating_nodes: int
             Total number of nodes participating in the simulations.
-        fraction_fit : float, optional
-            Fraction of clients used during training. In case `min_fit_clients`
+        fraction_fit: float, optional
+            Fraction of virtual clients used during training. In case `min_fit_clients`
             is larger than `fraction_fit * available_clients`, `min_fit_clients`
             will still be sampled. Defaults to 1.0.
         fraction_evaluate : float, optional
@@ -110,6 +113,7 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.num_total_virtual_clients = num_total_virtual_clients
         self.seed = seed
+        print(self.fraction_fit)
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -120,20 +124,43 @@ class FedAvgReproducibleSampling(FedAvg):
             # Custom fit config function provided
             config = self.on_fit_config_fn(server_round)
 
-        # Sample nodes
+        # Use all nodes
         sample_size, min_num_nodes = self.num_fit_clients(
             client_manager.num_available()
         )
-
         nodes = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_nodes
         )
 
-        # Client Allocation Strategy comes here
-        # TODO You need a config per node, with serialized client ids, for loop over nodes
-        fit_ins = FitIns(parameters, config)
+        # Sample virtual clients
+        if isinstance(self.num_total_virtual_clients, int):
+            num_virtual_clients = self.num_total_virtual_clients
+            virtual_clients_ids = list(range(num_virtual_clients))
+        else:
+            num_virtual_clients = len(self.num_total_virtual_clients)
+            virtual_clients_ids = self.num_total_virtual_clients
 
-        node_config = list(zip(nodes, [fit_ins] * len(nodes)))
+        sampled_virtual_clients = random.sample(
+            virtual_clients_ids, int(self.fraction_fit * num_virtual_clients)
+        )
+        print(len(sampled_virtual_clients))
+
+        # Client Allocation Strategy comes here
+        # TODO Client Allocation Strategy  produces a dictionary of the form
+        # {node_id: {cuda_id : [sampled_virtual_client_ids_for_this_node]}}
+        client_node_mapping = {nodes[0].cid: {"cuda:0": sampled_virtual_clients}}
+
+        nodes_config = []
+        for node in nodes:
+            this_client_lists = client_node_mapping[node.cid]
+            for device, device_list in this_client_lists.items():
+                # Serialization of list of virtual clients for this client
+                device_list_string = ",".join(
+                    str(client_id) for client_id in device_list
+                )
+                this_config = deepcopy(config)
+                this_config[device] = device_list_string
+                nodes_config.append((node, FitIns(parameters, this_config)))
 
         # Return node/config pairs
-        return node_config
+        return nodes_config

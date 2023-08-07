@@ -1,35 +1,39 @@
 from typing import List, Tuple
 
 import flwr as fl
+import hydra
 from flwr.common import Metrics
+from omegaconf import DictConfig
+
 from pollen_strategy import FedAvgReproducibleSampling
-
-
-# Define metric aggregation function
-# def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-#    # Multiply accuracy of each client by number of examples used
-#    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
-#    examples = [num_examples for num_examples, _ in metrics]
-
-#    # Aggregate and return custom metric (weighted average)
-#    return {"accuracy": sum(accuracies) / sum(examples)}
+from utils import weighted_average
+from hydra.utils import call
 
 
 # Define strategy
-# strategy = fl.server.strategy.FedAvg(evaluate_metrics_aggregation_fn=weighted_average)
-strategy = FedAvgReproducibleSampling(
-    num_total_virtual_clients=10,
-    num_participating_nodes=10,
-    min_fit_nodes=1,
-    min_evaluate_nodes=1,
-    min_available_nodes=1,
-    fraction_fit=1.0,
-    # evaluate_metrics_aggregation_fn=weighted_average,
-)
+@hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
+def main(cfg: DictConfig) -> None:
+    # The number of clients can either be a single integer or a list of int/str
+    num_total_virtual_clients = call(cfg.gen_num_total_virtual_clients)
 
-# Start Flower server
-fl.server.start_server(
-    server_address="0.0.0.0:8080",
-    config=fl.server.ServerConfig(num_rounds=3),
-    strategy=strategy,
-)
+    strategy = FedAvgReproducibleSampling(
+        num_total_virtual_clients=num_total_virtual_clients,
+        num_participating_nodes=1,
+        fraction_fit=cfg.fraction_fit,
+        min_fit_nodes=1,
+        min_evaluate_nodes=1,
+        min_available_nodes=1,
+        fit_metrics_aggregation_fn=weighted_average,
+    )
+    print(strategy.fraction_fit)
+
+    # Start Flower server
+    fl.server.start_server(
+        server_address="0.0.0.0:8080",
+        config=fl.server.ServerConfig(num_rounds=3),
+        strategy=strategy,
+    )
+
+
+if __name__ == "__main__":
+    main()

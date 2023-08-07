@@ -5,13 +5,10 @@ description = ""
 authors = ["Pedro Porto Buarque de Gusmão <pedropgusmao@gmail.com>"]
 license = "Apache 2.0"
 readme = "README.md"
-packages = [{include = "pollen_worker"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 pynvml = "^11.5.0"
-torch = { url = "https://download.pytorch.org/whl/nightly/cu121/torch-2.1.0.dev20230727%2Bcu121-cp311-cp311-linux_x86_64.whl" }
-torchvision = { url = "https://download.pytorch.org/whl/nightly/cu121/torchvision-0.16.0.dev20230727%2Bcu121-cp311-cp311-linux_x86_64.whl" }
 pytorch-triton = { url = "https://download.pytorch.org/whl/nightly/pytorch_triton-2.1.0%2B9e3e10c5ed-cp311-cp311-linux_x86_64.whl" }
 black = "^23.7.0"
 flwr = "^1.4.0"
@@ -20,6 +17,7 @@ psutil = "^5.9.5"
 hydra-core = "^1.3.2"
 pandas = "^2.0.3"
 pyarrow = "^12.0.1"
+multiprocess = "^0.70.15"
 
 [build-system]
 requires = ["poetry-core"]

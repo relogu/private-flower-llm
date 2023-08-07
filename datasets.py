@@ -16,27 +16,7 @@ SHAKESPEARE_DTYPES = {
 }
 
 
-class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
-    @property
-    def train_labels(self):
-        warnings.warn("train_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def test_labels(self):
-        warnings.warn("test_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def train_data(self):
-        warnings.warn("train_data has been renamed data")
-        return self.data
-
-    @property
-    def test_data(self):
-        warnings.warn("test_data has been renamed data")
-        return self.data
-
+class ShakespeareDataset(Dataset):  # NOSONAR
     def __init__(
         self,
         root: Path,
@@ -77,7 +57,6 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
             tuple: (image, target) where target is index of the target class.
         """
         x = self.data[index]
-        y = self.data[index + 1][0]
         y = str(self.targets[index])
 
         sentence_indices = np.array(self.word_to_indices(x))
