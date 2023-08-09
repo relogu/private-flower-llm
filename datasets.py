@@ -89,7 +89,7 @@ class ShakespeareDataset(Dataset):  # NOSONAR
     def load_meta_data(self, path):
         dataframe = pd.read_csv(
             path,
-            # engine="pyarrow", # NOSONAR
+            engine="pyarrow",  # NOSONAR
             dtype=SHAKESPEARE_DTYPES,
             names=list(SHAKESPEARE_DTYPES.keys()),
             sep=",",

@@ -1,9 +1,11 @@
 from collections import OrderedDict
 from pathlib import Path
+import time
 from typing import Callable, Dict, List, Tuple
 
 from flwr.common import Metrics, NDArrays, Scalar
 from multiprocess import Queue
+import multiprocess as mp
 import pandas as pd
 from torch.utils.data import DataLoader
 import torch
@@ -27,6 +29,7 @@ def partially_aggregate(
     current_agg: Tuple[NDArrays, int, float], new_results: Tuple[NDArrays, int, float]
 ) -> Tuple[NDArrays, int, float]:
     """Partially aggregate parameters."""
+    # a = time.time_ns()
     updated_agg = None
     if current_agg[0] is None:  # first time
         updated_agg = new_results[0]
@@ -38,6 +41,7 @@ def partially_aggregate(
         weighted_accuracy = (
             current_agg[1] * current_agg[2] + new_results[1] * new_results[2]
         ) / total_num_examples
+    # print(f"Partially aggregated in {(time.time_ns() - a) / 1e9} seconds")
     return updated_agg, total_num_examples, weighted_accuracy
 
 
@@ -59,7 +63,7 @@ def shakespeare_gen_num_total_virtual_clients(
 ) -> List[str]:
     dataframe = pd.read_csv(
         Path(data_root) / "client_data_mapping" / f"{dataset}.csv",
-        # engine="pyarrow", # NOSONAR
+        engine="pyarrow",  # NOSONAR
         dtype=SHAKESPEARE_DTYPES,
         names=list(SHAKESPEARE_DTYPES.keys()),
         sep=",",
@@ -79,6 +83,10 @@ def shakespeare_gen_num_total_virtual_clients(
     return list(clients.keys())
 
 
+def gen_shakespeare_dataset_train_fn(data_root: str):
+    return ShakespeareDataset(root=data_root, client_id=3, dataset="train")
+
+
 def shakespeare_gen_client_fit_fn(
     data_root: str,
     batch_size: int,
@@ -86,12 +94,13 @@ def shakespeare_gen_client_fit_fn(
     learning_rate: float,
     momentum: float,
     weight_decay: float,
-) -> Callable[[str, NDArrays, int, Dict[str, Scalar], Queue], None]:
+    # ) -> Callable[[str, NDArrays, int, Dict[str, Scalar], Queue], None]:
+) -> Callable[[str, NDArrays, int, Dict[str, Scalar]], None]:
     def client_fit_fn(
         cid: str,
         parameters: NDArrays,
         device: str,
-        results_queue: Queue,
+        # results_queue: Queue,
     ):
         """Train the model on the training set."""
         net = ShakespeareLeafNet()
@@ -120,6 +129,7 @@ def shakespeare_gen_client_fit_fn(
                 optimizer.step()
         these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
         accuracy = num_correct / num_samples
-        results_queue.put((these_weights, num_samples, accuracy))
+        # results_queue.put((these_weights, num_samples, accuracy))
+        return (these_weights, num_samples, accuracy)
 
     return client_fit_fn

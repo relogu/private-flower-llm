@@ -20,6 +20,7 @@ def main(cfg: DictConfig) -> None:
         num_total_virtual_clients=num_total_virtual_clients,
         num_participating_nodes=1,
         fraction_fit=cfg.fraction_fit,
+        fraction_evaluate=0,
         min_fit_nodes=1,
         min_evaluate_nodes=1,
         min_available_nodes=1,

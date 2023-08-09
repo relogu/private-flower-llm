@@ -69,6 +69,17 @@ files = [
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
+name = "cloudpickle"
+version = "2.2.1"
+description = "Extended pickling support for Python objects"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "cloudpickle-2.2.1-py3-none-any.whl", hash = "sha256:61f594d1f4c295fa5cd9014ceb3a1fc4a70b0de1164b94fbc2d854ccba056f9f"},
+    {file = "cloudpickle-2.2.1.tar.gz", hash = "sha256:d89684b8de9e34a2a43b3460fbca07d09d6e25ce858df4d5a44240403b6178f5"},
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
@@ -394,6 +405,23 @@ test = ["hypothesis (>=6.34.2)", "pytest (>=7.3.2)", "pytest-asyncio (>=0.17.0)"
 xml = ["lxml (>=4.6.3)"]
 
 [[package]]
+name = "pathos"
+version = "0.3.1"
+description = "parallel graph management and execution in heterogeneous computing"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pathos-0.3.1-py3-none-any.whl", hash = "sha256:b1c7145e2adcc19c7e9cac48f110ea5a63e300c1cc10c2947d4857dc97a47b46"},
+    {file = "pathos-0.3.1.tar.gz", hash = "sha256:c9a088021493c5cb627d4459bba6c0533c684199e271a5dc297d62be23d74019"},
+]
+
+[package.dependencies]
+dill = ">=0.3.7"
+multiprocess = ">=0.70.15"
+pox = ">=0.3.3"
+ppft = ">=1.7.6.7"
+
+[[package]]
 name = "pathspec"
 version = "0.11.1"
 description = "Utility library for gitignore style pattern matching of file paths."
@@ -418,6 +446,31 @@ files = [
 [package.extras]
 docs = ["furo (>=2023.5.20)", "proselint (>=0.13)", "sphinx (>=7.0.1)", "sphinx-autodoc-typehints (>=1.23,!=1.23.4)"]
 test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=7.3.1)", "pytest-cov (>=4.1)", "pytest-mock (>=3.10)"]
+
+[[package]]
+name = "pox"
+version = "0.3.3"
+description = "utilities for filesystem exploration and automated builds"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pox-0.3.3-py3-none-any.whl", hash = "sha256:e95febf7401918478a3c1441a3630656d9a2049803889b4f589821372889d0ce"},
+    {file = "pox-0.3.3.tar.gz", hash = "sha256:e1ced66f2a0c92a58cf3646bc7ccb8b4773d40884b76f85eeda0670474871667"},
+]
+
+[[package]]
+name = "ppft"
+version = "1.7.6.7"
+description = "distributed and parallel Python"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "ppft-1.7.6.7-py3-none-any.whl", hash = "sha256:fedb1b1253729d62483f2e1f36547fd50a5fc873ffbf9b78b48cfdc727d4180c"},
+    {file = "ppft-1.7.6.7.tar.gz", hash = "sha256:ab34436814e2f18238f35688fd869b2641b2d2d8dca22b8d246f6701dfc954c8"},
+]
+
+[package.extras]
+dill = ["dill (>=0.3.7)"]
 
 [[package]]
 name = "protobuf"
@@ -645,4 +698,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "93d9d4d263f741d14d5a5a840fe9fc8836fe01460c7742adab46ac3f1429038c"
+content-hash = "61ee5661a154ae1615ba180b72e128758a17cdd06217ba8a590f4c23ac30728e"

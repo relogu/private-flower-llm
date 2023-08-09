@@ -5,7 +5,7 @@ num_classes: 10
 batch_size: 20
 num_local_epochs_per_round: 2
 num_total_clients: 500
-num_rounds: 4000
+num_rounds: 100
 weight_decay: 5e-4
 momentum: 0.9
 learning_rate: 0.8

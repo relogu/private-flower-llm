@@ -1,3 +1,8 @@
+from collections import OrderedDict
+import pickle
+import cloudpickle
+
+pickle.Pickler = cloudpickle.Pickler
 import warnings
 from itertools import repeat
 from typing import Callable, Dict, List, Optional, Tuple
@@ -7,22 +12,24 @@ import hydra
 import nvsmi
 import psutil
 import torch
-import torch.multiprocessing as mp
-import multiprocess as mp
-from omegaconf import DictConfig
 
-mp.set_start_method("spawn", force=True)
+# import multiprocess as mp
+from omegaconf import DictConfig
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import Process
+
+# mp.set_start_method("spawn", force=True)
 
 from flwr.common import Config, NDArrays, Scalar
-from torch.utils.data import DataLoader
 from hydra.utils import call
-from utils import set_parameters
-from utils import partially_aggregate
+from torch.utils.data import DataLoader
+
+from utils import partially_aggregate, set_parameters
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from models import ShakespeareLeafNet as Net
 from datasets import ShakespeareDataset
+from models import ShakespeareLeafNet as Net
 
 
 def test(parameters, device):
@@ -48,10 +55,9 @@ class NodeManager(fl.client.NumPyClient):
     def __init__(self, client_fit_fn) -> None:
         super().__init__()
         self.all_gpus = nvsmi.get_gpus()
-        self.pool: Optional[
-            Dict[str, mp.Pool]
-        ] = {  # Maybe cudatype_cudaid example: a40_0
-            f"cuda:{gpu.id}": mp.Pool(10) for gpu in self.all_gpus
+        self.executors = {
+            f"cuda:{gpu.id}": ProcessPoolExecutor(max_workers=10)
+            for gpu in self.all_gpus
         }
         self.client_fit_fn = client_fit_fn
 
@@ -82,43 +88,42 @@ class NodeManager(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         total_num_virtual_clients = 0
-        with mp.Manager() as manager:
-            results_queue = manager.Queue()
-            for device, p in self.pool.items():
-                if device not in config:
-                    continue
-                list_ids_for_this_gpu = config[device].split(",")
-                total_num_virtual_clients += len(list_ids_for_this_gpu)
-                tasks = list(
-                    zip(
-                        list_ids_for_this_gpu,
-                        repeat(parameters),
-                        repeat(device),
-                        repeat(results_queue),
-                    )
+        futures = []
+        for device, executor in self.executors.items():
+            if device not in config:
+                continue
+            list_ids_for_this_gpu = config[device].split(",")
+            total_num_virtual_clients += len(list_ids_for_this_gpu)
+            tasks = list(
+                zip(
+                    list_ids_for_this_gpu,
+                    repeat(parameters),
+                    repeat(device),
+                    # repeat(self.results_queue),
                 )
-                p.starmap_async(self.client_fit_fn, tasks)
+            )
+            futures = futures + [
+                executor.submit(self.client_fit_fn, *task) for task in tasks
+            ]
 
-            # Partial aggregation
-            part_agg_weights = (None, 0, 0.0)
-            for _ in range(total_num_virtual_clients):  # Length of results will vary!!!
-                part_agg_weights = partially_aggregate(
-                    part_agg_weights, results_queue.get()
-                )
+        # Partial aggregation
+        part_agg = (None, 0, 0.0)
+        for future in as_completed(futures):
+            part_agg = partially_aggregate(part_agg, future.result())
 
         return (
-            part_agg_weights[0],
-            part_agg_weights[1],
-            {"accuracy": part_agg_weights[2]},
+            part_agg[0],
+            part_agg[1],
+            {"accuracy": part_agg[2]},
         )
 
     def evaluate(self, parameters, config):
         return 0.0, 1, {}
 
     def __del__(self):
-        if self.pool is not None:
-            for p in self.pool.values():
-                p.close()
+        if self.executors is not None:
+            for ex in self.executors.values():
+                ex.shutdown()
 
 
 # global initialization
