@@ -8,14 +8,14 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from flwr.common.logger import log
-from flwr.server.client_proxy import ClientProxy
 from scipy.optimize import curve_fit
-from pollen.utils import (
+from pollen_utils import (
     get_clients_dataframe_from_dict,
     get_ctt_dataframe_from_pickle,
     merge_ctt_size,
     invert_many_to_one_dictionary,
 )
+from resources_manager import Node
 
 INVALID_ARGUMENTS_GET_PLACEMENT_FN = """
 The `policy` passed to `get_placement_fn` is unknown.
@@ -48,7 +48,7 @@ def get_placement_fn(policy: str = 'rr'):
 
 def learning_based_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     server_round: int,
     batch_size: int,
     cids: Dict[str, int],
@@ -58,7 +58,7 @@ def learning_based_placement(
 ) -> Dict[str, List[int]]:
     if server_round == 1:
         return round_robin_placement(
-            sampled_virtual_cids, workers_dict)
+            sampled_virtual_cids, nodes_dict)
     else:
         current_scores = []
         map_workers_models = {
@@ -108,7 +108,7 @@ def learning_based_placement(
         # TODO/FIXME: Estimate the threshold better
         if max([abs(score) for score in current_scores]) > 10e-1:
             lists_cids = round_robin_placement(
-                sampled_virtual_cids, workers_dict)
+                sampled_virtual_cids, nodes_dict)
         else:
             # Sorting by batch size (decreasing order)
             # This is a list of tuples (cid, list of samples)
@@ -144,7 +144,7 @@ def learning_based_placement(
             for virtual_cid, num_samples in sampled_virtual_cids:
                 # Loop over workers to get the less loaded one
                 min_w_id, load = None, None
-                for w_id, worker in workers_dict.items():
+                for w_id, worker in nodes_dict.items():
                     current_load = sum([c[2]
                                         for c in lists_cids[w_id]])
                     if min_w_id is None:
@@ -173,7 +173,7 @@ def learning_based_placement(
 
 def round_robin_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
@@ -183,8 +183,8 @@ def round_robin_placement(
     # Creates equal clients splits amongst workers
     # (the remainder is assigned to the last worker)
     lists_cids = defaultdict(list)
-    splits = np.array_split(sampled_virtual_cids, len(workers_dict))
-    for worker_dict, split in zip(workers_dict.items(), splits):
+    splits = np.array_split(sampled_virtual_cids, len(nodes_dict))
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
@@ -195,7 +195,7 @@ def round_robin_placement(
 
 def sorted_round_robin_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
@@ -211,9 +211,9 @@ def sorted_round_robin_placement(
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
     splits = [sampled_virtual_cids[np.arange(
-        i, len(sampled_virtual_cids), len(workers_dict))] for i in range(len(workers_dict))]
+        i, len(sampled_virtual_cids), len(nodes_dict))] for i in range(len(nodes_dict))]
     lists_cids = defaultdict(list)
-    for worker_dict, split in zip(workers_dict.items(), splits):
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
@@ -224,7 +224,7 @@ def sorted_round_robin_placement(
 
 def samples_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
@@ -234,9 +234,9 @@ def samples_placement(
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(workers_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(workers_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(workers_dict):]:
+    # Assing the first `len(nodes_dict)` clients to the workers
+    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
         sums = [sum([x[1] for x in list_cids])
                 for list_cids in splits]
         min_worker = np.argmin(sums)
@@ -244,7 +244,7 @@ def samples_placement(
     splits = [np.array([x[0] for x in list_cids])
               for list_cids in splits]
     lists_cids = defaultdict(list)
-    for worker_dict, split in zip(workers_dict.items(), splits):
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
@@ -255,7 +255,7 @@ def samples_placement(
 
 def batches_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     batch_size: int,
     verbose: bool = False,
     **kwargs,
@@ -266,9 +266,9 @@ def batches_placement(
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(workers_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(workers_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(workers_dict):]:
+    # Assing the first `len(nodes_dict)` clients to the workers
+    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
         sums = [sum([floor(x[1]/batch_size)
                     for x in list_cids]) for list_cids in splits]
         min_worker = np.argmin(sums)
@@ -276,7 +276,7 @@ def batches_placement(
     splits = [np.array([x[0] for x in list_cids])
               for list_cids in splits]
     lists_cids = defaultdict(list)
-    for worker_dict, split in zip(workers_dict.items(), splits):
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
@@ -287,7 +287,7 @@ def batches_placement(
 
 def log_batches_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    workers_dict: Dict[str, ClientProxy],
+    nodes_dict: Dict[str, Node],
     batch_size: int,
     verbose: bool = False,
     **kwargs,
@@ -298,15 +298,15 @@ def log_batches_placement(
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(workers_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(workers_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(workers_dict):]:
+    # Assing the first `len(nodes_dict)` clients to the workers
+    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
         sums = [sum([log10(floor(x[1]/batch_size))
                     for x in list_cids]) for list_cids in splits]
         min_worker = np.argmin(sums)
         splits[min_worker].append((virtual_cid, num_samples))
     lists_cids = defaultdict(list)
-    for worker_dict, split in zip(workers_dict.items(), splits):
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]

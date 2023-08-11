@@ -14,28 +14,23 @@
 # ==============================================================================
 """Flower Pollen server."""
 
-import sys
 import concurrent.futures
-import time
+import sys
 import timeit
 from copy import copy, deepcopy
-from logging import DEBUG, INFO, ERROR
+from logging import DEBUG, ERROR, INFO
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from flwr.common import (
-    Code,
     DisconnectRes,
-    EvaluateIns,
     EvaluateRes,
     FitIns,
     FitRes,
     Parameters,
-    ReconnectIns,
     Scalar,
 )
 from flwr.common.logger import log
 from flwr.common.typing import (
-    GetParametersIns,
     GetPropertiesIns,
     GetPropertiesRes,
     Properties,
@@ -43,6 +38,7 @@ from flwr.common.typing import (
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
+from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
 
 FitResultsAndFailures = Tuple[
@@ -60,7 +56,13 @@ ReconnectResultsAndFailures = Tuple[
 
 from placements import get_placement_fn
 from pollen_client_manager import PollenClientManager
+from resources_manager import Node
 from utils import invert_many_to_one_dictionary
+
+GetPropResultsAndFailures = Tuple[
+    List[Tuple[ClientProxy, Node]],
+    List[Union[Tuple[ClientProxy, Node], BaseException]],
+]
 
 
 class PollenServer(Server):
@@ -85,9 +87,11 @@ class PollenServer(Server):
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         check_strategy_for_pollen(self.strategy)
-        self.on_fit_config: Callable[[int], Dict[str, Scalar]] = self.strategy.on_fit_config_fn
+        self.on_fit_config: Callable[
+            [int], Dict[str, Scalar]
+        ] = self.strategy.on_fit_config_fn
         self.max_workers: Optional[int] = None
-        self.worker_to_resource: Dict[str, Tuple[str, str, int, int]] = {}
+        self.nodes_dict: Dict[str, Node] = {}
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -104,6 +108,7 @@ class PollenServer(Server):
     # pylint: disable=too-many-locals
     def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
         """Run federated averaging for a number of rounds."""
+        log(INFO, "Initializing Pollen simulation")
         history = History()
 
         # Initialize parameters
@@ -121,22 +126,39 @@ class PollenServer(Server):
             history.add_loss_centralized(server_round=0, loss=res[0])
             history.add_metrics_centralized(server_round=0, metrics=res[1])
 
-        # Run federated learning for num_rounds
-        log(INFO, "FL starting")
-        start_time = timeit.default_timer()
-
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
             str(i): self.client_fn(k, "") for i, (k, _) in enumerate(self.cids.items())
         }
-        # TODO/FIXME: Hardcoded to allow all the workers to connect
-        time.sleep(10)
-        # Set the number of connected NodeManagers
+        # Waiting for at least one node to connect
+        log(INFO, "Waiting for at least one node to connect")
+        self._client_manager.wait_for(1)
+        # Get the initial number of connected NodeManagers
         connected_node_managers: Dict[str, ClientProxy] = copy(
             self._client_manager.node_managers
         )
-        # TODO/FIXME: Collect and allocate available resources
-        self.worker_to_resource = assign_worker_to_resource(connected_node_managers)
+        # Collect nodes' preoperties
+        results, failures = get_nodes_properties(
+            node_managers=connected_node_managers,
+            max_workers=self.max_workers,
+        )
+        log(
+            INFO,
+            "Get nodes properties: there are %s results and %s failures",
+            len(results), len(failures)
+        )
+        self.nodes_dict = {
+            client_proxy.cid: node
+            for client_proxy, node in results
+        }
+        log(
+            INFO,
+            "Connected node managers: %s",
+            self.nodes_dict,
+        )
+        # Run federated learning for num_rounds
+        log(INFO, "FL starting")
+        start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
             # Check for changes in connected NodeManagers
             dropped, new, connected_node_managers = check_connected_node_managers(
@@ -146,10 +168,18 @@ class PollenServer(Server):
             if bool(dropped):
                 # Handle dropped NodeManagers
                 log(DEBUG, f"{len(dropped)} NodeManagers have been dropped")
-                [self.worker_to_resource.pop(k) for k, _ in dropped.items()]
+                [self.nodes_dict.pop(k) for k, _ in dropped.items()]
             if bool(new):
-                # TODO: Handle newly added NodeManagers, don't know how to do this rn
+                # Handle newly added NodeManagers
                 log(DEBUG, f"There are new {len(new)} NodeManagers connected")
+                new_nodes_dict = {
+                    client_proxy.cid: node
+                    for client_proxy, node in get_nodes_properties(
+                        node_managers=new,
+                        max_workers=self.max_workers,
+                    )
+                }
+                self.nodes_dict.update(new_nodes_dict)
 
             # Train model and replace previous global model
             res_fit = self.fit_round(
@@ -275,18 +305,18 @@ class PollenServer(Server):
             self._client_manager.num_available(),
         )
 
-        # Translate `client_instruction` to `node_instructions`
+        # TODO: Translate `client_instruction` to `node_instructions`
         lists_cids = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[client.cid])
                 for client, _ in client_instructions
             ],
-            workers_dict=self._client_manager.node_managers,
+            nodes_dict=self.nodes_dict,
             batch_size=self.on_fit_config(server_round)["batch_size"],
             verbose=False,
         )
         node_instructions = []
-        for node_id, node in self._client_manager.node_managers.items():
+        for node_id, node in self.nodes_dict.items():
             node_fit_config = self.on_fit_config(server_round)
             # NOTE: This key is used only when the training policy of workers
             # is not `sequential`, and for setting the `num_workers` parameter
@@ -304,9 +334,7 @@ class PollenServer(Server):
             # TODO/FIXME: Assign `gpu_ids`
             node_fit_config["gpu_ids"] = f"[{self.worker_to_resource[node_id][2]}]"
             # Append instruction
-            node_instructions.append(
-                (node, FitIns(self.parameters, node_fit_config))
-            )
+            node_instructions.append((node, FitIns(self.parameters, node_fit_config)))
 
         log(
             DEBUG,
@@ -338,118 +366,56 @@ class PollenServer(Server):
         parameters_aggregated, metrics_aggregated = aggregated_result
         return parameters_aggregated, metrics_aggregated, (results, failures)
 
-    def disconnect_all_clients(self, timeout: Optional[float]) -> None:
-        """Send shutdown signal to all clients."""
-        all_clients = self._client_manager.all()
-        clients = [all_clients[k] for k in all_clients.keys()]
-        instruction = ReconnectIns(seconds=None)
-        client_instructions = [(client_proxy, instruction) for client_proxy in clients]
-        _ = reconnect_clients(
-            client_instructions=client_instructions,
-            max_workers=self.max_workers,
-            timeout=timeout,
-        )
 
-    def _get_initial_parameters(self, timeout: Optional[float]) -> Parameters:
-        """Get initial parameters from one of the available clients."""
-
-        # Server-side parameter initialization
-        parameters: Optional[Parameters] = self.strategy.initialize_parameters(
-            client_manager=self._client_manager
-        )
-        if parameters is not None:
-            log(INFO, "Using initial parameters provided by strategy")
-            return parameters
-
-        # Get initial parameters from one of the clients
-        log(INFO, "Requesting initial parameters from one random client")
-        random_client = self._client_manager.sample(1)[0]
-        ins = GetParametersIns(config={})
-        get_parameters_res = random_client.get_parameters(ins=ins, timeout=timeout)
-        log(INFO, "Received initial parameters from one random client")
-        return get_parameters_res.parameters
+####################### NEW FUNCTIONS #######################
 
 
-def reconnect_clients(
-    client_instructions: List[Tuple[ClientProxy, ReconnectIns]],
+def get_nodes_properties(
+    node_managers: Dict[str, ClientProxy],
     max_workers: Optional[int],
-    timeout: Optional[float],
-) -> ReconnectResultsAndFailures:
-    """Instruct clients to disconnect and never reconnect."""
+    timeout: Optional[float] = None,
+) -> GetPropResultsAndFailures:
+    """Get the properties of all nodes in the cluster."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(reconnect_client, client_proxy, ins, timeout)
-            for client_proxy, ins in client_instructions
+            executor.submit(get_properties_client, client_proxy, timeout)
+            for node_id, client_proxy in node_managers.items()
         }
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
-            timeout=None,  # Handled in the respective communication stack
+            timeout=timeout,  # Handled in the respective communication stack
         )
 
     # Gather results
-    results: List[Tuple[ClientProxy, DisconnectRes]] = []
-    failures: List[Union[Tuple[ClientProxy, DisconnectRes], BaseException]] = []
+    results: List[Tuple[ClientProxy, Node]] = []
+    failures: List[Union[Tuple[ClientProxy, Node], BaseException]] = []
     for future in finished_fs:
-        failure = future.exception()
-        if failure is not None:
-            failures.append(failure)
-        else:
-            result = future.result()
-            results.append(result)
+        _handle_finished_future_after_get_properties(
+            future=future, results=results, failures=failures
+        )
     return results, failures
 
 
-def reconnect_client(
-    client: ClientProxy,
-    reconnect: ReconnectIns,
-    timeout: Optional[float],
-) -> Tuple[ClientProxy, DisconnectRes]:
-    """Instruct client to disconnect and (optionally) reconnect later."""
-    disconnect = client.reconnect(
-        reconnect,
-        timeout=timeout,
+def get_properties_client(
+    client: ClientProxy, timeout: Optional[float]
+) -> Tuple[ClientProxy, Node]:
+    """Get properties froma a Node"""
+    ins = GetPropertiesIns(config={})
+    node_properties_res: Node = client.get_properties(ins=ins, timeout=timeout)
+    node_properties: Properties = node_properties_res.properties
+    log(
+        DEBUG,
+        "node properties received from %s: %s",
+        client,
+        node_properties,
     )
-    return client, disconnect
+    return client, Node.from_str(node_properties["node"])
 
 
-def fit_clients(
-    client_instructions: List[Tuple[ClientProxy, FitIns]],
-    max_workers: Optional[int],
-    timeout: Optional[float],
-) -> FitResultsAndFailures:
-    """Refine parameters concurrently on all selected clients."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        submitted_fs = {
-            executor.submit(fit_client, client_proxy, ins, timeout)
-            for client_proxy, ins in client_instructions
-        }
-        finished_fs, _ = concurrent.futures.wait(
-            fs=submitted_fs,
-            timeout=None,  # Handled in the respective communication stack
-        )
-
-    # Gather results
-    results: List[Tuple[ClientProxy, FitRes]] = []
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
-    for future in finished_fs:
-        _handle_finished_future_after_fit(
-            future=future, results=results, failures=failures
-        )
-    return results, failures
-
-
-def fit_client(
-    client: ClientProxy, ins: FitIns, timeout: Optional[float]
-) -> Tuple[ClientProxy, FitRes]:
-    """Refine parameters on a single client."""
-    fit_res = client.fit(ins, timeout=timeout)
-    return client, fit_res
-
-
-def _handle_finished_future_after_fit(
+def _handle_finished_future_after_get_properties(
     future: concurrent.futures.Future,  # type: ignore
-    results: List[Tuple[ClientProxy, FitRes]],
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    results: List[Tuple[ClientProxy, Node]],
+    failures: List[Union[Tuple[ClientProxy, Node], BaseException]],
 ) -> None:
     """Convert finished future into either a result or a failure."""
 
@@ -460,96 +426,21 @@ def _handle_finished_future_after_fit(
         return
 
     # Successfully received a result from a client
-    result: Tuple[ClientProxy, FitRes] = future.result()
-    _, res = result
-
-    # Check result status code
-    if res.status.code == Code.OK:
-        results.append(result)
-        return
-
-    # Not successful, client returned a result where the status code is not OK
-    failures.append(result)
-
-
-def evaluate_clients(
-    client_instructions: List[Tuple[ClientProxy, EvaluateIns]],
-    max_workers: Optional[int],
-    timeout: Optional[float],
-) -> EvaluateResultsAndFailures:
-    """Evaluate parameters concurrently on all selected clients."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        submitted_fs = {
-            executor.submit(evaluate_client, client_proxy, ins, timeout)
-            for client_proxy, ins in client_instructions
-        }
-        finished_fs, _ = concurrent.futures.wait(
-            fs=submitted_fs,
-            timeout=None,  # Handled in the respective communication stack
-        )
-
-    # Gather results
-    results: List[Tuple[ClientProxy, EvaluateRes]] = []
-    failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]] = []
-    for future in finished_fs:
-        _handle_finished_future_after_evaluate(
-            future=future, results=results, failures=failures
-        )
-    return results, failures
-
-
-def evaluate_client(
-    client: ClientProxy,
-    ins: EvaluateIns,
-    timeout: Optional[float],
-) -> Tuple[ClientProxy, EvaluateRes]:
-    """Evaluate parameters on a single client."""
-    evaluate_res = client.evaluate(ins, timeout=timeout)
-    return client, evaluate_res
-
-
-def _handle_finished_future_after_evaluate(
-    future: concurrent.futures.Future,  # type: ignore
-    results: List[Tuple[ClientProxy, EvaluateRes]],
-    failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
-) -> None:
-    """Convert finished future into either a result or a failure."""
-
-    # Check if there was an exception
-    failure = future.exception()
-    if failure is not None:
-        failures.append(failure)
-        return
-
-    # Successfully received a result from a client
-    result: Tuple[ClientProxy, EvaluateRes] = future.result()
-    _, res = result
-
-    # Check result status code
-    if res.status.code == Code.OK:
-        results.append(result)
-        return
-
-    # Not successful, client returned a result where the status code is not OK
-    failures.append(result)
-
-
-####################### NEW STUFF #######################
+    result: Tuple[ClientProxy, Node] = future.result()
+    results.append(result)
 
 
 def check_strategy_for_pollen(
     strategy: Strategy,
 ) -> bool:
-    if not isinstance(
-        strategy.on_fit_config_fn,
-        Callable[[int], Dict],
-    ):
+    if strategy.on_fit_config_fn is None:
         log(
             ERROR,
             "The strategy, %s, passed to the `PollenServer` doesn't have a proper `on_fit_config_fn` attribute."
             "The user must define such method as type `Callable[[int], Dict]`"
             "Currently, `on_fit_config_fn` is %s.",
-            strategy, strategy.on_fit_config_fn
+            strategy,
+            strategy.on_fit_config_fn,
         )
         sys.exit(0)
     if "batch_size" not in strategy.on_fit_config_fn(0) or not isinstance(

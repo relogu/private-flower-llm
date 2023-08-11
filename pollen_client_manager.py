@@ -17,7 +17,7 @@
 
 import random
 import threading
-from logging import INFO
+from logging import INFO, DEBUG
 from typing import Dict, List, Optional
 
 from flwr.common.logger import log
@@ -97,22 +97,10 @@ class PollenClientManager(ClientManager):
             Indicating if registration was successful. False if ClientProxy is
             already registered or can not be registered for any reason.
         """
-        # TODO: Use conditional lock to be sure that each client takes a different `cid`
-        # log(INFO, "PollenClientManager.register: %s with id %s", client, client.cid)
-        id = 0
-        client.cid = f"node_manager_{id}"
-        # NOTE: This won't be needed anymore
-        while client.cid in self.node_managers:
-            # port = str(client.cid).split(":")[-1]
-            # client.cid = (
-            #     ":".join(str(client.cid).split(":")[:-1]) + ":" + str(int(port) + 1)
-            # )
-            id += 1
-            client.cid = f"node_manager_{id}"
+        if client.cid in self.clients:
+            return False
 
-        log(INFO, "PollenClientManager.register: %s with new id %s", client, client.cid)
-
-        self.node_managers[client.cid] = client
+        self.clients[client.cid] = client
         with self._cv:
             self._cv.notify_all()
 
