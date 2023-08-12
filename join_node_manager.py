@@ -37,33 +37,6 @@ from multiprocess import shared_memory
 import numpy as np
 
 
-def create_sm(parameters: NDArrays, name="pollen_sm"):
-    # Buffer
-    buff = [x.tobytes() for x in parameters]
-    # Copy the data into shared memory
-    shl = shared_memory.ShareableList(buff, name=name)
-
-    return shl
-
-
-def update_sm(parameters: NDArrays, name="pollen_sm"):
-    shl = shared_memory.ShareableList(name=name)
-    shl.shm = [x.tobytes() for x in parameters]
-    return shl
-
-
-def read_from_sm(
-    sm_list: shared_memory.ShareableList, parameters: NDArrays
-) -> NDArrays:
-    new_parameters = [
-        # np.frombuffer(x, dtype=np.float32).reshape(y.shape)
-        np.ndarray(y.shape, dtype=np.float32, buffer=x)
-        for x, y in zip(sm_list, parameters)
-    ]
-
-    return new_parameters
-
-
 def test(parameters, device):
     """Validate the model on the test set."""
     net = Net()
@@ -89,9 +62,8 @@ class Worker(mp.Process):
         dataset_fn,
         config,
         device,
-        task_queue,
+        task_queue: mp.Queue,
         result_queue: mp.Queue,
-        sm_name="pollen_sm",
     ):
         super(Worker, self).__init__()
         self.node_net = net
@@ -100,24 +72,12 @@ class Worker(mp.Process):
         self.device = device
         self.task_queue: mp.Queue = task_queue
         self.result_queue: mp.Queue = result_queue
-        self.local_parameters = [
-            val.cpu().numpy() for _, val in self.node_net.state_dict().items()
-        ]
         self.partial_agg_model = (None, 0, 0.0)
         self.current_round = 0
-        self.worker_sm = shared_memory.ShareableList(name=sm_name)
 
     def process_task(self, task):
         # REMOVE NEED FOR NEW WEIGHTS
-        cid, server_round = task
-        if server_round != self.current_round:
-            self.current_round = server_round
-            self.local_parameters = read_from_sm(self.worker_sm, self.local_parameters)
-            params_dict = zip(self.node_net.state_dict().keys(), self.local_parameters)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            self.node_net.load_state_dict(state_dict, strict=True)
-
-        net = deepcopy(self.node_net)
+        cid, net = task
         net.to(self.device)
         net.train()
         trainset = self.dataset_fn(client_id=cid)
@@ -179,8 +139,6 @@ class NodeManager(fl.client.NumPyClient):
         self.node_parameters = [
             val.cpu().numpy() for _, val in net.state_dict().items()
         ]
-        self.node_sm = create_sm(self.node_parameters)
-
         self.workers = {
             "cuda:0": [
                 Worker(
@@ -230,14 +188,16 @@ class NodeManager(fl.client.NumPyClient):
         num_total_virtual_clients = 0
 
         # Save model
-        self.node_sm = update_sm(parameters)
+        net = Net()
+        net = set_parameters(net, parameters, "cpu")
+        net.eval()
 
         # remove need to send parameters same worker, same parameters
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
             for cid in list_ids_for_this_gpu:
-                self.task_queues[device].put((cid, config["server_round"]))
+                self.task_queues[device].put((cid, net))
 
             # Start workers move this outside
             if config["server_round"] == 1:
@@ -263,10 +223,7 @@ class NodeManager(fl.client.NumPyClient):
                     self.task_queues[device].put(None)
                     for _ in range(len(list_of_workers))
                 ]
-                [worker.worker_sm.unlink() for worker in list_of_workers]
                 [worker.close() for worker in list_of_workers]
-        self.shared_memory.unlink()
-        self.shared_memory.close()
 
 
 # global initialization

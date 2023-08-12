@@ -83,8 +83,13 @@ def shakespeare_gen_num_total_virtual_clients(
     return list(clients.keys())
 
 
-def gen_shakespeare_dataset_train_fn(data_root: str):
-    return ShakespeareDataset(root=data_root, client_id=3, dataset="train")
+def gen_shakespeare_dataset_train_fn(data_root: str, dataset_type: str = "train"):
+    def shakespeare_gen_local_dataset_fn(client_id: str):
+        return ShakespeareDataset(
+            root=data_root, client_id=client_id, dataset=dataset_type
+        )
+
+    return shakespeare_gen_local_dataset_fn
 
 
 def shakespeare_gen_client_fit_fn(
