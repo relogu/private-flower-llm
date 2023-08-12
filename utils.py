@@ -1,17 +1,17 @@
-from collections import OrderedDict
-from pathlib import Path
 import time
+from collections import OrderedDict, defaultdict
+from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
-from flwr.common import Metrics, NDArrays, Scalar
-from multiprocess import Queue
 import multiprocess as mp
 import pandas as pd
-from torch.utils.data import DataLoader
 import torch
+from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate
+from multiprocess import Queue
+from torch.utils.data import DataLoader
 
-from datasets import ShakespeareDataset, SHAKESPEARE_DTYPES
+from datasets import SHAKESPEARE_DTYPES, ShakespeareDataset
 from models import ShakespeareLeafNet
 
 
@@ -138,3 +138,22 @@ def shakespeare_gen_client_fit_fn(
         return (these_weights, num_samples, accuracy)
 
     return client_fit_fn
+
+
+def invert_many_to_one_dictionary(
+    input: Dict,
+) -> Dict:
+    output: Dict = defaultdict(list)
+    for k, v in input.items():
+        output[v] = output.get(v, []) + [k]
+    return output
+
+
+def invert_one_to_many_dictionary(
+    input: Dict,
+) -> Dict:
+    output: Dict = {}
+    for k, v in input.items():
+        for w in v:
+            output[w] = k
+    return output
