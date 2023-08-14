@@ -1,18 +1,14 @@
-import time
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
-import multiprocess as mp
 import pandas as pd
 import torch
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate
-from multiprocess import Queue
-from torch.utils.data import DataLoader
 
-from datasets import SHAKESPEARE_DTYPES, ShakespeareDataset
-from models import ShakespeareLeafNet
+from datasets.shakespeare import SHAKESPEARE_DTYPES
+from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 
 
 #### Server ####
@@ -41,7 +37,6 @@ def partially_aggregate(
         weighted_accuracy = (
             current_agg[1] * current_agg[2] + new_results[1] * new_results[2]
         ) / total_num_examples
-    # print(f"Partially aggregated in {(time.time_ns() - a) / 1e9} seconds")
     return updated_agg, total_num_examples, weighted_accuracy
 
 
@@ -92,54 +87,6 @@ def gen_shakespeare_dataset_train_fn(data_root: str, dataset_type: str = "train"
     return shakespeare_gen_local_dataset_fn
 
 
-def shakespeare_gen_client_fit_fn(
-    data_root: str,
-    batch_size: int,
-    num_local_epochs_per_round: int,
-    learning_rate: float,
-    momentum: float,
-    weight_decay: float,
-    # ) -> Callable[[str, NDArrays, int, Dict[str, Scalar], Queue], None]:
-) -> Callable[[str, NDArrays, int, Dict[str, Scalar]], None]:
-    def client_fit_fn(
-        cid: str,
-        parameters: NDArrays,
-        device: str,
-        # results_queue: Queue,
-    ):
-        """Train the model on the training set."""
-        net = ShakespeareLeafNet()
-        net = set_parameters(net, parameters, device)
-        criterion = torch.nn.CrossEntropyLoss()
-        optimizer = torch.optim.SGD(
-            net.parameters(),
-            lr=learning_rate,
-            momentum=momentum,
-            weight_decay=weight_decay,
-        )
-        trainset = ShakespeareDataset(root=data_root, client_id=cid, dataset="train")
-        trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-        for _ in range(num_local_epochs_per_round):
-            num_samples = 0
-            num_correct = 0
-            for data in trainloader:
-                inputs, labels = data[0].to(device), data[1].to(device)
-                num_samples += len(labels)
-                optimizer.zero_grad()
-                predicitons = net(inputs)
-                num_correct += (
-                    (torch.max(predicitons.data, 1)[1] == labels).sum().item()
-                )
-                criterion(predicitons, labels.to(device)).backward()
-                optimizer.step()
-        these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
-        accuracy = num_correct / num_samples
-        # results_queue.put((these_weights, num_samples, accuracy))
-        return (these_weights, num_samples, accuracy)
-
-    return client_fit_fn
-
-
 def invert_many_to_one_dictionary(
     input: Dict,
 ) -> Dict:
@@ -157,3 +104,20 @@ def invert_one_to_many_dictionary(
         for w in v:
             output[w] = k
     return output
+
+
+def gen_on_fit_config_fn(
+    batch_size, local_epochs, learning_rate, momentum, weight_decay
+) -> Callable[[int], Dict[str, Scalar]]:
+    def on_fit_config_fn(server_round: int) -> Dict[str, Scalar]:
+        """Return `Config` for fit/evaluate rounds."""
+        return {
+            "batch_size": batch_size,
+            "local_epochs": local_epochs,
+            "learning_rate": learning_rate,
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "server_round": server_round,
+        }
+
+    return on_fit_config_fn

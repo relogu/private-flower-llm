@@ -20,6 +20,8 @@ pyarrow = "^12.0.1"
 multiprocess = "^0.70.15"
 pathos = "^0.3.1"
 cloudpickle = "^2.2.1"
+ray = "^2.6.2"
+datasets = "^2.14.4"
 
 [build-system]
 requires = ["poetry-core"]

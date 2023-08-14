@@ -1,8 +1,5 @@
 from torch import nn
-
-LEAF_CHARACTERS = (
-    "\n !\"&'(),-.0123456789:;>?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]abcdefghijklmnopqrstuvwxyz}"
-)
+from datasets import LEAF_CHARACTERS
 
 
 class ShakespeareLeafNet(nn.Module):  # type: ignore

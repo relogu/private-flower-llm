@@ -3,11 +3,13 @@ import os
 import pickle
 import time
 import cloudpickle
+from flwr.client import NumPyClient
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
 from itertools import repeat
 from typing import Callable, Dict, List, Optional, Tuple
+from nvsmi import GPU
 
 import flwr as fl
 import hydra
@@ -30,8 +32,8 @@ from utils import partially_aggregate, set_parameters
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from datasets import ShakespeareDataset
-from models import ShakespeareLeafNet as Net
+from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
+from models.shakespeare_leaf_model import ShakespeareLeafNet as Net
 
 from multiprocess import shared_memory
 import numpy as np
@@ -69,7 +71,9 @@ def test(parameters, device):
     net = Net()
     net = set_parameters(net, parameters, device)
     criterion = torch.nn.CrossEntropyLoss()
-    testset = ShakespeareDataset(root="data", client_id=0, dataset="test")
+    testset = ShakespeareDataset(
+        root="/datasets/FedScale/leaf_shakespeare", client_id=0, dataset="test"
+    )
     testloader = DataLoader(testset, batch_size=4, shuffle=True)
     correct, loss = 0, 0.0
     with torch.no_grad():
@@ -85,71 +89,35 @@ def test(parameters, device):
 class Worker(mp.Process):
     def __init__(
         self,
-        net,
-        dataset_fn,
-        config,
+        client_fn,
         device,
-        task_queue,
+        task_queue: mp.Queue,
+        models_queue: mp.Queue,
         result_queue: mp.Queue,
-        sm_name="pollen_sm",
     ):
         super(Worker, self).__init__()
-        self.node_net = net
-        self.dataset_fn = dataset_fn
-        self.config = config
         self.device = device
+        self.client_fn: Callable[[int], NumPyClient] = client_fn
         self.task_queue: mp.Queue = task_queue
+        self.models_queue: mp.Queue = models_queue
         self.result_queue: mp.Queue = result_queue
-        self.local_parameters = [
-            val.cpu().numpy() for _, val in self.node_net.state_dict().items()
-        ]
+        self.local_parameters = []
         self.partial_agg_model = (None, 0, 0.0)
         self.current_round = 0
-        self.worker_sm = shared_memory.ShareableList(name=sm_name)
 
     def process_task(self, task):
         # REMOVE NEED FOR NEW WEIGHTS
-        cid, server_round = task
-        if server_round != self.current_round:
-            self.current_round = server_round
-            self.local_parameters = read_from_sm(self.worker_sm, self.local_parameters)
-            params_dict = zip(self.node_net.state_dict().keys(), self.local_parameters)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            self.node_net.load_state_dict(state_dict, strict=True)
+        config = task
+        if config["server_round"] != self.current_round:
+            self.current_round = config["server_round"]
+            self.local_parameters = self.models_queue.get()
+        config["device"] = self.device
+        temp_client = self.client_fn(config["client_id"])
+        trained_weights, num_samples, metrics = temp_client.fit(
+            self.local_parameters, config
+        )
 
-        net = deepcopy(self.node_net)
-        net.to(self.device)
-        net.train()
-        trainset = self.dataset_fn(client_id=cid)
-        trainloader = DataLoader(
-            trainset, batch_size=self.config["batch_size"], shuffle=True
-        )
-        criterion = torch.nn.CrossEntropyLoss()
-        optimizer = torch.optim.SGD(
-            net.parameters(),
-            lr=self.config["learning_rate"],
-            momentum=self.config["momentum"],
-            weight_decay=self.config["weight_decay"],
-        )
-        for _ in range(self.config["epochs"]):
-            num_samples = 0
-            num_correct = 0
-            for data in trainloader:
-                inputs, labels = data[0].to(self.device), data[1].to(self.device)
-                num_samples += len(labels)
-                optimizer.zero_grad()
-                predicitons = net(inputs)
-                num_correct += (
-                    (torch.max(predicitons.data, 1)[1] == labels).sum().item()
-                )
-                criterion(predicitons, labels.to(self.device)).backward()
-                optimizer.step()
-        net.eval()
-        these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
-        new_results = (these_weights, num_samples, num_correct / num_samples)
-        # self.partial_agg_model = partially_aggregate(
-        #    self.partial_agg_model, new_results
-        # )
+        new_results = (trained_weights, num_samples, metrics["accuracy"])
         self.result_queue.put(new_results)
 
     def run(self):
@@ -160,39 +128,30 @@ class Worker(mp.Process):
 
 # Define Flower client
 class NodeManager(fl.client.NumPyClient):
-    def __init__(
-        self,
-        net,
-        dataset_fn,
-        exp_config,
-    ) -> None:
+    def __init__(self, client_fn) -> None:
         super().__init__()
-        self.all_gpus = nvsmi.get_gpus()
+        self.all_gpus: List[GPU] = nvsmi.get_gpus()
 
         # One task_queue per GPU
         self.task_queues = {f"cuda:{gpu.id}": mp.Queue() for gpu in self.all_gpus}
 
-        # One result_queue to rule them all
-        self.result_queue = mp.Queue()
+        # One model per worker
+        self.models_queue = mp.Queue()
 
-        # Inital parameters
-        self.node_parameters = [
-            val.cpu().numpy() for _, val in net.state_dict().items()
-        ]
-        self.node_sm = create_sm(self.node_parameters)
+        # Results from worker
+        self.result_queue = mp.Queue()
 
         self.workers = {
             "cuda:0": [
                 Worker(
-                    net,
-                    dataset_fn,
-                    exp_config,
-                    f"cuda:{0}",
+                    client_fn,
+                    "cuda:0",
                     self.task_queues[f"cuda:{0}"],
+                    self.models_queue,
                     self.result_queue,
                 )
                 for _ in range(10)
-            ],
+            ]
         }
 
     def get_cpu_prop(self) -> Dict[str, float]:
@@ -229,15 +188,19 @@ class NodeManager(fl.client.NumPyClient):
         node_part_agg = (None, 0, 0.0)
         num_total_virtual_clients = 0
 
-        # Save model
-        self.node_sm = update_sm(parameters)
-
         # remove need to send parameters same worker, same parameters
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
+
+            # One set of parameters per worker
+            for _ in range(len(self.workers[device])):
+                self.models_queue.put(parameters)
+
             for cid in list_ids_for_this_gpu:
-                self.task_queues[device].put((cid, config["server_round"]))
+                this_config = deepcopy(config)
+                this_config["client_id"] = cid
+                self.task_queues[device].put((this_config))
 
             # Start workers move this outside
             if config["server_round"] == 1:
@@ -263,32 +226,16 @@ class NodeManager(fl.client.NumPyClient):
                     self.task_queues[device].put(None)
                     for _ in range(len(list_of_workers))
                 ]
-                [worker.worker_sm.unlink() for worker in list_of_workers]
-                [worker.close() for worker in list_of_workers]
-        self.shared_memory.unlink()
-        self.shared_memory.close()
 
 
 # global initialization
 @hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # Load train and evaluate functions
-    # client_fit_fn = call(cfg.gen_client_fit_fn)
-    exp_config = {
-        "learning_rate": 0.1,
-        "batch_size": 4,
-        "weight_decay": 0.0001,
-        "momentum": 0.9,
-        "epochs": 1,
-    }
-    node_manager = NodeManager(
-        net=Net(),
-        dataset_fn=call(cfg.gen_dataset_fn),
-        exp_config=exp_config,
-    )
+    # Define Node Manager
+    node_manager = NodeManager(client_fn=call(cfg.gen_client_fn))
+
     # Start Flower client
     fl.client.start_numpy_client(
-        # server_address="127.0.0.1:8080", client=NodeManager(client_fit_fn=client_fit_fn)
         server_address="127.0.0.1:8080",
         client=node_manager,
     )

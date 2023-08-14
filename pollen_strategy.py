@@ -113,13 +113,12 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.num_total_virtual_clients = num_total_virtual_clients
         self.seed = seed
-        print(self.fraction_fit)
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
-        config = {}
+        config = {"server_round": server_round}
         if self.on_fit_config_fn is not None:
             # Custom fit config function provided
             config = self.on_fit_config_fn(server_round)
@@ -150,16 +149,17 @@ class FedAvgReproducibleSampling(FedAvg):
         client_node_mapping = {nodes[0].cid: {"cuda:0": sampled_virtual_clients}}
 
         nodes_config = []
-        for node in nodes:
+        for node in nodes:  # One config per node
             this_client_lists = client_node_mapping[node.cid]
+            this_node_config = deepcopy(config)
             for device, device_list in this_client_lists.items():
                 # Serialization of list of virtual clients for this client
                 device_list_string = ",".join(
                     str(client_id) for client_id in device_list
                 )
-                this_config = deepcopy(config)
-                this_config[device] = device_list_string
-                nodes_config.append((node, FitIns(parameters, this_config)))
+                this_node_config[device] = device_list_string
+
+            nodes_config.append((node, FitIns(parameters, this_node_config)))
 
         # Return node/config pairs
         return nodes_config

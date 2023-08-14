@@ -1,14 +1,13 @@
 ---
+batch_size: 4
 dataset_name: "shakespeare"
-data_root: "/datasets/FedScale/shakespeare/"
+data_root: "/datasets/FedScale/leaf_shakespeare"
+learning_rate: 0.8
+local_epochs: 1
+momentum: 0.9
 num_classes: 10
-batch_size: 20
-num_local_epochs_per_round: 2
-num_total_clients: 500
 num_rounds: 100
 weight_decay: 5e-4
-momentum: 0.9
-learning_rate: 0.8
 
 # Aggregation Strategy
 fraction_fit: 0.037
@@ -20,11 +19,14 @@ gen_num_total_virtual_clients:
   min_samples_per_client: 20
 
 # Client Fit Function
-gen_client_fit_fn:
-  _target_: utils.shakespeare_gen_client_fit_fn
+gen_client_fn:
+  _target_: clients.gen_shakespeare_client_fn
   data_root: ${data_root}
+
+gen_on_fit_config_fn:
+  _target_: utils.gen_on_fit_config_fn
   batch_size: ${batch_size}
-  num_local_epochs_per_round: ${num_local_epochs_per_round}
+  local_epochs: ${local_epochs}
   learning_rate: ${learning_rate}
   momentum: ${momentum}
   weight_decay: ${weight_decay}
