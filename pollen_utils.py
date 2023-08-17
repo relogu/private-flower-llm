@@ -18,7 +18,7 @@ from transformers import AlbertTokenizer
 from datasets.google_speech import GOOGLE_SPEECH_DTYPES, SPEECH
 from datasets.nlp_util import TextDataset
 from datasets.openimage import OPENIMAGE_DTYPES, OpenImage
-from datasets.shakespeare_ds import SHAKESPEARE, SHAKESPEARE_DTYPES, SHAKESPEARE_LOADED
+from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_DTYPES, SHAKESPEARE_LOADED
 
 
 def get_device() -> str:

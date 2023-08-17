@@ -3,6 +3,8 @@ import os
 import pickle
 import time
 import cloudpickle
+
+cloudpickle.DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 from flwr.client import NumPyClient
 
 pickle.Pickler = cloudpickle.Pickler
@@ -236,7 +238,7 @@ def main(cfg: DictConfig) -> None:
 
     # Start Flower client
     fl.client.start_numpy_client(
-        server_address="127.0.0.1:8080",
+        server_address=cfg.flwr_address,
         client=node_manager,
     )
 

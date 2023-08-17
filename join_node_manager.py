@@ -1,40 +1,41 @@
-from collections import OrderedDict
 import os
 import pickle
 import time
+from collections import OrderedDict
+from pathlib import Path
+
 import cloudpickle
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from copy import deepcopy
 from itertools import repeat
 from typing import Callable, Dict, List, Optional, Tuple
 
 import flwr as fl
 import hydra
+import multiprocess as mp
 import nvsmi
 import psutil
 import torch
-from copy import deepcopy
-
-import multiprocess as mp
-from omegaconf import DictConfig
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-# mp.set_start_method("spawn", force=True)
-
 from flwr.common import Config, NDArrays, Scalar
 from hydra.utils import call
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from utils import partially_aggregate, set_parameters
 
+# mp.set_start_method("spawn", force=True)
+
+
 warnings.filterwarnings("ignore", category=UserWarning)
+
+import numpy as np
+from multiprocess import shared_memory
 
 from datasets import ShakespeareDataset
 from models import ShakespeareLeafNet as Net
-
-from multiprocess import shared_memory
-import numpy as np
 
 
 def test(parameters, device):
@@ -79,10 +80,16 @@ class Worker(mp.Process):
         # REMOVE NEED FOR NEW WEIGHTS
         cid, net = task
         net.to(self.device)
+
         net.train()
-        trainset = self.dataset_fn(client_id=cid)
+        # trainset = self.dataset_fn(client_id=cid)
+        train_dataset = ShakespeareDataset(
+            root=Path("/datasets/FedScale/shakespeare/data/"),
+            clint_id=cid,
+            dataset="train",
+        )
         trainloader = DataLoader(
-            trainset, batch_size=self.config["batch_size"], shuffle=True
+            train_dataset, batch_size=self.config["batch_size"], shuffle=True
         )
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(
@@ -223,7 +230,8 @@ class NodeManager(fl.client.NumPyClient):
                     self.task_queues[device].put(None)
                     for _ in range(len(list_of_workers))
                 ]
-                [worker.close() for worker in list_of_workers]
+                time.sleep(1)
+                [worker.join() for worker in list_of_workers]
 
 
 # global initialization

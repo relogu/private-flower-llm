@@ -7,7 +7,10 @@ local_epochs: 1
 momentum: 0.9
 num_classes: 10
 num_rounds: 100
+flwr_address: "127.0.0.1:1042"
+ray_address: "localhost:8042"
 weight_decay: 5e-4
+
 
 # Aggregation Strategy
 fraction_fit: 0.037

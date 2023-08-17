@@ -1,38 +1,40 @@
+from collections import OrderedDict
 import pickle
+from multiprocessing.shared_memory import SharedMemory
+from pathlib import Path
+
 import cloudpickle
+import torch
 from flwr.client import NumPyClient
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
-from typing import Callable, Dict, List
-from nvsmi import GPU
+from copy import deepcopy
+from typing import Callable, Dict, List, Optional, Tuple
 
 import flwr as fl
 import hydra
+import multiprocess as mp
 import nvsmi
 import psutil
-import torch
-from copy import deepcopy
-
-import multiprocess as mp
+from flwr.common import Config, NDArrays, Scalar
+from hydra.utils import call
+from nvsmi import GPU
 from omegaconf import DictConfig
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from torch.utils.data import DataLoader
+
+from clients import train
+from utils import partially_aggregate, set_parameters
 
 # mp.set_start_method("spawn", force=True)
 
-from flwr.common import Config, NDArrays, Scalar
-from hydra.utils import call
-from torch.utils.data import DataLoader
-
-from utils import partially_aggregate, set_parameters
-
 warnings.filterwarnings("ignore", category=UserWarning)
+
+import numpy as np
+from multiprocess import shared_memory
 
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 from models.shakespeare_leaf_model import ShakespeareLeafNet as Net
-
-from multiprocess import shared_memory
-import numpy as np
 
 
 def create_sm(parameters: NDArrays, name="pollen_sm"):
@@ -62,59 +64,71 @@ def read_from_sm(
     return new_parameters
 
 
-def test(parameters, device):
-    """Validate the model on the test set."""
-    net = Net()
-    net = set_parameters(net, parameters, device)
-    criterion = torch.nn.CrossEntropyLoss()
-    testset = ShakespeareDataset(
-        root="/datasets/FedScale/leaf_shakespeare", client_id=0, dataset="test"
-    )
-    testloader = DataLoader(testset, batch_size=4, shuffle=True)
-    correct, loss = 0, 0.0
-    with torch.no_grad():
-        for images, labels in testloader:
-            outputs = net(images.to(device))
-            labels = labels.to(device)
-            loss += criterion(outputs, labels).item()
-            correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
-    accuracy = correct / len(testloader.dataset)
-    return loss, accuracy
-
-
 class Worker(mp.Process):
     def __init__(
         self,
         client_fn,
         device,
         task_queue: mp.Queue,
-        models_queue: mp.Queue,
         result_queue: mp.Queue,
+        dataset_root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
+        net: Net = Net(),
     ):
         super(Worker, self).__init__()
         self.device = device
         self.client_fn: Callable[[int], NumPyClient] = client_fn
         self.task_queue: mp.Queue = task_queue
-        self.models_queue: mp.Queue = models_queue
         self.result_queue: mp.Queue = result_queue
-        self.local_parameters = []
-        self.partial_agg_model = (None, 0, 0.0)
-        self.current_round = 0
+        self.partial_agg_model: Tuple[Optional[NDArrays], int, float] = (None, 0, 0.0)
+        self.current_round: int = 0
+        self.shm_config = SharedMemory(name="pollen_config_sm")
+        self.shm_params = SharedMemory(name="pollen_param_sm")
+        self.dataset_root = dataset_root
+        self.net = net
 
-    def process_task(self, task):
-        # REMOVE NEED FOR NEW WEIGHTS
-        config = task
-        if config["server_round"] != self.current_round:
-            self.current_round = config["server_round"]
-            self.local_parameters = self.models_queue.get()
-        config["device"] = self.device
-        temp_client = self.client_fn(config["client_id"])
-        trained_weights, num_samples, metrics = temp_client.fit(
-            self.local_parameters, config
+    def process_task(self, client_id: int):
+        # Get config, and new parameters via Ray and shared memory
+        # Add namespace to avoid collision
+        config = pickle.loads(self.shm_config.buf)  # Loads a dict
+
+        # Load model from shared memory
+        # net = pickle.loads(self.shm_params.buf)  # Loads net
+        # parameters = pickle.loads(self.shm_params.buf)  # Loads net
+        params_dict = zip(
+            self.net.state_dict().keys(), pickle.loads(self.shm_params.buf)
         )
+        state_dict = OrderedDict(
+            {k: torch.tensor(v, device=self.device) for k, v in params_dict}
+        )
+        self.net.load_state_dict(state_dict, strict=True)
+        # print(
+        #    f"Worker on round {config['server_round']} processing task {client_id} got ZeroCopy"
+        # )
+
+        # Set parameters
+        # temp_client = self.client_fn(config["client_id"])
+        # trained_weights, num_samples, metrics = temp_client.fit(
+        #    self.local_parameters, config
+        # )
+        trainset = ShakespeareDataset(self.dataset_root, client_id=client_id)
+        trainloader = DataLoader(
+            trainset, batch_size=config["batch_size"], shuffle=True
+        )
+        optimizer = torch.optim.SGD(
+            self.net.parameters(),
+            lr=config["learning_rate"],
+            momentum=config["momentum"],
+            weight_decay=config["weight_decay"],
+        )
+        # print(f"Training client {client_id}")
+        trained_weights, num_samples, metrics = train(
+            self.net, trainloader, config["local_epochs"], optimizer, self.device
+        )
+        # print(f"Trained client {client_id}")
 
         new_results = (trained_weights, num_samples, metrics["accuracy"])
         self.result_queue.put(new_results)
+        # print("current memory queue size: ", self.result_queue.qsize())
 
     def run(self):
         # Check if still work to do
@@ -128,11 +142,14 @@ class NodeManager(fl.client.NumPyClient):
         super().__init__()
         self.all_gpus: List[GPU] = nvsmi.get_gpus()
 
-        # One task_queue per GPU
+        # One task_queue per GPU make this ctypes array
         self.task_queues = {f"cuda:{gpu.id}": mp.Queue() for gpu in self.all_gpus}
 
         # One model per worker
-        self.models_queue = mp.Queue()
+        self.shm_config = SharedMemory(name="pollen_config_sm", create=True, size=1000)
+        self.shm_params = SharedMemory(
+            name="pollen_param_sm", create=True, size=100_000_000
+        )
 
         # Results from worker
         self.result_queue = mp.Queue()
@@ -143,7 +160,6 @@ class NodeManager(fl.client.NumPyClient):
                     client_fn,
                     "cuda:0",
                     self.task_queues[f"cuda:{0}"],
-                    self.models_queue,
                     self.result_queue,
                 )
                 for _ in range(10)
@@ -181,31 +197,40 @@ class NodeManager(fl.client.NumPyClient):
                 worker.start()
 
     def fit(self, parameters, config):
-        node_part_agg = (None, 0, 0.0)
-        num_total_virtual_clients = 0
+        # Send config to shared memory
+        config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+        self.shm_config.buf[: len(config_bytes)] = config_bytes
 
-        # remove need to send parameters same worker, same parameters
+        # Send parameters to shared memory
+        # temp_net = Net()
+        # set_parameters(temp_net, parameters)
+        param_ray_obj_ref_bytes = pickle.dumps(
+            parameters, protocol=pickle.HIGHEST_PROTOCOL
+        )
+        self.shm_params.buf[: len(param_ray_obj_ref_bytes)] = param_ray_obj_ref_bytes
+
+        num_total_virtual_clients = 0
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
+            # print(f"list of ids: {config[device]}")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
-            # One set of parameters per worker
-            for _ in range(len(self.workers[device])):
-                self.models_queue.put(parameters)
-
             for cid in list_ids_for_this_gpu:
-                this_config = deepcopy(config)
-                this_config["client_id"] = cid
-                self.task_queues[device].put((this_config))
+                # print(f"putting cid in queue {cid}")
+                self.task_queues[device].put(cid)
 
-            # Start workers move this outside
+            # Start workers in this GPU move this outside
             if config["server_round"] == 1:
                 self.start_workers(config)
 
-        for _ in range(num_total_virtual_clients):
+        # Aggregate results
+        node_part_agg = (None, 0, 0.0)
+        # print(f"Total num virtual clients: {num_total_virtual_clients}")
+        for x in range(num_total_virtual_clients):
             new_results = self.result_queue.get()
+            # nprint(f"Got one result{x}")
             node_part_agg = partially_aggregate(node_part_agg, new_results)
-
+        # print("Done with aggregation")
         return (
             node_part_agg[0],
             node_part_agg[1],
@@ -228,11 +253,12 @@ class NodeManager(fl.client.NumPyClient):
 @hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
 def main(cfg: DictConfig) -> None:
     # Define Node Manager
+    # ray.init(address=cfg.ray_address, logging_level=logging.ERROR)
     node_manager = NodeManager(client_fn=call(cfg.gen_client_fn))
 
     # Start Flower client
     fl.client.start_numpy_client(
-        server_address="127.0.0.1:8080",
+        server_address=cfg.flwr_address,
         client=node_manager,
     )
 

@@ -1,18 +1,20 @@
+import logging
 from typing import List, Tuple
 
 import flwr as fl
 import hydra
-from flwr.common import Metrics
+from hydra.utils import call
 from omegaconf import DictConfig
 
 from pollen_strategy import FedAvgReproducibleSampling
 from utils import weighted_average
-from hydra.utils import call
 
 
 # Define strategy
 @hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
 def main(cfg: DictConfig) -> None:
+    # Start Ray
+    # ray.init(address=cfg.ray_address, logging_level=logging.ERROR)
     # The number of clients can either be a single integer or a list of int/str
     num_total_virtual_clients = call(cfg.gen_num_total_virtual_clients)
 
@@ -32,7 +34,7 @@ def main(cfg: DictConfig) -> None:
 
     # Start Flower server
     fl.server.start_server(
-        server_address="0.0.0.0:8080",
+        server_address=cfg.flwr_address,
         config=fl.server.ServerConfig(num_rounds=cfg.num_rounds),
         strategy=strategy,
     )

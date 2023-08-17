@@ -42,11 +42,12 @@ def partially_aggregate(
 
 #### Client ####
 ## General
-def set_parameters(net: torch.nn.Module, parameters, device):
+def set_parameters(net: torch.nn.Module, parameters, device="cpu"):
     params_dict = zip(net.state_dict().keys(), parameters)
-    state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+    state_dict = OrderedDict(
+        {k: torch.tensor(v, device=device) for k, v in params_dict}
+    )
     net.load_state_dict(state_dict, strict=True)
-    net.to(device)
     return net
 
 

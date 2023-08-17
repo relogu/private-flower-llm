@@ -4,10 +4,39 @@ import torch
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 from models.shakespeare_leaf_model import ShakespeareLeafNet
 from utils import set_parameters
+
+
+def train(
+    net: torch.nn.Module,
+    trainloader: DataLoader,
+    epochs: int,
+    optimizer: torch.optim.Optimizer,
+    device: str,
+) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
+    net.to(device)
+    net.train()
+    criterion = torch.nn.CrossEntropyLoss()
+    # for _ in tqdm(range(epochs)):
+    for _ in range(epochs):
+        num_samples = 0
+        num_correct = 0
+        for data in trainloader:
+            inputs, labels = data[0].to(device), data[1].to(device)
+            num_samples += len(labels)
+            optimizer.zero_grad()
+            predicitons = net(inputs)
+            num_correct += (torch.max(predicitons.data, 1)[1] == labels).sum().item()
+            criterion(predicitons, labels.to(device)).backward()
+            optimizer.step()
+    net.eval()
+    these_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
+    accuracy = num_correct / num_samples
+    return (these_weights, num_samples, {"accuracy": accuracy})
 
 
 class ShakespeareClient(NumPyClient):
