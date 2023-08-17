@@ -247,6 +247,11 @@ class NodeManager(fl.client.NumPyClient):
                     self.task_queues[device].put(None)
                     for _ in range(len(list_of_workers))
                 ]
+        # Free shared memory
+        self.shm_config.close()
+        self.shm_params.close()
+        self.shm_config.unlink()
+        self.shm_params.unlink()
 
 
 # global initialization
