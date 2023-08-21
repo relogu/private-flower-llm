@@ -309,7 +309,7 @@ def get_node_manager_properties(config: Config) -> Dict[str, Scalar]:
     )
     log(DEBUG, f"Node {getfqdn()} has complete properties {node}")
 
-    return {getfqdn(): str(node)}
+    return {"node": str(node)}
 
 
 @dataclass
