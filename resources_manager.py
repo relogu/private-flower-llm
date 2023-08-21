@@ -460,6 +460,7 @@ class ResourcesMonitor(Thread):
         `self.vram_maximum_allocated_memory`.
         """
         while self.do_run:
+            mem = 0.0
             if self.gpu_id >= 0:
                 mem = self._get_gpu_memory()
                 self.vram_total_memory = max(self.vram_total_memory, mem[0])
