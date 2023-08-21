@@ -283,6 +283,7 @@ def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
             concurrency=current_concurrency,
         )
     }
+    monitor.do_run = False
     return cpu_prop
 
 
