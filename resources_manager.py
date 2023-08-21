@@ -499,3 +499,4 @@ if __name__ == "__main__":
     log(INFO, f"NodeManager's properties are: {node}")
     node = Node.from_str(str(node['node']))
     log(INFO, f"Converted to Node object {node}")
+    log(INFO, f"Node {node.name} has {len(node.device_info)} acceleration devices.")
