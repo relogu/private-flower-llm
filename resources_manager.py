@@ -300,10 +300,15 @@ def get_node_manager_properties(config: Config) -> Dict[str, Scalar]:
             f"Node {getfqdn()}, No hardware accelerator available. Assessing CPU execution.",
         )
         device_info = get_cpu_prop("cpu")
+    # Get CPU cores count, this should work with different OSes
+    try:
+        cpus = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        cpus = psutil.cpu_count()
     # Get general node properties
     node = Node(
         name=getfqdn(),
-        cpu_num=len(os.sched_getaffinity(0)),
+        cpu_num=cpus,
         cpu_ram_total=psutil.virtual_memory().total,
         cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
         device_info=device_info,
