@@ -279,7 +279,7 @@ def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
             type=f"{cpu_type}",
             total_memory=psutil.virtual_memory().total,
             allocated_memory=psutil.virtual_memory().total
-            - psutil.virtual_memory().total,
+            - psutil.virtual_memory().used,
             concurrency=current_concurrency,
         )
     }
