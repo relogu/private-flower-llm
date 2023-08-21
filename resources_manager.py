@@ -302,6 +302,7 @@ def get_node_manager_properties(config: Config) -> Dict[str, Scalar]:
         device_info = get_cpu_prop("cpu")
     # Get general node properties
     node = Node(
+        name=getfqdn(),
         cpu_num=len(os.sched_getaffinity(0)),
         cpu_ram_total=psutil.virtual_memory().total,
         cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
@@ -360,6 +361,7 @@ class Device:
 class Node:
     """Node info."""
 
+    name: str
     cpu_num: int
     cpu_ram_total: int
     cpu_ram_available: int
@@ -367,11 +369,13 @@ class Node:
 
     def __init__(
         self,
+        name: str,
         cpu_num: int,
         cpu_ram_total: int,
         cpu_ram_available: int,
         device_info: Dict[str, Device],
     ):
+        self.name = name
         self.cpu_num = cpu_num
         self.cpu_ram_total = cpu_ram_total
         self.cpu_ram_available = cpu_ram_available
@@ -385,6 +389,7 @@ class Node:
         """Create a Node from a string (built with str(Node))."""
         d = json.loads(d)
         return Node(
+            name=d["name"],
             cpu_num=d["cpu_num"],
             cpu_ram_total=d["cpu_ram_total"],
             cpu_ram_available=d["cpu_ram_available"],
@@ -492,5 +497,5 @@ class ResourcesMonitor(Thread):
 if __name__ == "__main__":
     node = get_node_manager_properties({})
     log(INFO, f"NodeManager's properties are: {node}")
-    node = Node.from_str(str(node[getfqdn()]))
+    node = Node.from_str(str(node['node']))
     log(INFO, f"Converted to Node object {node}")
