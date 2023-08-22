@@ -11,17 +11,18 @@ import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from logging import DEBUG
+from logging import DEBUG, INFO
 from socket import getfqdn
 from threading import Thread
 from typing import Callable, Dict, Tuple
 
 import nvsmi
+import psutil
 import torch
 import torch.multiprocessing as mp
 from flwr.client import ClientLike
 from flwr.common import log
-from flwr.common.typing import Config, NDArrays
+from flwr.common.typing import Config, NDArrays, Scalar
 
 NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu --format=csv,noheader,nounits"
 
@@ -237,12 +238,94 @@ def monitor_client_execution(
     return results
 
 
+def get_cuda_prop() -> Dict[str, Device]:
+    gpus_prop = {}
+    gpus_available = [g for g in nvsmi.get_gpus()]
+    for gpu in gpus_available:
+        if f"cuda:{gpu.id}" not in gpus_prop:
+            monitor = ResourcesMonitor(gpu_id=int(gpu.id))
+            monitor.start()
+            # TODO: Get initial statistics from the resources monitor
+            # TODO: Launch a fake client to assess the concurrency
+            # TODO: Get the latest statistics from the resources monitor
+            # TODO: Estimate the maximum number of concurrent workers
+            time.sleep(1)
+            current_concurrency = 10
+            gpus_prop[f"cuda:{gpu.id}"] = Device(
+                id=gpu.id,
+                name=gpu.name,
+                type="cuda",
+                total_memory=gpu.mem_total,
+                allocated_memory=gpu.mem_used,
+                concurrency=current_concurrency,
+            )
+            monitor.do_run = False
+    return gpus_prop
+
+
+def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
+    monitor = ResourcesMonitor(gpu_id=-1)
+    monitor.start()
+    # TODO: Get initial statistics from the resources monitor
+    # TODO: Launch a fake client to assess the concurrency
+    # TODO: Get the latest statistics from the resources monitor
+    # TODO: Estimate the maximum number of concurrent workers
+    time.sleep(1)
+    current_concurrency = 10
+    cpu_prop = {
+        f"{cpu_type}:0": Device(
+            id=0,
+            name=f"{cpu_type}:0",
+            type=f"{cpu_type}",
+            total_memory=psutil.virtual_memory().total,
+            allocated_memory=psutil.virtual_memory().total
+            - psutil.virtual_memory().used,
+            concurrency=current_concurrency,
+        )
+    }
+    monitor.do_run = False
+    return cpu_prop
+
+
+def get_node_manager_properties(config: Config) -> Dict[str, Scalar]:
+    # Get hardware accelerator properties
+    if torch.cuda.is_available():
+        log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
+        device_info = get_cuda_prop()
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
+        device_info = get_cpu_prop("mps")
+    else:
+        log(
+            INFO,
+            f"Node {getfqdn()}, No hardware accelerator available. Assessing CPU execution.",
+        )
+        device_info = get_cpu_prop("cpu")
+    # Get CPU cores count, this should work with different OSes
+    try:
+        cpus = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    # Get general node properties
+    node = Node(
+        name=getfqdn(),
+        cpu_num=cpus,
+        cpu_ram_total=psutil.virtual_memory().total,
+        cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
+        device_info=device_info,
+    )
+    log(DEBUG, f"Node {getfqdn()} has complete properties {node}")
+
+    return {"node": str(node)}
+
+
 @dataclass
-class GPU:
-    """GPU info."""
+class Device:
+    """Device info."""
 
     id: int
     name: str
+    type: str
     total_memory: float
     allocated_memory: float
     concurrency: int
@@ -251,12 +334,14 @@ class GPU:
         self,
         id: int,
         name: str,
+        type: str,
         total_memory: float,
         allocated_memory: float,
         concurrency: int,
     ):
         self.id = id
         self.name = name
+        self.type = type
         self.total_memory = total_memory
         self.allocated_memory = allocated_memory
         self.concurrency = concurrency
@@ -265,12 +350,13 @@ class GPU:
         return json.dumps(asdict(self))
 
     @staticmethod
-    def from_str(d: str) -> GPU:
-        """Create a GPU object from a string (built with str(GPU))."""
+    def from_str(d: str) -> Device:
+        """Create a Device object from a string (built with str(Device))."""
         d = json.loads(d)
-        return GPU(
+        return Device(
             id=d["id"],
             name=d["name"],
+            type=d["type"],
             total_memory=d["total_memory"],
             allocated_memory=d["allocated_memory"],
             concurrency=d["concurrency"],
@@ -281,22 +367,25 @@ class GPU:
 class Node:
     """Node info."""
 
+    name: str
     cpu_num: int
     cpu_ram_total: int
     cpu_ram_available: int
-    gpu_info: Dict[str, GPU]
+    device_info: Dict[str, Device]
 
     def __init__(
         self,
+        name: str,
         cpu_num: int,
         cpu_ram_total: int,
         cpu_ram_available: int,
-        gpu_info: Dict[str, GPU],
+        device_info: Dict[str, Device],
     ):
+        self.name = name
         self.cpu_num = cpu_num
         self.cpu_ram_total = cpu_ram_total
         self.cpu_ram_available = cpu_ram_available
-        self.gpu_info = gpu_info
+        self.device_info = device_info
 
     def __repr__(self):
         return json.dumps(asdict(self))
@@ -306,14 +395,18 @@ class Node:
         """Create a Node from a string (built with str(Node))."""
         d = json.loads(d)
         return Node(
+            name=d["name"],
             cpu_num=d["cpu_num"],
             cpu_ram_total=d["cpu_ram_total"],
             cpu_ram_available=d["cpu_ram_available"],
-            gpu_info={k: GPU.from_str(v) for k, v in d["gpu_info"].items()},
+            device_info={
+                k: Device.from_str(str(v).replace("'", '"'))
+                for k, v in d["device_info"].items()
+            },
         )
 
 
-class GPUMemoryMonitor(Thread):
+class ResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_id: int,
@@ -322,8 +415,10 @@ class GPUMemoryMonitor(Thread):
         Thread.__init__(self)
         self.frequency = frequency
         self.gpu_id = gpu_id
-        self.total_memory = 0.0
-        self.maximum_allocated_memory = 0.0
+        self.vram_total_memory = 0.0
+        self.vram_maximum_allocated_memory = 0.0
+        self.cpu_ram_total = 0.0
+        self.cpu_ram_available = 0.0
         self.do_run = True
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
@@ -338,7 +433,7 @@ class GPUMemoryMonitor(Thread):
             Tuple[float, float]: the total and allocated memory in MB.
         """
         output_to_list = lambda x: x.decode("ascii").split("\n")
-        command = NVIDIA_SMI_GET_GPUS + f"-i {self.gpu_id}"
+        command = NVIDIA_SMI_GET_GPUS + f" -i {self.gpu_id}"
         try:
             memory_use_info = output_to_list(
                 sp.check_output(shlex.split(command), stderr=sp.STDOUT)
@@ -351,7 +446,7 @@ class GPUMemoryMonitor(Thread):
             )
         log(
             DEBUG,
-            "GPUMemoryMonitor.get_gpu_memory: memory_use_info=%s",
+            "ResourcesMonitor.get_gpu_memory: memory_use_info=%s",
             memory_use_info,
         )
         # index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu
@@ -362,22 +457,30 @@ class GPUMemoryMonitor(Thread):
     def _update_max_values(self):
         """
         This function calls itself every `self.frequency` secs and
-        updates the maximum values for `self.total_memory` and
-        `self.maximum_allocated_memory`.
+        updates the maximum values for `self.vram_total_memory` and
+        `self.vram_maximum_allocated_memory`.
         """
         while self.do_run:
-            mem = self._get_gpu_memory()
-            self.total_memory = max(self.total_memory, mem[0][1])
-            self.maximum_allocated_memory = max(
-                self.maximum_allocated_memory, mem[0][0]
+            mem = 0.0
+            if self.gpu_id >= 0:
+                mem = self._get_gpu_memory()
+                self.vram_total_memory = max(self.vram_total_memory, mem[0])
+                self.vram_maximum_allocated_memory = max(
+                    self.vram_maximum_allocated_memory, mem[1]
+                )
+            self.cpu_ram_total = psutil.virtual_memory().total
+            self.cpu_ram_available = (
+                psutil.virtual_memory().total - psutil.virtual_memory().used
             )
             log(
                 DEBUG,
-                "GPUMemoryMonitor._update_max_values: "
-                "mem=%s, total_memory=%s, maximum_allocated_memory=%s",
+                "ResourcesMonitor._update_max_values: "
+                "mem=%s, vram_total_memory=%s, vram_maximum_allocated_memory=%s, cpu_ram_total=%s, cpu_ram_available=%s",
                 mem,
-                self.total_memory,
-                self.maximum_allocated_memory,
+                self.vram_total_memory,
+                self.vram_maximum_allocated_memory,
+                self.cpu_ram_total,
+                self.cpu_ram_available,
             )
             time.sleep(self.frequency)
 
@@ -396,3 +499,11 @@ class GPUMemoryMonitor(Thread):
             # Avoid a refcycle if the thread is running a function with
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
+
+
+if __name__ == "__main__":
+    node = get_node_manager_properties({})
+    log(INFO, f"NodeManager's properties are: {node}")
+    node = Node.from_str(str(node['node']))
+    log(INFO, f"Converted to Node object {node}")
+    log(INFO, f"Node {node.name} has {len(node.device_info)} acceleration devices.")
