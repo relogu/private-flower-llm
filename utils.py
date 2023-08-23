@@ -1,5 +1,6 @@
 from collections import OrderedDict, defaultdict
 from pathlib import Path
+import time
 from typing import Callable, Dict, List, Tuple
 
 import pandas as pd
@@ -22,33 +23,35 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 
 def partially_aggregate(
-    current_agg: Tuple[NDArrays, int, float], new_results: Tuple[NDArrays, int, float]
-) -> Tuple[NDArrays, int, float]:
+    current_agg: Tuple[NDArrays, int], new_results: Tuple[NDArrays, int]
+) -> Tuple[NDArrays, int]:
     """Partially aggregate parameters."""
-    # a = time.time_ns()
     updated_agg = None
-    if current_agg[0] is None:  # first time
+    if (current_agg[0] is None) or (current_agg[1] == 0):  # first time
         updated_agg = new_results[0]
         total_num_examples = new_results[1]
-        weighted_accuracy = new_results[2]
     else:
-        updated_agg = aggregate([current_agg[:2], new_results[:2]])
+        updated_agg = aggregate([current_agg, new_results])
         total_num_examples = current_agg[1] + new_results[1]
-        weighted_accuracy = (
-            current_agg[1] * current_agg[2] + new_results[1] * new_results[2]
-        ) / total_num_examples
-    return updated_agg, total_num_examples, weighted_accuracy
+    return updated_agg, total_num_examples
 
 
 #### Client ####
 ## General
-def set_parameters(net: torch.nn.Module, parameters, device="cpu"):
+def get_parameters(net: torch.nn.Module) -> NDArrays:
+    net.eval()
+    return [val.cpu().numpy() for _, val in net.state_dict().items()]
+
+
+def set_parameters(
+    net: torch.nn.Module, parameters: NDArrays, device: str = "cpu"
+) -> None:
+    net.eval()
     params_dict = zip(net.state_dict().keys(), parameters)
     state_dict = OrderedDict(
-        {k: torch.tensor(v, device=device) for k, v in params_dict}
+        {k: torch.tensor(v, device="cuda:0") for k, v in params_dict}
     )
-    net.load_state_dict(state_dict, strict=True)
-    return net
+    net.load_state_dict(state_dict=state_dict, strict=False)
 
 
 ## Shakespeare
