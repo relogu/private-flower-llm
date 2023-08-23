@@ -1,9 +1,11 @@
-from collections import OrderedDict
+from logging import DEBUG
 import pickle
+from collections import OrderedDict
 from multiprocessing.shared_memory import SharedMemory
 
 import cloudpickle
 from flwr.client import NumPyClient
+from flwr.common.logger import log
 
 pickle.Pickler = cloudpickle.Pickler
 from typing import Callable, Dict, List, Optional, Tuple
@@ -18,16 +20,25 @@ from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from utils import partially_aggregate, get_parameters
+from resources_manager import get_node_manager_properties
+from utils import get_parameters, partially_aggregate
 
 mp.set_start_method("spawn", force=True)
 import numpy as np
+
+# POLLEN_CONFIG_SHM = "ls985_pollen_config_shm"
+# POLLEN_PARAMETERS_SHM = "ls985_pollen_parameters_shm"
+# POLLEN_WORKER_SHM = "ls985_pollen_worker_"
+
+POLLEN_CONFIG_SHM = "pollen_config_shm"
+POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
+POLLEN_WORKER_SHM = "pollen_worker_"
 
 
 def allocate_shm(
     parameters: NDArrays,
     create: bool = False,
-    name: str = "pollen_parameters",
+    name: str = POLLEN_PARAMETERS_SHM,
 ) -> Tuple[NDArrays, np.ndarray, SharedMemory]:
     # Allocate memory for parameters and num_samples
     nbytes_params = [val.nbytes for val in parameters]
@@ -80,13 +91,13 @@ class Worker(mp.Process):
         self.task_queue: mp.Queue = task_queue
         self.result_queue: mp.Queue = result_queue
         self.current_round: int = 0
-        self.config_shm = SharedMemory(name="pollen_config_shm")
+        self.config_shm = SharedMemory(name=POLLEN_CONFIG_SHM)
         tmp_client = client_fn(client_id=0)
 
         # Allocate shared memory for fit parameters
         self.round_params, self.round_num_samples, self.round_shm = allocate_shm(
             parameters=get_parameters(tmp_client.net),
-            name=f"pollen_parameters",
+            name=POLLEN_PARAMETERS_SHM,
         )
 
     def process_task(self, client_id: int):
@@ -136,6 +147,7 @@ class Worker(mp.Process):
 class NodeManager(fl.client.NumPyClient):
     def __init__(self, client_fn) -> None:
         super().__init__()
+        self.properties = None
         self.all_gpus: List[GPU] = nvsmi.get_gpus()
 
         # One task_queue per GPU make this ctypes array
@@ -144,9 +156,8 @@ class NodeManager(fl.client.NumPyClient):
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
-            name="pollen_config_shm", create=True, size=1000
+            name=POLLEN_CONFIG_SHM, create=True, size=1000
         )
-
         # Allocate shared memory for round parameters
         self.client_fn: Callable[[int], NumPyClient] = client_fn
         temp_client = client_fn(client_id=0)
@@ -154,7 +165,7 @@ class NodeManager(fl.client.NumPyClient):
             get_parameters(temp_client.net), create=True
         )
         # Find out how many processes can be run on each GPU
-        max_proc_device = [("cuda:0", 1)]
+        max_proc_device = [("cuda:0", 10)]
 
         # Allocate shared memory for partial aggregation
         # and create workers
@@ -164,7 +175,8 @@ class NodeManager(fl.client.NumPyClient):
         for device, num_proc in max_proc_device:
             self.workers[device] = []
             for i in range(num_proc):
-                worker_id = f"pollen_worker_{worker_cnt}"
+                # worker_id = f"pollen_worker_{worker_cnt}"
+                worker_id = POLLEN_WORKER_SHM + f"{worker_cnt}"
                 params, num_samples, shm = allocate_shm(
                     get_parameters(temp_client.net),
                     create=True,
@@ -183,6 +195,9 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 worker_cnt += 1
 
+        # # Get properties
+        # self.properties = get_node_manager_properties()
+
     def get_cpu_prop(self) -> Dict[str, float]:
         node_prop = {
             "cpu_num": mp.cpu_count(),
@@ -199,9 +214,14 @@ class NodeManager(fl.client.NumPyClient):
         return gpus_prop
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
-        cpu_prop = self.get_cpu_prop()
-        gpus_prop = self.get_gpus_prop()
-        return dict(cpu_prop, **gpus_prop)
+        # cpu_prop = self.get_cpu_prop()
+        # gpus_prop = self.get_gpus_prop()
+        # return dict(cpu_prop, **gpus_prop)
+        return (
+            self.properties
+            if self.properties is not None
+            else get_node_manager_properties()
+        )
 
     def get_parameters(self, config):
         temp_client = self.client_fn(client_id=0)
@@ -216,7 +236,7 @@ class NodeManager(fl.client.NumPyClient):
         # Send config and parameters to shared memory
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
-        copy_params_to_shm(parameters, 0, "pollen_parameters")
+        copy_params_to_shm(parameters, 0, POLLEN_PARAMETERS_SHM)
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
@@ -259,11 +279,10 @@ class NodeManager(fl.client.NumPyClient):
                     for _ in range(len(list_of_workers))
                 ]
         # Free shared memory
-        self.config_shm.unlink()
-        self.round_shm.unlink()
+        self.config_shm.close()
+        self.round_shm.close()
         for v in self.shared_local_agg.values():
-            v[2].unlink()
-
+            v[2].close()
 
 @hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
 def main(cfg: DictConfig) -> None:
