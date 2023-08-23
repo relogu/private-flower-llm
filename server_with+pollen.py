@@ -1,12 +1,12 @@
-from typing import Dict
 from logging import INFO
+from typing import Dict
 
 import flwr as fl
 import hydra
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
-from flwr.common.typing import Scalar
 from flwr.common.logger import log
+from flwr.common.typing import Scalar
 from hydra.utils import call
 from omegaconf import DictConfig
 
@@ -40,11 +40,7 @@ def main(cfg: DictConfig) -> None:
             n_workers=0,
         )
 
-    def on_fit_config_fn(rnd: int) -> Dict[str, Scalar]:
-        return {
-            "batch_size": cfg.batch_size,
-            "epochs": 1,
-        }
+    on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
 
     strategy = FedAvgReproducibleSampling(
         total_clients=n_total_clients,
@@ -61,7 +57,7 @@ def main(cfg: DictConfig) -> None:
 
     # Start Flower server
     fl.server.start_server(
-        server_address="0.0.0.0:8080",
+        server_address=cfg.flwr_address,
         server=PollenServer(
             cids=cid_samples_dict,
             client_fn=get_client_fn,
