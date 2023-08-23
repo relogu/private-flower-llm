@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 from flwr.common.logger import log
+from flwr.server.client_proxy import ClientProxy
 from scipy.optimize import curve_fit
 from pollen_utils import (
     get_clients_dataframe_from_dict,
@@ -173,32 +175,35 @@ def learning_based_placement(
 
 def round_robin_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     # Extract cids
-    sampled_virtual_cids = np.array(
+    sampled_virtual_cids: NDArray[np.int16] = np.array(
         [x[0] for x in sampled_virtual_cids])
     # Creates equal clients splits amongst workers
     # (the remainder is assigned to the last worker)
-    lists_cids = defaultdict(list)
-    splits = np.array_split(sampled_virtual_cids, len(nodes_dict))
-    for worker_dict, split in zip(nodes_dict.items(), splits):
-        lists_cids[worker_dict[0]] = split
+    n_total_workers = np.sum([[device.concurrency for _, device in node.device_info.items()] for _, (_, node) in nodes_dict.items()])
+    splits = np.array_split(sampled_virtual_cids, n_total_workers)
+    node_assignments = []
+    for _, (client_proxy, node) in nodes_dict.items():
+        device_assignment: Dict[str, str] = {}
+        for device_id, device in node.device_info.items():
+            device_assignment[device_id] = ','.join([','.join([str(cid) for cid in splits.pop(0)]) for _ in range(device.concurrency)])
+        node_assignments.append((client_proxy, device_assignment))
     if verbose:
-        placement = [(k, v) for k, v in lists_cids.items()]
         log(DEBUG,
-            f'Round Robin (RR) placement :: dict(worker_id, [cids]) {placement}')
-    return lists_cids
+            f'Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}')
+    return node_assignments
 
 
 def sorted_round_robin_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
@@ -206,20 +211,22 @@ def sorted_round_robin_placement(
         reverse=True,
     )
     # Extract cids
-    sampled_virtual_cids = np.array(
+    sampled_virtual_cids: NDArray[np.int16] = np.array(
         [x[0] for x in sampled_virtual_cids])
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
     splits = [sampled_virtual_cids[np.arange(
         i, len(sampled_virtual_cids), len(nodes_dict))] for i in range(len(nodes_dict))]
-    lists_cids = defaultdict(list)
-    for worker_dict, split in zip(nodes_dict.items(), splits):
-        lists_cids[worker_dict[0]] = split
+    node_assignments = []
+    for _, (client_proxy, node) in nodes_dict.items():
+        device_assignment: Dict[str, str] = {}
+        for device_id, device in node.device_info.items():
+            device_assignment[device_id] = ','.join([','.join([str(cid) for cid in splits.pop(0)]) for _ in range(device.concurrency)])
+        node_assignments.append((client_proxy, device_assignment))
     if verbose:
-        placement = [(k, v) for k, v in lists_cids.items()]
         log(DEBUG,
-            f'Sorted Round Robin (SRR) placement :: dict(worker_id, [cids]) {placement}')
-    return lists_cids
+            f'Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}')
+    return node_assignments
 
 
 def samples_placement(
