@@ -287,7 +287,7 @@ def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
     return cpu_prop
 
 
-def get_node_manager_properties(config: Config) -> Dict[str, Scalar]:
+def get_node_manager_properties() -> Dict[str, Scalar]:
     # Get hardware accelerator properties
     if torch.cuda.is_available():
         log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
