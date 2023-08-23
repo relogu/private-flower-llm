@@ -91,7 +91,7 @@ class PollenServer(Server):
             [int], Dict[str, Scalar]
         ] = self.strategy.on_fit_config_fn
         self.max_workers: Optional[int] = None
-        self.nodes_dict: Dict[str, Node] = {}
+        self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -138,6 +138,14 @@ class PollenServer(Server):
             self._client_manager.node_managers
         )
         # Collect nodes' preoperties
+        # NOTE: Ideally, we want to get here the info about the concurrency
+        # per hardware accelerator because everything from the server-side
+        # has been launched and running, e.g. centralised evaluation (on GPU).
+        log(
+            DEBUG,
+            "Asking for nodes properties to %s NodeManagers",
+            connected_node_managers,
+        )
         results, failures = get_nodes_properties(
             node_managers=connected_node_managers,
             max_workers=self.max_workers,
@@ -147,8 +155,9 @@ class PollenServer(Server):
             "Get nodes properties: there are %s results and %s failures",
             len(results), len(failures)
         )
+        # This is a dictionary of the form {"node_id": Node}
         self.nodes_dict = {
-            client_proxy.cid: node
+            client_proxy.cid: (client_proxy, node)
             for client_proxy, node in results
         }
         log(
@@ -173,7 +182,7 @@ class PollenServer(Server):
                 # Handle newly added NodeManagers
                 log(DEBUG, f"There are new {len(new)} NodeManagers connected")
                 new_nodes_dict = {
-                    client_proxy.cid: node
+                    client_proxy.cid: (client_proxy, node)
                     for client_proxy, node in get_nodes_properties(
                         node_managers=new,
                         max_workers=self.max_workers,
@@ -187,7 +196,7 @@ class PollenServer(Server):
                 timeout=timeout,
             )
             if res_fit is not None:
-                parameters_prime, fit_metrics, _ = res_fit  # fit_metrics_aggregated
+                parameters_prime, fit_metrics, _ = res_fit
                 if parameters_prime:
                     self.parameters = parameters_prime
                 history.add_metrics_distributed_fit(
@@ -306,7 +315,8 @@ class PollenServer(Server):
         )
 
         # TODO: Translate `client_instruction` to `node_instructions`
-        lists_cids = self.placement_fn(
+        # NOTE: `node_instructions` must contain 
+        node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[client.cid])
                 for client, _ in client_instructions
@@ -315,26 +325,39 @@ class PollenServer(Server):
             batch_size=self.on_fit_config(server_round)["batch_size"],
             verbose=False,
         )
+        log(
+            DEBUG,
+            "Node assignments for fit_round %s: %s",
+            server_round,
+            node_assignments,
+        )
         node_instructions = []
-        for node_id, node in self.nodes_dict.items():
+        for client_proxy, device_assignment in node_assignments:
+            # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
-            # NOTE: This key is used only when the training policy of workers
-            # is not `sequential`, and for setting the `num_workers` parameter
-            # in the `DataLoader`
-            if "server_round" not in node_fit_config:
-                node_fit_config["server_round"] = server_round
-            if "workers_policy" not in node_fit_config:
-                node_fit_config["workers_policy"] = "split"
-            # TODO/FIXME: Set the level of concurrency
-            node_fit_config["concurrency"] = self.worker_to_resource[node_id][3]
+            
+            # # NOTE: This key is used only when the training policy of workers
+            # # is not `sequential`, and for setting the `num_workers` parameter
+            # # in the `DataLoader`
+            # if "server_round" not in node_fit_config:
+            #     node_fit_config["server_round"] = server_round
+            # if "workers_policy" not in node_fit_config:
+            #     node_fit_config["workers_policy"] = "split"
+            # # TODO/FIXME: Set the level of concurrency
+            # node_fit_config["concurrency"] = 1
+            
             # TODO/FIXME: Assign `cids`
-            node_fit_config["cids"] = (
-                "[[" + ",".join([str(cid) for cid in lists_cids[node_id]]) + "]]"
-            )
-            # TODO/FIXME: Assign `gpu_ids`
-            node_fit_config["gpu_ids"] = f"[{self.worker_to_resource[node_id][2]}]"
+            node_fit_config.update(device_assignment)
+            
             # Append instruction
-            node_instructions.append((node, FitIns(self.parameters, node_fit_config)))
+            node_instructions.append((client_proxy, FitIns(self.parameters, node_fit_config)))
+
+        # log(
+        #     DEBUG,
+        #     "Node instructions for fit_round %s: %s",
+        #     server_round,
+        #     node_instructions,
+        # )
 
         log(
             DEBUG,
@@ -409,7 +432,7 @@ def get_properties_client(
         client,
         node_properties,
     )
-    return client, Node.from_str(node_properties["node"])
+    return client, Node.from_str(str(node_properties["node"]))
 
 
 def _handle_finished_future_after_get_properties(
