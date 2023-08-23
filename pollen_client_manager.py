@@ -97,10 +97,12 @@ class PollenClientManager(ClientManager):
             Indicating if registration was successful. False if ClientProxy is
             already registered or can not be registered for any reason.
         """
-        if client.cid in self.clients:
+        # if client.cid in self.clients:
+        if client.cid in self.node_managers:
             return False
 
-        self.clients[client.cid] = client
+        # self.clients[client.cid] = client
+        self.node_managers[client.cid] = client
         with self._cv:
             self._cv.notify_all()
 
