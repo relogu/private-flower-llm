@@ -4,10 +4,12 @@ from collections import defaultdict
 from functools import reduce
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from logging import DEBUG
 
 import numpy as np
 import pandas as pd
 import torch
+from flwr.common.logger import log
 from flwr.common.typing import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate
 from torch.nn import Module
@@ -389,12 +391,12 @@ def get_clients_population_dict(
     for client_id in pd.unique(dataframe["client_id"]):
         tmp = dataframe[dataframe["client_id"] == client_id]
         clients[client_id] = len(tmp)
-    print(f"Length of cids list before filtering {len(list(clients.keys()))}")
+    log(DEBUG, f"Length of cids list before filtering {len(list(clients.keys()))}")
     if batch_size > 0:
         for client_id in pd.unique(dataframe["client_id"]):
             if clients[client_id] <= batch_size:
                 del clients[client_id]
-    print(f"Length of cids list after filtering {len(list(clients.keys()))}")
+    log(DEBUG, f"Length of cids list after filtering {len(list(clients.keys()))}")
     return dict(sorted(clients.items(), key=lambda item: item[1], reverse=True))
 
 
