@@ -1,277 +1,75 @@
 from __future__ import annotations
 
-import concurrent.futures
 import json
 import os
 import shlex
 import subprocess as sp
-import sys
-import threading
 import time
-import traceback
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
-from socket import getfqdn
 from threading import Thread
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import nvsmi
 import psutil
-import torch
-import torch.multiprocessing as mp
-from flwr.client import ClientLike
 from flwr.common import log
-from flwr.common.typing import Config, NDArrays, Scalar
+from flwr.client import NumPyClient
+from flwr.common import NDArrays, Scalar
 
 NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu --format=csv,noheader,nounits"
 
 
-def get_workers_map(
-    client_fn: Callable[[int, str], ClientLike],
-    initial_parameters: NDArrays,
-    fit_config: Config,
-) -> Dict[int, Tuple[str, int]]:
-    # Get information about the resources available
-    # TODO/FIXME: Take into account the RAM occupation.
-    cpus_available = os.sched_getaffinity(0)
-    log(DEBUG, "Node %s: available CPU cores = %s", getfqdn(), cpus_available)
-    gpus_available = [g for g in nvsmi.get_gpus()]
-    log(DEBUG, "Node %s: available GPUs = {%s}", getfqdn(), gpus_available)
-    # Build the resources' map
-    map_id_name: Dict[int, str] = {}
-    map_name_workers: Dict[str, int] = {}
-    workers_map: Dict[int, Tuple[str, int]] = {}
-    # fit_config['epochs'] = 1
-    for gpu in gpus_available:
-        map_id_name[gpu.id] = gpu.name
-        if gpu.name not in map_name_workers:
-            # # Get the total and maximum memory allocated during the
-            # # execution of the `fit` function of the client
-            results = monitor_client_execution(
-                gpu.id, client_fn, initial_parameters, fit_config
-            )
-            # # Compute the maximum amount of workers that can be allocated
-            # # concurrently on the give GPU, subtracting one for safety
-            # # given how eager is Pytorch
-            max_processes = (results[0] // results[1]) - 1
-            # time.sleep(10)
-            # max_processes = 0
-            max_processes = monitor_multiple_client_execution(
-                gpu.id, client_fn, initial_parameters, fit_config, 0
-            )
-            # map_name_workers[gpu.name] = int(2*((results[0] // results[1]) - 1))
-            # map_name_workers[gpu.name] = int(0.5*max_processes)
-            map_name_workers[gpu.name] = int(max_processes)
-    # Build the returned map
-    for gpu_id, name in map_id_name.items():
-        workers_map[gpu_id] = (name, map_name_workers[name])
-
-    # TODO/FIXME: Take into account the number of available CPU cores by
-    # removing one for safety, given the additional threads that we might
-    # need to run. We need to check how many CPU cores we would need to
-    # let free.
-    # max_n_workers = min(max_n_workers, len(cpus_available) - 1)
-    return workers_map
+def warmup(
+    client: Callable[[int], NumPyClient],
+    params: NDArrays,
+    config: Dict[str, Scalar],
+    num_epochs: int = 10,
+) -> None:
+    for _ in range(num_epochs):
+        client.fit(params, config)
 
 
-def monitor_multiple_client_execution(
-    gpu_id: int,
-    client_fn: Callable[[int, str], ClientLike],
-    initial_parameters: NDArrays,
-    fit_config: Config,
-    concurrency: int,
-) -> Tuple[float, float]:
-    # log(
-    #     DEBUG,
-    #     "Testing client on GPU with id {%s}",
-    #     gpu_id
-    # )
-    condition = True
-    pace = 0.0
-    # p = ThreadPoolExecutor(
-    #     # max_workers=len(os.sched_getaffinity(0)),
-    #     thread_name_prefix=f"node_{getfqdn()}_concurrency_checker",
-    # )
-    # if torch.multiprocessing.get_start_method(allow_none=True) != 'spawn':
-    #     torch.multiprocessing.set_start_method('spawn')
-    best_concurrency = 0
-    while condition:
-        p: ProcessPoolExecutor = ProcessPoolExecutor()
-        concurrency += 1
-        futures_list = []
-        monitor = GPUMemoryMonitor(gpu_id=gpu_id)
-        monitor.start()
-        futures_list.append(p.submit(monitor.start))
-        start = time.time()
-
-        for i in range(concurrency):
-            fake_client: ClientLike = client_fn(cid=0, device=f"cuda:{gpu_id}")
-            futures_list.append(
-                p.submit(
-                    fake_client.fit,
-                    parameters=initial_parameters,
-                    config=fit_config,
-                )
-            )
-            # p: mp.Process = mp.Process(target=fake_client.fit, args=(initial_parameters, fit_config))
-            # p.start()
-            # futures_list.append(p)
-        finished_fs, _ = concurrent.futures.wait(
-            fs=futures_list[1:],
-            timeout=None,
-        )
-        # for p in futures_list:
-        #     p.join()
-
-        current_pace = concurrency / (time.time() - start)
-        exceptions = [
-            (
-                "".join(traceback.format_tb(future.exception().__traceback__)),
-                future.exception(),
-            )
-            if future.exception() is not None
-            else None
-            for future in finished_fs
-        ]
-        log(
-            DEBUG,
-            "Node %s, GPU %s, concurrency %s, exceptions %s",
-            getfqdn(),
-            gpu_id,
-            concurrency,
-            exceptions,
-        )
-        for ex in exceptions:
-            if ex is not None:
-                condition = False
-
-        log(
-            DEBUG,
-            "Node %s, GPU %s, concurrency %s, pace (new, old) = (%s, %s)",
-            getfqdn(),
-            gpu_id,
-            concurrency,
-            current_pace,
-            pace,
-        )
-        if condition and current_pace > pace:
-            pace = current_pace
-            best_concurrency = concurrency
-        else:
-            # condition = False
-            log(
-                DEBUG,
-                "Node %s, GPU %s, concurrency %s, slowed down. Closing the loop.",
-                getfqdn(),
-                gpu_id,
-                concurrency,
-            )
-        if fit_config["batch_size"] == 4 and concurrency >= 10:
-            condition = False
-
-        results = (monitor.total_memory, monitor.maximum_allocated_memory)
-        percentual = results[1] / results[0]
-        log(
-            DEBUG,
-            "Node %s, GPU %s, concurrency %s, results {%s, %s}",
-            getfqdn(),
-            gpu_id,
-            concurrency,
-            results,
-            percentual,
-        )
-        monitor.do_run = False
-
-        p.shutdown()
-    # return concurrency-1
-    return best_concurrency
-
-
-def monitor_client_execution(
-    gpu_id: int,
-    client_fn: Callable[[int, str], ClientLike],
-    initial_parameters: NDArrays,
-    fit_config: Config,
-) -> Tuple[float, float]:
-    # log(
-    #     DEBUG,
-    #     "Testing client on GPU with id {%s}",
-    #     gpu_id
-    # )
-    if torch.multiprocessing.get_start_method(allow_none=True) != "spawn":
-        torch.multiprocessing.set_start_method("spawn")
-    futures_list = []
-    p = ThreadPoolExecutor(
-        # max_workers=len(os.sched_getaffinity(0)),
-        thread_name_prefix=f"node_{getfqdn()}_concurrency_checker",
-    )
-    monitor = GPUMemoryMonitor(gpu_id=gpu_id)
-    # futures_list.append(p.submit(monitor.start))
-    monitor.start()
-    fake_client: ClientLike = client_fn(cid=0, device=f"cuda:{gpu_id}")
-    # futures_list.append(
-    #     p.submit(
-    #         fake_client.fit,
-    #         parameters=initial_parameters,
-    #         config=fit_config,))
-    p: mp.Process = mp.Process(
-        target=fake_client.fit, args=(initial_parameters, fit_config)
-    )
-    p.start()
-    p.join()
-    # fake_client.fit(
-    #     parameters=initial_parameters,
-    #     config=fit_config,
-    # )
-    # finished_fs, _ = concurrent.futures.wait(
-    #     fs=futures_list[1:],
-    #     timeout=None,
-    # )
-    # TODO/FIXME: It seems necessary to wait one second here to let
-    # the monitor observe the real value of the memory.
-    # time.sleep(1)
-    results = (monitor.total_memory, monitor.maximum_allocated_memory)
-    monitor.do_run = False
-    # p.shutdown()
-    log(DEBUG, "Node %s, GPU %s, results {%s}", getfqdn(), gpu_id, results)
-    return results
-
-
-def get_cuda_prop() -> Dict[str, Device]:
+def get_cuda_prop(
+    client: NumPyClient, params: NDArrays, config: Dict[str, Scalar]
+) -> Dict[str, Device]:
     gpus_prop = {}
     gpus_available = [g for g in nvsmi.get_gpus()]
     for gpu in gpus_available:
         if f"cuda:{gpu.id}" not in gpus_prop:
+            config["device"] = f"cuda:{gpu.id}"
             monitor = ResourcesMonitor(gpu_id=int(gpu.id))
             monitor.start()
-            # TODO: Get initial statistics from the resources monitor
-            # TODO: Launch a fake client to assess the concurrency
-            # TODO: Get the latest statistics from the resources monitor
-            # TODO: Estimate the maximum number of concurrent workers
-            time.sleep(1)
-            current_concurrency = 10
+            log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
+            warmup(client, params, config)
+            monitor.do_run = False
+            current_concurrency = (
+                monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
+            )
+            print(f"Current concurrency: {current_concurrency}")
             gpus_prop[f"cuda:{gpu.id}"] = Device(
                 id=gpu.id,
                 name=gpu.name,
                 type="cuda",
                 total_memory=gpu.mem_total,
-                allocated_memory=gpu.mem_used,
+                allocated_memory=sum([x.mem_used for x in gpu.states]),
                 concurrency=current_concurrency,
             )
-            monitor.do_run = False
     return gpus_prop
 
 
-def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
-    monitor = ResourcesMonitor(gpu_id=-1)
+def get_cpu_prop(
+    cpu_type: str,
+    client: NumPyClient,
+    params: NDArrays,
+    config: Dict[str, Scalar],
+) -> Dict[str, Device]:
+    monitor = ResourcesMonitor(gpu_id=-1, list_pids=[os.getpid()])
     monitor.start()
-    # TODO: Get initial statistics from the resources monitor
-    # TODO: Launch a fake client to assess the concurrency
-    # TODO: Get the latest statistics from the resources monitor
-    # TODO: Estimate the maximum number of concurrent workers
     time.sleep(1)
-    current_concurrency = 10
+    log(INFO, f"Collecting training statistics for CPU {cpu_type}.")
+    warmup(client, params, config)
+    monitor.do_run = False
+    current_concurrency = monitor.cpu_ram_available // sum(monitor.pid_ram_used)
     cpu_prop = {
         f"{cpu_type}:0": Device(
             id=0,
@@ -285,38 +83,6 @@ def get_cpu_prop(cpu_type: str) -> Dict[str, Device]:
     }
     monitor.do_run = False
     return cpu_prop
-
-
-def get_node_manager_properties() -> Dict[str, Scalar]:
-    # Get hardware accelerator properties
-    if torch.cuda.is_available():
-        log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
-        device_info = get_cuda_prop()
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
-        device_info = get_cpu_prop("mps")
-    else:
-        log(
-            INFO,
-            f"Node {getfqdn()}, No hardware accelerator available. Assessing CPU execution.",
-        )
-        device_info = get_cpu_prop("cpu")
-    # Get CPU cores count, this should work with different OSes
-    try:
-        cpus = len(psutil.Process().cpu_affinity())
-    except AttributeError:
-        cpus = psutil.cpu_count()
-    # Get general node properties
-    node = Node(
-        name=getfqdn(),
-        cpu_num=cpus,
-        cpu_ram_total=psutil.virtual_memory().total,
-        cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
-        device_info=device_info,
-    )
-    log(DEBUG, f"Node {getfqdn()} has complete properties {node}")
-
-    return {"node": str(node)}
 
 
 @dataclass
@@ -391,7 +157,7 @@ class Node:
         return json.dumps(asdict(self))
 
     @staticmethod
-    def from_str(d: str) -> Node:
+    def from_str(d: str):
         """Create a Node from a string (built with str(Node))."""
         d = json.loads(d)
         return Node(
@@ -410,16 +176,19 @@ class ResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_id: int,
+        list_pids: List[int] = [],
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
         self.frequency = frequency
         self.gpu_id = gpu_id
+        self.list_pids = list_pids
         self.vram_total_memory = 0.0
         self.vram_maximum_allocated_memory = 0.0
         self.cpu_ram_total = 0.0
         self.cpu_ram_available = 0.0
         self.do_run = True
+        self.pid_ram_used = []
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
         """This function reads the output of `nvidia-smi --query`
@@ -444,11 +213,13 @@ class ResourcesMonitor(Thread):
                     e.cmd, e.returncode, e.output
                 )
             )
+        """
         log(
             DEBUG,
             "ResourcesMonitor.get_gpu_memory: memory_use_info=%s",
             memory_use_info,
         )
+            """
         # index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu
         return float(str(memory_use_info[0]).split(",")[3]), float(
             str(memory_use_info[0]).split(",")[4]
@@ -472,7 +243,10 @@ class ResourcesMonitor(Thread):
             self.cpu_ram_available = (
                 psutil.virtual_memory().total - psutil.virtual_memory().used
             )
-            log(
+            self.pid_ram_used = [
+                psutil.Process(pid).memory_info().vms for pid in self.list_pids
+            ]
+            """log(
                 DEBUG,
                 "ResourcesMonitor._update_max_values: "
                 "mem=%s, vram_total_memory=%s, vram_maximum_allocated_memory=%s, cpu_ram_total=%s, cpu_ram_available=%s",
@@ -482,6 +256,7 @@ class ResourcesMonitor(Thread):
                 self.cpu_ram_total,
                 self.cpu_ram_available,
             )
+            """
             time.sleep(self.frequency)
 
     def run(self):
@@ -502,8 +277,14 @@ class ResourcesMonitor(Thread):
 
 
 if __name__ == "__main__":
-    node = get_node_manager_properties({})
+    node = Node(
+        name="node1",
+        cpu_num=psutil.cpu_count(),
+        cpu_ram_total=psutil.virtual_memory().total,
+        cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
+        device_info={},
+    )
     log(INFO, f"NodeManager's properties are: {node}")
-    node = Node.from_str(str(node['node']))
+    node = Node.from_str(str(node["node"]))
     log(INFO, f"Converted to Node object {node}")
     log(INFO, f"Node {node.name} has {len(node.device_info)} acceleration devices.")

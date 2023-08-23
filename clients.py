@@ -49,14 +49,14 @@ class ShakespeareClient(NumPyClient):
         )"""
         self.net = ShakespeareLeafNet()
 
+    def get_parameters(self, config: Dict[str, Scalar]) -> NDArrays:
+        net = ShakespeareLeafNet()
+        return get_parameters(net)
+
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
         set_parameters(self.net, parameters, device=config["device"])
-        # print(
-        #    f"client about to begin training params: {get_parameters(self.net)[0][0]}"
-        # )
-        # print(config)
         trainloader = DataLoader(
             self.trainset, batch_size=config["batch_size"], shuffle=True
         )

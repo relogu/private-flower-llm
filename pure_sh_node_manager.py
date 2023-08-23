@@ -1,7 +1,8 @@
-from logging import DEBUG
+from logging import DEBUG, INFO
 import pickle
 from collections import OrderedDict
 from multiprocessing.shared_memory import SharedMemory
+from socket import getfqdn
 
 import cloudpickle
 from flwr.client import NumPyClient
@@ -20,7 +21,11 @@ from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from resources_manager import get_node_manager_properties
+from resources_manager import (
+    Node,
+    get_cpu_prop,
+    get_cuda_prop,
+)
 from utils import get_parameters, partially_aggregate
 
 mp.set_start_method("spawn", force=True)
@@ -145,8 +150,12 @@ class Worker(mp.Process):
 
 # Define Flower client
 class NodeManager(fl.client.NumPyClient):
-    def __init__(self, client_fn) -> None:
+    def __init__(
+        self, client_fn: Callable[[int], NumPyClient], warm_up_config: Dict[str, Scalar]
+    ) -> None:
         super().__init__()
+        self.name: str = getfqdn()
+        self.warm_up_config: Dict[str, Scalar] = warm_up_config
         self.properties = None
         self.all_gpus: List[GPU] = nvsmi.get_gpus()
 
@@ -160,9 +169,9 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Allocate shared memory for round parameters
         self.client_fn: Callable[[int], NumPyClient] = client_fn
-        temp_client = client_fn(client_id=0)
+        tmp_client = client_fn(client_id=0)
         self.round_parameters, self.round_num_samples, self.round_shm = allocate_shm(
-            get_parameters(temp_client.net), create=True
+            get_parameters(tmp_client.net), create=True
         )
         # Find out how many processes can be run on each GPU
         max_proc_device = [("cuda:0", 10)]
@@ -178,7 +187,7 @@ class NodeManager(fl.client.NumPyClient):
                 # worker_id = f"pollen_worker_{worker_cnt}"
                 worker_id = POLLEN_WORKER_SHM + f"{worker_cnt}"
                 params, num_samples, shm = allocate_shm(
-                    get_parameters(temp_client.net),
+                    get_parameters(tmp_client.net),
                     create=True,
                     name=worker_id,
                 )
@@ -195,37 +204,52 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 worker_cnt += 1
 
-        # # Get properties
-        # self.properties = get_node_manager_properties()
+        self.properties = self.get_node_properties()
 
-    def get_cpu_prop(self) -> Dict[str, float]:
-        node_prop = {
-            "cpu_num": mp.cpu_count(),
-            "cpu_ram_total": psutil.virtual_memory().total,
-            "cpu_ram_available": psutil.virtual_memory().available,
-        }
-        return node_prop
+    def get_node_properties(self) -> Dict[str, Scalar]:
+        device_info = {}
+        # Get hardware accelerator properties
+        # log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
+        tmp_client = self.client_fn(client_id=0)
+        tmp_params = tmp_client.get_parameters(config={})
+        device_info = dict(
+            get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
+            **device_info,
+        )
+        # log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
+        device_info = dict(
+            get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
+            **device_info,
+        )
+        if not device_info:
+            log(
+                INFO,
+                f"Node {self.name}, No hardware accelerator available. Assessing CPU execution.",
+            )
+            device_info = get_cpu_prop("cpu")
+        try:
+            cpus = len(psutil.Process().cpu_affinity())
+        except AttributeError:
+            cpus = psutil.cpu_count()
+        # Get general node properties
+        node = Node(
+            name=getfqdn(),
+            cpu_num=cpus,
+            cpu_ram_total=psutil.virtual_memory().total,
+            cpu_ram_available=psutil.virtual_memory().total
+            - psutil.virtual_memory().used,
+            device_info=device_info,
+        )
+        log(DEBUG, f"Node {getfqdn()} has complete properties {node}")
 
-    def get_gpus_prop(self) -> Dict[str, float]:
-        gpus_prop = {}
-        for gpu in nvsmi.get_gpus():
-            if gpu["memory.free"] > 0:
-                gpus_prop[f"cuda:{gpu.id}_ram_total"] = gpu.mem_total
-        return gpus_prop
+        return {"node": str(node)}
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
-        # cpu_prop = self.get_cpu_prop()
-        # gpus_prop = self.get_gpus_prop()
-        # return dict(cpu_prop, **gpus_prop)
-        return (
-            self.properties
-            if self.properties is not None
-            else get_node_manager_properties()
-        )
+        return self.properties
 
     def get_parameters(self, config):
-        temp_client = self.client_fn(client_id=0)
-        return get_parameters(temp_client.net)
+        tmp_client = self.client_fn(client_id=0)
+        return get_parameters(tmp_client.net)
 
     def start_workers(self, config):
         for worker_list in self.workers.values():
@@ -284,10 +308,14 @@ class NodeManager(fl.client.NumPyClient):
         for v in self.shared_local_agg.values():
             v[2].close()
 
+
 @hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
 def main(cfg: DictConfig) -> None:
     # Start NodeManager
-    node_manager = NodeManager(client_fn=call(cfg.gen_client_fn))
+    warm_up_config = call(cfg.gen_on_fit_config_fn)(0)
+    node_manager = NodeManager(
+        client_fn=call(cfg.gen_client_fn), warm_up_config=warm_up_config
+    )
 
     # Start Flower client
     fl.client.start_numpy_client(

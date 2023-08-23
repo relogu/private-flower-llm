@@ -48,9 +48,9 @@ def main(cfg: DictConfig) -> None:
         fraction_evaluate=0.0,
         fraction_fit=n_clients_per_round / n_total_clients,
         on_fit_config_fn=on_fit_config_fn,
-        initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0, device="cpu").get_parameters(config={}, net=None)
-        ),
+        # initial_parameters=ndarrays_to_parameters(
+        #    get_client_fn(cid=0, device="cpu").get_parameters(config={}, net=None)
+        # ),
         fit_metrics_aggregation_fn=weighted_average,
     )
     log(INFO, strategy.fraction_fit)
