@@ -73,7 +73,7 @@ class PollenServer(Server):
         *,
         client_manager: PollenClientManager,
         cids: Dict[str, int],
-        client_fn: Callable[[int, str], ClientProxy],
+        client_fn: Callable[[int], ClientProxy],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
     ) -> None:
@@ -128,7 +128,7 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            str(i): self.client_fn(k, "") for i, (k, _) in enumerate(self.cids.items())
+            str(i): self.client_fn(k) for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
@@ -341,8 +341,8 @@ class PollenServer(Server):
             # # in the `DataLoader`
             # if "server_round" not in node_fit_config:
             #     node_fit_config["server_round"] = server_round
-            # if "workers_policy" not in node_fit_config:
-            #     node_fit_config["workers_policy"] = "split"
+            # if "n_workers" not in node_fit_config:
+            #     node_fit_config["n_workers"] = 1
             # # TODO/FIXME: Set the level of concurrency
             # node_fit_config["concurrency"] = 1
             
@@ -379,6 +379,12 @@ class PollenServer(Server):
             len(results),
             len(failures),
         )
+        
+        # TODO: Collect statistics that Pollen uses from the FitRes of the NodeManagers
+        pollen_statistics = {}
+        for client, fit_res in results:
+            stats = fit_res.metrics.pop("stats")
+            gpu_stats = fit_res.metrics.pop("gpu_stats")
 
         # Aggregate training results
         aggregated_result: Tuple[
