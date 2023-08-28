@@ -4,6 +4,7 @@ from logging import DEBUG, ERROR
 from math import floor, log10
 from pathlib import Path
 from typing import Dict, List, Tuple
+from copy import copy
 
 import numpy as np
 from numpy.typing import NDArray
@@ -183,15 +184,24 @@ def round_robin_placement(
     sampled_virtual_cids: NDArray[np.int16] = np.array(
         [x[0] for x in sampled_virtual_cids])
     # Creates equal clients splits amongst workers
+    # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3]. 
     # (the remainder is assigned to the last worker)
     n_total_workers = np.sum([[device.concurrency for _, device in node.device_info.items()] for _, (_, node) in nodes_dict.items()])
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
-    node_assignments = []
-    for _, (client_proxy, node) in nodes_dict.items():
-        device_assignment: Dict[str, str] = {}
-        for device_id, device in node.device_info.items():
-            device_assignment[device_id] = ','.join([','.join([str(cid) for cid in splits.pop(0)]) for _ in range(device.concurrency)])
-        node_assignments.append((client_proxy, device_assignment))
+    # Init the device assignment and the return value
+    device_assignment = defaultdict(list)
+    node_assignments = [(client_proxy, copy(device_assignment)) for _, (client_proxy, _) in nodes_dict.items()]
+    # Loop over the splits created
+    while len(splits) > 0:
+        # Loop over nodes
+        for (c_p, device_assignment), (_, (_, node)) in zip(node_assignments, nodes_dict.items()):
+            # Loop over devices in the current node
+            for device_id, device in node.device_info.items():
+                current_split = splits.pop(0)
+                if len(current_split) > 0:
+                    [device_assignment[device_id].append(c) for c in current_split]
+    # Covert list of int to string
+    node_assignments = [(c_p, {k: convert_list_of_int_to_string(v) for k, v in device_assignment.items()}) for c_p, device_assignment in node_assignments]
     if verbose:
         log(DEBUG,
             f'Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}')
@@ -221,7 +231,10 @@ def sorted_round_robin_placement(
     for _, (client_proxy, node) in nodes_dict.items():
         device_assignment: Dict[str, str] = {}
         for device_id, device in node.device_info.items():
-            device_assignment[device_id] = ','.join([','.join([str(cid) for cid in splits.pop(0)]) for _ in range(device.concurrency)])
+            current_split = splits.pop(0)
+            log(DEBUG, f"current_split {current_split}")
+            if len(current_split) > 0:
+                device_assignment[device_id] = ','.join([','.join([str(cid) for cid in current_split]) for _ in range(device.concurrency)])
         node_assignments.append((client_proxy, device_assignment))
     if verbose:
         log(DEBUG,
@@ -362,3 +375,7 @@ def get_model_score(model, data):
 def predict_single_client(model, n_samples: int, batch_size: int):
     parameters, covariance = model
     return fn(n_samples//batch_size, *parameters)
+
+
+def convert_list_of_int_to_string(list_of_int: List[int]) -> str:
+    return ','.join([str(i) for i in list_of_int])
