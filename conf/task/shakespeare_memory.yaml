@@ -1,0 +1,12 @@
+---
+name: "shakespeare_memory"
+data_root: "/datasets/FedScale/leaf_shakespeare"
+learning_rate: 0.8
+num_classes: 10
+num_rounds: 100
+n_clients_per_round: 10
+batch_size: 4
+momentum: 0.9
+weight_decay: 5e-4
+# Aggregation Strategy
+fraction_fit: 0.037
