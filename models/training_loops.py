@@ -30,88 +30,96 @@ def get_input_shapes(name: str):
 
 def reddit_training_loop(
     trainloader: DataLoader,
-    device: torch.device,
     net: Module,
+    device: torch.device,
+    epochs: int,
     optimizer: Optimizer,
     tokenizer: AlbertTokenizer,
     **kwargs,
 ):
-    for batch in trainloader:
-        # TODO: handle steps instead of epochs
-        # if i >= n_batches:
-        #     break
+    for _ in range(epochs):
+        for batch in trainloader:
+            # TODO: handle steps instead of epochs
+            # if i >= n_batches:
+            #     break
 
-        # ========= Pre-processing + placement ===========
-        (data, target) = batch
-        data, target = mask_tokens(data, tokenizer, mlm_probability=0.15, evice=device)
+            # ========= Pre-processing + placement ===========
+            (data, target) = batch
+            data, target = mask_tokens(
+                data, tokenizer, mlm_probability=0.15, evice=device
+            )
 
-        data = Variable(data).to(device=device)
-        target = Variable(target).to(device=device)
+            data = Variable(data).to(device=device)
+            target = Variable(target).to(device=device)
 
-        # ========= Define the forward pass ==============
-        outputs = net(data, labels=target)
-        loss = outputs[0]
+            # ========= Define the forward pass ==============
+            outputs = net(data, labels=target)
+            loss = outputs[0]
 
-        # ========= Define the backward pass ==============
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            # ========= Define the backward pass ==============
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
 
 def google_speech_training_loop(
     trainloader: DataLoader,
-    device: torch.device,
     net: Module,
+    device: torch.device,
+    epochs: int,
     optimizer: Optimizer,
     criterion: Module,
     **kwargs,
 ):
-    for batch in trainloader:
-        # TODO: handle steps instead of epochs
-        # if i >= n_batches:
-        #     break
+    for _ in range(epochs):
+        for batch in trainloader:
+            # TODO: handle steps instead of epochs
+            # if i >= n_batches:
+            #     break
 
-        # ========= Pre-processing + placement ===========
-        (data, target) = batch
-        data = torch.unsqueeze(data, 1).to(device=device)
+            # ========= Pre-processing + placement ===========
+            (data, target) = batch
+            data = torch.unsqueeze(data, 1).to(device=device)
 
-        target = Variable(target).to(device=device)
+            target = Variable(target).to(device=device)
 
-        # ========= Define the forward pass ==============
-        output = net(data)
-        loss = criterion(output, target)
-        loss = loss.mean()
+            # ========= Define the forward pass ==============
+            output = net(data)
+            loss = criterion(output, target)
+            loss = loss.mean()
 
-        # ========= Define the backward pass ==============
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            # ========= Define the backward pass ==============
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
 
 def general_training_loop(
     trainloader: DataLoader,
-    device: torch.device,
     net: Module,
+    device: torch.device,
+    epochs: int,
     optimizer: Optimizer,
     criterion: Module,
     **kwargs,
 ):
-    for batch in trainloader:
-        # TODO: handle steps instead of epochs
-        # if i >= n_batches:
-        #     break
+    for _ in range(epochs):
+        for batch in trainloader:
+            # TODO: handle steps instead of epochs
+            # if i >= n_batches:
+            #     break
 
-        # ========= Pre-processing + placement ===========
-        (data, target) = batch
-        data = Variable(data).to(device=device)
-        target = Variable(target).to(device=device)
+            # ========= Pre-processing + placement ===========
+            (data, target) = batch
+            data = Variable(data).to(device=device)
+            target = Variable(target).to(device=device)
 
-        # ========= Define the forward pass ==============
-        output = net(data)
-        loss = criterion(output, target)
-        loss = loss.mean()
+            # ========= Define the forward pass ==============
+            output = net(data)
+            loss = criterion(output, target)
+            loss = loss.mean()
 
-        # ========= Define the backward pass ==============
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            # ========= Define the backward pass ==============
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
