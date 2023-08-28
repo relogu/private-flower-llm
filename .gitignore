@@ -167,3 +167,6 @@ outputs
 
 # Slurm logs
 slurm-*.out
+
+# NVIDIA Nsight Systems output
+*_nvidia_nsight.nsys-rep
