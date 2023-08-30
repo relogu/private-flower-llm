@@ -7,11 +7,20 @@ import time
 import warnings
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-from datasets.nlp_util import load_and_cache_examples
 from torch.utils.data import DataLoader, Dataset
 from transformers import AlbertTokenizer
+
+from datasets.nlp_util import load_and_cache_examples
+
+REDDIT_DTYPES = {
+    "client_id": np.int64,
+    "sample_path": "string",
+    "label_name": np.int64,
+    "label_id": np.int64,
+}
 
 
 class Reddit(Dataset):
