@@ -19,12 +19,13 @@ def get_training_loop(name: str):
 
 def get_input_shapes(name: str):
     if name == "reddit":
-        return None
+        return (64,)
     elif name == "google_speech":
         return (1, 32, 32)
     elif "shakespeare" in name:
         return (80,)
-    elif name == "openimage":
+    # elif name == "openimage":
+    else:
         return (3, 256, 256)
 
 
@@ -38,15 +39,14 @@ def reddit_training_loop(
     **kwargs,
 ):
     for _ in range(epochs):
-        for batch in trainloader:
+        for i, data in enumerate(trainloader):
             # TODO: handle steps instead of epochs
             # if i >= n_batches:
             #     break
 
             # ========= Pre-processing + placement ===========
-            (data, target) = batch
             data, target = mask_tokens(
-                data, tokenizer, mlm_probability=0.15, evice=device
+                data, tokenizer, mlm_probability=0.15, device=device
             )
 
             data = Variable(data).to(device=device)
