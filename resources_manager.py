@@ -23,9 +23,8 @@ def warmup(
     client: Callable[[int], NumPyClient],
     params: NDArrays,
     config: Dict[str, Scalar],
-    num_epochs: int = 10,
 ) -> None:
-    for _ in range(num_epochs):
+    for _ in range(config["local_epochs"]):
         client.fit(params, config)
 
 
@@ -43,13 +42,12 @@ def get_cuda_prop(
             warmup(client, params, config)
             current_concurrency = int(
                 monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
-            ) - 2
+            ) - 1
             # Close monitor
             while monitor.is_alive():
                 monitor.do_run = False
                 time.sleep(0.1)
             del monitor
-            print(f"Current concurrency: {current_concurrency}")
             gpus_prop[f"cuda:{gpu.id}"] = Device(
                 id=gpu.id,
                 name=gpu.name,
@@ -215,7 +213,7 @@ class ResourcesMonitor(Thread):
         command = NVIDIA_SMI_GET_GPUS + f" -i {self.gpu_id}"
         try:
             current_gpu_stats = output_to_list(
-                sp.check_output(shlex.split(command), stderr=sp.STDOUT, timeout=3)
+                sp.check_output(shlex.split(command), timeout=3)
             )[0] # [0] is the first line of the output, the second line is always empty
         except sp.CalledProcessError as e:
             raise RuntimeError(
@@ -231,9 +229,20 @@ class ResourcesMonitor(Thread):
         # )
         # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
         self.gpu_stats.append(current_gpu_stats.split(","))
-        return float(current_gpu_stats.split(",")[3]), float(
-            current_gpu_stats.split(",")[4]
-        )
+        ret_val = (0.0, 0.0)
+        try:
+            ret_val = float(current_gpu_stats.split(",")[3]), float(
+                current_gpu_stats.split(",")[4]
+            )
+        except:
+            log(
+                DEBUG,
+                "ResourcesMonitor.get_gpu_memory: error=%s retrying",
+                current_gpu_stats,
+                # ret_val
+            )
+            ret_val = self._get_gpu_memory()
+        return ret_val
 
     def _update_max_values(self):
         """
