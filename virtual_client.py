@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from logging import INFO
-from typing import Callable,Dict
+from typing import Callable, Dict
 
 import flwr as fl
 import torch
@@ -11,8 +11,8 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from models.training_loops import get_input_shapes, get_training_loop
 from datasets.nlp_util import get_collate_fn
+from models.training_loops import get_input_shapes, get_training_loop
 from pollen_utils import get_client_ds, get_model, get_optimizer
 
 
@@ -63,7 +63,9 @@ class VirtualClient(fl.client.NumPyClient):
         net.eval()
         keys = [k for k in net.state_dict().keys() if "bn" not in k]
         params_dict = zip(keys, parameters)
-        state_dict = OrderedDict({k: torch.tensor(v, device=device) for k, v in params_dict})
+        state_dict = OrderedDict(
+            {k: torch.tensor(v, device=device) for k, v in params_dict}
+        )
         net.load_state_dict(state_dict, strict=False)
         return net
 
@@ -78,12 +80,14 @@ class VirtualClient(fl.client.NumPyClient):
         **kwargs,
     ):
         """Train the model on the training set of single client."""
-        log(INFO, f'VirtualClient._train_loop :: FAKE with cid {self.cid}')
+        log(INFO, f"VirtualClient._train_loop :: FAKE with cid {self.cid}")
         # Load the fake data directly into the VRAM
         input_shape = get_input_shapes(name=self.name)
         if self.name == "reddit":
             fake_data = torch.zeros(((batch_size,) + input_shape), device=device).long()
-            fake_targets = torch.zeros((batch_size,) + input_shape, device=device).long()
+            fake_targets = torch.zeros(
+                (batch_size,) + input_shape, device=device
+            ).long()
         else:
             fake_data = torch.zeros(((batch_size,) + input_shape), device=device)
             fake_targets = torch.zeros((batch_size,), device=device).long()
@@ -107,7 +111,11 @@ class VirtualClient(fl.client.NumPyClient):
     def fit(self, parameters: NDArrays, config: Dict[str, Scalar]):
         # log(INFO, f'VirtualClient.fit :: {config}')
         # Load client's dataset
-        ds, tokenizer = get_client_ds(name=self.name, cid=self.cid) if not config["is_fake"] else (None, None)
+        ds, tokenizer = (
+            get_client_ds(name=self.name, cid=self.cid)
+            if not config["is_fake"]
+            else (None, None)
+        )
         # Instantiate the trainloader
         trainloader = (
             DataLoader(
@@ -124,7 +132,9 @@ class VirtualClient(fl.client.NumPyClient):
                 # NOTE: Default arguments
                 sampler=None,  # how to draw sample from the dataset
                 batch_sampler=None,  # like the above but for batches
-                collate_fn=get_collate_fn(tokenizer=tokenizer) if tokenizer is not None else None,  # builds batches from samples
+                collate_fn=get_collate_fn(tokenizer=tokenizer)
+                if tokenizer is not None
+                else None,  # builds batches from samples
                 timeout=0,  # if positive, the timeout value for collecting a batch from workers
                 worker_init_fn=None,  # init function for worker processes
                 multiprocessing_context=None,
@@ -137,16 +147,24 @@ class VirtualClient(fl.client.NumPyClient):
         )
         # Get the number of samples
         n_samples = (
-            int(config["batch_size"] * config["local_epochs"]) if ds is None else len(ds)
+            int(config["batch_size"] * config["local_epochs"])
+            if ds is None
+            else len(ds)
         )
         # Initialize the model and set its parameters
         net = self.set_parameters(parameters=parameters)
         net.to(device=config["device"])
         net.train()
         # Train the model
-        self._train_loop = get_training_loop(name=self.name) if not config["is_fake"] else self._train_loop
+        self._train_loop = (
+            get_training_loop(name=self.name)
+            if not config["is_fake"]
+            else self._train_loop
+        )
         optimizer = get_optimizer(name=self.name, model=net)
-        criterion = torch.nn.CrossEntropyLoss(reduction="none").to(device=config["device"])
+        criterion = torch.nn.CrossEntropyLoss(reduction="none").to(
+            device=config["device"]
+        )
         # net = training_loop(
         net = self._train_loop(
             trainloader=trainloader,
