@@ -1,4 +1,4 @@
-from logging import INFO
+from logging import INFO, DEBUG
 from typing import Dict
 
 import flwr as fl
@@ -21,13 +21,23 @@ from virtual_client import VirtualClient
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    log(INFO, f"Task is: {cfg.task.name} with run unique id: {cfg.run_uuid}")
+    log(INFO, f"Task is: {cfg.task.name} with fake={cfg.task.is_fake} with run unique id: {cfg.run_uuid}")
 
     # Get the list of cids
-    cid_samples_dict = get_clients_population_dict(
-        name=cfg.task.name,
-        batch_size=cfg.task.batch_size,
-    )
+    import time
+    s_t = time.time()
+    try:
+        cid_samples_dict = get_clients_population_dict(
+            name=cfg.task.name,
+            batch_size=cfg.task.batch_size,
+        )
+    except Exception as e:
+        log(DEBUG, f"Exception while getting the clients' dictionary: {e}")
+        cid_samples_dict = {
+            k: 1
+            for k in range(cfg.task.n_clients_per_round)
+        }
+    log(INFO, f"Time to get the clients' dictionary: {time.time() - s_t}")
     n_total_clients = len(cid_samples_dict)
     n_clients_per_round = cfg.task.n_clients_per_round
 
