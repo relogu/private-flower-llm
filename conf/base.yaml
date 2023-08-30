@@ -27,3 +27,4 @@ gen_on_fit_config_fn:
   learning_rate: ${task.learning_rate}
   momentum: ${task.momentum}
   weight_decay: ${task.weight_decay}
+  is_fake: ${task.is_fake}
