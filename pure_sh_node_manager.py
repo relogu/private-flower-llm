@@ -1,10 +1,9 @@
 import pickle
 import time
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from logging import DEBUG, INFO
 from multiprocessing import resource_tracker
 from multiprocessing.shared_memory import SharedMemory
-from multiprocessing import resource_tracker
 from socket import getfqdn
 
 import cloudpickle
@@ -12,7 +11,7 @@ from flwr.client import NumPyClient
 from flwr.common.logger import log
 
 pickle.Pickler = cloudpickle.Pickler
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import flwr as fl
 import hydra
@@ -24,7 +23,7 @@ from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from resources_manager import Node, get_cpu_prop, get_cuda_prop, ResourcesMonitor
+from resources_manager import Node, ResourcesMonitor, get_cpu_prop, get_cuda_prop
 from utils import get_parameters, partially_aggregate
 from virtual_client import VirtualClient
 
@@ -95,13 +94,13 @@ class Worker(mp.Process):
         self.result_queue: mp.Queue = result_queue
         self.run_uuid = run_uuid
         self.current_round: int = 0
-        self.config_shm = SharedMemory(name=self.run_uuid+POLLEN_CONFIG_SHM)
+        self.config_shm = SharedMemory(name=self.run_uuid + POLLEN_CONFIG_SHM)
         tmp_client = client_fn(client_id=0)
 
         # Allocate shared memory for fit parameters
         self.round_params, self.round_num_samples, self.round_shm = allocate_shm(
             parameters=tmp_client.get_parameters({}),
-            name=self.run_uuid+POLLEN_PARAMETERS_SHM,
+            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
 
     def process_task(self, client_id: int):
@@ -146,17 +145,21 @@ class Worker(mp.Process):
             self.process_task(task)
         self.result_queue.put([-1, 0, 0])
         # Un-register shared memories
-        # NOTE: Bug https://bugs.python.org/issue39959#msg364351 
+        # NOTE: Bug https://bugs.python.org/issue39959#msg364351
         resource_tracker.unregister(self.config_shm._name, "shared_memory")
         resource_tracker.unregister(self.round_shm._name, "shared_memory")
-        resource_tracker.unregister(SharedMemory(name=self.worker_id)._name, "shared_memory")
-        
+        resource_tracker.unregister(
+            SharedMemory(name=self.worker_id)._name, "shared_memory"
+        )
 
 
 # Define Flower client
 class NodeManager(fl.client.NumPyClient):
     def __init__(
-        self, client_fn: Callable[[int], NumPyClient], warm_up_config: Dict[str, Scalar], run_uuid: str,
+        self,
+        client_fn: Callable[[int], NumPyClient],
+        warm_up_config: Dict[str, Scalar],
+        run_uuid: str,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
@@ -172,13 +175,15 @@ class NodeManager(fl.client.NumPyClient):
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
-            name=self.run_uuid+POLLEN_CONFIG_SHM, create=True, size=10000
+            name=self.run_uuid + POLLEN_CONFIG_SHM, create=True, size=10000
         )
         # Allocate shared memory for round parameters
         self.client_fn: Callable[[int], NumPyClient] = client_fn
         tmp_client: VirtualClient = client_fn(client_id=0)
         self.round_parameters, self.round_num_samples, self.round_shm = allocate_shm(
-            tmp_client.get_parameters({}), create=True, name=self.run_uuid+POLLEN_PARAMETERS_SHM,
+            tmp_client.get_parameters({}),
+            create=True,
+            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Get node properties about hardware accelerators
         self.properties = self.get_node_properties()
@@ -215,7 +220,6 @@ class NodeManager(fl.client.NumPyClient):
                 worker_cnt += 1
         # Start all the workers
         self.start_workers({})
-
 
     def get_node_properties(self) -> Dict[str, Scalar]:
         device_info = {}
@@ -279,7 +283,7 @@ class NodeManager(fl.client.NumPyClient):
         # Send config and parameters to shared memory
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
-        copy_params_to_shm(parameters, 0, self.run_uuid+POLLEN_PARAMETERS_SHM)
+        copy_params_to_shm(parameters, 0, self.run_uuid + POLLEN_PARAMETERS_SHM)
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
@@ -287,7 +291,7 @@ class NodeManager(fl.client.NumPyClient):
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
-            
+
             # Close useless workers
             while len(list_ids_for_this_gpu) < len(self.workers[device]):
                 # Put a None for a worker to terminate it
@@ -315,7 +319,7 @@ class NodeManager(fl.client.NumPyClient):
         # Start workers
         if config["server_round"] == 1:
             self.start_workers(config)
-        
+
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
         stats = []
@@ -327,7 +331,7 @@ class NodeManager(fl.client.NumPyClient):
             # return value ([-1, 0, 0])
             if current_stats[0] > -1:
                 stats.append(current_stats)
-            num_processed_virtual_clients +=1 
+            num_processed_virtual_clients += 1
         # Collect statistics
         gpu_stats = self.monitor.gpu_stats
         self.monitor.gpu_stats = []
@@ -341,7 +345,11 @@ class NodeManager(fl.client.NumPyClient):
                     node_part_agg, (w_params, w_num_samples_np[0])
                 )
             w_shm.buf[:] = b"\0" * w_shm.size
-        return node_part_agg[0], int(node_part_agg[1]), {"accuracy": 0.0, "stats": str(stats), "gpu_stats": str(gpu_stats)}
+        return (
+            node_part_agg[0],
+            int(node_part_agg[1]),
+            {"accuracy": 0.0, "stats": str(stats), "gpu_stats": str(gpu_stats)},
+        )
 
     def evaluate(self, parameters, config):
         return 0.0, 1, {}
@@ -382,7 +390,9 @@ def main(cfg: DictConfig) -> None:
     # Start NodeManager
     warm_up_config = call(cfg.gen_on_fit_config_fn)(0)
     node_manager = NodeManager(
-        client_fn=call(cfg.gen_client_fn), warm_up_config=warm_up_config, run_uuid=cfg.run_uuid,
+        client_fn=call(cfg.gen_client_fn),
+        warm_up_config=warm_up_config,
+        run_uuid=cfg.run_uuid,
     )
 
     # Start Flower client
