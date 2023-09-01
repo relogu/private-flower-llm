@@ -1,4 +1,4 @@
-from logging import INFO
+from logging import INFO, DEBUG
 from typing import Dict
 
 import flwr as fl
@@ -19,25 +19,32 @@ from virtual_client import VirtualClient
 
 
 # Define strategy
-@hydra.main(config_path="conf/", config_name="shakespeare", version_base=None)
+@hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # # The number of clients can either be a single integer or a list of int/str
-    # num_total_virtual_clients = call(cfg.gen_num_total_virtual_clients)
+    log(INFO, f"Task is: {cfg.task.name} with fake={cfg.task.is_fake} with run unique id: {cfg.run_uuid}")
 
     # Get the list of cids
-    cid_samples_dict = get_clients_population_dict(
-        name=cfg.dataset_name,
-        batch_size=cfg.batch_size,
-    )
+    import time
+    s_t = time.time()
+    try:
+        cid_samples_dict = get_clients_population_dict(
+            name=cfg.task.name,
+            batch_size=cfg.task.batch_size,
+        )
+    except Exception as e:
+        log(DEBUG, f"Exception while getting the clients' dictionary: {e}")
+        cid_samples_dict = {
+            k: 1
+            for k in range(cfg.task.n_clients_per_round)
+        }
+    log(INFO, f"Time to get the clients' dictionary: {time.time() - s_t}")
     n_total_clients = len(cid_samples_dict)
-    n_clients_per_round = 10
+    n_clients_per_round = cfg.task.n_clients_per_round
 
-    def get_client_fn(cid: int, device: str) -> ClientLike:
+    def get_client_fn(cid: int,) -> ClientLike:
         return VirtualClient(
-            name=cfg.dataset_name,
+            name=cfg.task.name,
             cid=cid,
-            device=device,
-            n_workers=0,
         )
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
@@ -48,12 +55,12 @@ def main(cfg: DictConfig) -> None:
         fraction_evaluate=0.0,
         fraction_fit=n_clients_per_round / n_total_clients,
         on_fit_config_fn=on_fit_config_fn,
-        # initial_parameters=ndarrays_to_parameters(
-        #    get_client_fn(cid=0, device="cpu").get_parameters(config={}, net=None)
-        # ),
+        initial_parameters=ndarrays_to_parameters(
+           get_client_fn(cid=0).get_parameters(config={}, net=None)
+        ),
         fit_metrics_aggregation_fn=weighted_average,
     )
-    log(INFO, strategy.fraction_fit)
+    log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
 
     # Start Flower server
     fl.server.start_server(
@@ -65,7 +72,7 @@ def main(cfg: DictConfig) -> None:
             client_manager=PollenClientManager(),
             placement_policy="rr",
         ),
-        config=fl.server.ServerConfig(num_rounds=cfg.num_rounds),
+        config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
     )
 
 

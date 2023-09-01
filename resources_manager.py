@@ -16,16 +16,15 @@ from flwr.common import log
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
 
-NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
 
 
 def warmup(
     client: Callable[[int], NumPyClient],
     params: NDArrays,
     config: Dict[str, Scalar],
-    num_epochs: int = 10,
 ) -> None:
-    for _ in range(num_epochs):
+    for _ in range(config["local_epochs"]):
         client.fit(params, config)
 
 
@@ -41,17 +40,21 @@ def get_cuda_prop(
             monitor.start()
             log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
             warmup(client, params, config)
-            monitor.do_run = False
-            current_concurrency = (
+            current_concurrency = int(
                 monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
-            )
-            print(f"Current concurrency: {current_concurrency}")
+            ) - 1
+            # Close monitor
+            while monitor.is_alive():
+                monitor.do_run = False
+                time.sleep(0.1)
+            del monitor
             gpus_prop[f"cuda:{gpu.id}"] = Device(
                 id=gpu.id,
                 name=gpu.name,
                 type="cuda",
                 total_memory=gpu.mem_total,
-                allocated_memory=sum([x.mem_used for x in gpu.states]),
+                # allocated_memory=sum([x.mem_used for x in gpu.states]),
+                allocated_memory=gpu.mem_used,
                 concurrency=current_concurrency,
             )
     return gpus_prop
@@ -68,7 +71,6 @@ def get_cpu_prop(
     time.sleep(1)
     log(INFO, f"Collecting training statistics for CPU {cpu_type}.")
     warmup(client, params, config)
-    monitor.do_run = False
     current_concurrency = monitor.cpu_ram_available // sum(monitor.pid_ram_used)
     cpu_prop = {
         f"{cpu_type}:0": Device(
@@ -81,7 +83,11 @@ def get_cpu_prop(
             concurrency=current_concurrency,
         )
     }
-    monitor.do_run = False
+    # Close monitor
+    while monitor.is_alive():
+        monitor.do_run = False
+        time.sleep(0.1)
+    del monitor
     return cpu_prop
 
 
@@ -189,6 +195,8 @@ class ResourcesMonitor(Thread):
         self.cpu_ram_available = 0.0
         self.do_run = True
         self.pid_ram_used = []
+        self.gpu_stats = []
+        self.dead = False
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
         """This function reads the output of `nvidia-smi --query`
@@ -204,26 +212,37 @@ class ResourcesMonitor(Thread):
         output_to_list = lambda x: x.decode("ascii").split("\n")
         command = NVIDIA_SMI_GET_GPUS + f" -i {self.gpu_id}"
         try:
-            memory_use_info = output_to_list(
-                sp.check_output(shlex.split(command), stderr=sp.STDOUT)
-            )
+            current_gpu_stats = output_to_list(
+                sp.check_output(shlex.split(command), timeout=3)
+            )[0] # [0] is the first line of the output, the second line is always empty
         except sp.CalledProcessError as e:
             raise RuntimeError(
                 "command '{}' return with error (code {}): {}".format(
                     e.cmd, e.returncode, e.output
                 )
             )
-        """
-        log(
-            DEBUG,
-            "ResourcesMonitor.get_gpu_memory: memory_use_info=%s",
-            memory_use_info,
-        )
-            """
-        # index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu
-        return float(str(memory_use_info[0]).split(",")[3]), float(
-            str(memory_use_info[0]).split(",")[4]
-        )
+        # log(
+        #     DEBUG,
+        #     "ResourcesMonitor.get_gpu_memory: current_gpu_stats=%s, splitted_current_gpu_stats=%s",
+        #     current_gpu_stats,
+        #     current_gpu_stats.split(","),
+        # )
+        # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
+        self.gpu_stats.append(current_gpu_stats.split(","))
+        ret_val = (0.0, 0.0)
+        try:
+            ret_val = float(current_gpu_stats.split(",")[3]), float(
+                current_gpu_stats.split(",")[4]
+            )
+        except:
+            log(
+                DEBUG,
+                "ResourcesMonitor.get_gpu_memory: error=%s retrying",
+                current_gpu_stats,
+                # ret_val
+            )
+            ret_val = self._get_gpu_memory()
+        return ret_val
 
     def _update_max_values(self):
         """
@@ -246,17 +265,16 @@ class ResourcesMonitor(Thread):
             self.pid_ram_used = [
                 psutil.Process(pid).memory_info().vms for pid in self.list_pids
             ]
-            """log(
-                DEBUG,
-                "ResourcesMonitor._update_max_values: "
-                "mem=%s, vram_total_memory=%s, vram_maximum_allocated_memory=%s, cpu_ram_total=%s, cpu_ram_available=%s",
-                mem,
-                self.vram_total_memory,
-                self.vram_maximum_allocated_memory,
-                self.cpu_ram_total,
-                self.cpu_ram_available,
-            )
-            """
+            # log(
+            #     DEBUG,
+            #     "ResourcesMonitor._update_max_values: "
+            #     "mem=%s, vram_total_memory=%s, vram_maximum_allocated_memory=%s, cpu_ram_total=%s, cpu_ram_available=%s",
+            #     mem,
+            #     self.vram_total_memory,
+            #     self.vram_maximum_allocated_memory,
+            #     self.cpu_ram_total,
+            #     self.cpu_ram_available,
+            # )
             time.sleep(self.frequency)
 
     def run(self):
@@ -270,6 +288,11 @@ class ResourcesMonitor(Thread):
         """
         try:
             self._update_max_values()
+            log(
+                DEBUG,
+                "ResourcesMonitor.run: dying",
+            )
+            self.dead = True
         finally:
             # Avoid a refcycle if the thread is running a function with
             # an argument that has a member that points to the thread.

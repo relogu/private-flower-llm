@@ -49,7 +49,7 @@ def set_parameters(
     net.eval()
     params_dict = zip(net.state_dict().keys(), parameters)
     state_dict = OrderedDict(
-        {k: torch.tensor(v, device="cuda:0") for k, v in params_dict}
+        {k: torch.tensor(v, device=device) for k, v in params_dict}
     )
     net.load_state_dict(state_dict=state_dict, strict=False)
 
@@ -111,7 +111,7 @@ def invert_one_to_many_dictionary(
 
 
 def gen_on_fit_config_fn(
-    batch_size, local_epochs, learning_rate, momentum, weight_decay
+    batch_size, local_epochs, learning_rate, momentum, weight_decay, is_fake,
 ) -> Callable[[int], Dict[str, Scalar]]:
     def on_fit_config_fn(server_round: int) -> Dict[str, Scalar]:
         """Return `Config` for fit/evaluate rounds."""
@@ -122,6 +122,9 @@ def gen_on_fit_config_fn(
             "momentum": momentum,
             "weight_decay": weight_decay,
             "server_round": server_round,
+            "is_fake": is_fake,
+            # TODO: Brainstorm how to set this hyperparameter
+            "n_workers": 0,
         }
 
     return on_fit_config_fn

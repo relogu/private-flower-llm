@@ -27,13 +27,16 @@ import os
 import pickle
 import time
 from multiprocessing import Pool, cpu_count
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
+import psutil
+from logging import INFO, ERROR
 
 import torch
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
+from transformers import PreTrainedTokenizer
 
-logger = logging.getLogger(__name__)
-
+from flwr.common.logger import log
 
 def chunks_idx(l, n):
     d, r = divmod(len(l), n)
@@ -41,136 +44,116 @@ def chunks_idx(l, n):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
+def get_collate_fn(tokenizer: PreTrainedTokenizer):
+    def collate_fn(examples):
+        if tokenizer._pad_token is None:
+            return pad_sequence(examples, batch_first=True)
+        return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+    return collate_fn
 
-def feature_creation_worker(files, tokenizer, block_size, worker_idx):
-    examples = []
-    sample_client = []
-    client_mapping = collections.defaultdict(list)
-
-    user_id = -1
+def feature_creation_worker(
+    indices: List[int], files: List[str], tokenizer: PreTrainedTokenizer, block_size: int, worker_idx: int, file_path: str, model: str
+):
     start_time = time.time()
-    for idx, file in enumerate(files):
+    for i, (idx, file) in enumerate(zip(indices, files)):
         try:
+            # Read text file, one file per `user_id``, apparently
             with open(file, encoding="utf-8", errors="ignore") as f:
                 text = f.read()
-
+            # Tokenize the text to tokens
             tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
-            if len(tokenized_text) > 0:
-                user_id += 1
-
-            # Truncate in block of block_size
-            for i in range(0, len(tokenized_text) - block_size + 1, block_size):
+            examples = []
+            # Truncate in blocks of length `block_size``
+            for j in range(0, len(tokenized_text) - block_size + 1, block_size):
+                # Append the block of tokens
                 examples.append(
                     tokenizer.build_inputs_with_special_tokens(
-                        tokenized_text[i : i + block_size]
+                        tokenized_text[j : j + block_size]
                     )
                 )
-                client_mapping[user_id].append(len(examples) - 1)
-                sample_client.append(user_id)
+            if len(examples) > 0:
+                _cached_features_file = os.path.join(
+                    file_path, model + "_cached_lm_" + str(block_size) + "_" + str(idx)
+                )
+                with open(_cached_features_file, "wb") as f:
+                    pickle.dump(examples, f)
         except Exception as e:
-            logging.error(f"Worker {worker_idx}: fail due to {e}")
-        if idx % 10000 == 0:
-            logging.info(
-                f"Worker {worker_idx}: {len(files)-idx} files left, {idx} files complete, remaining time {(time.time()-start_time)/(idx+1)*(len(files)-idx)}"
+            log(ERROR, f"Worker {worker_idx}: fail due to {e}")
+        if i % 10000 == 0:
+            log(INFO,
+                f"Worker {worker_idx}: {len(files)-i} files left, {i} files complete, remaining time {(time.time()-start_time)/(i+1)*(len(files)-i)}"
             )
             gc.collect()
-
-    return (examples, client_mapping, sample_client)
-
 
 class TextDataset(Dataset):
     def __init__(
         self,
-        model,
-        tokenizer,
-        file_path,
-        examples=None,
-        n_jobs=1,
-        overwrite_cache=False,
-        block_size=512,
+        model: str,
+        tokenizer: PreTrainedTokenizer,
+        file_path: str,
+        examples: List[List[int]],
+        n_jobs: int = 1,
+        overwrite_cache: bool = False,
+        block_size: int = 64,
+        client_id: int = 0,
     ):
+        # Correct the block size for building sequences of tokens
         block_size = block_size - (
             tokenizer.model_max_length - tokenizer.max_len_single_sentence
         )
-
-        directory = file_path
-        cached_features_file = os.path.join(
-            directory, model + "_cached_lm_" + str(block_size)
+        # Create the cached features file
+        self.cached_features_file = os.path.join(
+            file_path, model + "_cached_lm_" + str(block_size) + "_" + str(client_id)
         )
-
-        if n_jobs > cpu_count():
-            n_jobs = cpu_count()
-
+        # Set the number of jobs
+        try:
+            cpus = len(psutil.Process().cpu_affinity())
+        except AttributeError:
+            cpus = psutil.cpu_count()
+        if n_jobs > cpus:
+            n_jobs = cpus
+        # Get the features
         if examples is not None:
+            # If the features are passed as parameter, use them
             self.examples = examples
-        elif os.path.exists(cached_features_file) and not overwrite_cache:
-            logger.info("Loading features from cached file %s", cached_features_file)
+        elif os.path.exists(self.cached_features_file) and not overwrite_cache:
+            # If the features are stored, load them
+            # log(INFO, "Loading features from cached file %s", self.cached_features_file)
             gc.disable()
-            with open(cached_features_file, "rb") as handle:
-                self.examples = pickle.load(handle)
-                self.client_mapping = pickle.load(handle)
+            with open(self.cached_features_file, "rb") as f:
+                self.examples = pickle.load(f)
             gc.enable()
         else:
-            logger.info("Creating features from dataset file at %s", directory)
-
-            self.examples = []
-            self.sample_client = []
-            self.client_mapping = collections.defaultdict(list)
-            user_id = -1
-
+            # Otherwise, create them
+            log(INFO, "File %s doesn't exist. Creating features from dataset file at %s", self.cached_features_file, file_path)
+            ## Tokenisation
+            # Get the list of files containing raw data (excluding the cached files)
             files = [
                 entry.name
                 for entry in os.scandir(file_path)
                 if "_cached_lm_" not in entry.name
             ]
-            # make sure files are ordered
+            # Make sure files are ordered
             files = [os.path.join(file_path, x) for x in sorted(files)]
-
+            # Parallelise the tokenisation
             pool_inputs = []
             pool = Pool(n_jobs)
             worker_cnt = 0
             for begin, end in chunks_idx(range(len(files)), n_jobs):
                 pool_inputs.append(
-                    [files[begin:end], tokenizer, block_size, worker_cnt]
+                    [list(range(len(files)))[begin:end], files[begin:end], tokenizer, block_size, worker_cnt, file_path, model]
                 )
                 worker_cnt += 1
-
-            pool_outputs = pool.starmap(feature_creation_worker, pool_inputs)
+            pool.starmap(feature_creation_worker, pool_inputs)
             pool.close()
             pool.join()
+            
+            gc.disable()
+            with open(self.cached_features_file, "rb") as f:
+                self.examples = pickle.load(f)
+            gc.enable()
 
-            user_id_base = 0
-            for samples, client_mapping, sample_client in pool_outputs:
-                self.examples += samples
-                true_sample_client = [i + user_id_base for i in sample_client]
-                self.sample_client += true_sample_client
-                for user_id, true_user_id in zip(sample_client, true_sample_client):
-                    self.client_mapping[true_user_id] = client_mapping[user_id]
-                user_id_base = true_sample_client[-1] + 1
-
-            # Note that we are loosing the last truncated example here for the sake of simplicity (no padding)
-            # If your dataset is small, first you should look for a bigger one :-) and second you
-            # can change this behavior by adding (model specific) padding.
-            logger.info("Saving features into cached file %s", cached_features_file)
-            with open(cached_features_file, "wb") as handle:
-                pickle.dump(self.examples, handle, protocol=-1)
-                pickle.dump(self.client_mapping, handle, protocol=-1)
-                pickle.dump(self.sample_client, handle, protocol=-1)
-
-            # dump the data_mapping_file
-            results = [["client_id", "sample_path", "label_name", "label_id"]]
-            for i in range(len(self.sample_client)):
-                results.append([self.sample_client[i], i, -1, -1])  # type: ignore
-
-            with open(
-                os.path.join(file_path, "../client_data_mapping", "result.csv"), "w"
-            ) as csvFile:
-                writer = csv.writer(csvFile)
-                for line in results:
-                    writer.writerow(line)
-
-        self.data = self.examples
-        self.targets = [0 for i in range(len(self.data))]
+        self.targets = [0]*len(self.examples)
 
     def __len__(self):
         return len(self.examples)
@@ -180,7 +163,7 @@ class TextDataset(Dataset):
 
 
 def load_and_cache_examples(
-    model, data_dir, tokenizer, n_jobs=1, block_size=64, evaluate=False
+    model: str, data_dir: str, tokenizer: PreTrainedTokenizer, n_jobs: int = 1, block_size: int = 64, evaluate: bool = False,
 ):
     file_path = (
         os.path.join(data_dir, "test") if evaluate else os.path.join(data_dir, "train")
@@ -192,7 +175,7 @@ def load_and_cache_examples(
 
 
 def mask_tokens(
-    inputs, tokenizer, mlm_probability, device="cpu"
+    inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, mlm_probability: float, device: str = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original."""
     labels = inputs.clone().to(device=device)
@@ -246,3 +229,94 @@ def mask_tokens(
 
     # The rest of the time (10% of the time) we keep the masked input tokens unchanged
     return inputs, labels
+
+if __name__ == "__main__":
+    from transformers import AlbertTokenizer
+    import pandas as pd
+    import time
+    model = "albert-base-v2"
+    features_files = [
+        entry.name
+        for entry in os.scandir("/datasets/FedScale/reddit/reddit/train")
+        if "_cached_lm_62" in entry.name
+    ]
+    raw_files = [
+        entry.name
+        for entry in os.scandir("/datasets/FedScale/reddit/reddit/train")
+        if "_cached_lm_62" not in entry.name
+    ]
+    log(INFO, f"Found {len(features_files)} features files and {len(raw_files)} raw files")
+    
+    # Set the number of jobs
+    n_jobs = 100
+    tokenizer = AlbertTokenizer.from_pretrained(model, do_lower_case=True)
+    file_path = "/datasets/FedScale/reddit/reddit/train"
+    try:
+        cpus = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    if n_jobs > cpus:
+        n_jobs = cpus
+    
+    def dump_info(model, tokenizer, file_path, client_ids, worker_idx):
+        clients = []
+        start_time = time.time()
+        for i, client_id in enumerate(client_ids):
+            cached_features_file = os.path.join(
+                file_path, model + "_cached_lm_" + str(62) + "_" + str(client_id)
+            )
+            if os.path.exists(cached_features_file):
+                ds = TextDataset(
+                    model=model,
+                    tokenizer=tokenizer,
+                    file_path=file_path,
+                    client_id=client_id,
+                    examples=None,
+                )
+                clients.append((client_id, ds.cached_features_file, len(ds)))
+            if i % 1000 == 0:
+                log(INFO,
+                    f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}"
+                )
+        return clients
+    # Parallelise the tokenisation
+    pool_inputs = []
+    pool = Pool(n_jobs)
+    client_ids = list(range(len(raw_files)))
+    cnt = 0
+    for begin, end in chunks_idx(range(len(raw_files)), n_jobs):
+        pool_inputs.append(
+            [model, tokenizer, file_path, client_ids[begin:end], cnt]
+        )
+        cnt += 1
+    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool.close()
+    pool.join()
+    log(INFO,
+        f"Pool outputs length: {len(pool_outputs)}"
+    )
+    clients = []
+    [clients.extend(out) for out in pool_outputs]
+    log(INFO,
+        f"Pool outputs concat length: {len(clients)}"
+    )
+    
+    df = pd.DataFrame(clients, columns=["client_id", "sample_path", "samples"])
+    log(INFO,
+        f"Dataframe: {df.head()}"
+    )
+    df.to_parquet("/datasets/FedScale/reddit/reddit/client_data_mapping/clients_dict.parquet")
+    s_t = time.time()
+    df = pd.read_parquet("/datasets/FedScale/reddit/reddit/client_data_mapping/clients_dict.parquet")
+    log(INFO,
+        f"Dataframe: {df.head()}"
+    )
+    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    s_t = time.time()
+    samples = []
+    for i in client_ids:
+        samples.append(int(df[df['client_id'] == i]['samples']))
+    log(INFO,
+        f"Getting samples of clients from 0 to 100: {samples}"
+    )
+    log(INFO, f"Getting samples took {time.time()-s_t} seconds")

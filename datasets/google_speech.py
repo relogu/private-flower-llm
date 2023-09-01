@@ -258,3 +258,96 @@ class SPEECH(Dataset):
             self.transform = transforms.Compose(
                 [LoadAudio(), FixAudioLength(), valid_feature_transform]
             )
+
+if __name__ == "__main__":
+    # import sys
+    # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+    import pandas as pd
+    import time
+    from flwr.common.logger import log
+    from logging import INFO
+    from multiprocessing import Pool
+    import psutil
+    from pathlib import Path
+
+    def chunks_idx(l, n):
+        d, r = divmod(len(l), n)
+        for i in range(n):
+            si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+            yield si, si + (d + 1 if i < r else d)
+    
+    # Set the number of jobs
+    n_jobs = 100
+    try:
+        cpus = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    if n_jobs > cpus:
+        n_jobs = cpus
+    
+    def dump_info(worker_idx, client_ids):
+        clients = []
+        start_time = time.time()
+        for i, client_id in enumerate(client_ids):
+            ds = SPEECH(
+                root=Path("/datasets/FedScale/google_speech/google_speech"),
+                client_id=client_id,
+            )
+            clients.append([client_id, len(ds)])
+            if i % 10 == 0:
+                log(INFO,
+                    f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}"
+                )
+        return clients
+    
+    
+    dataframe = pd.read_csv(
+        Path("/datasets/FedScale/google_speech/google_speech/client_data_mapping/train.csv"),
+        engine="pyarrow", # NOSONAR
+        dtype=GOOGLE_SPEECH_DTYPES,
+        names=list(GOOGLE_SPEECH_DTYPES.keys()),
+        sep=",",
+        header=0,
+    )
+        
+    # Parallelise the tokenisation
+    pool_inputs = []
+    pool = Pool(n_jobs)
+    client_ids = pd.unique(dataframe["client_id"])
+    cnt = 0
+    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+        pool_inputs.append(
+            [cnt, client_ids[begin:end]]
+        )
+        cnt += 1
+    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool.close()
+    pool.join()
+    log(INFO,
+        f"Pool outputs length: {len(pool_outputs)}"
+    )
+    clients = []
+    [clients.extend(out) for out in pool_outputs]
+    log(INFO,
+        f"Pool outputs concat length: {len(clients)}"
+    )
+    
+    df = pd.DataFrame(clients, columns=["client_id", "samples"])
+    log(INFO,
+        f"Dataframe: {df.head()}"
+    )
+    df.to_parquet("/datasets/FedScale/google_speech/google_speech/client_data_mapping/clients_dict.parquet")
+    s_t = time.time()
+    df = pd.read_parquet("/datasets/FedScale/google_speech/google_speech/client_data_mapping/clients_dict.parquet")
+    log(INFO,
+        f"Dataframe: {df.head()}"
+    )
+    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    s_t = time.time()
+    samples = []
+    for i in client_ids:
+        samples.append(int(df[df['client_id'] == i]['samples']))
+    log(INFO,
+        f"Getting samples of clients from 0 to 100: {samples}"
+    )
+    log(INFO, f"Getting samples took {time.time()-s_t} seconds")

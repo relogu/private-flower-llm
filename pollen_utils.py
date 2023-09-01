@@ -2,25 +2,25 @@ import pickle
 from argparse import ArgumentTypeError
 from collections import defaultdict
 from functools import reduce
+from logging import DEBUG
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from logging import DEBUG
 
 import numpy as np
 import pandas as pd
 import torch
 from flwr.common.logger import log
-from flwr.common.typing import Metrics, NDArrays, Scalar
+from flwr.common.typing import Metrics, NDArrays
 from flwr.server.strategy.aggregate import aggregate
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import Dataset
 from transformers import AlbertTokenizer
 
-from datasets.google_speech import GOOGLE_SPEECH_DTYPES, SPEECH
+from datasets.google_speech import SPEECH
 from datasets.nlp_util import TextDataset
-from datasets.openimage import OPENIMAGE_DTYPES, OpenImage
-from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_DTYPES, SHAKESPEARE_LOADED
+from datasets.openimage import OpenImage
+from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 
 
 def get_device() -> str:
@@ -200,28 +200,30 @@ def get_model(name: str) -> Module:
     # NOTE: we may want to load this once and then deepcopying it when needed
     model = None
     if name == "shakespeare":
-        from pollen.models.shakespeare_leaf_model import ShakespeareLeafNet
+        from models.shakespeare_leaf_model import ShakespeareLeafNet
 
         model = ShakespeareLeafNet()
     elif name == "shakespeare_memory":
-        from pollen.models.shakespeare_leaf_model import ShakespeareLeafNet
+        from models.shakespeare_leaf_model import ShakespeareLeafNet
 
         model = ShakespeareLeafNet()
     elif name == "reddit":
         from transformers import AutoConfig, AutoModelWithLMHead
 
         config = AutoConfig.from_pretrained(
-            Path("/datasets/FedScale/reddit/redddit/albert-base-v2-config.json")
+            Path("/datasets/FedScale/reddit/reddit/albert-base-v2-config.json")
         )
         model = AutoModelWithLMHead.from_config(config)
     elif name == "google_speech":
-        from pollen.models.resnet_util import resnet34
+        from models.resnet_util import resnet34
 
         model = resnet34(num_classes=35, in_channels=1)
-    elif name == "openimage":
+    # elif name == "openimage":
+    else:
         from torchvision import models
 
         model = models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
+
     return model
 
 
@@ -231,24 +233,17 @@ def get_client_ds(
     name: str = "openimage",
     dataset: str = "train",
 ) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
-    ds = []
+    ds = None
     tokenizer = None
     if name == "shakespeare":
-        # from shakespeare_ds import SHAKESPEARE
         ds = SHAKESPEARE(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
     elif name == "shakespeare_memory":
-        # NOTE: we may want to load this once because it's loaded in RAM
-        # from shakespeare_ds import SHAKESPEARE_LOADED
         ds = SHAKESPEARE_LOADED(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
     elif name == "reddit":
-        # NOTE: we may want to load this once because it's loaded in RAM,
-        # look at the `examples` parameter
-        # from transformers import AlbertTokenizer
-        # from nlp_util import TextDataset
         tokenizer = AlbertTokenizer.from_pretrained(
             "albert-base-v2", do_lower_case=True
         )
@@ -257,16 +252,18 @@ def get_client_ds(
             file_path=dataset_root / "reddit" / "reddit" / dataset,
             tokenizer=tokenizer,
             examples=None,
+            n_jobs=100,
+            overwrite_cache=False,
+            block_size=64,
+            client_id=cid,
         )
     elif name == "google_speech":
-        # from google_speech import SPEECH
         ds = SPEECH(
             root=dataset_root / "google_speech" / "google_speech",
             client_id=cid,
             dataset=dataset,
         )
     elif name == "openimage":
-        # from openimage import OpenImage
         ds = OpenImage(root=dataset_root / "openImg", client_id=cid, dataset=dataset)
     return ds, tokenizer
 
@@ -275,64 +272,16 @@ def get_client_ds_fn(
     dataset_root: Path = Path("/datasets/FedScale/"),
     name: str = "openimage",
     dataset: str = "train",
-) -> Tuple[Callable[[int], Dataset], Optional[AlbertTokenizer]]:
-    ds_fn = []
-    tokenizer = None
-    if name == "shakespeare":
-        from pollen.datasets.shakespeare_ds import SHAKESPEARE
-
-        def ds_fn(client_id):
-            return SHAKESPEARE(
-                dataset_root / "leaf_shakespeare", client_id=client_id, dataset=dataset
-            )
-
-    elif name == "shakespeare_memory":
-        # NOTE: we may want to load this once because it's loaded in RAM
-        from pollen.datasets.shakespeare_ds import SHAKESPEARE_LOADED
-
-        def ds_fn(client_id):
-            return SHAKESPEARE_LOADED(
-                dataset_root / "leaf_shakespeare", client_id=client_id, dataset=dataset
-            )
-
-    elif name == "reddit":
-        # NOTE: we may want to load this once because it's loaded in RAM,
-        # look at the `examples` parameter
-        from pollen.datasets.nlp_util import TextDataset
-        from transformers import AlbertTokenizer
-
-        tokenizer = AlbertTokenizer.from_pretrained(
-            "albert-base-v2", do_lower_case=True
+) -> Tuple[Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]]:
+    def get_ds_fn(client_id: int):
+        return get_client_ds(
+            cid=client_id,
+            dataset_root=dataset_root,
+            name=name,
+            dataset=dataset,
         )
 
-        def ds_fn(client_id):
-            return TextDataset(
-                model="albert-base-v2",
-                client_id=client_id,
-                file_path=dataset_root / "reddit" / "reddit" / dataset,
-                tokenizer=tokenizer,
-                examples=None,
-            )
-
-    elif name == "google_speech":
-        from pollen.datasets.google_speech import SPEECH
-
-        def ds_fn(client_id):
-            return SPEECH(
-                root=dataset_root / "google_speech" / "google_speech",
-                client_id=client_id,
-                dataset=dataset,
-            )
-
-    elif name == "openimage":
-        from pollen.datasets.openimage import OpenImage
-
-        def ds_fn(client_id):
-            return OpenImage(
-                root=dataset_root / "openImg", client_id=client_id, dataset=dataset
-            )
-
-    return ds_fn, tokenizer
+    return get_ds_fn
 
 
 def get_optimizer(name: str, model: Module) -> Optimizer:
@@ -379,84 +328,16 @@ def get_clients_population_dict(
     dataset: str = "train",
     batch_size: int = 20,
 ) -> Dict[str, int]:
-    dataframe = pd.read_csv(
-        _get_dataset_root(name) / "client_data_mapping" / (dataset + ".csv"),
-        # engine="pyarrow", # NOSONAR
-        dtype=_get_name_dtypes(name),
-        names=list(_get_name_dtypes(name).keys()),
-        sep=",",
-        header=0,
+    dataframe = pd.read_parquet(
+        _get_dataset_root(name) / "client_data_mapping" / "clients_dict.parquet"
     )
-    clients = {}
-    for client_id in pd.unique(dataframe["client_id"]):
-        tmp = dataframe[dataframe["client_id"] == client_id]
-        clients[client_id] = len(tmp)
-    log(DEBUG, f"Length of cids list before filtering {len(list(clients.keys()))}")
-    if batch_size > 0:
-        for client_id in pd.unique(dataframe["client_id"]):
-            if clients[client_id] <= batch_size:
-                del clients[client_id]
-    log(DEBUG, f"Length of cids list after filtering {len(list(clients.keys()))}")
-    return dict(sorted(clients.items(), key=lambda item: item[1], reverse=True))
-
-
-def openimg_fit_config(server_round: int) -> Dict[str, Scalar]:
-    """Return training configuration dict for each round."""
-    config: Dict[str, Scalar] = {
-        "batch_size": 20,
-        "epochs": 1,
-        "current_round": server_round,
-        "n_workers": 0,
-        "workers_policy": "split",
-    }
-    return config
-
-
-def google_speech_fit_config(server_round: int) -> Dict[str, Scalar]:
-    """Return training configuration dict for each round."""
-    config: Dict[str, Scalar] = {
-        "batch_size": 20,
-        "epochs": 1,
-        "current_round": server_round,
-        "n_workers": 0,
-        "workers_policy": "split",
-    }
-    return config
-
-
-def shakespeare_fit_config(server_round: int) -> Dict[str, Scalar]:
-    """Return training configuration dict for each round."""
-    config: Dict[str, Scalar] = {
-        "batch_size": 4,
-        "epochs": 1,
-        "current_round": server_round,
-        "n_workers": 0,
-        "workers_policy": "zero",
-    }
-    return config
-
-
-def reddit_fit_config(server_round: int) -> Dict[str, Scalar]:
-    """Return training configuration dict for each round."""
-    config: Dict[str, Scalar] = {
-        "batch_size": 20,
-        "epochs": 1,
-        "current_round": server_round,
-        "n_workers": 0,
-        "workers_policy": "zero",
-    }
-    return config
-
-
-def _get_name_dtypes(name: str) -> Dict[str, Any]:
-    if name == "reddit":
-        return {}
-    elif name == "shakespeare" or name == "shakespeare_memory":
-        return SHAKESPEARE_DTYPES
-    elif name == "google_speech":
-        return GOOGLE_SPEECH_DTYPES
-    elif name == "openimage":
-        return OPENIMAGE_DTYPES
+    dataframe = dataframe.set_index("client_id")
+    dataframe.samples = dataframe.samples.astype(int)
+    dataframe = dataframe.sort_values(by=["samples"], ascending=False)
+    log(DEBUG, f"Length of cids list before filtering {len(dataframe)}")
+    dataframe = dataframe[dataframe["samples"] >= batch_size]
+    log(DEBUG, f"Length of cids list after filtering {len(dataframe)}")
+    return {row.Index: row.samples for row in dataframe.itertuples()}
 
 
 def _get_dataset_root(name: str) -> Path:
@@ -468,14 +349,5 @@ def _get_dataset_root(name: str) -> Path:
         return Path("/datasets/FedScale/google_speech/google_speech")
     elif name == "openimage":
         return Path("/datasets/FedScale/openImg")
-
-
-def _get_on_fit_config_fn(name: str) -> Callable[[int], Dict[str, Scalar]]:
-    if name == "reddit":
-        return reddit_fit_config
-    elif name == "shakespeare" or name == "shakespeare_memory":
-        return shakespeare_fit_config
-    elif name == "google_speech":
-        return google_speech_fit_config
-    elif name == "openimage":
-        return openimg_fit_config
+    else:
+        return None
