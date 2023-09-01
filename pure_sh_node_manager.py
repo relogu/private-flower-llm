@@ -316,10 +316,6 @@ class NodeManager(fl.client.NumPyClient):
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
 
-        # Start workers
-        if config["server_round"] == 1:
-            self.start_workers(config)
-
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
         stats = []
