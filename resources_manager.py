@@ -6,6 +6,7 @@ import shlex
 import subprocess as sp
 import time
 from concurrent.futures import Future, ProcessPoolExecutor
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
@@ -24,6 +25,12 @@ def get_cuda_prop(
     client: NumPyClient, params: NDArrays, config: Dict[str, Scalar]
 ) -> Dict[str, Device]:
     gpus_prop = {}
+    # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
+    # NOTE: This also solves the issue of the first round not using all the workers.
+    torch.multiprocessing.set_start_method("spawn")
+    p = ProcessPoolExecutor()
+    monitors = {}
+    clients = []
     gpus_available = [g for g in nvsmi.get_gpus()]
     for gpu in gpus_available:
         if f"cuda:{gpu.id}" not in gpus_prop:
@@ -31,29 +38,30 @@ def get_cuda_prop(
             monitor = ResourcesMonitor(gpu_id=int(gpu.id))
             monitor.start()
             log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
-            # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
-            # NOTE: This also solves the issue of the first round not using all the workers.
-            torch.multiprocessing.set_start_method("spawn")
-            p = ProcessPoolExecutor()
-            future: Future = p.submit(client.fit, parameters=params, config=config)
-            future.result()
-            p.shutdown(wait=False)
-            current_concurrency = int(
-                monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
+            clients.append(
+                p.submit(client.fit, parameters=params, config=deepcopy(config))
             )
-            # Close monitor
-            while monitor.is_alive():
-                monitor.do_run = False
-                time.sleep(0.1)
-            del monitor
-            gpus_prop[f"cuda:{gpu.id}"] = Device(
-                id=gpu.id,
-                name=gpu.name,
-                type="cuda",
-                total_memory=gpu.mem_total,
-                allocated_memory=gpu.mem_used,
-                concurrency=current_concurrency,
-            )
+            monitors[f"cuda:{gpu.id}"] = (monitor, gpu)
+    for c in clients:
+        c.result()
+    p.shutdown(wait=False)
+    for _, (monitor, gpu) in monitors.items():
+        current_concurrency = int(
+            monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
+        )
+        gpus_prop[f"cuda:{gpu.id}"] = Device(
+            id=gpu.id,
+            name=gpu.name,
+            type="cuda",
+            total_memory=gpu.mem_total,
+            allocated_memory=gpu.mem_used,
+            concurrency=current_concurrency,
+        )
+        # Close monitor
+        while monitor.is_alive():
+            monitor.do_run = False
+            time.sleep(0.1)
+        del monitor
     return gpus_prop
 
 
