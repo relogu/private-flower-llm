@@ -5,27 +5,19 @@ import os
 import shlex
 import subprocess as sp
 import time
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
-from typing import Callable, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 import nvsmi
 import psutil
-from flwr.common import log
+import torch
 from flwr.client import NumPyClient
-from flwr.common import NDArrays, Scalar
+from flwr.common import NDArrays, Scalar, log
 
 NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
-
-
-def warmup(
-    client: Callable[[int], NumPyClient],
-    params: NDArrays,
-    config: Dict[str, Scalar],
-) -> None:
-    for _ in range(config["local_epochs"]):
-        client.fit(params, config)
 
 
 def get_cuda_prop(
@@ -39,10 +31,16 @@ def get_cuda_prop(
             monitor = ResourcesMonitor(gpu_id=int(gpu.id))
             monitor.start()
             log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
-            warmup(client, params, config)
+            # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
+            # NOTE: This also solves the issue of the first round not using all the workers.
+            torch.multiprocessing.set_start_method("spawn")
+            p = ProcessPoolExecutor()
+            future: Future = p.submit(client.fit, parameters=params, config=config)
+            future.result()
+            p.shutdown(wait=False)
             current_concurrency = int(
                 monitor.vram_total_memory // monitor.vram_maximum_allocated_memory
-            ) - 1
+            )
             # Close monitor
             while monitor.is_alive():
                 monitor.do_run = False
@@ -53,7 +51,6 @@ def get_cuda_prop(
                 name=gpu.name,
                 type="cuda",
                 total_memory=gpu.mem_total,
-                # allocated_memory=sum([x.mem_used for x in gpu.states]),
                 allocated_memory=gpu.mem_used,
                 concurrency=current_concurrency,
             )
@@ -70,7 +67,13 @@ def get_cpu_prop(
     monitor.start()
     time.sleep(1)
     log(INFO, f"Collecting training statistics for CPU {cpu_type}.")
-    warmup(client, params, config)
+    # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
+    # NOTE: This also solves the issue of the first round not using all the workers.
+    torch.multiprocessing.set_start_method("spawn")
+    p = ProcessPoolExecutor()
+    future: Future = p.submit(client.fit, parameters=params, config=config)
+    future.result()
+    p.shutdown(wait=False)
     current_concurrency = monitor.cpu_ram_available // sum(monitor.pid_ram_used)
     cpu_prop = {
         f"{cpu_type}:0": Device(
@@ -214,7 +217,9 @@ class ResourcesMonitor(Thread):
         try:
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
-            )[0] # [0] is the first line of the output, the second line is always empty
+            )[
+                0
+            ]  # [0] is the first line of the output, the second line is always empty
         except sp.CalledProcessError as e:
             raise RuntimeError(
                 "command '{}' return with error (code {}): {}".format(
