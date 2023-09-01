@@ -311,6 +311,62 @@ class ResourcesMonitor(Thread):
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
 
+class DaemonResourcesMonitor(Thread):
+    def __init__(
+        self,
+        gpu_ids: List[int],
+        # list_pids: List[int] = [],
+        frequency: float = 0.1,
+    ) -> None:
+        Thread.__init__(self)
+        self.frequency = frequency
+        self.gpu_ids = gpu_ids
+        # self.list_pids = list_pids
+        # self.cpu_ram_total = 0.0
+        # self.cpu_ram_available = 0.0
+        self.do_run = True
+        # self.pid_ram_used = []
+        self.gpu_stats = []
+
+    def _get_gpu_stats(self):
+        
+        output_to_list = lambda x: bytes(x).decode("ascii").split("\n")
+        command = NVIDIA_SMI_GET_GPUS + f" -i {','.join(self.gpu_ids)}"
+        try:
+            current_gpu_stats = output_to_list(
+                sp.check_output(shlex.split(command), timeout=3)
+            )[:-1]
+        except sp.CalledProcessError as e:
+            raise RuntimeError(
+                "DaemonResourcesMonitor: command '{}' return with error (code {}): {}".format(
+                    e.cmd, e.returncode, e.output
+                )
+            )
+        # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
+        [self.gpu_stats.append(c.split(" ,")) for c in current_gpu_stats]
+
+    def _update_max_values(self):
+        while self.do_run:
+            self._get_gpu_stats()
+            # self.cpu_ram_total = psutil.virtual_memory().total
+            # self.cpu_ram_available = (
+            #     psutil.virtual_memory().total - psutil.virtual_memory().used
+            # )
+            # self.pid_ram_used = [
+            #     psutil.Process(pid).memory_info().vms for pid in self.list_pids
+            # ]
+            time.sleep(self.frequency)
+
+    def run(self):
+        try:
+            self._update_max_values()
+            log(
+                DEBUG,
+                "DaemonResourcesMonitor.run: dying",
+            )
+        finally:
+            del self._target, self._args, self._kwargs
+
 
 if __name__ == "__main__":
     node = Node(
