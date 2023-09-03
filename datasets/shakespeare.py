@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 
 LEAF_CHARACTERS = (
     "\n !\"&'(),-.0123456789:;>?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]abcdefghijklmnopqrstuvwxyz}"
@@ -18,6 +18,13 @@ SHAKESPEARE_DTYPES = {
     "index": "string",
     "label": np.int64,
 }
+
+
+def chunks_idx(l, n):
+    d, r = divmod(len(l), n)
+    for i in range(n):
+        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+        yield si, si + (d + 1 if i < r else d)
 
 
 class SHAKESPEARE(Dataset):
@@ -130,29 +137,20 @@ class SHAKESPEARE(Dataset):
         return data, labels
 
     def load_meta_data(self, path):
-        dataframe = pd.read_csv(
+        dataframe = pd.read_parquet(
             path,
-            # engine="pyarrow", # NOSONAR
-            dtype=SHAKESPEARE_DTYPES,
-            names=list(SHAKESPEARE_DTYPES.keys()),
-            sep=",",
-            header=0,
+            engine="pyarrow",
         )
 
-        # if self.client_id is not None:
-        #     dataframe = dataframe[dataframe['client_id'] == self.client_id]
+        for col in dataframe.columns:
+            dataframe[col] = dataframe[col].astype(SHAKESPEARE_DTYPES[col])
 
         return dataframe["sample_path"], dataframe["label"]
 
     def load_file(self):
-        # load meta file to get labels
-        data, labels = self.load_meta_data(
-            # Path(self.processed_folder, 'client_data_mapping', self.name + '.csv'))
-            # (self.path_to_mapping/self.name).with_suffix('.csv'))
-            self.path_to_mapping
-            / self.name
-            / f"{self.client_id}.csv"
-        )
+        path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
+        # Load meta file to get samples path and labels
+        data, labels = self.load_meta_data(path)
 
         return data, labels
 
@@ -265,29 +263,20 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         return data, labels
 
     def load_meta_data(self, path):
-        dataframe = pd.read_csv(
+        dataframe = pd.read_parquet(
             path,
-            # engine="pyarrow", # NOSONAR
-            dtype=SHAKESPEARE_DTYPES,
-            names=list(SHAKESPEARE_DTYPES.keys()),
-            sep=",",
-            header=0,
+            engine="pyarrow",
         )
 
-        # if self.client_id is not None:
-        #     dataframe = dataframe[dataframe['client_id'] == self.client_id]
+        for col in dataframe.columns:
+            dataframe[col] = dataframe[col].astype(SHAKESPEARE_DTYPES[col])
 
         return dataframe["sample_path"], dataframe["label"]
 
     def load_file(self):
-        # load meta file to get labels
-        samples, labels = self.load_meta_data(
-            # Path(self.processed_folder, 'client_data_mapping', self.name + '.csv'))
-            # (self.path_to_mapping/self.name).with_suffix('.csv'))
-            self.path_to_mapping
-            / self.name
-            / f"{self.client_id}.csv"
-        )
+        path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
+        # Load meta file to get samples path and labels
+        samples, labels = self.load_meta_data(path)
         data = []
         labels = []
         for i, sample in enumerate(samples):
@@ -300,23 +289,103 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         return data, labels
 
 
+def dump_info(worker_idx, client_ids, dataset):
+    clients = []
+    start_time = time.time()
+    for i, client_id in enumerate(client_ids):
+        ds = SHAKESPEARE_LOADED(
+            root=Path("/datasets/FedScale/leaf_shakespeare"),
+            client_id=client_id,
+            dataset=dataset,
+        )
+        clients.append([client_id, len(ds)])
+        if i % 10 == 0:
+            log(
+                INFO,
+                f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}",
+            )
+    return clients
+
+
+def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+    log(INFO, f"Creating client data mapping for {dataset} dataset")
+
+    dataframe = pd.read_csv(
+        Path(f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}.csv"),
+        engine="pyarrow",
+        dtype=SHAKESPEARE_DTYPES,
+        names=list(SHAKESPEARE_DTYPES.keys()),
+        sep=",",
+        header=0,
+    )
+
+    pool_inputs = []
+    pool = Pool(n_jobs)
+    client_ids = pd.unique(dataframe["client_id"])
+    cnt = 0
+    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+        pool_inputs.append([cnt, client_ids[begin:end], dataset])
+        cnt += 1
+    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool.close()
+    pool.join()
+    log(INFO, f"Pool outputs length: {len(pool_outputs)}")
+    clients = []
+    [clients.extend(out) for out in pool_outputs]
+    log(INFO, f"Pool outputs concat length: {len(clients)}")
+
+    df = pd.DataFrame(clients, columns=["client_id", "samples"])
+    log(INFO, f"Dataframe: {df.head()}")
+    df.to_parquet(
+        f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}_clients_dict.parquet"
+    )
+    s_t = time.time()
+    df = pd.read_parquet(
+        f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}_clients_dict.parquet"
+    )
+    log(INFO, f"Dataframe: {df.head()}")
+    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    s_t = time.time()
+    samples = []
+    for i in client_ids:
+        samples.append(int(df[df["client_id"] == i]["samples"]))
+    log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
+
+
+def create_parquet_client_samples_map(dataset: str = "train"):
+    dataframe = pd.read_csv(
+        Path(f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}.csv"),
+        engine="pyarrow",
+        dtype=SHAKESPEARE_DTYPES,
+        names=list(SHAKESPEARE_DTYPES.keys()),
+        sep=",",
+        header=0,
+    )
+    Path(f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}").mkdir(
+        parents=True, exist_ok=True
+    )
+    client_ids = pd.unique(dataframe["client_id"])
+    for client_id in tqdm(client_ids):
+        if not Path(
+            f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}/{client_id}.parquet"
+        ).exists():
+            tmp: pd.DataFrame = dataframe[dataframe["client_id"] == client_id]
+            tmp.to_parquet(
+                f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}/{client_id}.parquet"
+            )
+
+
 if __name__ == "__main__":
-    # import sys
-    # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
-    import pandas as pd
     import time
-    from flwr.common.logger import log
     from logging import INFO
     from multiprocessing import Pool
-    import psutil
     from pathlib import Path
 
-    def chunks_idx(l, n):
-        d, r = divmod(len(l), n)
-        for i in range(n):
-            si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-            yield si, si + (d + 1 if i < r else d)
-    
+    import pandas as pd
+    import psutil
+    from flwr.common.logger import log
+    from tqdm import tqdm
+
     # Set the number of jobs
     n_jobs = 100
     try:
@@ -325,76 +394,12 @@ if __name__ == "__main__":
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
         n_jobs = cpus
-    
-    def dump_info(worker_idx, client_ids):
-        clients = []
-        start_time = time.time()
-        for i, client_id in enumerate(client_ids):
-            ds = SHAKESPEARE_LOADED(
-                root=Path("/datasets/FedScale/leaf_shakespeare"),
-                client_id=client_id,
-            )
-            clients.append([client_id, len(ds)])
-            if i % 10 == 0:
-                log(INFO,
-                    f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}"
-                )
-        return clients
-    
-    
-    dataframe = pd.read_csv(
-        Path("/datasets/FedScale/leaf_shakespeare/client_data_mapping/train.csv"),
-        engine="pyarrow", # NOSONAR
-        dtype=SHAKESPEARE_DTYPES,
-        names=list(SHAKESPEARE_DTYPES.keys()),
-        sep=",",
-        header=0,
-    )
-        
-    # Parallelise the tokenisation
-    pool_inputs = []
-    pool = Pool(n_jobs)
-    client_ids = pd.unique(dataframe["client_id"])
-    cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
-        pool_inputs.append(
-            [cnt, client_ids[begin:end]]
-        )
-        cnt += 1
-    pool_outputs = pool.starmap(dump_info, pool_inputs)
-    pool.close()
-    pool.join()
-    log(INFO,
-        f"Pool outputs length: {len(pool_outputs)}"
-    )
-    clients = []
-    [clients.extend(out) for out in pool_outputs]
-    log(INFO,
-        f"Pool outputs concat length: {len(clients)}"
-    )
-    
-    df = pd.DataFrame(clients, columns=["client_id", "samples"])
-    log(INFO,
-        f"Dataframe: {df.head()}"
-    )
-    df.to_parquet("/datasets/FedScale/leaf_shakespeare/client_data_mapping/clients_dict.parquet")
-    s_t = time.time()
-    df = pd.read_parquet("/datasets/FedScale/leaf_shakespeare/client_data_mapping/clients_dict.parquet")
-    log(INFO,
-        f"Dataframe: {df.head()}"
-    )
-    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
-    s_t = time.time()
-    samples = []
-    for i in client_ids:
-        try:
-            samples.append(int(df[df['client_id'] == i]['samples']))
-        except Exception as e:
-            log(INFO,
-                f"Exception in reading client with id {i}: {e}"
-            )
-            samples.append(0)
-    log(INFO,
-        f"Getting samples of clients from 0 to 100: {samples}"
-    )
-    log(INFO, f"Getting samples took {time.time()-s_t} seconds")
+
+    dataset = "train"
+
+    for dataset in ["train", "test"]:
+        create_parquet_client_samples_map(dataset=dataset)
+        if not Path(
+            f"/datasets/FedScale/leaf_shakespeare/clients_data_mapping/{dataset}_clients_dict.parquet"
+        ).exists():
+            create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)

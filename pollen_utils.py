@@ -249,13 +249,14 @@ def get_client_ds(
         )
         ds = TextDataset(
             model="albert-base-v2",
-            file_path=dataset_root / "reddit" / "reddit" / dataset,
+            root_dir=dataset_root / "reddit" / "reddit",
             tokenizer=tokenizer,
             examples=None,
             n_jobs=100,
             overwrite_cache=False,
             block_size=64,
             client_id=cid,
+            dataset=dataset,
         )
     elif name == "google_speech":
         ds = SPEECH(
@@ -329,7 +330,7 @@ def get_clients_population_dict(
     batch_size: int = 20,
 ) -> Dict[str, int]:
     dataframe = pd.read_parquet(
-        _get_dataset_root(name) / "client_data_mapping" / "clients_dict.parquet"
+        _get_dataset_root(name) / "client_data_mapping" / f"{dataset}_clients_dict.parquet"
     )
     dataframe = dataframe.set_index("client_id")
     dataframe.samples = dataframe.samples.astype(int)
