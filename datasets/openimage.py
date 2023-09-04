@@ -164,11 +164,11 @@ def dump_info(worker_idx, client_ids, dataset):
             dataset=dataset,
         )
         clients.append([client_id, len(ds)])
-        if i % 10 == 0:
-            log(
-                INFO,
-                f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}",
-            )
+        # if i % 10 == 0:
+        #     log(
+        #         INFO,
+        #         f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}",
+        #     )
     return clients
 
 
