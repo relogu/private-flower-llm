@@ -7,4 +7,7 @@ n_clients_per_round: 100
 batch_size: 20
 momentum: 0.0
 weight_decay: 1e-2
+block_size: 64
+model: albert-base-v2
+tokenizer: albert-base-v2
 is_fake: False
