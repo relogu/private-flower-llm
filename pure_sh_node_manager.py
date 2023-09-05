@@ -23,7 +23,7 @@ from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from resources_manager import Node, ResourcesMonitor, get_cpu_prop, get_cuda_prop
+from resources_manager import Node, DaemonResourcesMonitor, get_cpu_prop, get_cuda_prop
 from utils import get_parameters, partially_aggregate
 from virtual_client import VirtualClient
 
@@ -276,7 +276,8 @@ class NodeManager(fl.client.NumPyClient):
         # Launch monitor
         # TODO: Read the CUDA id from the devices
         if self.monitor is None:
-            self.monitor = ResourcesMonitor(gpu_id=0)
+            gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
+            self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
             self.monitor.start()
 
     def fit(self, parameters, config):
@@ -315,10 +316,6 @@ class NodeManager(fl.client.NumPyClient):
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
-
-        # Start workers
-        if config["server_round"] == 1:
-            self.start_workers(config)
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0

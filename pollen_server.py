@@ -77,6 +77,7 @@ class PollenServer(Server):
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
     ) -> None:
+        self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
         self.cids = cids
         self.client_fn = client_fn
@@ -165,6 +166,7 @@ class PollenServer(Server):
             "Connected node managers: %s",
             self.nodes_dict,
         )
+        log(INFO, "Start-up time for the server is %s", timeit.default_timer() - self.start_up_time)
         # Run federated learning for num_rounds
         log(INFO, "FL starting")
         start_time = timeit.default_timer()

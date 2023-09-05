@@ -3,11 +3,12 @@ local_epochs: 1
 flwr_address: "127.0.0.1:1042"
 ray_address: "localhost:8042"
 run_uuid: 0
+output_dir: "/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25"
 
 # Task
 defaults:
   - _self_
-  - task: "shakespeare_memory"
+  - task: "reddit"
 
 gen_num_total_virtual_clients:
   _target_: utils.shakespeare_gen_num_total_virtual_clients
