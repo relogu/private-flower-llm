@@ -59,8 +59,8 @@ class PollenClientManager(ClientManager):
         """
         return len(self.node_managers)
 
-    def wait_for(self, num_clients: int, timeout: int = 86400) -> bool:
-        """Wait until at least `num_clients` `NodeManager`s are available.
+    def wait_for_node_managers(self, num_node_managers: int, timeout: int = 86400) -> bool:
+        """Wait until at least `num_node_managers` `NodeManager`s are available.
 
         Blocks until the requested number of clients is available or until a
         timeout is reached. Current timeout default: 1 day.
@@ -69,7 +69,7 @@ class PollenClientManager(ClientManager):
 
         Parameters
         ----------
-        num_clients : int
+        num_node_managers : int
             The number of `NodeManager`s to wait for.
         timeout : int
             The time in seconds to wait for, defaults to 86400 (24h).
@@ -80,7 +80,31 @@ class PollenClientManager(ClientManager):
         """
         with self._cv:
             return self._cv.wait_for(
-                lambda: len(self.node_managers) >= num_clients, timeout=timeout
+                lambda: len(self.node_managers) >= num_node_managers, timeout=timeout
+            )
+
+    def wait_for(self, num_clients: int, timeout: int = 86400) -> bool:
+        """Wait until at least `num_clients` `ClientProxy`s are available.
+
+        Blocks until the requested number of clients is available or until a
+        timeout is reached. Current timeout default: 1 day.
+        NOTE: not changing the name of the parameters to prevent compatibility
+        issues.
+
+        Parameters
+        ----------
+        num_clients : int
+            The number of `ClientProxy`s to wait for.
+        timeout : int
+            The time in seconds to wait for, defaults to 86400 (24h).
+
+        Returns
+        -------
+        success : bool
+        """
+        with self._cv:
+            return self._cv.wait_for(
+                lambda: len(self.clients) >= num_clients, timeout=timeout
             )
 
     def register(self, client: ClientProxy) -> bool:

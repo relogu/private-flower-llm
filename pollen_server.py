@@ -133,7 +133,7 @@ class PollenServer(Server):
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
-        self._client_manager.wait_for(1)
+        self._client_manager.wait_for_node_managers(1)
         # Get the initial number of connected NodeManagers
         connected_node_managers: Dict[str, ClientProxy] = copy(
             self._client_manager.node_managers

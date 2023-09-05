@@ -132,17 +132,18 @@ class FedAvgReproducibleSampling(FedAvg):
         fit_ins = FitIns(parameters, config)
 
         # Sample clients
-        sample_size, _ = self.num_fit_clients(client_manager.num_available())
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        
+        # Wait for the minimum number of clients to be available
+        client_manager.wait_for(min_num_clients)
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
         sampled_virtual_cids = random.sample(
-            list(range(self.total_clients)), sample_size
+            list(client_manager.clients), sample_size
         )
-        # log(DEBUG, "Sampled virtual client ids: %s", sampled_virtual_cids)
-        # log(DEBUG, "Client manager's clients: %s", client_manager.clients)
 
         clients = [client_manager.clients[str(cid)] for cid in sampled_virtual_cids]
 
