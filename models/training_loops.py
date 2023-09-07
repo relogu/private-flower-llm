@@ -1,11 +1,12 @@
+from typing import Dict, Tuple
+
 import torch
+from flwr.common import Scalar
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
-from typing import Tuple, Dict
-from flwr.common import Scalar
 
 from datasets.nlp_util import mask_tokens
 
@@ -40,7 +41,7 @@ def reddit_training_loop(
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
     for _ in range(epochs):
-        current_loss = .0
+        current_loss = 0.0
         for data in trainloader:
             # TODO: handle steps instead of epochs ?
 
@@ -48,7 +49,10 @@ def reddit_training_loop(
             data: torch.Tensor = data.to(device=device)
             data, target = mask_tokens(
                 # TODO: Read the `mlm_probability` from the config
-                data, tokenizer, mlm_probability=0.15, device=device
+                data,
+                tokenizer,
+                mlm_probability=0.15,
+                device=device,
             )
             target = target.to(device=device)
 
@@ -61,7 +65,9 @@ def reddit_training_loop(
             output.loss.backward()
             optimizer.step()
     # TODO: Come up with train metrics for reddit
-    return net, {"train_loss": current_loss / len(trainloader),}
+    return net, {
+        "train_loss": current_loss / len(trainloader),
+    }
 
 
 def google_speech_training_loop(
@@ -105,6 +111,7 @@ def google_speech_training_loop(
         "accuracy": accuracy,
     }
 
+
 def general_training_loop(
     trainloader: DataLoader,
     net: Module,
@@ -124,7 +131,7 @@ def general_training_loop(
             # ========= Pre-processing + placement ===========
             data: torch.Tensor = batch[0]
             target: torch.Tensor = batch[1]
-            
+
             data = data.to(device=device)
             target = target.to(device=device)
             num_samples += len(target)
