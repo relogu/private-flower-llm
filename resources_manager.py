@@ -18,7 +18,9 @@ import torch
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar, log
 
-NVIDIA_SMI_GET_GPUS = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS_ALL = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = "nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
 
 
 def get_cuda_prop(
@@ -27,7 +29,7 @@ def get_cuda_prop(
     gpus_prop = {}
     # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
     # NOTE: This also solves the issue of the first round not using all the workers.
-    torch.multiprocessing.set_start_method("spawn")
+    torch.multiprocessing.set_start_method("spawn", force=True)
     p = ProcessPoolExecutor()
     monitors = {}
     clients = []
@@ -77,7 +79,7 @@ def get_cpu_prop(
     log(INFO, f"Collecting training statistics for CPU {cpu_type}.")
     # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
     # NOTE: This also solves the issue of the first round not using all the workers.
-    torch.multiprocessing.set_start_method("spawn")
+    torch.multiprocessing.set_start_method("spawn", force=True)
     p = ProcessPoolExecutor()
     future: Future = p.submit(client.fit, parameters=params, config=config)
     future.result()
@@ -206,7 +208,6 @@ class ResourcesMonitor(Thread):
         self.cpu_ram_available = 0.0
         self.do_run = True
         self.pid_ram_used = []
-        self.gpu_stats = []
         self.dead = False
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
@@ -221,7 +222,7 @@ class ResourcesMonitor(Thread):
             Tuple[float, float]: the total and allocated memory in MB.
         """
         output_to_list = lambda x: x.decode("ascii").split("\n")
-        command = NVIDIA_SMI_GET_GPUS + f" -i {self.gpu_id}"
+        command = NVIDIA_SMI_GET_GPUS_MEMORY_ONLY + f" -i {self.gpu_id}"
         try:
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
@@ -240,12 +241,11 @@ class ResourcesMonitor(Thread):
         #     current_gpu_stats,
         #     current_gpu_stats.split(","),
         # )
-        # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
-        self.gpu_stats.append(current_gpu_stats.split(","))
+        # NOTE: the ouput has the following values -- memory.total,memory.used,memory.free
         ret_val = (0.0, 0.0)
         try:
-            ret_val = float(current_gpu_stats.split(",")[3]), float(
-                current_gpu_stats.split(",")[4]
+            ret_val = float(current_gpu_stats.split(",")[0]), float(
+                current_gpu_stats.split(",")[1]
             )
         except:
             log(
@@ -315,23 +315,18 @@ class DaemonResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_ids: List[int],
-        # list_pids: List[int] = [],
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
         self.frequency = frequency
         self.gpu_ids = gpu_ids
-        # self.list_pids = list_pids
-        # self.cpu_ram_total = 0.0
-        # self.cpu_ram_available = 0.0
         self.do_run = True
-        # self.pid_ram_used = []
         self.gpu_stats = []
 
     def _get_gpu_stats(self):
         
         output_to_list = lambda x: bytes(x).decode("ascii").split("\n")
-        command = NVIDIA_SMI_GET_GPUS + f" -i {','.join(self.gpu_ids)}"
+        command = NVIDIA_SMI_GET_GPUS_ALL + f" -i {','.join(self.gpu_ids)}"
         try:
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
@@ -348,13 +343,6 @@ class DaemonResourcesMonitor(Thread):
     def _update_max_values(self):
         while self.do_run:
             self._get_gpu_stats()
-            # self.cpu_ram_total = psutil.virtual_memory().total
-            # self.cpu_ram_available = (
-            #     psutil.virtual_memory().total - psutil.virtual_memory().used
-            # )
-            # self.pid_ram_used = [
-            #     psutil.Process(pid).memory_info().vms for pid in self.list_pids
-            # ]
             time.sleep(self.frequency)
 
     def run(self):
