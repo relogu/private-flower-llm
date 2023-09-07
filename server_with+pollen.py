@@ -3,6 +3,7 @@ from pathlib import Path
 
 import flwr as fl
 import hydra
+import transformers
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -15,6 +16,8 @@ from pollen_utils import get_clients_population_dict
 from rs_fedavg import FedAvgRSModel
 from utils import weighted_average
 from virtual_client import VirtualClient
+
+transformers.logging.set_verbosity_error()
 
 
 # Define strategy
