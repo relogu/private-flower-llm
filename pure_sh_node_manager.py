@@ -1,3 +1,4 @@
+import os
 import pickle
 import time
 from collections import defaultdict
@@ -18,18 +19,24 @@ import hydra
 import multiprocess as mp
 import nvsmi
 import psutil
+import pynvml
 from flwr.common import Config, NDArrays, Scalar
 from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from resources_manager import Node, DaemonResourcesMonitor, get_cpu_prop, get_cuda_prop
+from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cuda_prop
 from utils import get_parameters, partially_aggregate
 from virtual_client import VirtualClient
 
 mp.set_start_method("spawn", force=True)
+import gc
+
 import numpy as np
 import torch
+import transformers
+
+transformers.logging.set_verbosity_error()
 
 POLLEN_CONFIG_SHM = "pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
@@ -85,6 +92,7 @@ class Worker(mp.Process):
         task_queue: mp.Queue,
         result_queue: mp.Queue,
         run_uuid: str,
+        concurrency: int,
     ):
         super(Worker, self).__init__()
         self.worker_id = worker_id
@@ -95,29 +103,27 @@ class Worker(mp.Process):
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.config_shm = SharedMemory(name=self.run_uuid + POLLEN_CONFIG_SHM)
-        tmp_client = client_fn(client_id=0)
+        self.concurrency = concurrency
 
         # Allocate shared memory for fit parameters
-        self.round_params, self.round_num_samples, self.round_shm = allocate_shm(
-            parameters=tmp_client.get_parameters({}),
-            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
-        )
+        self.round_params, self.round_num_samples, self.round_shm = None, None, None
 
     def process_task(self, client_id: int):
         # Take the timestamp before training a single client
         start_time = time.time_ns()
-        config = pickle.loads(self.config_shm.buf)  # Loads a dict
+        # Loads a dict from the shared memory buffer
+        config = pickle.loads(self.config_shm.buf)
         config["device"] = self.device
 
-        # Load model from shared memory
+        # Load client
         tmp_client = self.client_fn(client_id=client_id)
 
-        # Load client and call fit on shared parameters
+        # Call fit on shared parameters
         fit_trained_weights, fit_num_samples, _ = tmp_client.fit(
             self.round_params, config
         )
 
-        # if new round, then copy result to shared memory directly
+        # If new round, then copy result to shared memory directly
         if config["server_round"] > self.current_round:
             self.current_round = config["server_round"]
             copy_params_to_shm(fit_trained_weights, fit_num_samples, self.worker_id)
@@ -125,7 +131,7 @@ class Worker(mp.Process):
         else:  # partially aggregate #FIX
             # Existing
             params_shm, num_samples_shm, _ = allocate_shm(
-                fit_trained_weights, create=False, name=self.worker_id
+                fit_trained_weights, name=self.worker_id
             )
             tmp_part_agg_params, tmp_part_agg_num_samples = partially_aggregate(
                 (params_shm, num_samples_shm[0]),
@@ -139,8 +145,28 @@ class Worker(mp.Process):
         # Take the timestamp after the task is done
         end_time = time.time_ns()
         self.result_queue.put([int(client_id), start_time, end_time])
+        # NOTE: PyTorch's memory management works bad with multiprocessing. In our case, it might happen that each process eagerly allocates more MBs of memory on the same VRAM at the same w/o cleaning the cache because each of them thinks that it is the only one using the GPU. We need to clean the cache manually to prevent this, i.e. call `torch.cuda.empty_cache()`. When to call it is a trade-off between performance and memory usage because cleaning the cache is time expensive (for Reddit it costs ~15 seconds, quick took ~333s slow took ~348s in 10 rounds, 100 clients/round, 1 A40). We call it after each client, but it might be better to call it after each round.
+        for dev_id in range(pynvml.nvmlDeviceGetCount()):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
+            for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+                if os.getpid() == proc.pid:
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                    if proc.usedGpuMemory > mem.total / self.concurrency:
+                        torch.cuda.empty_cache()
+                        gc.collect()
 
     def run(self):
+        # Allocate shared memory for fit parameters.
+        # NOTE: This goes here because it needs to be done in the child process!
+        # This is the first piece of code of the worker that live in the child
+        # process, the `__init__()` function does not.
+        self.round_params, self.round_num_samples, self.round_shm = allocate_shm(
+            parameters=self.client_fn(0).get_parameters({}),
+            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
+        )
+        # NOTE: This is for controlling the GPU memory allocation
+        pynvml.nvmlInit()
+
         for task in iter(self.task_queue.get, None):
             self.process_task(task)
         self.result_queue.put([-1, 0, 0])
@@ -189,7 +215,6 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = self.get_node_properties()
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
-        # max_proc_device = [("cuda:0", 1)]
         log(DEBUG, f"Node {self.name} has max_proc_device {max_proc_device}")
 
         # Allocate shared memory for partial aggregation
@@ -215,6 +240,7 @@ class NodeManager(fl.client.NumPyClient):
                         task_queue=self.task_queues[device],
                         result_queue=self.result_queue,
                         run_uuid=self.run_uuid,
+                        concurrency=num_proc,
                     )
                 )
                 worker_cnt += 1
@@ -274,7 +300,6 @@ class NodeManager(fl.client.NumPyClient):
                 if not worker.is_alive():
                     worker.start()
         # Launch monitor
-        # TODO: Read the CUDA id from the devices
         if self.monitor is None:
             gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
             self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
@@ -284,7 +309,18 @@ class NodeManager(fl.client.NumPyClient):
         # Send config and parameters to shared memory
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
-        copy_params_to_shm(parameters, 0, self.run_uuid + POLLEN_PARAMETERS_SHM)
+        # NOTE: These two solutions are equivalent, the first is more general
+        # but might be slightly slower
+        # Solution 1
+        copy_params_to_shm(
+            parameters,
+            0,
+            self.run_uuid + POLLEN_PARAMETERS_SHM,
+        )
+        # # Solution 2
+        # for i in range(len(parameters)):
+        #     self.round_parameters[i][:] = parameters[i][:]
+        # self.round_num_samples[0] = 0
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
