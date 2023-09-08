@@ -145,18 +145,8 @@ class FedAvgReproducibleSampling(FedAvg):
             list(client_manager.clients), sample_size
         )
 
-        try:
-            clients = [client_manager.clients[str(cid)] for cid in sampled_virtual_cids]
-        except KeyError:
-            log(
-                DEBUG,
-                "Failed to sample %s clients from %s available clients",
-                sample_size,
-                client_manager.num_available(),
-            )
-            clients = client_manager.sample(
-                sample_size, min_num_clients=min_num_clients
-            )
+        # Get the actual clients from the client manager
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
