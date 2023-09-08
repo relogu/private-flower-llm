@@ -130,10 +130,12 @@ class FedAvgReproducibleSampling(FedAvg):
             # Custom fit config function provided
             config = self.on_fit_config_fn(server_round)
         fit_ins = FitIns(parameters, config)
-        
+
         # Sample clients
-        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
-        
+        sample_size, min_num_clients = self.num_fit_clients(
+            client_manager.num_available()
+        )
+
         # Wait for the minimum number of clients to be available
         client_manager.wait_for(sample_size)
 
@@ -141,9 +143,7 @@ class FedAvgReproducibleSampling(FedAvg):
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(
-            list(client_manager.clients), sample_size
-        )
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
 
         # Get the actual clients from the client manager
         clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
