@@ -78,6 +78,7 @@ def main(cfg: DictConfig) -> None:
             strategy=strategy,
             client_manager=PollenClientManager(),
             placement_policy="rr",
+            saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
         ),
         config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
     )
