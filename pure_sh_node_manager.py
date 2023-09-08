@@ -19,12 +19,14 @@ import hydra
 import multiprocess as mp
 import nvsmi
 import psutil
+import pyarrow as pa
 import pynvml
 from flwr.common import Config, NDArrays, Scalar
 from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
+from pollen_utils import get_pyarrow_buffer_from_table
 from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cuda_prop
 from utils import get_parameters, partially_aggregate
 from virtual_client import VirtualClient
@@ -355,20 +357,24 @@ class NodeManager(fl.client.NumPyClient):
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
-        stats = []
+        stats = defaultdict(list)
         while num_processed_virtual_clients < num_total_virtual_clients:
             # This call is blocking and it will return the statistics
             # about client's training put in the queue by the Worker
             current_stats = self.result_queue.get()
             # NOTE: Added to be compatible with the termination task's
-            # return value ([-1, 0, 0])
+            # return value, i.e. `[-1, 0, 0]`
             if current_stats[0] > -1:
-                stats.append(current_stats)
+                stats["cid"].append(current_stats[0])
+                stats["start_time"].append(current_stats[1])
+                stats["end_time"].append(current_stats[2])
             num_processed_virtual_clients += 1
-        # Collect statistics
-        gpu_stats = self.monitor.gpu_stats
-        self.monitor.gpu_stats = []
-
+        # Collect statistics to pyarrow.Table
+        gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
+        clients_training_stats = pa.Table.from_pydict(stats)
+        # Prepare statistics to be sent to the server
+        gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
+        clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         # Aggregate partially aggregated results from workers (if possible)
         # Aggregate only valid num_samples>0 or risk div 0
         node_part_agg = (None, 0)
@@ -381,7 +387,11 @@ class NodeManager(fl.client.NumPyClient):
         return (
             node_part_agg[0],
             int(node_part_agg[1]),
-            {"accuracy": 0.0, "stats": str(stats), "gpu_stats": str(gpu_stats)},
+            {
+                "accuracy": 0.0,
+                "stats": clients_training_buf.to_pybytes(),
+                "gpu_stats": gpu_buf.to_pybytes(),
+            },
         )
 
     def evaluate(self, parameters, config):
