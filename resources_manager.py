@@ -11,6 +11,10 @@ from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
 from typing import Dict, List, Tuple
+import pyarrow as pa
+from pyarrow import csv
+import io
+
 
 import nvsmi
 import psutil
@@ -19,7 +23,8 @@ from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar, log
 
 NVIDIA_SMI_GET_GPUS_ALL = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
-NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
+# NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,nounits"
 NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = "nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
 
 
@@ -325,12 +330,12 @@ class DaemonResourcesMonitor(Thread):
 
     def _get_gpu_stats(self):
         
-        output_to_list = lambda x: bytes(x).decode("ascii").split("\n")
-        command = NVIDIA_SMI_GET_GPUS_ALL + f" -i {','.join(self.gpu_ids)}"
+        output_to_list = lambda x: bytes(x)
+        command = NVIDIA_SMI_GET_GPUS_STATS + f" -i {','.join(self.gpu_ids)}"
         try:
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
-            )[:-1]
+            )
         except sp.CalledProcessError as e:
             raise RuntimeError(
                 "DaemonResourcesMonitor: command '{}' return with error (code {}): {}".format(
@@ -338,7 +343,7 @@ class DaemonResourcesMonitor(Thread):
                 )
             )
         # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
-        [self.gpu_stats.append(c.split(" ,")) for c in current_gpu_stats]
+        self.gpu_stats.append(csv.read_csv(io.BytesIO(current_gpu_stats)))
 
     def _update_max_values(self):
         while self.do_run:
