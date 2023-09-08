@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import shlex
@@ -11,19 +12,15 @@ from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
 from typing import Dict, List, Tuple
-import pyarrow as pa
-from pyarrow import csv
-import io
-
 
 import nvsmi
 import psutil
 import torch
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar, log
+from pyarrow import csv
 
 NVIDIA_SMI_GET_GPUS_ALL = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
-# NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
 NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,nounits"
 NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = "nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
 
@@ -316,6 +313,7 @@ class ResourcesMonitor(Thread):
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
 
+
 class DaemonResourcesMonitor(Thread):
     def __init__(
         self,
@@ -329,7 +327,6 @@ class DaemonResourcesMonitor(Thread):
         self.gpu_stats = []
 
     def _get_gpu_stats(self):
-        
         output_to_list = lambda x: bytes(x)
         command = NVIDIA_SMI_GET_GPUS_STATS + f" -i {','.join(self.gpu_ids)}"
         try:
