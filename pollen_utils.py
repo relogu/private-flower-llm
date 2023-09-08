@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import torch
 from flwr.common.logger import log
 from flwr.common.typing import Metrics, NDArrays
@@ -54,6 +55,20 @@ def invert_one_to_many_dictionary(
         for w in v:
             output[w] = k
     return output
+
+
+def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
+    buffer = pa.BufferOutputStream()
+    with pa.ipc.new_file(buffer, table.schema) as writer:
+        writer.write_table(table)
+    return buffer.getvalue()
+
+
+def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
+    ret_table = None
+    with pa.ipc.open_file(buffer) as reader:
+        ret_table = reader.read_all()
+    return ret_table
 
 
 # Define metric aggregation function
