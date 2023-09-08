@@ -15,26 +15,19 @@
 """Flower Pollen server."""
 
 import concurrent.futures
+import os
 import sys
 import timeit
 from copy import copy, deepcopy
 from logging import DEBUG, ERROR, INFO
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from flwr.common import (
-    DisconnectRes,
-    EvaluateRes,
-    FitIns,
-    FitRes,
-    Parameters,
-    Scalar,
-)
+import pyarrow as pa
+import pyarrow.parquet as pq
+from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
-from flwr.common.typing import (
-    GetPropertiesIns,
-    GetPropertiesRes,
-    Properties,
-)
+from flwr.common.typing import GetPropertiesIns, GetPropertiesRes, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
@@ -56,6 +49,7 @@ ReconnectResultsAndFailures = Tuple[
 
 from placements import get_placement_fn
 from pollen_client_manager import PollenClientManager
+from pollen_utils import get_table_from_pyarrow_buffer
 from resources_manager import Node
 from utils import invert_many_to_one_dictionary
 
@@ -76,6 +70,7 @@ class PollenServer(Server):
         client_fn: Callable[[int], ClientProxy],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
+        saving_path: Path = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -93,6 +88,11 @@ class PollenServer(Server):
         ] = self.strategy.on_fit_config_fn
         self.max_workers: Optional[int] = None
         self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
+        if saving_path is None:
+            saving_path = Path(os.getcwd())
+        self.saving_path = saving_path
+        self.gpu_stats = None
+        self.clients_training_stats = None
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -129,7 +129,7 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            str(i): self.client_fn(k) for i, (k, _) in enumerate(self.cids.items())
+            i: self.client_fn(k) for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
@@ -154,19 +154,23 @@ class PollenServer(Server):
         log(
             INFO,
             "Get nodes properties: there are %s results and %s failures",
-            len(results), len(failures)
+            len(results),
+            len(failures),
         )
         # This is a dictionary of the form {"node_id": Node}
         self.nodes_dict = {
-            client_proxy.cid: (client_proxy, node)
-            for client_proxy, node in results
+            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
         }
         log(
             INFO,
             "Connected node managers: %s",
             self.nodes_dict,
         )
-        log(INFO, "Start-up time for the server is %s", timeit.default_timer() - self.start_up_time)
+        log(
+            INFO,
+            "Start-up time for the server is %s",
+            timeit.default_timer() - self.start_up_time,
+        )
         # Run federated learning for num_rounds
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
@@ -233,6 +237,15 @@ class PollenServer(Server):
                     history.add_metrics_distributed(
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
+
+        # Save the statistics to a parquet file
+        if self.gpu_stats is not None:
+            pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
+        if self.clients_training_stats is not None:
+            pq.write_table(
+                self.clients_training_stats,
+                self.saving_path / "clients_training_stats.parquet",
+            )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -317,7 +330,7 @@ class PollenServer(Server):
         )
 
         # TODO: Translate `client_instruction` to `node_instructions`
-        # NOTE: `node_instructions` must contain 
+        # NOTE: `node_instructions` must contain
         node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[client.cid])
@@ -337,7 +350,7 @@ class PollenServer(Server):
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
-            
+
             # # NOTE: This key is used only when the training policy of workers
             # # is not `sequential`, and for setting the `num_workers` parameter
             # # in the `DataLoader`
@@ -347,12 +360,14 @@ class PollenServer(Server):
             #     node_fit_config["n_workers"] = 1
             # # TODO/FIXME: Set the level of concurrency
             # node_fit_config["concurrency"] = 1
-            
+
             # TODO/FIXME: Assign `cids`
             node_fit_config.update(device_assignment)
-            
+
             # Append instruction
-            node_instructions.append((client_proxy, FitIns(self.parameters, node_fit_config)))
+            node_instructions.append(
+                (client_proxy, FitIns(self.parameters, node_fit_config))
+            )
 
         # log(
         #     DEBUG,
@@ -381,12 +396,31 @@ class PollenServer(Server):
             len(results),
             len(failures),
         )
-        
-        # TODO: Collect statistics that Pollen uses from the FitRes of the NodeManagers
-        pollen_statistics = {}
+
+        # Collect statistics that Pollen uses from the FitRes of the NodeManagers
+        received_clients_training_stats = []
+        received_gpu_stats = []
         for client, fit_res in results:
-            stats = fit_res.metrics.pop("stats")
-            gpu_stats = fit_res.metrics.pop("gpu_stats")
+            tmp_clients_training_stats = fit_res.metrics.pop("stats")
+            tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
+            received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
+            received_clients_training_stats.append(
+                get_table_from_pyarrow_buffer(tmp_clients_training_stats)
+            )
+
+        # Append the statistics to the global statistics
+        if self.gpu_stats is None:
+            self.gpu_stats = pa.concat_tables(received_gpu_stats)
+        else:
+            self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
+        if self.clients_training_stats is None:
+            self.clients_training_stats = pa.concat_tables(
+                received_clients_training_stats
+            )
+        else:
+            self.clients_training_stats = pa.concat_tables(
+                [self.clients_training_stats] + received_clients_training_stats
+            )
 
         # Aggregate training results
         aggregated_result: Tuple[
