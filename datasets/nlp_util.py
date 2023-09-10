@@ -261,7 +261,7 @@ def mask_tokens(
     tokenizer: PreTrainedTokenizer,
     mlm_probability: float,
     device: str = "cpu",
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original."""
     labels = inputs.clone().to(device=device)
     # We sample a few tokens in each sequence for masked-LM training (with probability mlm_probability defaults to 0.15 in Bert/RoBERTa)
@@ -298,7 +298,7 @@ def mask_tokens(
     inputs[bool_indices_random] = random_words[bool_indices_random]
 
     # The rest of the time (10% of the time) we keep the masked input tokens unchanged
-    return inputs, labels
+    return inputs, labels, masked_indices
 
 
 def dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
