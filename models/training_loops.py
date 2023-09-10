@@ -42,12 +42,14 @@ def reddit_training_loop(
 ) -> Tuple[Module, Dict[str, Scalar]]:
     for _ in range(epochs):
         current_loss = 0.0
+        num_masked = 0
+        num_correct = 0
         for data in trainloader:
             # TODO: handle steps instead of epochs ?
 
             # ========= Pre-processing + placement ===========
             data: torch.Tensor = data.to(device=device)
-            data, target = mask_tokens(
+            data, target, masked_indices = mask_tokens(
                 # TODO: Read the `mlm_probability` from the config
                 data,
                 tokenizer,
@@ -55,18 +57,29 @@ def reddit_training_loop(
                 device=device,
             )
             target = target.to(device=device)
+            num_masked += len(target[masked_indices])
 
             # ========= Define the forward pass ==============
             output: MaskedLMOutput = net(input_ids=data, labels=target)
             current_loss += output.loss.item()
+            predictions = output.logits.max(2)[1]
+            # Only computing accuracy on the masked tokens
+            num_correct += (
+                (predictions[masked_indices] == data[masked_indices])
+                .clone()
+                .detach()
+                .sum()
+                .item()
+            )
 
             # ========= Define the backward pass ==============
             optimizer.zero_grad()
             output.loss.backward()
             optimizer.step()
-    # TODO: Come up with train metrics for reddit
+        accuracy = num_correct / num_masked
     return net, {
         "train_loss": current_loss / len(trainloader),
+        "accuracy": accuracy,
     }
 
 
