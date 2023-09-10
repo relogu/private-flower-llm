@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Tuple
 import pandas as pd
 import torch
 from flwr.common import Metrics, NDArrays, Scalar
-from flwr.server.strategy.aggregate import aggregate
+from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
 from datasets.shakespeare import SHAKESPEARE_DTYPES
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
@@ -34,6 +34,24 @@ def partially_aggregate(
         updated_agg = aggregate([current_agg, new_results])
         total_num_examples = current_agg[1] + new_results[1]
     return updated_agg, total_num_examples
+
+
+def partially_aggregate_with_metrics(
+    current_agg: Tuple[NDArrays, int, float, float], new_results: Tuple[NDArrays, int, float, float]
+) -> Tuple[NDArrays, int, float, float]:
+    """Partially aggregate parameters."""
+    updated_agg = None
+    if (current_agg[0] is None) or (current_agg[1] == 0):  # first time
+        updated_agg = new_results[0]
+        total_num_examples = new_results[1]
+        train_loss = new_results[2]
+        train_accuracy = new_results[3]
+    else:
+        updated_agg = aggregate([current_agg[:2], new_results[:2]])
+        total_num_examples = current_agg[1] + new_results[1]
+        train_loss = weighted_loss_avg([(current_agg[1], current_agg[2]), (new_results[1], new_results[2])])
+        train_accuracy = weighted_loss_avg([(current_agg[1], current_agg[3]), (new_results[1], new_results[3])])
+    return updated_agg, total_num_examples, train_loss, train_accuracy
 
 
 #### Client ####
