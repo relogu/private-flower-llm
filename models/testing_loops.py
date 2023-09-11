@@ -2,12 +2,15 @@ from typing import List, Tuple
 
 import hydra
 import torch
+import transformers
 from omegaconf import DictConfig
-from torch.autograd import Variable
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AlbertTokenizer
+from transformers.modeling_outputs import MaskedLMOutput
+
+transformers.logging.set_verbosity_error()
 
 from datasets.nlp_util import mask_tokens
 from pollen_utils import get_client_ds
@@ -29,37 +32,33 @@ def reddit_testing_loop(
     tokenizer: AlbertTokenizer,
     **kwargs,
 ):
-    test_loss = 0
-    correct = 0
-    top_5 = 0
-
+    test_loss = 0.0
     test_len = 0
-    perplexity_loss = 0.0
+    num_masked = 0
+    num_correct = 0
 
     net.eval()
     with torch.no_grad():
         for data in tqdm(testloader):
             try:
-                data, target = mask_tokens(
+                data: torch.Tensor = data.to(device=device)
+                data, target, masked_indices = mask_tokens(
                     data, tokenizer, mlm_probability=0.15, device=device
                 )
-                data, target = Variable(data).to(device=device), Variable(target).to(
-                    device=device
+                target = target.to(device=device)
+                num_masked += len(target[masked_indices])
+
+                output: MaskedLMOutput = net(input_ids=data, labels=target)
+                test_loss += output.loss.item()
+                predictions = output.logits.max(2)[1]
+                # Only computing accuracy on the masked tokens
+                num_correct += (
+                    (predictions[masked_indices] == data[masked_indices])
+                    .clone()
+                    .detach()
+                    .sum()
+                    .item()
                 )
-
-                outputs = net(data, labels=target)
-
-                loss: torch.Tensor = outputs[0]
-                test_loss += loss.item()
-                perplexity_loss += loss.item()
-
-                acc = accuracy(
-                    outputs[1].reshape(-1, outputs[1].shape[2]),
-                    target.reshape(-1),
-                    topk=(1, 5),
-                )
-
-                correct += acc[0].item()
 
             except Exception as ex:
                 print(f"Testing failed as {ex}")
@@ -67,27 +66,14 @@ def reddit_testing_loop(
             test_len += len(target)
 
         test_len = max(test_len, 1)
-        # loss function averages over batch size
+        # Test loss averages over number of batches
         test_loss /= len(testloader)
-        perplexity_loss /= len(testloader)
-
-        sum_loss = test_loss * test_len
-
-        # in NLP, we care about the perplexity of the model
-        acc = round(correct / test_len, 4)
-        acc_5 = round(top_5 / test_len, 4)
         test_loss = round(test_loss, 4)
+        # Accuracy averages over number of masked tokens
+        accuracy = round(num_correct / num_masked, 4)
+        test_metrics = {"accuracy": accuracy}
 
-        testRes = {
-            "acc": acc,
-            "acc_5": acc_5,
-            "top_1": correct,
-            "top_5": top_5,
-            "perplexity_loss": perplexity_loss,
-            "sum_test_loss": sum_loss,
-        }
-
-    return test_loss, test_len, testRes
+    return test_loss, test_len, test_metrics
 
 
 def google_speech_testing_loop(
@@ -98,45 +84,39 @@ def google_speech_testing_loop(
     **kwargs,
 ):
     test_loss = 0
-    acc_top_1 = 0
-    acc_top_5 = 0
     test_len = 0
+    num_correct = 0
 
     net.eval()
     with torch.no_grad():
         for data, target in tqdm(testloader):
             try:
-                data, target = Variable(data).to(device=device), Variable(target).to(
-                    device=device
-                )
+                data: torch.Tensor = data.to(device=device)
                 data = torch.unsqueeze(data, 1)
+                target: torch.Tensor = target.to(device=device)
+                test_len += len(target)
 
-                output = net(data)
+                output: torch.Tensor = net(data)
+                num_correct += (
+                    (output.max(1)[1] == target).clone().detach().sum().item()
+                )
 
                 loss: torch.Tensor = criterion(output, target)
                 test_loss += loss.item()
-                acc = accuracy(output, target, topk=(1, 5))
-
-                acc_top_1 += acc[0].item()
-                acc_top_5 += acc[1].item()
-
             except Exception as ex:
                 print(f"Testing failed as {ex}")
                 break
-            test_len += len(target)
 
         # Number of test samples
         test_len = max(test_len, 1)
         # Test loss averages over number of batches
         test_loss /= len(testloader)
-        # Accuracy averages over number of batches
-        acc_top_1 = round(acc_top_1 / test_len, 4)
-        acc_top_5 = round(acc_top_5 / test_len, 4)
         test_loss = round(test_loss, 4)
+        # Accuracy averages over number of samples
+        accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "acc_top_1": acc_top_1,
-            "acc_top_5": acc_top_5,
+            "accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -150,44 +130,37 @@ def general_testing_loop(
     **kwargs,
 ):
     test_loss = 0
-    acc_top_1 = 0
-    acc_top_5 = 0
     test_len = 0
+    num_correct = 0
 
     net.eval()
     with torch.no_grad():
         for data, target in tqdm(testloader):
             try:
-                data, target = Variable(data).to(device=device), Variable(target).to(
-                    device=device
+                data: torch.Tensor = data.to(device=device)
+                target: torch.Tensor = target.to(device=device)
+                test_len += len(target)
+
+                output: torch.Tensor = net(data)
+                num_correct += (
+                    (output.max(1)[1] == target).clone().detach().sum().item()
                 )
-
-                output = net(data)
-
                 loss: torch.Tensor = criterion(output, target)
                 test_loss += loss.item()
-                acc = accuracy(output, target, topk=(1, 5))
-
-                acc_top_1 += acc[0].item()
-                acc_top_5 += acc[1].item()
-
             except Exception as ex:
                 print(f"Testing failed as {ex}")
                 break
-            test_len += len(target)
 
         # Number of test samples
         test_len = max(test_len, 1)
         # Test loss averages over number of batches
         test_loss /= len(testloader)
-        # Accuracy averages over number of batches
-        acc_top_1 = round(acc_top_1 / test_len, 4)
-        acc_top_5 = round(acc_top_5 / test_len, 4)
         test_loss = round(test_loss, 4)
+        # Accuracy averages over number of samples
+        accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "acc_top_1": acc_top_1,
-            "acc_top_5": acc_top_5,
+            "accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -222,25 +195,32 @@ def tmp_fn(name, cids, dataset):
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25" task="reddit"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-16" task="google_speech"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-03" task="openimage"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-19-57" task="shakespeare_memory"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-06/10-59-14" task="reddit"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-53-45" task="google_speech"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-53-11" task="openimage"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-52-53" task="shakespeare_memory"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-52-57" task="shakespeare_memory"
     import pickle
     from collections import OrderedDict
     from logging import INFO
     from multiprocessing import Pool
     from pathlib import Path
 
+    import numpy as np
     import psutil
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
     from flwr.common.typing import NDArrays
     from torch.utils.data import ConcatDataset
+    from transformers import AlbertForMaskedLM
 
-    from pollen_utils import get_clients_population_dict, get_model
+    from datasets.nlp_util import get_collate_fn
+    from pollen_utils import get_clients_population_dict, get_device, get_model
 
-    def set_parameters(parameters: NDArrays, net: Module = None, device="cuda"):
+    # device = "cpu"
+    device = get_device()
+
+    def set_parameters(parameters: NDArrays, net: Module = None, device=device):
         if net is None:
             net = get_model(name=cfg.task.name)
         net.eval()
@@ -283,7 +263,7 @@ def main(cfg: DictConfig) -> None:
     clients_test_sets = []
     pool_inputs = []
     pool = Pool(n_jobs)
-    client_ids = list(cid_samples_dict.keys())
+    client_ids = list(cid_samples_dict.keys())[:10]
     for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
         pool_inputs.append([cfg.task.name, client_ids[begin:end], "test"])
     pool_outputs = pool.starmap(tmp_fn, pool_inputs)
@@ -295,29 +275,40 @@ def main(cfg: DictConfig) -> None:
     testset = ConcatDataset(clients_test_sets)
     log(INFO, f"Test set size: {len(testset)}")
     # Instantiate the test loader
+    # NOTE: This batch sizes are estimated to fill the VRAM
+    # or maximise the utilisations of a single 2080
     batch_sizes = {
-        "reddit": 20,
+        "reddit": 256,
         "google_speech": 512,
         "openimage": 1024,
         "shakespeare_memory": 256,
     }
     testloader = DataLoader(
-        testset, batch_size=batch_sizes[cfg.task.name], shuffle=False, pin_memory=True
+        testset,
+        batch_size=batch_sizes[cfg.task.name],
+        shuffle=False,
+        pin_memory=True,
+        collate_fn=get_collate_fn(tokenizer=tokenizer)
+        if tokenizer is not None
+        else None,
     )
     # Create results .csv file
     results_file = root_dir / "offline_eval_results.csv"
+    net = None
     # Get the models' performance
     for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
         round = int(parameters_file.name.split("_")[-1])
         with open(parameters_file, "rb") as f:
             parameters: NDArrays = pickle.load(f)
-        net = set_parameters(parameters=parameters_to_ndarrays(parameters))
-        net.to(device="cuda")
+        net = set_parameters(
+            parameters=parameters_to_ndarrays(parameters), net=net, device=device
+        )
+        net.to(device=device)
         net.eval()
-        criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device="cuda")
+        criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
         test_res = test_loop(
             testloader=testloader,
-            device="cuda",
+            device=device,
             net=net,
             tokenizer=tokenizer,
             criterion=criterion,
@@ -334,6 +325,7 @@ def main(cfg: DictConfig) -> None:
             metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
             f.write(f"{round},{test_res[0]},{metrics}\n")
         log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
+        break
 
 
 if __name__ == "__main__":
