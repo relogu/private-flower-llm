@@ -22,13 +22,14 @@ import psutil
 import pyarrow as pa
 import pynvml
 from flwr.common import Config, NDArrays, Scalar
+from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from hydra.utils import call
 from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_utils import get_pyarrow_buffer_from_table
 from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cuda_prop
-from utils import get_parameters, partially_aggregate
+from utils import get_parameters, partially_aggregate_with_metrics
 from virtual_client import VirtualClient
 
 mp.set_start_method("spawn", force=True)
@@ -49,16 +50,17 @@ def allocate_shm(
     parameters: NDArrays,
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,
-) -> Tuple[NDArrays, np.ndarray, SharedMemory]:
+) -> Tuple[NDArrays, np.ndarray, np.ndarray, np.ndarray, SharedMemory]:
     # Allocate memory for parameters and num_samples
     nbytes_params = [val.nbytes for val in parameters]
     nbytes_int = np.dtype(np.int64).itemsize
+    nbytes_float = np.dtype(np.float64).itemsize
     array_bounds = [
         (sum(nbytes_params[:i]), sum(nbytes_params[: i + 1]))
         for i in range(len(nbytes_params))
     ]
     if create:
-        total_num_bytes = sum(nbytes_params) + nbytes_int
+        total_num_bytes = sum(nbytes_params) + nbytes_int + 2 * nbytes_float
         shm = SharedMemory(create=True, size=total_num_bytes, name=name)
         shm.buf[:] = b"\0" * shm.size
     else:
@@ -67,22 +69,39 @@ def allocate_shm(
         np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
         for x, y in zip(parameters, array_bounds)
     ]
-    # Create shared memory for num_samples
-    num_samples_sh = np.ndarray((1,), dtype=np.int64, buffer=shm.buf[-nbytes_int:])
-    return params_sh, num_samples_sh, shm
+    # Create shared memory for num_samples, train loss, and train accuracy
+    num_samples_sh = np.ndarray(
+        (1,),
+        dtype=np.int64,
+        buffer=shm.buf[-int(nbytes_int + 2 * nbytes_float) : -int(2 * nbytes_float)],
+    )
+    train_loss_sh = np.ndarray(
+        (1,), dtype=np.float64, buffer=shm.buf[-int(2 * nbytes_float) : -nbytes_float]
+    )
+    train_accuracy_sh = np.ndarray(
+        (1,), dtype=np.float64, buffer=shm.buf[-nbytes_float:]
+    )
+    return params_sh, num_samples_sh, train_loss_sh, train_accuracy_sh, shm
 
 
-def copy_params_to_shm(
-    parameters: NDArrays,
-    num_samples: int,
-    shm_name: str,
+def write_to_fit_result_shm(
+    buffer_backed_ndarrays: NDArrays,
+    buffer_backed_num_samples: np.ndarray,
+    buffer_backed_train_loss: np.ndarray,
+    buffer_backed_train_accuracy: np.ndarray,
+    new_ndarrays: NDArrays,
+    new_num_samples: int,
+    new_train_loss: float,
+    new_train_accuracy: float,
 ) -> None:
-    # Allocate memory for parameters and num_samples
-    nbytes_int = np.dtype(np.int64).itemsize
-    shm = SharedMemory(name=shm_name, create=False)
-    shm.buf[:-nbytes_int] = b"".join([a.tobytes() for a in parameters])
-    tmp_np = num_samples * np.ones((1,), dtype=np.int64)
-    shm.buf[-nbytes_int:] = tmp_np.tobytes()
+    for i in range(len(new_ndarrays)):
+        if len(new_ndarrays[i].shape) == 0:
+            buffer_backed_ndarrays[i] = new_ndarrays[i]
+        else:
+            buffer_backed_ndarrays[i][:] = new_ndarrays[i][:]
+    buffer_backed_num_samples[0] = new_num_samples
+    buffer_backed_train_loss[0] = new_train_loss
+    buffer_backed_train_accuracy[0] = new_train_accuracy
 
 
 class Worker(mp.Process):
@@ -104,11 +123,25 @@ class Worker(mp.Process):
         self.result_queue: mp.Queue = result_queue
         self.run_uuid = run_uuid
         self.current_round: int = 0
-        self.config_shm = SharedMemory(name=self.run_uuid + POLLEN_CONFIG_SHM)
         self.concurrency = concurrency
 
-        # Allocate shared memory for fit parameters
-        self.round_params, self.round_num_samples, self.round_shm = None, None, None
+        # Instatiate shared memories variables
+        self.config_shm = None
+        (
+            self.round_params,
+            self.round_num_samples,
+            self.round_shm,
+            self.round_train_loss,
+            self.round_train_acc,
+        ) = (None, None, None, None, None)
+        (
+            self.worker_params,
+            self.worker_num_samples,
+            self.worker_shm,
+            self.worker_train_loss,
+            self.worker_train_acc,
+        ) = (None, None, None, None, None)
+        self.test_params = None
 
     def process_task(self, client_id: int):
         # Take the timestamp before training a single client
@@ -121,28 +154,53 @@ class Worker(mp.Process):
         tmp_client = self.client_fn(client_id=client_id)
 
         # Call fit on shared parameters
-        fit_trained_weights, fit_num_samples, _ = tmp_client.fit(
+        fit_trained_weights, fit_num_samples, train_metrics = tmp_client.fit(
             self.round_params, config
         )
 
         # If new round, then copy result to shared memory directly
         if config["server_round"] > self.current_round:
             self.current_round = config["server_round"]
-            copy_params_to_shm(fit_trained_weights, fit_num_samples, self.worker_id)
-
-        else:  # partially aggregate #FIX
-            # Existing
-            params_shm, num_samples_shm, _ = allocate_shm(
-                fit_trained_weights, name=self.worker_id
+            write_to_fit_result_shm(
+                self.worker_params,
+                self.worker_num_samples,
+                self.worker_train_loss,
+                self.worker_train_acc,
+                fit_trained_weights,
+                fit_num_samples,
+                train_metrics["train_loss"],
+                train_metrics["accuracy"],
             )
-            tmp_part_agg_params, tmp_part_agg_num_samples = partially_aggregate(
-                (params_shm, num_samples_shm[0]),
-                (fit_trained_weights, fit_num_samples),
-            )
-            copy_params_to_shm(
+        # Partially aggregating fit results
+        else:
+            (
                 tmp_part_agg_params,
                 tmp_part_agg_num_samples,
-                self.worker_id,
+                tmp_part_agg_loss,
+                tmp_part_agg_acc,
+            ) = partially_aggregate_with_metrics(
+                (
+                    self.worker_params,
+                    self.worker_num_samples[0],
+                    self.worker_train_loss[0],
+                    self.worker_train_acc[0],
+                ),
+                (
+                    fit_trained_weights,
+                    fit_num_samples,
+                    train_metrics["train_loss"],
+                    train_metrics["accuracy"],
+                ),
+            )
+            write_to_fit_result_shm(
+                self.worker_params,
+                self.worker_num_samples,
+                self.worker_train_loss,
+                self.worker_train_acc,
+                tmp_part_agg_params,
+                tmp_part_agg_num_samples,
+                tmp_part_agg_loss,
+                tmp_part_agg_acc,
             )
         # Take the timestamp after the task is done
         end_time = time.time_ns()
@@ -158,19 +216,44 @@ class Worker(mp.Process):
                         gc.collect()
 
     def run(self):
-        # Allocate shared memory for fit parameters.
+        # Allocate shared memories.
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
         # process, the `__init__()` function does not.
-        self.round_params, self.round_num_samples, self.round_shm = allocate_shm(
+        # NOTE: This is the NodeManager's shared memory for the fit config
+        # dictionary. Workers should only read this. NodeManager should only
+        # write this.
+        self.config_shm = SharedMemory(name=self.run_uuid + POLLEN_CONFIG_SHM)
+        # NOTE: This is the NodeManager's shared memory for the fit results.
+        # Workers should only read this. NodeManager should only write this.
+        (
+            self.round_params,
+            self.round_num_samples,
+            self.round_train_loss,
+            self.round_train_acc,
+            self.round_shm,
+        ) = allocate_shm(
             parameters=self.client_fn(0).get_parameters({}),
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
+        # NOTE: This is the Worker's shared memory for the fit results.
+        # NodeManager should only read this. Worker should only write this.
+        (
+            self.worker_params,
+            self.worker_num_samples,
+            self.worker_train_loss,
+            self.worker_train_acc,
+            self.worker_shm,
+        ) = allocate_shm(
+            parameters=self.client_fn(0).get_parameters({}),
+            name=self.worker_id,
+        )
         # NOTE: This is for controlling the GPU memory allocation
         pynvml.nvmlInit()
-
+        # Task loop
         for task in iter(self.task_queue.get, None):
             self.process_task(task)
+        # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0])
         # Un-register shared memories
         # NOTE: Bug https://bugs.python.org/issue39959#msg364351
@@ -208,7 +291,13 @@ class NodeManager(fl.client.NumPyClient):
         # Allocate shared memory for round parameters
         self.client_fn: Callable[[int], NumPyClient] = client_fn
         tmp_client: VirtualClient = client_fn(client_id=0)
-        self.round_parameters, self.round_num_samples, self.round_shm = allocate_shm(
+        (
+            self.round_parameters,
+            self.round_num_samples,
+            self.round_train_loss,
+            self.round_train_acc,
+            self.round_shm,
+        ) = allocate_shm(
             tmp_client.get_parameters({}),
             create=True,
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
@@ -217,6 +306,7 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = self.get_node_properties()
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
+        # max_proc_device = [('cuda:0', 1)]
         log(DEBUG, f"Node {self.name} has max_proc_device {max_proc_device}")
 
         # Allocate shared memory for partial aggregation
@@ -227,13 +317,19 @@ class NodeManager(fl.client.NumPyClient):
         for device, num_proc in max_proc_device:
             for _ in range(num_proc):
                 worker_id = self.run_uuid + POLLEN_WORKER_SHM + f"{worker_cnt}"
-                params, num_samples, shm = allocate_shm(
+                params, num_samples, train_loss, train_acc, shm = allocate_shm(
                     tmp_client.get_parameters({}),
                     create=True,
                     name=worker_id,
                 )
                 num_samples[0] = 0
-                self.shared_local_agg[worker_id] = [params, num_samples, shm]
+                self.shared_local_agg[worker_id] = [
+                    params,
+                    num_samples,
+                    train_loss,
+                    train_acc,
+                    shm,
+                ]
                 self.workers[device].append(
                     Worker(
                         client_fn=client_fn,
@@ -308,21 +404,19 @@ class NodeManager(fl.client.NumPyClient):
             self.monitor.start()
 
     def fit(self, parameters, config):
-        # Send config and parameters to shared memory
+        # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
-        # NOTE: These two solutions are equivalent, the first is more general
-        # but might be slightly slower
-        # Solution 1
-        copy_params_to_shm(
+        write_to_fit_result_shm(
+            self.round_parameters,
+            self.round_num_samples,
+            self.round_train_loss,
+            self.round_train_acc,
             parameters,
             0,
-            self.run_uuid + POLLEN_PARAMETERS_SHM,
+            0.0,
+            0.0,
         )
-        # # Solution 2
-        # for i in range(len(parameters)):
-        #     self.round_parameters[i][:] = parameters[i][:]
-        # self.round_num_samples[0] = 0
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
@@ -343,8 +437,8 @@ class NodeManager(fl.client.NumPyClient):
                     for i, worker in enumerate(self.workers[device]):
                         if not worker.is_alive():
                             # Close and unlink the shared memory
-                            self.shared_local_agg[worker.worker_id][2].close()
-                            self.shared_local_agg[worker.worker_id][2].unlink()
+                            self.shared_local_agg[worker.worker_id][4].close()
+                            self.shared_local_agg[worker.worker_id][4].unlink()
                             # Remove the shared memory from the dict
                             del self.shared_local_agg[worker.worker_id]
                             # Remove the worker from the list
@@ -375,20 +469,26 @@ class NodeManager(fl.client.NumPyClient):
         # Prepare statistics to be sent to the server
         gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
-        # Aggregate partially aggregated results from workers (if possible)
-        # Aggregate only valid num_samples>0 or risk div 0
-        node_part_agg = (None, 0)
-        for w_params, w_num_samples_np, w_shm in self.shared_local_agg.values():
-            if w_num_samples_np[0] > 0:
-                node_part_agg = partially_aggregate(
-                    node_part_agg, (w_params, w_num_samples_np[0])
-                )
-            w_shm.buf[:] = b"\0" * w_shm.size
+        ## Node aggregation
+        node_trained_params = aggregate(
+            [(val[0], val[1][0]) for val in self.shared_local_agg.values()]
+        )
+        node_n_samples = sum([val[1][0] for val in self.shared_local_agg.values()])
+        node_train_loss = weighted_loss_avg(
+            [(val[1][0], val[2][0]) for val in self.shared_local_agg.values()]
+        )
+        node_accuracy = weighted_loss_avg(
+            [(val[1][0], val[3][0]) for val in self.shared_local_agg.values()]
+        )
+        # Reset shared memories
+        for val in self.shared_local_agg.values():
+            val[4].buf[:] = b"\0" * val[4].size
         return (
-            node_part_agg[0],
-            int(node_part_agg[1]),
+            node_trained_params,
+            int(node_n_samples),
             {
-                "accuracy": 0.0,
+                "train_loss": node_train_loss,
+                "accuracy": node_accuracy,
                 "stats": clients_training_buf.to_pybytes(),
                 "gpu_stats": gpu_buf.to_pybytes(),
             },
@@ -423,8 +523,8 @@ class NodeManager(fl.client.NumPyClient):
         self.config_shm.unlink()
         self.round_shm.unlink()
         for i, v in enumerate(self.shared_local_agg.values()):
-            v[2].close()
-            v[2].unlink()
+            v[4].close()
+            v[4].unlink()
         log(DEBUG, f"Shared memories closed")
 
 
