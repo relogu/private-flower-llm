@@ -4,6 +4,7 @@ from typing import Callable, Dict
 
 import flwr as fl
 import torch
+import transformers
 from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader
 
 from datasets.nlp_util import get_collate_fn
 from models.training_loops import get_input_shapes, get_training_loop
-from pollen_utils import get_client_ds, get_model, get_optimizer
+from pollen_utils import get_client_ds, get_device, get_model, get_optimizer
 
 
 class VirtualClient(fl.client.NumPyClient):
@@ -25,6 +26,7 @@ class VirtualClient(fl.client.NumPyClient):
     ):
         self.name = name
         self.cid = cid
+        transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualClient.__init__ :: cid {self.cid}')
 
     def __repr__(self) -> str:
@@ -105,11 +107,13 @@ class VirtualClient(fl.client.NumPyClient):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        # log(INFO, f'VirtualClient._train_loop :: finished training of cid {self.cid}')
+        log(INFO, f"VirtualClient._train_loop :: finished training of cid {self.cid}")
         return net
 
     def fit(self, parameters: NDArrays, config: Dict[str, Scalar]):
         # log(INFO, f'VirtualClient.fit :: {config}')
+        if "device" not in config:
+            config["device"] = get_device()
         # Load client's dataset
         ds, tokenizer = (
             get_client_ds(name=self.name, cid=self.cid)
@@ -124,17 +128,18 @@ class VirtualClient(fl.client.NumPyClient):
                 batch_size=config["batch_size"],
                 shuffle=False,
                 num_workers=config["n_workers"],
-                drop_last=True,
+                # NOTE: Prevent runtime error related to BatchNorm, apparently
+                drop_last=(self.name == "google_speech"),
                 pin_memory=True,  # copy Tensors into CUDA pinned memory before returning them
                 pin_memory_device=str(
                     config["device"]
                 ),  # the device to be used for pinning the memory
-                # NOTE: Default arguments
-                sampler=None,  # how to draw sample from the dataset
-                batch_sampler=None,  # like the above but for batches
                 collate_fn=get_collate_fn(tokenizer=tokenizer)
                 if tokenizer is not None
                 else None,  # builds batches from samples
+                # NOTE: Default arguments
+                sampler=None,  # how to draw sample from the dataset
+                batch_sampler=None,  # like the above but for batches
                 timeout=0,  # if positive, the timeout value for collecting a batch from workers
                 worker_init_fn=None,  # init function for worker processes
                 multiprocessing_context=None,
@@ -152,7 +157,7 @@ class VirtualClient(fl.client.NumPyClient):
             else len(ds)
         )
         # Initialize the model and set its parameters
-        net = self.set_parameters(parameters=parameters)
+        net = self.set_parameters(parameters=parameters, device=config["device"])
         net.to(device=config["device"])
         net.train()
         # Train the model
@@ -162,11 +167,10 @@ class VirtualClient(fl.client.NumPyClient):
             else self._train_loop
         )
         optimizer = get_optimizer(name=self.name, model=net)
-        criterion = torch.nn.CrossEntropyLoss(reduction="none").to(
+        criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(
             device=config["device"]
         )
-        # net = training_loop(
-        net = self._train_loop(
+        net, train_metrics = self._train_loop(
             trainloader=trainloader,
             net=net,
             device=config["device"],
@@ -176,7 +180,8 @@ class VirtualClient(fl.client.NumPyClient):
             criterion=criterion,
             batch_size=config["batch_size"],
         )
-        return self.get_parameters(config={}, net=net), n_samples, {}
+        # log(INFO, f"VirtualClient.fit :: train_metrics {train_metrics}")
+        return self.get_parameters(config={}, net=net), n_samples, train_metrics
 
     def evaluate(
         self,
@@ -196,7 +201,6 @@ def gen_client_fn(name: str = "openimage", **kwargs) -> Callable[[int], NumPyCli
 
 if __name__ == "__main__":
     log(INFO, "VirtualClient.__main__ :: testing VirtualClient")
-    from pollen_utils import get_device
 
     client = VirtualClient(
         name="openimage",

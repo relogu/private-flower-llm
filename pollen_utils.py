@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import torch
 from flwr.common.logger import log
 from flwr.common.typing import Metrics, NDArrays
@@ -54,6 +55,20 @@ def invert_one_to_many_dictionary(
         for w in v:
             output[w] = k
     return output
+
+
+def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
+    buffer = pa.BufferOutputStream()
+    with pa.ipc.new_file(buffer, table.schema) as writer:
+        writer.write_table(table)
+    return buffer.getvalue()
+
+
+def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
+    ret_table = None
+    with pa.ipc.open_file(buffer) as reader:
+        ret_table = reader.read_all()
+    return ret_table
 
 
 # Define metric aggregation function
@@ -208,18 +223,14 @@ def get_model(name: str) -> Module:
 
         model = ShakespeareLeafNet()
     elif name == "reddit":
-        from transformers import AutoConfig, AutoModelWithLMHead
+        from transformers import AlbertForMaskedLM
 
-        config = AutoConfig.from_pretrained(
-            Path("/datasets/FedScale/reddit/reddit/albert-base-v2-config.json")
-        )
-        model = AutoModelWithLMHead.from_config(config)
+        model = AlbertForMaskedLM.from_pretrained("albert-base-v2")
     elif name == "google_speech":
         from models.resnet_util import resnet34
 
         model = resnet34(num_classes=35, in_channels=1)
-    # elif name == "openimage":
-    else:
+    elif name == "openimage":
         from torchvision import models
 
         model = models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
@@ -244,9 +255,7 @@ def get_client_ds(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
     elif name == "reddit":
-        tokenizer = AlbertTokenizer.from_pretrained(
-            "albert-base-v2", do_lower_case=True
-        )
+        tokenizer = AlbertTokenizer.from_pretrained("albert-base-v2")
         ds = TextDataset(
             model="albert-base-v2",
             root_dir=dataset_root / "reddit" / "reddit",
@@ -330,7 +339,9 @@ def get_clients_population_dict(
     batch_size: int = 20,
 ) -> Dict[str, int]:
     dataframe = pd.read_parquet(
-        _get_dataset_root(name) / "client_data_mapping" / f"{dataset}_clients_dict.parquet"
+        _get_dataset_root(name)
+        / "client_data_mapping"
+        / f"{dataset}_clients_dict.parquet"
     )
     dataframe = dataframe.set_index("client_id")
     dataframe.samples = dataframe.samples.astype(int)

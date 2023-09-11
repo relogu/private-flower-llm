@@ -4,7 +4,7 @@ data_root: "/datasets/FedScale/leaf_shakespeare"
 learning_rate: 0.8
 num_rounds: 100
 n_clients_per_round: 10
-batch_size: 4
+batch_size: 10
 momentum: 0.9
 weight_decay: 5e-4
 is_fake: False
