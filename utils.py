@@ -1,6 +1,6 @@
+import time
 from collections import OrderedDict, defaultdict
 from pathlib import Path
-import time
 from typing import Callable, Dict, List, Tuple
 
 import pandas as pd
@@ -37,7 +37,8 @@ def partially_aggregate(
 
 
 def partially_aggregate_with_metrics(
-    current_agg: Tuple[NDArrays, int, float, float], new_results: Tuple[NDArrays, int, float, float]
+    current_agg: Tuple[NDArrays, int, float, float],
+    new_results: Tuple[NDArrays, int, float, float],
 ) -> Tuple[NDArrays, int, float, float]:
     """Partially aggregate parameters."""
     updated_agg = None
@@ -47,10 +48,16 @@ def partially_aggregate_with_metrics(
         train_loss = new_results[2]
         train_accuracy = new_results[3]
     else:
-        updated_agg = aggregate([current_agg[:2], new_results[:2]])
+        updated_agg = aggregate(
+            [(current_agg[0], current_agg[1]), (new_results[0], new_results[1])]
+        )
         total_num_examples = current_agg[1] + new_results[1]
-        train_loss = weighted_loss_avg([(current_agg[1], current_agg[2]), (new_results[1], new_results[2])])
-        train_accuracy = weighted_loss_avg([(current_agg[1], current_agg[3]), (new_results[1], new_results[3])])
+        train_loss = weighted_loss_avg(
+            [(current_agg[1], current_agg[2]), (new_results[1], new_results[2])]
+        )
+        train_accuracy = weighted_loss_avg(
+            [(current_agg[1], current_agg[3]), (new_results[1], new_results[3])]
+        )
     return updated_agg, total_num_examples, train_loss, train_accuracy
 
 
@@ -129,7 +136,12 @@ def invert_one_to_many_dictionary(
 
 
 def gen_on_fit_config_fn(
-    batch_size, local_epochs, learning_rate, momentum, weight_decay, is_fake,
+    batch_size,
+    local_epochs,
+    learning_rate,
+    momentum,
+    weight_decay,
+    is_fake,
 ) -> Callable[[int], Dict[str, Scalar]]:
     def on_fit_config_fn(server_round: int) -> Dict[str, Scalar]:
         """Return `Config` for fit/evaluate rounds."""
