@@ -4,6 +4,7 @@ from typing import Callable, Dict
 
 import flwr as fl
 import torch
+import transformers
 from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
@@ -25,6 +26,7 @@ class VirtualClient(fl.client.NumPyClient):
     ):
         self.name = name
         self.cid = cid
+        transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualClient.__init__ :: cid {self.cid}')
 
     def __repr__(self) -> str:
