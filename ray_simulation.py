@@ -13,11 +13,10 @@ import transformers
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
-from hydra.utils import call
+from hydra.utils import call, instantiate
 from omegaconf import DictConfig
 
 from pollen_utils import get_clients_population_dict
-from rs_fedavg import FedAvgReproducibleSampling
 from utils import weighted_average
 from virtual_client import VirtualClient
 
@@ -96,8 +95,10 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
     # configure the strategy
-    strategy = FedAvgReproducibleSampling(
-        total_clients=n_total_clients,
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    strategy = instantiate(
+        cfg.task.strategy,
+        saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
         min_fit_clients=2,
         fraction_evaluate=0.0,
         fraction_fit=n_clients_per_round / n_total_clients,
