@@ -49,7 +49,6 @@ class FedAvgReproducibleSampling(FedAvg):
     def __init__(
         self,
         *,
-        total_clients: int,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
@@ -69,7 +68,7 @@ class FedAvgReproducibleSampling(FedAvg):
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         seed: int = 1337,
     ) -> None:
-        """Federated Averaging strategy with fixed list of sampled clients.
+        """Federated Averaging strategy with reproducible sampling.
 
         Implementation based on https://arxiv.org/abs/1602.05629
 
@@ -103,6 +102,8 @@ class FedAvgReproducibleSampling(FedAvg):
             Metrics aggregation function, optional.
         evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
             Metrics aggregation function, optional.
+        seed : int, optional
+            Seed for reproducibility. Defaults to 1337.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -118,7 +119,6 @@ class FedAvgReproducibleSampling(FedAvg):
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
         )
-        self.total_clients = total_clients
         self.seed = seed
 
     def configure_fit(
@@ -160,7 +160,6 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
-        total_clients: int,
         saving_path: Path = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
@@ -181,7 +180,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         seed: int = 1337,
     ) -> None:
-        """Federated Averaging strategy with fixed list of sampled clients.
+        """Federated Averaging strategy with with reproducible sampling and model saving.
 
         Implementation based on https://arxiv.org/abs/1602.05629
 
@@ -215,6 +214,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
             Metrics aggregation function, optional.
+        seed : int, optional
+            Seed for reproducibility. Defaults to 1337.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -229,7 +230,6 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             initial_parameters=initial_parameters,
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-            total_clients=total_clients,
             seed=seed,
         )
         if saving_path is None:
