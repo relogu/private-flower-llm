@@ -10,4 +10,6 @@ weight_decay: 1e-2
 block_size: 64
 model: albert-base-v2
 tokenizer: albert-base-v2
+strategy:
+  _target_: rs_fedavg.FedAvgRSModel
 is_fake: False

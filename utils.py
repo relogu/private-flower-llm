@@ -75,7 +75,8 @@ def set_parameters(
     net: torch.nn.Module, parameters: NDArrays, device: str = "cpu"
 ) -> None:
     net.eval()
-    params_dict = zip(net.state_dict().keys(), parameters)
+    keys = [k for k in net.state_dict().keys() if "bn" not in k]
+    params_dict = zip(keys, parameters)
     state_dict = OrderedDict(
         {k: torch.tensor(v, device=device) for k, v in params_dict}
     )

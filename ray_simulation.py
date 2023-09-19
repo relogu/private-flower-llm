@@ -15,11 +15,14 @@ from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call
 from omegaconf import DictConfig, OmegaConf
-import wandb
 
 from pollen_utils import get_clients_population_dict
 from rs_fedavg import FedAvgRSModel
 from utils import RayContextManager, wandb_init, weighted_average
+from hydra.utils import call, instantiate
+
+from pollen_utils import get_clients_population_dict
+from utils import weighted_average
 from virtual_client import VirtualClient
 from wandb_history import WandbHistory
 from wandb_server import WandbServer
@@ -100,10 +103,10 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
     # configure the strategy
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get() # type: ignore
-    strategy = FedAvgRSModel(
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    strategy = instantiate(
+        cfg.task.strategy,
         saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
-        total_clients=n_total_clients,
         min_fit_clients=2,
         fraction_evaluate=0.0,
         fraction_fit=n_clients_per_round / n_total_clients,
