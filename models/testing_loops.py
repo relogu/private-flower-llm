@@ -197,9 +197,9 @@ def tmp_fn(name, cids, dataset):
 def main(cfg: DictConfig) -> None:
     # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-06/10-59-14" task="reddit"
     # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-53-45" task="google_speech"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-53-11" task="openimage"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-19/08-43-29" task="openimage"
     # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-52-53" task="shakespeare_memory"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-52-57" task="shakespeare_memory"
+    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-18/16-39-35" task="shakespeare_memory"
     import pickle
     from collections import OrderedDict
     from logging import INFO
@@ -210,9 +210,8 @@ def main(cfg: DictConfig) -> None:
     import psutil
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
-    from flwr.common.typing import NDArrays
+    from flwr.common.typing import NDArrays, Parameters
     from torch.utils.data import ConcatDataset
-    from transformers import AlbertForMaskedLM
 
     from datasets.nlp_util import get_collate_fn
     from pollen_utils import get_clients_population_dict, get_device, get_model
@@ -299,9 +298,11 @@ def main(cfg: DictConfig) -> None:
     for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
         round = int(parameters_file.name.split("_")[-1])
         with open(parameters_file, "rb") as f:
-            parameters: NDArrays = pickle.load(f)
+            parameters = pickle.load(f)
+        if isinstance(parameters, Parameters):
+            parameters = parameters_to_ndarrays(parameters)
         net = set_parameters(
-            parameters=parameters_to_ndarrays(parameters), net=net, device=device
+            parameters=parameters, net=net, device=device
         )
         net.to(device=device)
         net.eval()
@@ -325,7 +326,7 @@ def main(cfg: DictConfig) -> None:
             metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
             f.write(f"{round},{test_res[0]},{metrics}\n")
         log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
-        break
+        # break
 
 
 if __name__ == "__main__":
