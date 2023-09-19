@@ -1,13 +1,15 @@
+from multiprocessing import Pool
 import pickle
 from argparse import ArgumentTypeError
 from collections import defaultdict
 from functools import reduce
-from logging import DEBUG
+from logging import DEBUG, INFO
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import psutil
 import pyarrow as pa
 import torch
 from flwr.common.logger import log
@@ -15,7 +17,7 @@ from flwr.common.typing import Metrics, NDArrays
 from flwr.server.strategy.aggregate import aggregate
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 from transformers import AlbertTokenizer
 
 from datasets.google_speech import SPEECH
@@ -363,3 +365,56 @@ def _get_dataset_root(name: str) -> Path:
         return Path("/datasets/FedScale/openImg")
     else:
         return None
+
+def chunks_idx(l, n):
+    d, r = divmod(len(l), n)
+    for i in range(n):
+        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+        yield si, si + (d + 1 if i < r else d)
+        
+def get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
+    clients_test_sets = []
+    for cid in cids:
+        ds, tokenizer = get_client_ds(name=name, cid=cid, dataset=dataset)
+        clients_test_sets.append(ds)
+    return clients_test_sets, tokenizer
+
+def get_centralised_eval_set(
+    name: str,
+    n_clients: int = -1,
+) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
+    # Get the list of cids
+    cid_samples_dict = get_clients_population_dict(
+        name=name,
+        batch_size=1,
+        dataset="test",
+    )
+    # Set up the parallelisation
+    n_jobs = 100
+    try:
+        cpus = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    if n_jobs > cpus:
+        n_jobs = cpus
+    clients_test_sets = []
+    pool_inputs = []
+    pool = Pool(n_jobs)
+    if n_clients > 0:
+        client_ids = list(cid_samples_dict.keys())[:n_clients]
+    else:
+        client_ids = list(cid_samples_dict.keys())
+    # Split the clients in chunks
+    for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
+        pool_inputs.append([name, client_ids[begin:end], "test"])
+    pool_outputs = pool.starmap(get_list_of_clients_ds, pool_inputs)
+    pool.close()
+    pool.join()
+    # Retrieve the results fro the pool
+    [[clients_test_sets.append(a) for a in x[0]] for x in pool_outputs]
+    tokenizer = pool_outputs[0][1]
+    # Concatenate the clients test sets
+    testset = ConcatDataset(clients_test_sets)
+    log(INFO, f"Test set size: {len(testset)}")
+    return testset, tokenizer
+    

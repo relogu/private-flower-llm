@@ -7,4 +7,6 @@ n_clients_per_round: 10
 batch_size: 10
 momentum: 0.9
 weight_decay: 5e-4
+strategy:
+  _target_: rs_fedavg.FedAvgRSModel
 is_fake: False
