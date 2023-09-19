@@ -326,6 +326,6 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         with open(
             self.saving_path / f"parameters_aggregated_{server_round}", "wb"
         ) as f:
-            pickle.dump(self.current_weights, f)
+            pickle.dump(ndarrays_to_parameters(self.current_weights), f)
 
         return ndarrays_to_parameters(self.current_weights), metrics_aggregated
