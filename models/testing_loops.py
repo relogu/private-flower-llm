@@ -184,103 +184,49 @@ def accuracy(
 
         return res
 
-
-def tmp_fn(name, cids, dataset):
-    clients_test_sets = []
-    for cid in cids:
-        ds, tokenizer = get_client_ds(name=name, cid=cid, dataset=dataset)
-        clients_test_sets.append(ds)
-    return clients_test_sets, tokenizer
-
-
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-06/10-59-14" task="reddit"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-53-45" task="google_speech"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-19/08-43-29" task="openimage"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-05/18-52-53" task="shakespeare_memory"
-    # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive python models/testing_loops.py output_dir="/nfs-share/ls985/pollen_worker/outputs/2023-09-18/16-39-35" task="shakespeare_memory"
     import pickle
-    from collections import OrderedDict
     from logging import INFO
-    from multiprocessing import Pool
     from pathlib import Path
+    import time
 
-    import numpy as np
     import psutil
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
-    from flwr.common.typing import NDArrays, Parameters
-    from torch.utils.data import ConcatDataset
+    from flwr.common.typing import Parameters
 
     from datasets.nlp_util import get_collate_fn
-    from pollen_utils import get_clients_population_dict, get_device, get_model
-
-    # device = "cpu"
+    from pollen_utils import get_device, get_model, get_centralised_eval_set
+    from utils import set_parameters
+    
     device = get_device()
-
-    def set_parameters(parameters: NDArrays, net: Module = None, device=device):
-        if net is None:
-            net = get_model(name=cfg.task.name)
-        net.eval()
-        keys = [k for k in net.state_dict().keys() if "bn" not in k]
-        params_dict = zip(keys, parameters)
-        state_dict = OrderedDict(
-            {k: torch.tensor(v, device=device) for k, v in params_dict}
-        )
-        net.load_state_dict(state_dict, strict=False)
-        return net
-
-    def chunks_idx(l, n):
-        d, r = divmod(len(l), n)
-        for i in range(n):
-            si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-            yield si, si + (d + 1 if i < r else d)
 
     log(
         INFO,
         f"Offline evaluation of task {cfg.task.name}. Using output_dir: {cfg.output_dir}",
     )
+    s_t = time.time()
     # Set the root directory
     root_dir = Path(cfg.output_dir)
     # Get test_loop fn
     test_loop = get_testing_loop(name=cfg.task.name)
-    # Get the list of cids
-    cid_samples_dict = get_clients_population_dict(
-        name=cfg.task.name,
-        batch_size=1,
-        dataset="test",
-    )
-    # Get clients' test sets
-    n_jobs = 100
+    # Get number of available cpu cores
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        n_cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
-        cpus = psutil.cpu_count()
-    if n_jobs > cpus:
-        n_jobs = cpus
-    clients_test_sets = []
-    pool_inputs = []
-    pool = Pool(n_jobs)
-    client_ids = list(cid_samples_dict.keys())[:10]
-    for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
-        pool_inputs.append([cfg.task.name, client_ids[begin:end], "test"])
-    pool_outputs = pool.starmap(tmp_fn, pool_inputs)
-    pool.close()
-    pool.join()
-    [[clients_test_sets.append(a) for a in x[0]] for x in pool_outputs]
-    tokenizer = pool_outputs[0][1]
-    # Concatenate the clients test sets
-    testset = ConcatDataset(clients_test_sets)
+        n_cpus = psutil.cpu_count()
+    # Get the test set
+    # NOTE: The `n_clients` parameter, when greater than one, can limit the clients
+    # to be used for the evaluation to the biggest `n_clients`
+    testset, tokenizer = get_centralised_eval_set(name=cfg.task.name, n_clients=-1)
     log(INFO, f"Test set size: {len(testset)}")
     # Instantiate the test loader
-    # NOTE: This batch sizes are estimated to fill the VRAM
-    # or maximise the utilisations of a single 2080
     batch_sizes = {
-        "reddit": 256,
-        "google_speech": 512,
-        "openimage": 1024,
-        "shakespeare_memory": 256,
+        "reddit": 375, # Fills up the VRAM
+        "google_speech": 1024, # Doesn't really matter: too few sample
+        "openimage": 1200, # If increased, it crashes
+        "shakespeare_memory": 256, # Doesn't really matter: too few sample
     }
     testloader = DataLoader(
         testset,
@@ -290,20 +236,22 @@ def main(cfg: DictConfig) -> None:
         collate_fn=get_collate_fn(tokenizer=tokenizer)
         if tokenizer is not None
         else None,
+        num_workers=n_cpus,
     )
+    log(INFO, f"Time to get the eval dataloader: {time.time() - s_t}")
     # Create results .csv file
     results_file = root_dir / "offline_eval_results.csv"
     net = None
     # Get the models' performance
+    torch.backends.cudnn.benchmark = True
     for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
         round = int(parameters_file.name.split("_")[-1])
         with open(parameters_file, "rb") as f:
             parameters = pickle.load(f)
         if isinstance(parameters, Parameters):
             parameters = parameters_to_ndarrays(parameters)
-        net = set_parameters(
-            parameters=parameters, net=net, device=device
-        )
+        net = get_model(name=cfg.task.name)
+        set_parameters(parameters=parameters, net=net, device=device)
         net.to(device=device)
         net.eval()
         criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
