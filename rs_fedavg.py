@@ -180,6 +180,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         seed: int = 1337,
+        freq: int = 1,
     ) -> None:
         """Federated Averaging strategy with fixed list of sampled clients.
 
@@ -235,6 +236,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
+        self.freq = freq
 
     def aggregate_fit(
         self,
@@ -255,11 +257,12 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             for _, fit_res in results
         ]
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
-        # Save `parameters_aggregated`` to file
-        with open(
-            self.saving_path / f"parameters_aggregated_{server_round}", "wb"
-        ) as f:
-            pickle.dump(parameters_aggregated, f)
+        if server_round % self.freq == 0:
+            # Save `parameters_aggregated`` to file
+            with open(
+                self.saving_path / f"parameters_aggregated_{server_round}", "wb"
+            ) as f:
+                pickle.dump(parameters_aggregated, f)
         # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:

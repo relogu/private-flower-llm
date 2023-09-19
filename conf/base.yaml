@@ -3,7 +3,9 @@ local_epochs: 1
 flwr_address: "127.0.0.1:1042"
 ray_address: "localhost:8042"
 run_uuid: 0
+save_freq: 100
 output_dir: "/nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25"
+multirun_output_dir: null
 
 # Task
 defaults:
@@ -29,3 +31,18 @@ gen_on_fit_config_fn:
   momentum: ${task.momentum}
   weight_decay: ${task.weight_decay}
   is_fake: ${task.is_fake}
+
+
+use_wandb: False
+wandb:
+  setup:
+    project: pollen
+    group: ${task.data_root}
+    tags:
+      - "run_uuid_${run_uuid}"
+      - "learning_rate_${task.learning_rate}"
+      - "local_epochs_${local_epochs}"
+      - "batch_size_${task.batch_size}"
+    entity:
+    mode: online
+  start_eval: 0

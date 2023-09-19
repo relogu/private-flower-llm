@@ -1,12 +1,15 @@
+import shutil
 import time
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
 import pandas as pd
+import ray
 import torch
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+import wandb
 
 from datasets.shakespeare import SHAKESPEARE_DTYPES
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
@@ -158,3 +161,41 @@ def gen_on_fit_config_fn(
         }
 
     return on_fit_config_fn
+
+
+class NoOpContextManager:
+    """A context manager that does nothing."""
+
+    def __enter__(self) -> None:
+        """Do nothing."""
+        return None
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Do nothing."""
+
+
+def wandb_init(wandb_enabled: bool, *args, **kwargs):
+    """Initialize wandb if enabled."""
+    if wandb_enabled:
+        return wandb.init(*args, **kwargs)
+
+    return NoOpContextManager()
+
+class RayContextManager:
+    """A context manager for cleaning up after ray"""
+
+
+    def __enter__(self) :
+        """Initialize the context manager"""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Cleanup the files."""
+
+        if ray.is_initialized():
+            temp_dir = Path(
+                ray.worker._global_node.get_session_dir_path()  # type: ignore
+            )
+            ray.shutdown()
+            shutil.rmtree(temp_dir)
+            print(f"Cleaned up ray temp session: {temp_dir}")

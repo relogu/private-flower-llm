@@ -1,0 +1,27 @@
+program: "ray_simulation.py"
+method: bayes
+metric:
+  goal: maximize
+  name: accuracy
+parameters:
+  task.learning_rate:
+    min: 0.0
+    max: 1.0
+  local_epochs:
+    values:
+      - 1
+      - 2
+      - 3
+      - 5
+      - 8
+early_terminate:
+  type: hyperband
+  min_iter: 6
+  eta: 2
+command:
+  - python
+  - ${program}
+  - task=shakespeare_memory
+  - task.num_rounds=100
+  - ${args_no_hyphens}
+
