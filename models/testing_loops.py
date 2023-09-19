@@ -3,16 +3,19 @@ from typing import List, Tuple
 import hydra
 import torch
 import transformers
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
+import wandb
+import yaml
 
 transformers.logging.set_verbosity_error()
 
 from datasets.nlp_util import mask_tokens
+from utils import wandb_init
 from pollen_utils import get_client_ds
 
 
@@ -292,40 +295,50 @@ def main(cfg: DictConfig) -> None:
         if tokenizer is not None
         else None,
     )
+    with open (root_dir / ".hydra"/"config.yaml", "r") as f:
+        wandb_config = yaml.safe_load(f)
+
     # Create results .csv file
     results_file = root_dir / "offline_eval_results.csv"
     net = None
     # Get the models' performance
-    for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
-        round = int(parameters_file.name.split("_")[-1])
-        with open(parameters_file, "rb") as f:
-            parameters: NDArrays = pickle.load(f)
-        net = set_parameters(
-            parameters=parameters_to_ndarrays(parameters), net=net, device=device
-        )
-        net.to(device=device)
-        net.eval()
-        criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
-        test_res = test_loop(
-            testloader=testloader,
-            device=device,
-            net=net,
-            tokenizer=tokenizer,
-            criterion=criterion,
-        )
-        if i == 0:
-            with open(results_file, "w") as f:
-                metrics = ",".join([f"{k}" for k, _ in test_res[2].items()])
-                f.write(f"round,test_loss,{metrics}\n")
-            log(
-                INFO,
-                f"A file containing the round number, the average test loss, and metrics ({metrics}) will be written",
+    with wandb_init(
+        cfg.use_wandb,
+        **cfg.wandb.setup,
+        settings=wandb.Settings(start_method="thread"),
+        config=wandb_config,  # type: ignore
+    ) as run:
+        for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
+            round = int(parameters_file.name.split("_")[-1])
+            with open(parameters_file, "rb") as f:
+                parameters: NDArrays = pickle.load(f)
+            net = set_parameters(
+                parameters=parameters_to_ndarrays(parameters), net=net, device=device
             )
-        with open(results_file, "a") as f:
-            metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
-            f.write(f"{round},{test_res[0]},{metrics}\n")
-        log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
-        break
+            net.to(device=device)
+            net.eval()
+            criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
+            test_res = test_loop(
+                testloader=testloader,
+                device=device,
+                net=net,
+                tokenizer=tokenizer,
+                criterion=criterion,
+            )
+            if i == 0:
+                with open(results_file, "w") as f:
+                    metrics = ",".join([f"{k}" for k, _ in test_res[2].items()])
+                    f.write(f"round,test_loss,{metrics}\n")
+                log(
+                    INFO,
+                    f"A file containing the round number, the average test loss, and metrics ({metrics}) will be written",
+                )
+            wandb.log({f"test_loss": test_res[0], **test_res[2]}, step=round)
+            with open(results_file, "a") as f:
+                metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
+                f.write(f"{round},{test_res[0]},{metrics}\n")
+            log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
+            break
 
 
 if __name__ == "__main__":

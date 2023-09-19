@@ -14,12 +14,16 @@ from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+import wandb
 
 from pollen_utils import get_clients_population_dict
-from rs_fedavg import FedAvgReproducibleSampling
-from utils import weighted_average
+from rs_fedavg import FedAvgRSModel
+from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient
+from wandb_history import WandbHistory
+from wandb_server import WandbServer
+from flwr.server.client_manager import SimpleClientManager
 
 transformers.logging.set_verbosity_error()
 
@@ -96,7 +100,9 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
     # configure the strategy
-    strategy = FedAvgReproducibleSampling(
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get() # type: ignore
+    strategy = FedAvgRSModel(
+        saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
         total_clients=n_total_clients,
         min_fit_clients=2,
         fraction_evaluate=0.0,
@@ -106,6 +112,7 @@ def main(cfg: DictConfig) -> None:
             get_client_fn(cid=0).get_parameters(config={}, net=None)
         ),
         fit_metrics_aggregation_fn=weighted_average,
+        freq=cfg.save_freq
     )
     log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
 
@@ -122,21 +129,31 @@ def main(cfg: DictConfig) -> None:
             "object_spilling_config": json.dumps(
                 {
                     "type": "filesystem",
-                    "params": {"directory_path": "/hdd1/ray/ray_spilled_objects/"},
+                    "params": {"directory_path": "/hdd1/ray/"},
                 },
             )
         },
     }
 
+    wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # start simulation
-    fl.simulation.start_simulation(
-        client_fn=get_client_fn,
-        clients_ids=list(cid_samples_dict.keys()),
-        client_resources=client_resources,
-        config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
-        strategy=strategy,
-        ray_init_args=ray_init_args,
-    )
+    with wandb_init(
+        cfg.use_wandb,
+        **cfg.wandb.setup,
+        settings=wandb.Settings(start_method="thread"),
+        config=wandb_config,  # type: ignore
+    ) as _:
+        wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
+        server = WandbServer(client_manager=SimpleClientManager(),history=wandb_history,strategy=strategy)
+        with RayContextManager() as _:
+            fl.simulation.start_simulation(
+                client_fn=get_client_fn,
+                clients_ids=list(cid_samples_dict.keys()),
+                client_resources=client_resources,
+                server=server,
+                config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
+                ray_init_args=ray_init_args,
+            )
 
 
 if __name__ == "__main__":
