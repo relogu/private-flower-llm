@@ -73,7 +73,6 @@ class FedYogiReproducibleSampling(FedYogi):
         beta_2: float = 0.99,
         tau: float = 1e-3,
         seed: int = 1337,
-        freq: int = 1,
     ) -> None:
         """Federated learning strategy using Yogi on server-side with reproducible sampling.
 

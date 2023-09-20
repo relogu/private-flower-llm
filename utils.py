@@ -198,5 +198,6 @@ class RayContextManager:
                 ray.worker._global_node.get_session_dir_path()  # type: ignore
             )
             ray.shutdown()
+            directory_size = shutil.disk_usage(temp_dir).used
             shutil.rmtree(temp_dir)
-            print(f"Cleaned up ray temp session: {temp_dir}")
+            print(f"Cleaned up ray temp session: {temp_dir} with size: {directory_size}")

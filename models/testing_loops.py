@@ -285,8 +285,11 @@ def main(cfg: DictConfig) -> None:
             with open(results_file, "a") as f:
                 metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
                 f.write(f"{round},{test_res[0]},{metrics}\n")
+            
             log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
             # break
+            if cfg.use_wandb:    
+                wandb.log({"test_loss": test_res[0], **test_res[2]}, step=round)
 
 
 if __name__ == "__main__":
