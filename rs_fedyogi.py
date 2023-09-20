@@ -22,8 +22,9 @@ import pickle
 import random
 from logging import DEBUG, INFO, WARNING
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, Optional
 
+import numpy as np
 from flwr.common import (
     FitIns,
     FitRes,
@@ -35,18 +36,15 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.server.client_manager import SimpleClientManager, ClientManager
+from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy import FedAvg
+from flwr.server.strategy import FedYogi
 from flwr.server.strategy.aggregate import aggregate
-
-from pollen_client_manager import PollenClientManager
-
 
 
 # flake8: noqa: E501
-class FedAvgReproducibleSampling(FedAvg):
-    """Configurable FedAvgReproducibleSampling strategy implementation."""
+class FedYogiReproducibleSampling(FedYogi):
+    """Configurable FedYogiReproducibleSampling strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
     def __init__(
@@ -69,11 +67,17 @@ class FedAvgReproducibleSampling(FedAvg):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        eta: float = 1e-2,
+        eta_l: float = 0.0316,
+        beta_1: float = 0.9,
+        beta_2: float = 0.99,
+        tau: float = 1e-3,
         seed: int = 1337,
+        freq: int = 1,
     ) -> None:
-        """Federated Averaging strategy with reproducible sampling.
+        """Federated learning strategy using Yogi on server-side with reproducible sampling.
 
-        Implementation based on https://arxiv.org/abs/1602.05629
+        Implementation based on https://arxiv.org/abs/2003.00295v5
 
         Parameters
         ----------
@@ -105,6 +109,17 @@ class FedAvgReproducibleSampling(FedAvg):
             Metrics aggregation function, optional.
         evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
             Metrics aggregation function, optional.
+        eta : float, optional
+            Server-side learning rate. Defaults to 1e-1.
+        eta_l : float, optional
+            Client-side learning rate. Defaults to 1e-1.
+        beta_1 : float, optional
+            Momentum parameter. Defaults to 0.9.
+        beta_2 : float, optional
+            Second moment parameter. Defaults to 0.99.
+        tau : float, optional
+            Controls the algorithm's degree of adaptability.
+            Defaults to 1e-9.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
         """
@@ -118,9 +133,14 @@ class FedAvgReproducibleSampling(FedAvg):
             on_fit_config_fn=on_fit_config_fn,
             on_evaluate_config_fn=on_evaluate_config_fn,
             accept_failures=accept_failures,
-            initial_parameters=initial_parameters,
+            initial_parameters=initial_parameters, # type: ignore
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
+            eta=eta,
+            eta_l=eta_l,
+            beta_1=beta_1,
+            beta_2=beta_2,
+            tau=tau,
         )
         self.seed = seed
 
@@ -156,8 +176,8 @@ class FedAvgReproducibleSampling(FedAvg):
 
 
 # flake8: noqa: E501
-class FedAvgRSModel(FedAvgReproducibleSampling):
-    """Configurable FedAvgRSModel strategy implementation."""
+class FedYogiRSModel(FedYogiReproducibleSampling):
+    """Configurable FedYogiRSModel strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
     def __init__(
@@ -181,12 +201,17 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        eta: float = 1e-2,
+        eta_l: float = 0.0316,
+        beta_1: float = 0.9,
+        beta_2: float = 0.99,
+        tau: float = 1e-3,
         seed: int = 1337,
         freq: int = 1,
     ) -> None:
-        """Federated Averaging strategy with with reproducible sampling and model saving.
+        """Federated learning strategy using Yogi on server-side with reproducible sampling and model saving.
 
-        Implementation based on https://arxiv.org/abs/1602.05629
+        Implementation based on https://arxiv.org/abs/2003.00295v5
 
         Parameters
         ----------
@@ -218,10 +243,21 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
             Metrics aggregation function, optional.
+        eta : float, optional
+            Server-side learning rate. Defaults to 1e-1.
+        eta_l : float, optional
+            Client-side learning rate. Defaults to 1e-1.
+        beta_1 : float, optional
+            Momentum parameter. Defaults to 0.9.
+        beta_2 : float, optional
+            Second moment parameter. Defaults to 0.99.
+        tau : float, optional
+            Controls the algorithm's degree of adaptability.
+            Defaults to 1e-9.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
         freq : int, optional
-            Frequency of model saving. Defaults to 1.
+            Frequency of saving the aggregated parameters. Defaults to 1.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -236,12 +272,16 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             initial_parameters=initial_parameters,
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
+            eta=eta,
+            eta_l=eta_l,
+            beta_1=beta_1,
+            beta_2=beta_2,
+            tau=tau,
             seed=seed,
         )
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
-
         self.freq = freq
 
     def aggregate_fit(
@@ -251,30 +291,47 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
+        fedavg_parameters_aggregated, metrics_aggregated = super().aggregate_fit(
+            server_round=server_round, results=results, failures=failures
+        )
+        if fedavg_parameters_aggregated is None:
             return None, {}
 
-        # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
+        fedavg_weights_aggregate = parameters_to_ndarrays(fedavg_parameters_aggregated)
+
+        # Yogi
+        delta_t: NDArrays = [
+            x - y for x, y in zip(fedavg_weights_aggregate, self.current_weights)
         ]
-        parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
+
+        # m_t
+        if not self.m_t:
+            self.m_t = [np.zeros_like(x) for x in delta_t]
+        self.m_t = [
+            np.multiply(self.beta_1, x) + (1 - self.beta_1) * y
+            for x, y in zip(self.m_t, delta_t)
+        ]
+
+        # v_t
+        if not self.v_t:
+            self.v_t = [np.zeros_like(x) for x in delta_t]
+        self.v_t = [
+            x - (1.0 - self.beta_2) * np.multiply(y, y) * np.sign(x - np.multiply(y, y))
+            for x, y in zip(self.v_t, delta_t)
+        ]
+
+        new_weights = [
+            x + self.eta * y / (np.sqrt(z) + self.tau)
+            for x, y, z in zip(self.current_weights, self.m_t, self.v_t)
+        ]
+
+        self.current_weights = new_weights
+
+        # Save `self.current_weights`` to file
         if server_round % self.freq == 0:
-            # Save `parameters_aggregated`` to file
             with open(
                 self.saving_path / f"parameters_aggregated_{server_round}", "wb"
             ) as f:
-                pickle.dump(parameters_aggregated, f)
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        elif server_round == 1:  # Only log this warning once
-            log(WARNING, "No fit_metrics_aggregation_fn provided")
+                pickle.dump(ndarrays_to_parameters(self.current_weights), f)
 
-        return parameters_aggregated, metrics_aggregated
+        return ndarrays_to_parameters(self.current_weights), metrics_aggregated

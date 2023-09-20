@@ -26,7 +26,7 @@ import time
 from logging import ERROR, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import hydra
 import numpy as np
@@ -38,6 +38,7 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
+from typing import cast
 
 REDDIT_DTYPES = {
     "client_id": np.int64,
@@ -56,8 +57,9 @@ def chunks_idx(l, n):
 
 def get_collate_fn(tokenizer: PreTrainedTokenizer):
     def collate_fn(examples):
-        if tokenizer._pad_token is None:
+        if tokenizer._pad_token is None or tokenizer.pad_token_id is None:
             return pad_sequence(examples, batch_first=True)
+        
         return pad_sequence(
             examples, batch_first=True, padding_value=tokenizer.pad_token_id
         )
@@ -88,6 +90,8 @@ def feature_creation_worker(
                 tokenized_text = tokenizer.convert_tokens_to_ids(
                     tokenizer.tokenize(text)
                 )
+                if isinstance(tokenized_text, int):
+                    raise ValueError(f"Expected tokenized text to be a list of integers instead of {tokenized_text}")
                 examples = []
                 # Truncate in blocks of length `block_size``
                 for j in range(0, len(tokenized_text) - block_size + 1, block_size):
@@ -117,7 +121,7 @@ class TextDataset(Dataset):
         model: str,
         tokenizer: PreTrainedTokenizer,
         root_dir: str,
-        examples: List[List[int]],
+        examples: Optional[List[List[int]]],
         n_jobs: int = 1,
         overwrite_cache: bool = False,
         block_size: int = 64,
@@ -135,7 +139,7 @@ class TextDataset(Dataset):
         )
         # Set the number of jobs
         try:
-            cpus = len(psutil.Process().cpu_affinity())
+            cpus = len(psutil.Process().cpu_affinity()) # type: ignore
         except AttributeError:
             cpus = psutil.cpu_count()
         if n_jobs > cpus:
@@ -273,7 +277,7 @@ def mask_tokens(
     probability_matrix.masked_fill_(
         torch.tensor(special_tokens_mask, dtype=torch.bool, device=device), value=0.0
     )
-    if tokenizer._pad_token is not None:
+    if tokenizer._pad_token is not None and tokenizer.pad_token_id is not None:
         padding_mask = labels.eq(tokenizer.pad_token_id)
         probability_matrix.masked_fill_(padding_mask, value=0.0)
     masked_indices = (torch.bernoulli(probability_matrix) == 1).to(device=device)
@@ -283,7 +287,7 @@ def mask_tokens(
     indices_replaced = (torch.bernoulli(torch.full(labels.shape, 0.8)) == 1).to(
         device=device
     ) & masked_indices
-    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token) # type: ignore
 
     # 10% of the time, we replace masked input tokens with random word
     indices_random = (
@@ -308,7 +312,7 @@ def dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
         ds = TextDataset(
             model=model,
             tokenizer=tokenizer,
-            root_dir=Path("/datasets/FedScale/reddit/reddit"),
+            root_dir=cast(str,Path("/datasets/FedScale/reddit/reddit")),
             examples=None,
             n_jobs=1,
             overwrite_cache=False,
@@ -328,7 +332,7 @@ def create_parquet_clients_dict(
     dataset: str = "train",
     n_jobs: int = 100,
     model: str = "albert",
-    tokenizer: PreTrainedTokenizer = None,
+    tokenizer: Optional[PreTrainedTokenizer] = None,
     block_size: int = 64,
 ):
     log(INFO, f"Creating client data mapping for {dataset} dataset")
@@ -386,7 +390,7 @@ def create_parquet_clients_dict(
     s_t = time.time()
     samples = []
     for i in list(range(len(df)))[:1000]:
-        samples.append(int(df[df["client_id"] == i]["samples"]))
+        samples.append(int(df[df["client_id"] == i]["samples"])) # type: ignore
     log(INFO, f"Getting 1K samples took {time.time()-s_t} seconds")
 
 
@@ -400,7 +404,7 @@ def main(cfg: DictConfig) -> None:
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity()) # type: ignore
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -408,15 +412,15 @@ def main(cfg: DictConfig) -> None:
 
     dataset = "train"
     if "albert" in cfg.task.model:
-        tokenizer = AlbertTokenizer.from_pretrained(cfg.task.model, do_lower_case=True)
+        tokenizer = cast(PreTrainedTokenizer,AlbertTokenizer.from_pretrained(cfg.task.model, do_lower_case=True))
     else:
-        tokenizer = AutoTokenizer.from_pretrained(cfg.task.model, do_lower_case=True)
+        tokenizer = cast(PreTrainedTokenizer,AutoTokenizer.from_pretrained(cfg.task.model, do_lower_case=True))
 
     for dataset in ["train", "test", "val"]:
         load_and_cache_examples(
             model=cfg.task.model,
             tokenizer=tokenizer,
-            root_dir=Path("/datasets/FedScale/reddit/reddit"),
+            root_dir=cast(str,Path("/datasets/FedScale/reddit/reddit")),
             n_jobs=n_jobs,
             block_size=cfg.task.block_size,
             dataset=dataset,

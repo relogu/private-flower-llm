@@ -10,7 +10,7 @@ from flwr.server.history import History
 class WandbHistory(History):
     """History class for training and/or evaluation metrics collection."""
 
-    def __init__(self, use_wandb=True) -> None:
+    def __init__(self, use_wandb: bool = True) -> None:
         super().__init__()
         self.use_wandb = use_wandb
 
