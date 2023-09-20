@@ -5,7 +5,7 @@ from collections import defaultdict
 from functools import reduce
 from logging import DEBUG, INFO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -24,9 +24,10 @@ from datasets.google_speech import SPEECH
 from datasets.nlp_util import TextDataset
 from datasets.openimage import OpenImage
 from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
+from torch import device as device_type
 
 
-def get_device() -> str:
+def get_device() -> device_type:
     """Determine which device to use for PyTorch.
 
     Returns:
@@ -35,9 +36,9 @@ def get_device() -> str:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built(): # type: ignore
         device = "mps"
-    return device
+    return cast(device_type,device)
 
 
 def invert_many_to_one_dictionary(
@@ -215,29 +216,28 @@ def merge_ctt_size(
 
 def get_model(name: str) -> Module:
     # NOTE: we may want to load this once and then deepcopying it when needed
-    model = None
     if name == "shakespeare":
         from models.shakespeare_leaf_model import ShakespeareLeafNet
 
-        model = ShakespeareLeafNet()
-    elif name == "shakespeare_memory":
+        return ShakespeareLeafNet()
+    if name == "shakespeare_memory":
         from models.shakespeare_leaf_model import ShakespeareLeafNet
 
-        model = ShakespeareLeafNet()
-    elif name == "reddit":
+        return ShakespeareLeafNet()
+    if name == "reddit":
         from transformers import AlbertForMaskedLM
 
-        model = AlbertForMaskedLM.from_pretrained("albert-base-v2")
-    elif name == "google_speech":
+        return AlbertForMaskedLM.from_pretrained("albert-base-v2") # type: ignore
+    if name == "google_speech":
         from models.resnet_util import resnet34
 
-        model = resnet34(num_classes=35, in_channels=1)
-    elif name == "openimage":
+        return resnet34(num_classes=35, in_channels=1)
+    if name == "openimage":
         from torchvision import models
 
-        model = models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
+        return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
 
-    return model
+    raise ValueError("No model for the requested dataset")
 
 
 def get_client_ds(
@@ -246,21 +246,23 @@ def get_client_ds(
     name: str = "openimage",
     dataset: str = "train",
 ) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
-    ds = None
-    tokenizer = None
     if name == "shakespeare":
         ds = SHAKESPEARE(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
-    elif name == "shakespeare_memory":
+        return ds, None
+    
+    if name == "shakespeare_memory":
         ds = SHAKESPEARE_LOADED(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
-    elif name == "reddit":
+        return ds, None
+    
+    if name == "reddit":
         tokenizer = AlbertTokenizer.from_pretrained("albert-base-v2")
         ds = TextDataset(
             model="albert-base-v2",
-            root_dir=dataset_root / "reddit" / "reddit",
+            root_dir=dataset_root / "reddit" / "reddit", # type: ignore
             tokenizer=tokenizer,
             examples=None,
             n_jobs=100,
@@ -269,22 +271,28 @@ def get_client_ds(
             client_id=cid,
             dataset=dataset,
         )
-    elif name == "google_speech":
+        return ds, tokenizer
+    
+    if name == "google_speech":
         ds = SPEECH(
             root=dataset_root / "google_speech" / "google_speech",
             client_id=cid,
             dataset=dataset,
         )
-    elif name == "openimage":
+        return ds, None
+    
+    if name == "openimage":
         ds = OpenImage(root=dataset_root / "openImg", client_id=cid, dataset=dataset)
-    return ds, tokenizer
+        return ds, None
+    
+    raise ValueError("No dataset for the requested dataset name")
 
 
 def get_client_ds_fn(
     dataset_root: Path = Path("/datasets/FedScale/"),
     name: str = "openimage",
     dataset: str = "train",
-) -> Tuple[Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]]:
+) -> Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]:
     def get_ds_fn(client_id: int):
         return get_client_ds(
             cid=client_id,
@@ -337,6 +345,7 @@ def get_optimizer(name: str, model: Module) -> Optimizer:
 
 def get_clients_population_dict(
     name: str,
+    seed: int,
     dataset: str = "train",
     batch_size: int = 20,
 ) -> Dict[str, int]:
@@ -351,20 +360,22 @@ def get_clients_population_dict(
     log(DEBUG, f"Length of cids list before filtering {len(dataframe)}")
     dataframe = dataframe[dataframe["samples"] >= batch_size]
     log(DEBUG, f"Length of cids list after filtering {len(dataframe)}")
+    dataframe = dataframe.sample(frac=1, random_state=seed)
+    log(DEBUG, f"Randomly sampled clients with state {seed}")
     return {row.Index: row.samples for row in dataframe.itertuples()}
 
 
 def _get_dataset_root(name: str) -> Path:
     if name == "reddit":
         return Path("/datasets/FedScale/reddit/reddit")
-    elif name == "shakespeare" or name == "shakespeare_memory":
+    if name == "shakespeare" or name == "shakespeare_memory":
         return Path("/datasets/FedScale/leaf_shakespeare")
-    elif name == "google_speech":
+    if name == "google_speech":
         return Path("/datasets/FedScale/google_speech/google_speech")
-    elif name == "openimage":
+    if name == "openimage":
         return Path("/datasets/FedScale/openImg")
-    else:
-        return None
+   
+    raise ValueError("No dataset for the requested dataset name")
 
 def chunks_idx(l, n):
     d, r = divmod(len(l), n)
@@ -374,6 +385,7 @@ def chunks_idx(l, n):
         
 def get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
     clients_test_sets = []
+    tokenizer = None
     for cid in cids:
         ds, tokenizer = get_client_ds(name=name, cid=cid, dataset=dataset)
         clients_test_sets.append(ds)
@@ -381,18 +393,20 @@ def get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
 
 def get_centralised_eval_set(
     name: str,
-    n_clients: int = -1,
+    seed: int,
+    n_clients: Union[int, float],
 ) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
     # Get the list of cids
     cid_samples_dict = get_clients_population_dict(
         name=name,
         batch_size=1,
         dataset="test",
+        seed=seed,
     )
     # Set up the parallelisation
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity()) # type: ignore
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -400,10 +414,21 @@ def get_centralised_eval_set(
     clients_test_sets = []
     pool_inputs = []
     pool = Pool(n_jobs)
-    if n_clients > 0:
-        client_ids = list(cid_samples_dict.keys())[:n_clients]
+    if isinstance(n_clients, int):
+        if n_clients > 0:
+            client_ids = list(cid_samples_dict.keys())[:n_clients]
+        else:
+            client_ids = list(cid_samples_dict.keys())
+    # If we have a percentage of clients
+    # choose the closest integer number of clients
+    elif isinstance(n_clients, float):
+        if n_clients > 0:
+            client_ids = list(cid_samples_dict.keys())[:int(n_clients*len(cid_samples_dict))]
+        else:
+            raise ValueError("n_clients percentage must be greater than 0")
     else:
-        client_ids = list(cid_samples_dict.keys())
+        raise ValueError("n_clients must be either an int or a float")
+    
     # Split the clients in chunks
     for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
         pool_inputs.append([name, client_ids[begin:end], "test"])

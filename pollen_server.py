@@ -28,11 +28,12 @@ import pyarrow.parquet as pq
 from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, GetPropertiesRes, Properties
-from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
+from flwr.server import Server
+from flwr.client import ClientLike
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -66,11 +67,12 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Dict[str, int],
-        client_fn: Callable[[int], ClientProxy],
+        cids: Union[Dict[ str, int], Dict[int, int]],
+        client_fn: Callable[[int], ClientLike],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
-        saving_path: Path = None,
+        saving_path: Optional[Path] = None,
+        history: Optional[History] = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -93,6 +95,7 @@ class PollenServer(Server):
         self.saving_path = saving_path
         self.gpu_stats = None
         self.clients_training_stats = None
+        self.history = history
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -110,7 +113,7 @@ class PollenServer(Server):
     def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
-        history = History()
+        history = self.history if self.history is not None else History()
 
         # Initialize parameters
         log(INFO, "Initializing global parameters")

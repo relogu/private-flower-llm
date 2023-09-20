@@ -35,10 +35,13 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.server.client_manager import ClientManager
+from flwr.server.client_manager import SimpleClientManager, ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
+
+from pollen_client_manager import PollenClientManager
+
 
 
 # flake8: noqa: E501
@@ -137,16 +140,16 @@ class FedAvgReproducibleSampling(FedAvg):
         )
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)
+        client_manager.wait_for(sample_size) # type: ignore
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size) # type: ignore
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids] # type: ignore
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -160,7 +163,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
-        saving_path: Path = None,
+        saving_path: Optional[Path] = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
@@ -217,6 +220,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
+        freq : int, optional
+            Frequency of model saving. Defaults to 1.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -236,6 +241,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
+
         self.freq = freq
 
     def aggregate_fit(

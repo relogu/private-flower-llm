@@ -10,3 +10,4 @@ weight_decay: 5e-4
 strategy:
   _target_: rs_fedavg.FedAvgRSModel
 is_fake: False
+n_clients: -1

@@ -13,3 +13,4 @@ tokenizer: albert-base-v2
 strategy:
   _target_: rs_fedavg.FedAvgRSModel
 is_fake: False
+n_clients: 0.1

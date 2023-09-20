@@ -15,7 +15,7 @@ cd /nfs-share/aai30/projects/pollen_worker
 # Clean the shared memory objects
 python clean_memory.py
 
-# Launch the server, uncomment the end of the line if you what separed output logs.
+# This wandb agent should be returned to you after you run wandb seweep 
 wandb agent camlsys/pollen/4h7uh8f2
 
 # How to use this script? Use what follows for a interactive job

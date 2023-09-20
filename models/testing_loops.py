@@ -222,7 +222,7 @@ def main(cfg: DictConfig) -> None:
     # Get the test set
     # NOTE: The `n_clients` parameter, when greater than one, can limit the clients
     # to be used for the evaluation to the biggest `n_clients`
-    testset, tokenizer = get_centralised_eval_set(name=cfg.task.name, n_clients=-1)
+    testset, tokenizer = get_centralised_eval_set(name=cfg.task.name, n_clients=cfg.task.n_clients, seed=cfg.seed)
     log(INFO, f"Test set size: {len(testset)}")
     # Instantiate the test loader
     batch_sizes = {

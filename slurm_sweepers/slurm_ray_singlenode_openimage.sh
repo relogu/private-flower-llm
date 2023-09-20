@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -c 11
-#SBATCH -w mauao
-#SBATCH --gres=gpu:1
+#SBATCH -c 8
+#SBATCH -w ngongotaha
+#SBATCH --gres=gpu:2
 #SBATCH --job-name=ray_worker_bench
 #SBATCH --tasks-per-node=1
 
@@ -19,8 +19,8 @@ python clean_memory.py
 CUSTOM_HYDRA_ARGS="-m run_uuid=$run_uuid task=openimage task.num_rounds=100 local_epochs=1,2,3 task.learning_rate=0.001,0.005,0.01,0.05,0.1 flwr_address=127.0.0.1:1046"
 
 
-# Launch the server, uncomment the end of the line if you what separed output logs.
-python ray_simulation.py $CUSTOM_HYDRA_ARGS 
+# This wandb agent should be returned to you after you run wandb seweep 
+wandb agent camlsys/pollen/8r2kunuj
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh

@@ -19,7 +19,7 @@ python clean_memory.py
 CUSTOM_HYDRA_ARGS="-m run_uuid=$run_uuid task=google_speech task.num_rounds=100 local_epochs=1,2,3 task.learning_rate=0.001,0.005,0.01,0.05,0.1 flwr_address=127.0.0.1:1046"
 
 
-# Launch the server, uncomment the end of the line if you what separed output logs.
+# This wandb agent should be returned to you after you run wandb seweep 
 python ray_simulation.py $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job

@@ -16,7 +16,7 @@ from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 
 
 #### Server ####
-def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+def weighted_average(metrics: List[Tuple[int, Dict]]) -> Metrics:
     # Multiply accuracy of each client by number of examples used
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
@@ -111,7 +111,7 @@ def shakespeare_gen_num_total_virtual_clients(
     return list(clients.keys())
 
 
-def gen_shakespeare_dataset_train_fn(data_root: str, dataset_type: str = "train"):
+def gen_shakespeare_dataset_train_fn(data_root: Path, dataset_type: str = "train"):
     def shakespeare_gen_local_dataset_fn(client_id: str):
         return ShakespeareDataset(
             root=data_root, client_id=client_id, dataset=dataset_type

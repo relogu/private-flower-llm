@@ -14,3 +14,4 @@ strategy:
   beta_1: 0.9
   beta_2: 0.99
 is_fake: False
+n_clients: -1
