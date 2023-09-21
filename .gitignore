@@ -164,6 +164,8 @@ cython_debug/
 
 # Hydra outputs
 outputs
+multirun
+wandb
 
 # Slurm logs
 slurm-*.out

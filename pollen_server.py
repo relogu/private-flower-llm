@@ -25,6 +25,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+from flwr.client import ClientLike
 from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, GetPropertiesRes, Properties
@@ -66,11 +67,12 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Dict[str, int],
-        client_fn: Callable[[int], ClientProxy],
+        cids: Union[Dict[str, int], Dict[int, int]],
+        client_fn: Callable[[int], ClientLike],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
-        saving_path: Path = None,
+        saving_path: Optional[Path] = None,
+        history: Optional[History] = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -93,6 +95,7 @@ class PollenServer(Server):
         self.saving_path = saving_path
         self.gpu_stats = None
         self.clients_training_stats = None
+        self.history = history
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -110,7 +113,7 @@ class PollenServer(Server):
     def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
-        history = History()
+        history = self.history if self.history is not None else History()
 
         # Initialize parameters
         log(INFO, "Initializing global parameters")
@@ -464,7 +467,7 @@ def get_nodes_properties(
 def get_properties_client(
     client: ClientProxy, timeout: Optional[float]
 ) -> Tuple[ClientProxy, Node]:
-    """Get properties froma a Node"""
+    """Get properties froma a Node."""
     ins = GetPropertiesIns(config={})
     node_properties_res: Node = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties

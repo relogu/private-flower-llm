@@ -1,6 +1,6 @@
 """Transforms on raw wav samples."""
 
-__author__ = 'Yuan Xu'
+__author__ = "Yuan Xu"
 
 import random
 
@@ -24,15 +24,15 @@ class LoadAudio(object):
         self.sample_rate = sample_rate
 
     def __call__(self, data):
-        path = data['path']
+        path = data["path"]
         if path:
             samples, sample_rate = librosa.load(path, sr=self.sample_rate)
         else:
             # silence
             sample_rate = self.sample_rate
             samples = np.zeros(sample_rate, dtype=np.float32)
-        data['samples'] = samples
-        data['sample_rate'] = sample_rate
+        data["samples"] = samples
+        data["sample_rate"] = sample_rate
         return data
 
 
@@ -43,14 +43,13 @@ class FixAudioLength(object):
         self.time = time
 
     def __call__(self, data):
-        samples = data['samples']
-        sample_rate = data['sample_rate']
+        samples = data["samples"]
+        sample_rate = data["sample_rate"]
         length = int(self.time * sample_rate)
         if length < len(samples):
-            data['samples'] = samples[:length]
+            data["samples"] = samples[:length]
         elif length > len(samples):
-            data['samples'] = np.pad(
-                samples, (0, length - len(samples)), "constant")
+            data["samples"] = np.pad(samples, (0, length - len(samples)), "constant")
         return data
 
 
@@ -64,13 +63,15 @@ class ChangeAmplitude(object):
         if not should_apply_transform():
             return data
 
-        data['samples'] = data['samples'] * \
-            random.uniform(*self.amplitude_range)
+        data["samples"] = data["samples"] * random.uniform(*self.amplitude_range)
         return data
 
 
 class ChangeSpeedAndPitchAudio(object):
-    """Change the speed of an audio. This transform also changes the pitch of the audio."""
+    """Change the speed of an audio.
+
+    This transform also changes the pitch of the audio.
+    """
 
     def __init__(self, max_scale=0.2):
         self.max_scale = max_scale
@@ -79,12 +80,13 @@ class ChangeSpeedAndPitchAudio(object):
         if not should_apply_transform():
             return data
 
-        samples = data['samples']
-        sample_rate = data['sample_rate']
+        samples = data["samples"]
+        data["sample_rate"]
         scale = random.uniform(-self.max_scale, self.max_scale)
         speed_fac = 1.0 / (1 + scale)
-        data['samples'] = np.interp(np.arange(0, len(samples), speed_fac), np.arange(
-            0, len(samples)), samples).astype(np.float32)
+        data["samples"] = np.interp(
+            np.arange(0, len(samples), speed_fac), np.arange(0, len(samples)), samples
+        ).astype(np.float32)
         return data
 
 
@@ -99,8 +101,7 @@ class StretchAudio(object):
             return data
 
         scale = random.uniform(-self.max_scale, self.max_scale)
-        data['samples'] = librosa.effects.time_stretch(
-            data['samples'], rate=1+scale)
+        data["samples"] = librosa.effects.time_stretch(data["samples"], rate=1 + scale)
         return data
 
 
@@ -114,14 +115,14 @@ class TimeshiftAudio(object):
         if not should_apply_transform():
             return data
 
-        samples = data['samples']
-        sample_rate = data['sample_rate']
-        max_shift = (sample_rate * self.max_shift_seconds)
+        samples = data["samples"]
+        sample_rate = data["sample_rate"]
+        max_shift = sample_rate * self.max_shift_seconds
         shift = random.randint(-max_shift, max_shift)
         a = -min(0, shift)
         b = max(0, shift)
         samples = np.pad(samples, (a, b), "constant")
-        data['samples'] = samples[:len(samples) - a] if a else samples[b:]
+        data["samples"] = samples[: len(samples) - a] if a else samples[b:]
         return data
 
 
@@ -136,25 +137,29 @@ class AddBackgroundNoise(Dataset):
         if not should_apply_transform():
             return data
 
-        samples = data['samples']
-        noise = random.choice(self.bg_dataset)['samples']
+        samples = data["samples"]
+        noise = random.choice(self.bg_dataset)["samples"]
         percentage = random.uniform(0, self.max_percentage)
-        data['samples'] = samples * (1 - percentage) + noise * percentage
+        data["samples"] = samples * (1 - percentage) + noise * percentage
         return data
 
 
 class ToMelSpectrogram(object):
-    """Creates the mel spectrogram from an audio. The result is a 32x32 matrix."""
+    """Creates the mel spectrogram from an audio.
+
+    The result is a 32x32 matrix.
+    """
 
     def __init__(self, n_mels=32):
         self.n_mels = n_mels
 
     def __call__(self, data):
-        samples = data['samples']
-        sample_rate = data['sample_rate']
+        samples = data["samples"]
+        sample_rate = data["sample_rate"]
         s = librosa.feature.melspectrogram(
-            y=samples, sr=sample_rate, n_mels=self.n_mels)
-        data['mel_spectrogram'] = librosa.power_to_db(s, ref=np.max) # type: ignore
+            y=samples, sr=sample_rate, n_mels=self.n_mels
+        )
+        data["mel_spectrogram"] = librosa.power_to_db(s, ref=np.max)  # type: ignore
         return data
 
 

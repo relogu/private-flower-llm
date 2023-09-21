@@ -498,13 +498,13 @@ class NodeManager(fl.client.NumPyClient):
         return 0.0, 1, {}
 
     def __del__(self):
-        log(DEBUG, f"Closing stuff")
+        log(DEBUG, "Closing stuff")
         # Close monitor
         while self.monitor.is_alive():
             self.monitor.do_run = False
             time.sleep(0.1)
         del self.monitor
-        log(DEBUG, f"Monitor closed")
+        log(DEBUG, "Monitor closed")
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():
                 [
@@ -516,7 +516,7 @@ class NodeManager(fl.client.NumPyClient):
         while a < len(self.workers[device]):
             self.result_queue.get()
             a += 1
-        log(DEBUG, f"Workers closed")
+        log(DEBUG, "Workers closed")
         # Free shared memories
         self.config_shm.close()
         self.round_shm.close()
@@ -525,7 +525,7 @@ class NodeManager(fl.client.NumPyClient):
         for i, v in enumerate(self.shared_local_agg.values()):
             v[4].close()
             v[4].unlink()
-        log(DEBUG, f"Shared memories closed")
+        log(DEBUG, "Shared memories closed")
 
 
 @hydra.main(config_path="conf/", config_name="base", version_base=None)

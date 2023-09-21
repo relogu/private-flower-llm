@@ -1,6 +1,6 @@
 """Transforms on the short time fourier transforms of wav samples."""
 
-__author__ = 'Erdene-Ochir Tuguldur'
+__author__ = "Erdene-Ochir Tuguldur"
 
 import random
 
@@ -21,13 +21,14 @@ class ToSTFT(object):
         self.hop_length = hop_length
 
     def __call__(self, data):
-        samples = data['samples']
-        sample_rate = data['sample_rate']
-        data['n_fft'] = self.n_fft
-        data['hop_length'] = self.hop_length
-        data['stft'] = librosa.stft(
-            samples, n_fft=self.n_fft, hop_length=self.hop_length)
-        data['stft_shape'] = data['stft'].shape
+        samples = data["samples"]
+        data["sample_rate"]
+        data["n_fft"] = self.n_fft
+        data["hop_length"] = self.hop_length
+        data["stft"] = librosa.stft(
+            samples, n_fft=self.n_fft, hop_length=self.hop_length
+        )
+        data["stft_shape"] = data["stft"].shape
         return data
 
 
@@ -41,18 +42,20 @@ class StretchAudioOnSTFT(object):
         if not should_apply_transform():
             return data
 
-        stft = data['stft']
-        sample_rate = data['sample_rate']
-        hop_length = data['hop_length']
+        stft = data["stft"]
+        data["sample_rate"]
+        hop_length = data["hop_length"]
         scale = random.uniform(-self.max_scale, self.max_scale)
         stft_stretch = librosa.core.phase_vocoder(
-            stft, rate=1+scale, hop_length=hop_length)
-        data['stft'] = stft_stretch
+            stft, rate=1 + scale, hop_length=hop_length
+        )
+        data["stft"] = stft_stretch
         return data
 
 
 class TimeshiftAudioOnSTFT(object):
-    """A simple timeshift on the frequency domain without multiplying with exp."""
+    """A simple timeshift on the frequency domain without multiplying with
+    exp."""
 
     def __init__(self, max_shift=8):
         self.max_shift = max_shift
@@ -61,7 +64,7 @@ class TimeshiftAudioOnSTFT(object):
         if not should_apply_transform():
             return data
 
-        stft = data['stft']
+        stft = data["stft"]
         shift = random.randint(-self.max_shift, self.max_shift)
         a = -min(0, shift)
         b = max(0, shift)
@@ -70,7 +73,7 @@ class TimeshiftAudioOnSTFT(object):
             stft = stft[:, b:]
         else:
             stft = stft[:, 0:-a]
-        data['stft'] = stft
+        data["stft"] = stft
         return data
 
 
@@ -85,49 +88,55 @@ class AddBackgroundNoiseOnSTFT(Dataset):
         if not should_apply_transform():
             return data
 
-        noise = random.choice(self.bg_dataset)['stft']
+        noise = random.choice(self.bg_dataset)["stft"]
         percentage = random.uniform(0, self.max_percentage)
-        data['stft'] = data['stft'] * (1 - percentage) + noise * percentage
+        data["stft"] = data["stft"] * (1 - percentage) + noise * percentage
         return data
 
 
 class FixSTFTDimension(object):
-    """Either pads or truncates in the time axis on the frequency domain, applied after stretching, time shifting etc."""
+    """Either pads or truncates in the time axis on the frequency domain,
+    applied after stretching, time shifting etc."""
 
     def __call__(self, data):
-        stft = data['stft']
+        stft = data["stft"]
         t_len = stft.shape[1]
-        orig_t_len = data['stft_shape'][1]
+        orig_t_len = data["stft_shape"][1]
         if t_len > orig_t_len:
             stft = stft[:, 0:orig_t_len]
         elif t_len < orig_t_len:
-            stft = np.pad(stft, ((0, 0), (0, orig_t_len-t_len)), "constant")
+            stft = np.pad(stft, ((0, 0), (0, orig_t_len - t_len)), "constant")
 
-        data['stft'] = stft
+        data["stft"] = stft
         return data
 
 
 class ToMelSpectrogramFromSTFT(object):
-    """Creates the mel spectrogram from the short time fourier transform of a file. The result is a 32x32 matrix."""
+    """Creates the mel spectrogram from the short time fourier transform of a
+    file.
+
+    The result is a 32x32 matrix.
+    """
 
     def __init__(self, n_mels=32):
         self.n_mels = n_mels
 
     def __call__(self, data):
-        stft = data['stft']
-        sample_rate = data['sample_rate']
-        n_fft = data['n_fft']
+        stft = data["stft"]
+        sample_rate = data["sample_rate"]
+        n_fft = data["n_fft"]
         mel_basis = librosa.filters.mel(sr=sample_rate, n_fft=n_fft, n_mels=self.n_mels)
-        s = np.dot(mel_basis, np.abs(stft)**2.0)
-        data['mel_spectrogram'] = librosa.power_to_db(s, ref=np.max) # type: ignore        
+        s = np.dot(mel_basis, np.abs(stft) ** 2.0)
+        data["mel_spectrogram"] = librosa.power_to_db(s, ref=np.max)  # type: ignore
         return data
 
 
 class DeleteSTFT(object):
-    """Pytorch doesn't like complex numbers, use this transform to remove STFT after computing the mel spectrogram."""
+    """Pytorch doesn't like complex numbers, use this transform to remove STFT
+    after computing the mel spectrogram."""
 
     def __call__(self, data):
-        del data['stft']
+        del data["stft"]
         return data
 
 
@@ -135,7 +144,6 @@ class AudioFromSTFT(object):
     """Inverse short time fourier transform."""
 
     def __call__(self, data):
-        stft = data['stft']
-        data['istft_samples'] = librosa.core.istft(
-            stft, dtype=data['samples'].dtype)
+        stft = data["stft"]
+        data["istft_samples"] = librosa.core.istft(stft, dtype=data["samples"].dtype)
         return data

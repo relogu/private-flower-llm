@@ -17,10 +17,8 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
-from copy import deepcopy
-from itertools import repeat
-from logging import INFO, DEBUG
 import random
+from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar
@@ -118,7 +116,7 @@ class FedAvgReproducibleSampling(FedAvg):
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
-        config = {"server_round": server_round}
+        config: Dict = {"server_round": server_round}
         if self.on_fit_config_fn is not None:
             # Custom fit config function provided
             config = self.on_fit_config_fn(server_round)

@@ -20,7 +20,7 @@ Paper: https://arxiv.org/abs/1602.05629
 import os
 import pickle
 import random
-from logging import DEBUG, INFO, WARNING
+from logging import WARNING
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -137,16 +137,16 @@ class FedAvgReproducibleSampling(FedAvg):
         )
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)
+        client_manager.wait_for(sample_size)  # type: ignore
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -160,7 +160,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
-        saving_path: Path = None,
+        saving_path: Optional[Path] = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
@@ -179,8 +179,10 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         seed: int = 1337,
+        freq: int = 1,
     ) -> None:
-        """Federated Averaging strategy with with reproducible sampling and model saving.
+        """Federated Averaging strategy with with reproducible sampling and
+        model saving.
 
         Implementation based on https://arxiv.org/abs/1602.05629
 
@@ -216,6 +218,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
+        freq : int, optional
+            Frequency of model saving. Defaults to 1.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -236,6 +240,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
 
+        self.freq = freq
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -255,11 +261,12 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             for _, fit_res in results
         ]
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
-        # Save `parameters_aggregated`` to file
-        with open(
-            self.saving_path / f"parameters_aggregated_{server_round}", "wb"
-        ) as f:
-            pickle.dump(parameters_aggregated, f)
+        if server_round % self.freq == 0:
+            # Save `parameters_aggregated`` to file
+            with open(
+                self.saving_path / f"parameters_aggregated_{server_round}", "wb"
+            ) as f:
+                pickle.dump(parameters_aggregated, f)
         # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:

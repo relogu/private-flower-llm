@@ -17,7 +17,7 @@
 
 import random
 import threading
-from logging import INFO, DEBUG
+from logging import INFO
 from typing import Dict, List, Optional
 
 from flwr.common.logger import log
@@ -59,8 +59,11 @@ class PollenClientManager(ClientManager):
         """
         return len(self.node_managers)
 
-    def wait_for_node_managers(self, num_node_managers: int, timeout: int = 86400) -> bool:
-        """Wait until at least `num_node_managers` `NodeManager`s are available.
+    def wait_for_node_managers(
+        self, num_node_managers: int, timeout: int = 86400
+    ) -> bool:
+        """Wait until at least `num_node_managers` `NodeManager`s are
+        available.
 
         Blocks until the requested number of clients is available or until a
         timeout is reached. Current timeout default: 1 day.
@@ -150,8 +153,10 @@ class PollenClientManager(ClientManager):
 
     def all(self) -> Dict[str, ClientProxy]:
         """Return all available clients.
+
         NOTE: not changing the name of the parameters to prevent compatibility
-        issues."""
+        issues.
+        """
         return self.node_managers
 
     def sample(
@@ -161,6 +166,7 @@ class PollenClientManager(ClientManager):
         criterion: Optional[Criterion] = None,
     ) -> List[ClientProxy]:
         """Sample a number of Flower ClientProxy instances.
+
         NOTE: Here, ClientProxies are virtual clients.
         """
         # Block until at least num_clients are connected.

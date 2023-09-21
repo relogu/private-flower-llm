@@ -20,7 +20,6 @@ Paper: https://arxiv.org/abs/1602.05629
 import os
 import pickle
 import random
-from logging import DEBUG, INFO, WARNING
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -32,14 +31,12 @@ from flwr.common import (
     NDArrays,
     Parameters,
     Scalar,
-    log,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedYogi
-from flwr.server.strategy.aggregate import aggregate
 
 
 # flake8: noqa: E501
@@ -74,7 +71,8 @@ class FedYogiReproducibleSampling(FedYogi):
         tau: float = 1e-3,
         seed: int = 1337,
     ) -> None:
-        """Federated learning strategy using Yogi on server-side with reproducible sampling.
+        """Federated learning strategy using Yogi on server-side with
+        reproducible sampling.
 
         Implementation based on https://arxiv.org/abs/2003.00295v5
 
@@ -132,7 +130,7 @@ class FedYogiReproducibleSampling(FedYogi):
             on_fit_config_fn=on_fit_config_fn,
             on_evaluate_config_fn=on_evaluate_config_fn,
             accept_failures=accept_failures,
-            initial_parameters=initial_parameters,
+            initial_parameters=initial_parameters,  # type: ignore
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
             eta=eta,
@@ -159,16 +157,16 @@ class FedYogiReproducibleSampling(FedYogi):
         )
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)
+        client_manager.wait_for(sample_size)  # type: ignore
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -182,7 +180,7 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
     def __init__(
         self,
         *,
-        saving_path: Path = None,
+        saving_path: Optional[Path] = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
@@ -206,8 +204,10 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         beta_2: float = 0.99,
         tau: float = 1e-3,
         seed: int = 1337,
+        freq: int = 1,
     ) -> None:
-        """Federated learning strategy using Yogi on server-side with reproducible sampling and model saving.
+        """Federated learning strategy using Yogi on server-side with
+        reproducible sampling and model saving.
 
         Implementation based on https://arxiv.org/abs/2003.00295v5
 
@@ -254,6 +254,8 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
             Defaults to 1e-9.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
+        freq : int, optional
+            Frequency of saving the aggregated parameters. Defaults to 1.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -278,6 +280,7 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
+        self.freq = freq
 
     def aggregate_fit(
         self,
@@ -323,9 +326,10 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         self.current_weights = new_weights
 
         # Save `self.current_weights`` to file
-        with open(
-            self.saving_path / f"parameters_aggregated_{server_round}", "wb"
-        ) as f:
-            pickle.dump(ndarrays_to_parameters(self.current_weights), f)
+        if server_round % self.freq == 0:
+            with open(
+                self.saving_path / f"parameters_aggregated_{server_round}", "wb"
+            ) as f:
+                pickle.dump(ndarrays_to_parameters(self.current_weights), f)
 
         return ndarrays_to_parameters(self.current_weights), metrics_aggregated
