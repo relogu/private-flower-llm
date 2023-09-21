@@ -4,7 +4,6 @@ import torch
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 from models.shakespeare_leaf_model import ShakespeareLeafNet
@@ -45,8 +44,9 @@ class ShakespeareClient(NumPyClient):
         self.data_root = data_root
         self.trainset = ShakespeareDataset(self.data_root, client_id=client_id)
         """self.evalset = ShakespeareDataset(
-            self.data_root, client_id=client_id, dataset="test"
-        )"""
+
+        self.data_root, client_id=client_id, dataset="test" )
+        """
         self.net = ShakespeareLeafNet()
 
     def get_parameters(self, config: Dict[str, Scalar]) -> NDArrays:

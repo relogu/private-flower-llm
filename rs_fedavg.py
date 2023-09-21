@@ -20,7 +20,7 @@ Paper: https://arxiv.org/abs/1602.05629
 import os
 import pickle
 import random
-from logging import DEBUG, INFO, WARNING
+from logging import WARNING
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -35,13 +35,10 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.server.client_manager import SimpleClientManager, ClientManager
+from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
-
-from pollen_client_manager import PollenClientManager
-
 
 
 # flake8: noqa: E501
@@ -140,16 +137,16 @@ class FedAvgReproducibleSampling(FedAvg):
         )
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size) # type: ignore
+        client_manager.wait_for(sample_size)  # type: ignore
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size) # type: ignore
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids] # type: ignore
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -184,7 +181,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         seed: int = 1337,
         freq: int = 1,
     ) -> None:
-        """Federated Averaging strategy with with reproducible sampling and model saving.
+        """Federated Averaging strategy with with reproducible sampling and
+        model saving.
 
         Implementation based on https://arxiv.org/abs/1602.05629
 

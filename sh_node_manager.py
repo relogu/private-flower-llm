@@ -1,5 +1,5 @@
-from collections import OrderedDict
 import pickle
+from collections import OrderedDict
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
 
@@ -9,7 +9,6 @@ from flwr.client import NumPyClient
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
-from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Tuple
 
 import flwr as fl
@@ -24,7 +23,7 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from clients import train
-from utils import partially_aggregate, set_parameters
+from utils import partially_aggregate
 
 # mp.set_start_method("spawn", force=True)
 

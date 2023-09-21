@@ -15,29 +15,17 @@
 """Flower server."""
 
 
-import concurrent.futures
 import timeit
-from logging import DEBUG, INFO
-from typing import Dict, List, Optional, Tuple, Union
+from logging import INFO
+from typing import List, Optional, Tuple, Union
 
-from flwr.common import (
-    Code,
-    DisconnectRes,
-    EvaluateIns,
-    EvaluateRes,
-    FitIns,
-    FitRes,
-    Parameters,
-    ReconnectIns,
-    Scalar,
-)
+from flwr.common import DisconnectRes, EvaluateRes, FitRes, Parameters
 from flwr.common.logger import log
-from flwr.common.typing import GetParametersIns
+from flwr.server import Server
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.strategy import FedAvg, Strategy
-from flwr.server import Server
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -69,8 +57,7 @@ class WandbServer(Server):
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         self.max_workers: Optional[int] = None
-        self.history: Optional[History] = history 
-
+        self.history: Optional[History] = history
 
     # pylint: disable=too-many-locals
     def fit(self, num_rounds: int, timeout: Optional[float]) -> History:

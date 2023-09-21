@@ -1,17 +1,12 @@
-import os
 import pickle
 import time
-from collections import OrderedDict
 from pathlib import Path
 
 import cloudpickle
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from copy import deepcopy
-from itertools import repeat
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict
 
 import flwr as fl
 import hydra
@@ -19,7 +14,7 @@ import multiprocess as mp
 import nvsmi
 import psutil
 import torch
-from flwr.common import Config, NDArrays, Scalar
+from flwr.common import Config, Scalar
 from hydra.utils import call
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -31,8 +26,6 @@ from utils import partially_aggregate, set_parameters
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-import numpy as np
-from multiprocess import shared_memory
 
 from datasets import ShakespeareDataset
 from models import ShakespeareLeafNet as Net

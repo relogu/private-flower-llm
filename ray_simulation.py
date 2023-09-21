@@ -13,21 +13,16 @@ import transformers
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
-from hydra.utils import call
+from flwr.server.client_manager import SimpleClientManager
+from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
-from pollen_utils import get_clients_population_dict
-from rs_fedavg import FedAvgRSModel
 import wandb
-from utils import RayContextManager, wandb_init, weighted_average
-from hydra.utils import call, instantiate
-
 from pollen_utils import get_clients_population_dict
-from utils import weighted_average
+from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient
 from wandb_history import WandbHistory
 from wandb_server import WandbServer
-from flwr.server.client_manager import SimpleClientManager
 
 transformers.logging.set_verbosity_error()
 
@@ -63,7 +58,6 @@ def get_n_worker_gpu_type(name: str = "openimage"):
             "NVIDIA GeForce RTX 2080 Ti": 4,
         }
     raise ValueError(f"Unknown dataset name: {name}")
-    
 
 
 # Define strategy
@@ -108,9 +102,9 @@ def main(cfg: DictConfig) -> None:
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
 
     # configure the strategy
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get() # type: ignore
-        
-    saving_path=Path(hydra_cfg["runtime"]["output_dir"])
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
+
+    saving_path = Path(hydra_cfg["runtime"]["output_dir"])
     strategy = instantiate(
         cfg.task.strategy,
         saving_path=saving_path,
@@ -119,7 +113,7 @@ def main(cfg: DictConfig) -> None:
         fraction_fit=n_clients_per_round / n_total_clients,
         on_fit_config_fn=on_fit_config_fn,
         initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0).get_parameters(config={}, net=None) # type: ignore
+            get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
         ),
         fit_metrics_aggregation_fn=weighted_average,
         freq=cfg.save_freq,
@@ -155,7 +149,11 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
-        server = WandbServer(client_manager=SimpleClientManager(),history=wandb_history,strategy=strategy)
+        server = WandbServer(
+            client_manager=SimpleClientManager(),
+            history=wandb_history,
+            strategy=strategy,
+        )
         with RayContextManager() as _:
             hist = fl.simulation.start_simulation(
                 client_fn=get_client_fn,
@@ -167,7 +165,6 @@ def main(cfg: DictConfig) -> None:
             )
             with open(saving_path / "history.json", "w") as f:
                 json.dump(hist.__dict__, f)
-
 
 
 if __name__ == "__main__":

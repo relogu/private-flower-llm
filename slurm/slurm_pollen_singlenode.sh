@@ -34,6 +34,6 @@ python pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS # >> node_manager_$timestamp.o
 # python clean_memory.py
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode.sh
+# srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode.sh
 # Use what follows for a batch job
 # sbatch slurm_pollen_singlenode.sh

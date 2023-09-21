@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from logging import INFO
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import flwr as fl
 import torch
@@ -8,6 +8,7 @@ import transformers
 from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
+from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -15,7 +16,6 @@ from torch.utils.data import DataLoader
 from datasets.nlp_util import get_collate_fn
 from models.training_loops import get_input_shapes, get_training_loop
 from pollen_utils import get_client_ds, get_device, get_model, get_optimizer
-from torch import device as device_type
 
 
 class VirtualClient(fl.client.NumPyClient):
@@ -60,7 +60,12 @@ class VirtualClient(fl.client.NumPyClient):
             ]
         return tmp
 
-    def set_parameters(self, parameters: NDArrays, net: Optional[Module] = None, device: Union[str,device_type] ="cpu"):
+    def set_parameters(
+        self,
+        parameters: NDArrays,
+        net: Optional[Module] = None,
+        device: Union[str, device_type] = "cpu",
+    ):
         if net is None:
             net = get_model(name=self.name)
         net.eval()
@@ -122,7 +127,6 @@ class VirtualClient(fl.client.NumPyClient):
             else (None, None)
         )
 
-
         # Instantiate the trainloader
         trainloader = (
             DataLoader(
@@ -157,7 +161,7 @@ class VirtualClient(fl.client.NumPyClient):
         n_samples = (
             int(config["batch_size"] * config["local_epochs"])
             if ds is None
-            else len(ds) # type: ignore
+            else len(ds)  # type: ignore
         )
         # Initialize the model and set its parameters
         net = self.set_parameters(parameters=parameters, device=config["device"])
@@ -168,17 +172,17 @@ class VirtualClient(fl.client.NumPyClient):
             get_training_loop(name=self.name)
             if not config["is_fake"]
             else self._train_loop
-        ) # type: ignore
+        )  # type: ignore
         optimizer = get_optimizer(name=self.name, model=net)
         criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(
             device=config["device"]
         )
         net, train_metrics = self._train_loop(
-            trainloader=trainloader, # type: ignore
+            trainloader=trainloader,  # type: ignore
             net=net,
             device=config["device"],
             epochs=config["local_epochs"],
-            tokenizer=tokenizer, # type: ignore
+            tokenizer=tokenizer,  # type: ignore
             optimizer=optimizer,
             criterion=criterion,
             batch_size=config["batch_size"],
@@ -208,8 +212,8 @@ if __name__ == "__main__":
     client = VirtualClient(
         name="openimage",
         cid=0,
-        device=get_device(), # type: ignore
-        n_workers=0, # type: ignore
+        device=get_device(),  # type: ignore
+        n_workers=0,  # type: ignore
     )
     log(INFO, f"VirtualClient.__main__ :: created {client}")
     config = {

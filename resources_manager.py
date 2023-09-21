@@ -224,9 +224,9 @@ class ResourcesMonitor(Thread):
         self.dead = False
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
-        """This function reads the output of `nvidia-smi --query`
-        launched as a subprocess. The GPU is selected by `self.gpu_id`.
-        In particular, it reads the total and allocated memory in MB.
+        """This function reads the output of `nvidia-smi --query` launched as a
+        subprocess. The GPU is selected by `self.gpu_id`. In particular, it
+        reads the total and allocated memory in MB.
 
         Raises:
             RuntimeError: if raised by the subprocess launched.
@@ -234,7 +234,10 @@ class ResourcesMonitor(Thread):
         Returns:
             Tuple[float, float]: the total and allocated memory in MB.
         """
-        output_to_list = lambda x: x.decode("ascii").split("\n")
+
+        def output_to_list(x):
+            return x.decode("ascii").split("\n")
+
         command = NVIDIA_SMI_GET_GPUS_MEMORY_ONLY + f" -i {self.gpu_id}"
         try:
             current_gpu_stats = output_to_list(
@@ -271,11 +274,9 @@ class ResourcesMonitor(Thread):
         return ret_val
 
     def _update_max_values(self):
-        """
-        This function calls itself every `self.frequency` secs and
-        updates the maximum values for `self.vram_total_memory` and
-        `self.vram_maximum_allocated_memory`.
-        """
+        """This function calls itself every `self.frequency` secs and updates
+        the maximum values for `self.vram_total_memory` and
+        `self.vram_maximum_allocated_memory`."""
         while self.do_run:
             mem = 0.0
             if self.gpu_id >= 0:
@@ -306,11 +307,11 @@ class ResourcesMonitor(Thread):
     def run(self):
         """Method representing the thread's activity.
 
-        You may override this method in a subclass. The standard run() method
-        invokes the callable object passed to the object's constructor as the
-        target argument, if any, with sequential and keyword arguments taken
-        from the args and kwargs arguments, respectively.
-
+        You may override this method in a subclass. The standard run()
+        method invokes the callable object passed to the object's
+        constructor as the target argument, if any, with sequential and
+        keyword arguments taken from the args and kwargs arguments,
+        respectively.
         """
         try:
             self._update_max_values()
@@ -338,7 +339,9 @@ class DaemonResourcesMonitor(Thread):
         self.gpu_stats = []
 
     def _get_gpu_stats(self):
-        output_to_list = lambda x: bytes(x)
+        def output_to_list(x):
+            return bytes(x)
+
         command = NVIDIA_SMI_GET_GPUS_STATS + f" -i {','.join(self.gpu_ids)}"
         try:
             current_gpu_stats = output_to_list(

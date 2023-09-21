@@ -17,10 +17,8 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
-from copy import deepcopy
-from itertools import repeat
-from logging import INFO, DEBUG
 import random
+from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from flwr.common import FitIns, MetricsAggregationFn, NDArrays, Parameters, Scalar

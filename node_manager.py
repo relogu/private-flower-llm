@@ -1,7 +1,5 @@
-from collections import OrderedDict
-import os
 import pickle
-import time
+
 import cloudpickle
 
 cloudpickle.DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
@@ -9,36 +7,33 @@ from flwr.client import NumPyClient
 
 pickle.Pickler = cloudpickle.Pickler
 import warnings
-from itertools import repeat
-from typing import Callable, Dict, List, Optional, Tuple
-from nvsmi import GPU
+from copy import deepcopy
+from typing import Callable, Dict, List
 
 import flwr as fl
 import hydra
+import multiprocess as mp
 import nvsmi
 import psutil
 import torch
-from copy import deepcopy
-
-import multiprocess as mp
-from omegaconf import DictConfig
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-# mp.set_start_method("spawn", force=True)
-
 from flwr.common import Config, NDArrays, Scalar
 from hydra.utils import call
+from nvsmi import GPU
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from utils import partially_aggregate, set_parameters
 
+# mp.set_start_method("spawn", force=True)
+
+
 warnings.filterwarnings("ignore", category=UserWarning)
+
+import numpy as np
+from multiprocess import shared_memory
 
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 from models.shakespeare_leaf_model import ShakespeareLeafNet as Net
-
-from multiprocess import shared_memory
-import numpy as np
 
 
 def create_sm(parameters: NDArrays, name="pollen_sm"):

@@ -1,10 +1,9 @@
+from typing import Dict
 
-from functools import reduce
-from typing import Dict, List, Tuple
-
-import wandb
 from flwr.common.typing import Scalar
 from flwr.server.history import History
+
+import wandb
 
 
 class WandbHistory(History):
@@ -50,5 +49,5 @@ class WandbHistory(History):
         """Add metrics entries (from centralized evaluation)."""
         super().add_metrics_centralized(server_round, metrics)
         if self.use_wandb:
-            for key in metrics:        
+            for key in metrics:
                 wandb.log({key: metrics[key]}, step=server_round)

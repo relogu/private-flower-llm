@@ -1,22 +1,23 @@
 import sys
 from collections import defaultdict
+from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from pathlib import Path
 from typing import Dict, List, Tuple
-from copy import copy
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
+from numpy.typing import NDArray
 from scipy.optimize import curve_fit
+
 from pollen_utils import (
     get_clients_dataframe_from_dict,
     get_ctt_dataframe_from_pickle,
-    merge_ctt_size,
     invert_many_to_one_dictionary,
+    merge_ctt_size,
 )
 from resources_manager import Node
 
@@ -31,18 +32,19 @@ The known values are:
  - `lbu` for logarithm batch uniform placement.
 """
 
-def get_placement_fn(policy: str = 'rr'):
-    if policy == 'rr':
+
+def get_placement_fn(policy: str = "rr"):
+    if policy == "rr":
         return round_robin_placement
-    elif policy == 'srr':
+    elif policy == "srr":
         return sorted_round_robin_placement
-    elif policy == 'bu':
+    elif policy == "bu":
         return batches_placement
-    elif policy == 'lb':
+    elif policy == "lb":
         return learning_based_placement
-    elif policy == 'su':
+    elif policy == "su":
         return samples_placement
-    elif policy == 'lbu':
+    elif policy == "lbu":
         return log_batches_placement
     else:
         log(ERROR, INVALID_ARGUMENTS_GET_PLACEMENT_FN)
@@ -60,18 +62,14 @@ def learning_based_placement(
     **kwargs,
 ) -> Dict[str, List[int]]:
     if server_round == 1:
-        return round_robin_placement(
-            sampled_virtual_cids, nodes_dict)
+        return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         current_scores = []
         map_workers_models = {
-            k: f'{node}_{gpu_name}'
-            for k, (node, gpu_name, gpu_id, concurrency)
-            in worker_to_resource.items()
+            k: f"{node}_{gpu_name}"
+            for k, (node, gpu_name, gpu_id, concurrency) in worker_to_resource.items()
         }
-        map_models_workers = invert_many_to_one_dictionary(
-            map_workers_models
-        )
+        map_models_workers = invert_many_to_one_dictionary(map_workers_models)
         for model_name, worker_ids in map_models_workers.items():
             try:
                 # TODO: Load data, re-think this procedure to make it more
@@ -81,96 +79,109 @@ def learning_based_placement(
                 data = get_train_data(
                     path_save_stats=self.path_save_stats,
                     cid_samples_dict=cids,
-                    worker_ids=[self.map_workers_address_id[w_id] for w_id in worker_ids],
+                    worker_ids=[
+                        self.map_workers_address_id[w_id] for w_id in worker_ids
+                    ],
                     # TODO: Reset data for the model given a condition
                     reset=False,
-                    )
+                )
                 # Fit data
                 # This is a dictionary {'model_name': (trained_model)}
                 try:
-                    trained_models[model_name] = get_trained_model(
-                        data=data)
+                    trained_models[model_name] = get_trained_model(data=data)
                     # Get scores
                     current_scores.append(
-                        get_model_score(
-                            trained_models[model_name],
-                            data))
+                        get_model_score(trained_models[model_name], data)
+                    )
                 except RuntimeError as e:
-                    log(ERROR, f'Exception in getting trained model: {e}')
+                    log(ERROR, f"Exception in getting trained model: {e}")
                     trained_models = {}
                     current_scores.append(10)
             except RuntimeError as e:
-                log(ERROR, f'Exception in getting data: {e}')
+                log(ERROR, f"Exception in getting data: {e}")
                 trained_models = {}
                 current_scores.append(10)
         # Check scores
-        log(
-            DEBUG,'PollenStrategy::poly3 : models\' scores %s',
-            current_scores
-        )
+        log(DEBUG, "PollenStrategy::poly3 : models' scores %s", current_scores)
         # TODO/FIXME: Estimate the threshold better
         if max([abs(score) for score in current_scores]) > 10e-1:
-            lists_cids = round_robin_placement(
-                sampled_virtual_cids, nodes_dict)
+            lists_cids = round_robin_placement(sampled_virtual_cids, nodes_dict)
         else:
             # Sorting by batch size (decreasing order)
             # This is a list of tuples (cid, list of samples)
             sampled_virtual_cids = sorted(
                 sampled_virtual_cids,
-                key=lambda x: x[1]/batch_size,
+                key=lambda x: x[1] / batch_size,
                 reverse=True,
             )
             # Order models from the fastest to the slowest according to the prediction
             # This is a dictionary {'model_name': (trained_model)}
-            trained_models = {k: v for k, v in sorted(
-                trained_models.items(),
-                key=lambda item: predict_single_client(
-                    model=item[1],
-                    n_samples=sampled_virtual_cids[0][1],
-                    batch_size=batch_size,
-                ))}
+            trained_models = {
+                k: v
+                for k, v in sorted(
+                    trained_models.items(),
+                    key=lambda item: predict_single_client(
+                        model=item[1],
+                        n_samples=sampled_virtual_cids[0][1],
+                        batch_size=batch_size,
+                    ),
+                )
+            }
             # Initial assignment
             lists_cids = defaultdict(list)
             for model_name, predictor in trained_models.items():
                 for worker in map_models_workers[model_name]:
                     cid, n_samples = sampled_virtual_cids.pop(0)
-                    lists_cids[worker].append((
-                        cid,
-                        n_samples,
-                        predict_single_client(
-                            model=predictor,
-                            n_samples=n_samples,
-                            batch_size=batch_size,
+                    lists_cids[worker].append(
+                        (
+                            cid,
+                            n_samples,
+                            predict_single_client(
+                                model=predictor,
+                                n_samples=n_samples,
+                                batch_size=batch_size,
+                            ),
                         )
-                    ))
+                    )
             # Placement
             for virtual_cid, num_samples in sampled_virtual_cids:
                 # Loop over workers to get the less loaded one
                 min_w_id, load = None, None
                 for w_id, worker in nodes_dict.items():
-                    current_load = sum([c[2]
-                                        for c in lists_cids[w_id]])
+                    current_load = sum([c[2] for c in lists_cids[w_id]])
                     if min_w_id is None:
                         min_w_id, load = w_id, current_load
                     elif current_load < load:
                         min_w_id, load = w_id, current_load
 
-                lists_cids[min_w_id].append((
-                    virtual_cid,
-                    num_samples,
-                    predict_single_client(
-                        model=trained_models[map_workers_models[min_w_id]],
-                        n_samples=n_samples,
-                        batch_size=batch_size,
+                lists_cids[min_w_id].append(
+                    (
+                        virtual_cid,
+                        num_samples,
+                        predict_single_client(
+                            model=trained_models[map_workers_models[min_w_id]],
+                            n_samples=n_samples,
+                            batch_size=batch_size,
+                        ),
                     )
-                ))
+                )
             # Results of the placement
             if verbose:
-                placement = {w_id: (sum([x[2] for x in load]), len(load), sum([x[1] for x in load]), [x[0] for x in load]) for w_id, load in lists_cids.items()}
-                log(DEBUG,
-                    'PollenStrategy :: poly3 placement'
-                    ' dict(w_id: (sum_of_ctt, n_clients, sum_of_batches, [cids])) %s',
-                    placement)
+                placement = {
+                    w_id: (
+                        sum([x[2] for x in load]),
+                        len(load),
+                        sum([x[1] for x in load]),
+                        [x[0] for x in load],
+                    )
+                    for w_id, load in lists_cids.items()
+                }
+                log(
+                    DEBUG,
+                    "PollenStrategy :: poly3 placement"
+                    " dict(w_id: (sum_of_ctt, n_clients, sum_of_batches, [cids])) %s",
+                    placement,
+                )
             return {w_id: [x[0] for x in load] for w_id, load in lists_cids.items()}
 
 
@@ -182,29 +193,48 @@ def round_robin_placement(
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     # Extract cids
     sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in sampled_virtual_cids])
+        [x[0] for x in sampled_virtual_cids]
+    )
     # Creates equal clients splits amongst workers
-    # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3]. 
+    # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
-    n_total_workers = np.sum([[device.concurrency for _, device in node.device_info.items()] for _, (_, node) in nodes_dict.items()])
+    n_total_workers = np.sum(
+        [
+            [device.concurrency for _, device in node.device_info.items()]
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
     # Init the device assignment and the return value
     device_assignment = defaultdict(list)
-    node_assignments = [(client_proxy, copy(device_assignment)) for _, (client_proxy, _) in nodes_dict.items()]
+    node_assignments = [
+        (client_proxy, copy(device_assignment))
+        for _, (client_proxy, _) in nodes_dict.items()
+    ]
     # Loop over the splits created
     while len(splits) > 0:
         # Loop over nodes
-        for (c_p, device_assignment), (_, (_, node)) in zip(node_assignments, nodes_dict.items()):
+        for (c_p, device_assignment), (_, (_, node)) in zip(
+            node_assignments, nodes_dict.items()
+        ):
             # Loop over devices in the current node
             for device_id, device in node.device_info.items():
                 current_split = splits.pop(0)
                 if len(current_split) > 0:
                     [device_assignment[device_id].append(c) for c in current_split]
     # Covert list of int to string
-    node_assignments = [(c_p, {k: convert_list_of_int_to_string(v) for k, v in device_assignment.items()}) for c_p, device_assignment in node_assignments]
+    node_assignments = [
+        (
+            c_p,
+            {k: convert_list_of_int_to_string(v) for k, v in device_assignment.items()},
+        )
+        for c_p, device_assignment in node_assignments
+    ]
     if verbose:
-        log(DEBUG,
-            f'Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}')
+        log(
+            DEBUG,
+            f"Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}",
+        )
     return node_assignments
 
 
@@ -222,11 +252,14 @@ def sorted_round_robin_placement(
     )
     # Extract cids
     sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in sampled_virtual_cids])
+        [x[0] for x in sampled_virtual_cids]
+    )
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
-    splits = [sampled_virtual_cids[np.arange(
-        i, len(sampled_virtual_cids), len(nodes_dict))] for i in range(len(nodes_dict))]
+    splits = [
+        sampled_virtual_cids[np.arange(i, len(sampled_virtual_cids), len(nodes_dict))]
+        for i in range(len(nodes_dict))
+    ]
     node_assignments = []
     for _, (client_proxy, node) in nodes_dict.items():
         device_assignment: Dict[str, str] = {}
@@ -234,11 +267,18 @@ def sorted_round_robin_placement(
             current_split = splits.pop(0)
             log(DEBUG, f"current_split {current_split}")
             if len(current_split) > 0:
-                device_assignment[device_id] = ','.join([','.join([str(cid) for cid in current_split]) for _ in range(device.concurrency)])
+                device_assignment[device_id] = ",".join(
+                    [
+                        ",".join([str(cid) for cid in current_split])
+                        for _ in range(device.concurrency)
+                    ]
+                )
         node_assignments.append((client_proxy, device_assignment))
     if verbose:
-        log(DEBUG,
-            f'Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}')
+        log(
+            DEBUG,
+            f"Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}",
+        )
     return node_assignments
 
 
@@ -255,21 +295,20 @@ def samples_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
-        sums = [sum([x[1] for x in list_cids])
-                for list_cids in splits]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
+        sums = [sum([x[1] for x in list_cids]) for list_cids in splits]
         min_worker = np.argmin(sums)
         splits[min_worker].append((virtual_cid, num_samples))
-    splits = [np.array([x[0] for x in list_cids])
-              for list_cids in splits]
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
     lists_cids = defaultdict(list)
     for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
-        log(DEBUG,
-            f'Number of samples placement :: dict(worker_id, [cids]) {placement}')
+        log(
+            DEBUG, f"Number of samples placement :: dict(worker_id, [cids]) {placement}"
+        )
     return lists_cids
 
 
@@ -287,21 +326,22 @@ def batches_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
-        sums = [sum([floor(x[1]/batch_size)
-                    for x in list_cids]) for list_cids in splits]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
+        sums = [
+            sum([floor(x[1] / batch_size) for x in list_cids]) for list_cids in splits
+        ]
         min_worker = np.argmin(sums)
         splits[min_worker].append((virtual_cid, num_samples))
-    splits = [np.array([x[0] for x in list_cids])
-              for list_cids in splits]
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
     lists_cids = defaultdict(list)
     for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
-        log(DEBUG,
-            f'Number of batches placement :: dict(worker_id, [cids]) {placement}')
+        log(
+            DEBUG, f"Number of batches placement :: dict(worker_id, [cids]) {placement}"
+        )
     return lists_cids
 
 
@@ -319,10 +359,12 @@ def log_batches_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[:len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict):]:
-        sums = [sum([log10(floor(x[1]/batch_size))
-                    for x in list_cids]) for list_cids in splits]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
+    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
+        sums = [
+            sum([log10(floor(x[1] / batch_size)) for x in list_cids])
+            for list_cids in splits
+        ]
         min_worker = np.argmin(sums)
         splits[min_worker].append((virtual_cid, num_samples))
     lists_cids = defaultdict(list)
@@ -330,8 +372,10 @@ def log_batches_placement(
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
-        log(DEBUG,
-            f'Logarithm of number of batches placement :: dict(worker_id, [cids]) {placement}')
+        log(
+            DEBUG,
+            f"Logarithm of number of batches placement :: dict(worker_id, [cids]) {placement}",
+        )
     return lists_cids
 
 
@@ -339,10 +383,10 @@ def get_train_data(
     path_save_stats: Path,
     cid_samples_dict: Dict[int, int],
     worker_ids: List[int],
-    reset: bool = False
+    reset: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
     dfs = []
-    file_list = [path_save_stats.parent/f'stats_worker{i}' for i in worker_ids]
+    file_list = [path_save_stats.parent / f"stats_worker{i}" for i in worker_ids]
     for file in file_list:
         df = get_ctt_dataframe_from_pickle(file)
         dfs.append(df)
@@ -350,8 +394,7 @@ def get_train_data(
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.dropna(inplace=True)
     _, x_train, y_train = merge_ctt_size(
-        ctt_df=df,
-        clients_df=get_clients_dataframe_from_dict(cid_samples_dict)
+        ctt_df=df, clients_df=get_clients_dataframe_from_dict(cid_samples_dict)
     )
     # if reset:
     #     [os.remove(file) in file_list]
@@ -359,7 +402,7 @@ def get_train_data(
 
 
 def fn(x, A, B, C, D):
-    y = A*x+B*np.log(C*x+1e-8)+D
+    y = A * x + B * np.log(C * x + 1e-8) + D
     return y
 
 
@@ -374,8 +417,8 @@ def get_model_score(model, data):
 
 def predict_single_client(model, n_samples: int, batch_size: int):
     parameters, covariance = model
-    return fn(n_samples//batch_size, *parameters)
+    return fn(n_samples // batch_size, *parameters)
 
 
 def convert_list_of_int_to_string(list_of_int: List[int]) -> str:
-    return ','.join([str(i) for i in list_of_int])
+    return ",".join([str(i) for i in list_of_int])

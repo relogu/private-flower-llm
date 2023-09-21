@@ -73,6 +73,7 @@ class SHAKESPEARE(Dataset):
     def word_to_indices(self, word):
         """Converts a sequence of characters into position indices in the
         reference string `self.characters`.
+
         Args:
             word (str): Sequence of characters to be converted.
         Returns:
@@ -201,6 +202,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
     def word_to_indices(self, word):
         """Converts a sequence of characters into position indices in the
         reference string `self.characters`.
+
         Args:
             word (str): Sequence of characters to be converted.
         Returns:
@@ -291,7 +293,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
 
 def dump_info(worker_idx, client_ids, dataset):
     clients = []
-    start_time = time.time()
+    time.time()
     for i, client_id in enumerate(client_ids):
         ds = SHAKESPEARE_LOADED(
             root=Path("/datasets/FedScale/leaf_shakespeare"),

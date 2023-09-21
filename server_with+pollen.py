@@ -1,7 +1,6 @@
 import json
 from logging import DEBUG, INFO
 from pathlib import Path
-from typing import cast
 
 import flwr as fl
 import hydra
@@ -11,16 +10,14 @@ from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-import wandb
 
+import wandb
 from pollen_client_manager import PollenClientManager
 from pollen_server import PollenServer
 from pollen_utils import get_clients_population_dict
 from utils import wandb_init, weighted_average
 from virtual_client import VirtualClient
 from wandb_history import WandbHistory
-from wandb_server import WandbServer
-
 
 transformers.logging.set_verbosity_error()
 
@@ -60,7 +57,7 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
     # Storing the parameters to the hydra output directory
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get() # type: ignore
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
     strategy = instantiate(
         cfg.task.strategy,
         saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
@@ -69,7 +66,7 @@ def main(cfg: DictConfig) -> None:
         fraction_fit=n_clients_per_round / n_total_clients,
         on_fit_config_fn=on_fit_config_fn,
         initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0).get_parameters(config={}, net=None) # type: ignore
+            get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
         ),
         fit_metrics_aggregation_fn=weighted_average,
         freq=cfg.save_freq,

@@ -1,5 +1,4 @@
 import shutil
-import time
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple
@@ -9,8 +8,8 @@ import ray
 import torch
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
-import wandb
 
+import wandb
 from datasets.shakespeare import SHAKESPEARE_DTYPES
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 
@@ -182,12 +181,12 @@ def wandb_init(wandb_enabled: bool, *args, **kwargs):
 
     return NoOpContextManager()
 
+
 class RayContextManager:
-    """A context manager for cleaning up after ray"""
+    """A context manager for cleaning up after ray."""
 
-
-    def __enter__(self) :
-        """Initialize the context manager"""
+    def __enter__(self):
+        """Initialize the context manager."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
@@ -200,4 +199,6 @@ class RayContextManager:
             ray.shutdown()
             directory_size = shutil.disk_usage(temp_dir).used
             shutil.rmtree(temp_dir)
-            print(f"Cleaned up ray temp session: {temp_dir} with size: {directory_size}")
+            print(
+                f"Cleaned up ray temp session: {temp_dir} with size: {directory_size}"
+            )

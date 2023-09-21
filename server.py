@@ -1,6 +1,3 @@
-import logging
-from typing import List, Tuple
-
 import flwr as fl
 import hydra
 from hydra.utils import call

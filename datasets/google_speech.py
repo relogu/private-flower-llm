@@ -257,7 +257,7 @@ class SPEECH(Dataset):
 
 def dump_info(worker_idx, client_ids, dataset):
     clients = []
-    start_time = time.time()
+    time.time()
     for i, client_id in enumerate(client_ids):
         ds = SPEECH(
             root=Path("/datasets/FedScale/google_speech/google_speech"),

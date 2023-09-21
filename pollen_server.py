@@ -25,15 +25,15 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+from flwr.client import ClientLike
 from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, GetPropertiesRes, Properties
+from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
-from flwr.server import Server
-from flwr.client import ClientLike
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -67,7 +67,7 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Union[Dict[ str, int], Dict[int, int]],
+        cids: Union[Dict[str, int], Dict[int, int]],
         client_fn: Callable[[int], ClientLike],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
@@ -467,7 +467,7 @@ def get_nodes_properties(
 def get_properties_client(
     client: ClientProxy, timeout: Optional[float]
 ) -> Tuple[ClientProxy, Node]:
-    """Get properties froma a Node"""
+    """Get properties froma a Node."""
     ins = GetPropertiesIns(config={})
     node_properties_res: Node = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties
