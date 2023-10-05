@@ -2,7 +2,7 @@ import os
 import pickle
 import time
 from collections import defaultdict
-from logging import DEBUG, INFO
+from logging import DEBUG, INFO, ERROR
 from multiprocessing import resource_tracker
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
@@ -17,6 +17,8 @@ from typing import Callable, Dict, List, Tuple
 import flwr as fl
 import hydra
 import multiprocess as mp
+from multiprocess import Queue
+from multiprocess import set_start_method
 import nvsmi
 import psutil
 import pyarrow as pa
@@ -32,7 +34,7 @@ from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cu
 from utils import get_parameters, partially_aggregate_with_metrics
 from virtual_client import VirtualClient
 
-mp.set_start_method("spawn", force=True)
+set_start_method("spawn", force=True)
 import gc
 
 import numpy as np
@@ -110,8 +112,8 @@ class Worker(mp.Process):
         client_fn: Callable[[int], NumPyClient],
         device: str,
         worker_id: str,
-        task_queue: mp.Queue,
-        result_queue: mp.Queue,
+        task_queue: Queue,
+        result_queue: Queue,
         run_uuid: str,
         concurrency: int,
     ):
@@ -119,8 +121,8 @@ class Worker(mp.Process):
         self.worker_id = worker_id
         self.device = device
         self.client_fn: Callable[[int], NumPyClient] = client_fn
-        self.task_queue: mp.Queue = task_queue
-        self.result_queue: mp.Queue = result_queue
+        self.task_queue: Queue = task_queue
+        self.result_queue: Queue = result_queue
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.concurrency = concurrency
@@ -153,10 +155,16 @@ class Worker(mp.Process):
         # Load client
         tmp_client = self.client_fn(client_id=client_id)
 
-        # Call fit on shared parameters
-        fit_trained_weights, fit_num_samples, train_metrics = tmp_client.fit(
-            self.round_params, config
-        )
+        done = False
+        while not done:
+            try:
+                # Call fit on shared parameters
+                fit_trained_weights, fit_num_samples, train_metrics = tmp_client.fit(
+                    self.round_params, config
+                )
+                done = True
+            except Exception as e:
+                log(ERROR, f"Worker {self.worker_id} failed in training client {client_id} with exception {e}. Retrying...")
 
         # If new round, then copy result to shared memory directly
         if config["server_round"] > self.current_round:
@@ -281,8 +289,8 @@ class NodeManager(fl.client.NumPyClient):
         self.run_uuid = run_uuid
 
         # One task_queue per GPU make this ctypes array
-        self.task_queues = {f"cuda:{gpu.id}": mp.Queue() for gpu in self.all_gpus}
-        self.result_queue = mp.Queue()  # One result_queue for all GPUs
+        self.task_queues = {f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus}
+        self.result_queue = Queue()  # One result_queue for all GPUs
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
