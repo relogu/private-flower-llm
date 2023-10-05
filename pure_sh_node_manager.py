@@ -456,6 +456,12 @@ class NodeManager(fl.client.NumPyClient):
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
+        
+        # Create cid->GPU mapping
+        cid_gpu_mapping = {}
+        for device in self.workers.keys():
+            list_ids_for_this_gpu = config[device].split(",")
+            cid_gpu_mapping.update({cid: device for cid in list_ids_for_this_gpu})
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
@@ -474,6 +480,13 @@ class NodeManager(fl.client.NumPyClient):
         # Collect statistics to pyarrow.Table
         gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
         clients_training_stats = pa.Table.from_pydict(stats)
+        # Add info to `clients_training_stats`
+        clients_training_stats.add_column(
+            0, "gpu", pa.array([cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]])
+        )
+        clients_training_stats.add_column(
+            0, "node", pa.array([self.name]*len(clients_training_stats["cid"]))
+        )
         # Prepare statistics to be sent to the server
         gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
