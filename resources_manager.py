@@ -347,14 +347,14 @@ class DaemonResourcesMonitor(Thread):
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
             )
+            # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
+            self.gpu_stats.append(csv.read_csv(io.BytesIO(current_gpu_stats)))
         except sp.CalledProcessError as e:
             raise RuntimeError(
                 "DaemonResourcesMonitor: command '{}' return with error (code {}): {}".format(
                     e.cmd, e.returncode, e.output
                 )
             )
-        # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
-        self.gpu_stats.append(csv.read_csv(io.BytesIO(current_gpu_stats)))
 
     def _update_max_values(self):
         while self.do_run:
