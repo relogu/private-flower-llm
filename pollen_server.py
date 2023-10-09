@@ -343,12 +343,12 @@ class PollenServer(Server):
             batch_size=self.on_fit_config(server_round)["batch_size"],
             verbose=False,
         )
-        log(
-            DEBUG,
-            "Node assignments for fit_round %s: %s",
-            server_round,
-            node_assignments,
-        )
+        # log(
+        #     DEBUG,
+        #     "Node assignments for fit_round %s: %s",
+        #     server_round,
+        #     node_assignments,
+        # )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients

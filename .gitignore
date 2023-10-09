@@ -176,3 +176,6 @@ slurm-*.out
 
 # NVIDIA Nsight Systems output
 *_nvidia_nsight.nsys-rep
+
+# Images
+*.pdf
