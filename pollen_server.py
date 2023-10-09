@@ -18,7 +18,7 @@ import concurrent.futures
 import os
 import sys
 import timeit
-from copy import copy, deepcopy
+from copy import deepcopy
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -35,6 +35,12 @@ from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
 
+from placements import get_placement_fn
+from pollen_client_manager import PollenClientManager
+from pollen_utils import get_table_from_pyarrow_buffer
+from resources_manager import Node
+from utils import invert_many_to_one_dictionary
+
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
     List[Union[Tuple[ClientProxy, FitRes], BaseException]],
@@ -47,12 +53,6 @@ ReconnectResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, DisconnectRes]],
     List[Union[Tuple[ClientProxy, DisconnectRes], BaseException]],
 ]
-
-from placements import get_placement_fn
-from pollen_client_manager import PollenClientManager
-from pollen_utils import get_table_from_pyarrow_buffer
-from resources_manager import Node
-from utils import invert_many_to_one_dictionary
 
 GetPropResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, Node]],
@@ -73,6 +73,7 @@ class PollenServer(Server):
         placement_policy: str = "rr",
         saving_path: Optional[Path] = None,
         history: Optional[History] = None,
+        num_nodes: int = 1,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -96,6 +97,7 @@ class PollenServer(Server):
         self.gpu_stats = None
         self.clients_training_stats = None
         self.history = history
+        self.num_nodes = num_nodes
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -136,22 +138,18 @@ class PollenServer(Server):
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
-        self._client_manager.wait_for_node_managers(1)
-        # Get the initial number of connected NodeManagers
-        connected_node_managers: Dict[str, ClientProxy] = copy(
-            self._client_manager.node_managers
-        )
-        # Collect nodes' preoperties
+        self._client_manager.wait_for_node_managers(self.num_nodes)
+        # Collect nodes' properties
         # NOTE: Ideally, we want to get here the info about the concurrency
         # per hardware accelerator because everything from the server-side
         # has been launched and running, e.g. centralised evaluation (on GPU).
         log(
             DEBUG,
             "Asking for nodes properties to %s NodeManagers",
-            connected_node_managers,
+            self._client_manager.node_managers,
         )
         results, failures = get_nodes_properties(
-            node_managers=connected_node_managers,
+            node_managers=self._client_manager.node_managers,
             max_workers=self.max_workers,
         )
         log(
@@ -179,23 +177,30 @@ class PollenServer(Server):
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
             # Check for changes in connected NodeManagers
-            dropped, new, connected_node_managers = check_connected_node_managers(
-                old_connected_node_managers=connected_node_managers,
-                new_connected_node_managers=self._client_manager.node_managers,
+            dropped, new = check_connected_node_managers(
+                old_connected_node_managers_cid=self.nodes_dict.keys(),
+                new_connected_node_managers_cid=self._client_manager.node_managers.keys(),
             )
-            if bool(dropped):
+            if len(dropped) > 0:
                 # Handle dropped NodeManagers
-                log(DEBUG, f"{len(dropped)} NodeManagers have been dropped")
-                [self.nodes_dict.pop(k) for k, _ in dropped.items()]
-            if bool(new):
+                [self.nodes_dict.pop(k) for k in dropped]
+            if len(new) > 0:
                 # Handle newly added NodeManagers
-                log(DEBUG, f"There are new {len(new)} NodeManagers connected")
+                results, failures = get_nodes_properties(
+                    node_managers={
+                        k: self._client_manager.node_managers[k] for k in new
+                    },
+                    max_workers=self.max_workers,
+                )
+                log(
+                    INFO,
+                    "Get nodes properties: there are %s results and %s failures",
+                    len(results),
+                    len(failures),
+                )
                 new_nodes_dict = {
                     client_proxy.cid: (client_proxy, node)
-                    for client_proxy, node in get_nodes_properties(
-                        node_managers=new,
-                        max_workers=self.max_workers,
-                    )
+                    for client_proxy, node in results
                 }
                 self.nodes_dict.update(new_nodes_dict)
 
@@ -341,14 +346,17 @@ class PollenServer(Server):
             ],
             nodes_dict=self.nodes_dict,
             batch_size=self.on_fit_config(server_round)["batch_size"],
+            cids=self.cids,
+            clients_stats=self.clients_training_stats,
+            gpu_stats=self.gpu_stats,
             verbose=False,
         )
-        # log(
-        #     DEBUG,
-        #     "Node assignments for fit_round %s: %s",
-        #     server_round,
-        #     node_assignments,
-        # )
+        log(
+            DEBUG,
+            "Node assignments for fit_round %s: %s",
+            server_round,
+            node_assignments,
+        )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
@@ -504,8 +512,9 @@ def check_strategy_for_pollen(
     if strategy.on_fit_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't have a proper `on_fit_config_fn` attribute."
-            "The user must define such method as type `Callable[[int], Dict]`"
+            "The strategy, %s, passed to the `PollenServer` doesn't"
+            " have a proper `on_fit_config_fn` attribute. The user"
+            " must define such method as type `Callable[[int], Dict]`"
             "Currently, `on_fit_config_fn` is %s.",
             strategy,
             strategy.on_fit_config_fn,
@@ -516,27 +525,28 @@ def check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_fit_config_fn` function of the strategy passed to the `PollenServer`"
-            " must have a proper `batch_size` key with an `int` value."
-            "The call `strategy.on_fit_config_fn(0)` returned %s instead",
+            "The `on_fit_config_fn` function of the strategy passed"
+            " to the `PollenServer` must have a proper `batch_size`"
+            " key with an `int` value. The call"
+            " `strategy.on_fit_config_fn(0)` returned %s instead",
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
 
 
 def check_connected_node_managers(
-    old_connected_node_managers: Dict[str, ClientProxy],
-    new_connected_node_managers: Dict[str, ClientProxy],
-) -> Tuple[Dict[str, ClientProxy], Dict[str, ClientProxy], Dict[str, ClientProxy]]:
-    dropped: Dict[str, ClientProxy] = {}
-    new: Dict[str, ClientProxy] = {}
-    for key in old_connected_node_managers.keys():
-        if key not in new_connected_node_managers:
-            dropped[key] = old_connected_node_managers[key]
-    for key in new_connected_node_managers.keys():
-        if key not in old_connected_node_managers:
-            new[key] = new_connected_node_managers[key]
-    return dropped, new, new_connected_node_managers
+    old_connected_node_managers_cid: List[str],
+    new_connected_node_managers_cid: List[str],
+) -> Tuple[List[str], List[str]]:
+    dropped: List[str] = []
+    new: List[str] = []
+    for old_cid in old_connected_node_managers_cid:
+        if old_cid not in set(new_connected_node_managers_cid):
+            dropped.append(old_cid)
+    for new_cid in new_connected_node_managers_cid:
+        if new_cid not in set(old_connected_node_managers_cid):
+            new.append(new_cid)
+    return dropped, new
 
 
 def get_all_workers_properties(
