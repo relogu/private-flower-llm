@@ -161,6 +161,10 @@ cython_debug/
 
 # VSCode stuff
 .vscode
+.ruff_cache
+.mypy_cache
+.*cache
+.venv
 
 # Hydra outputs
 outputs
