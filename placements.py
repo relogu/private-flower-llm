@@ -81,7 +81,7 @@ def learning_based_placement(
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
-    if clients_stats is None or gpu_stats is None:
+    if clients_stats is None:  #  or gpu_stats is None:
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         start_time = time.time()

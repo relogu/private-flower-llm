@@ -92,7 +92,7 @@ class PollenServer(Server):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
-        self.gpu_stats = None
+        # self.gpu_stats = None
         self.clients_training_stats = None
         self.history = history
         self.num_nodes = num_nodes
@@ -245,8 +245,8 @@ class PollenServer(Server):
                     )
 
         # Save the statistics to a parquet file
-        if self.gpu_stats is not None:
-            pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
+        # if self.gpu_stats is not None:
+        #     pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
         if self.clients_training_stats is not None:
             pq.write_table(
                 self.clients_training_stats,
@@ -345,7 +345,7 @@ class PollenServer(Server):
             batch_size=self.on_fit_config(server_round)["batch_size"],
             cids=self.cids,
             clients_stats=self.clients_training_stats,
-            gpu_stats=self.gpu_stats,
+            # gpu_stats=self.gpu_stats,
             verbose=False,
         )
         # log(
@@ -407,20 +407,20 @@ class PollenServer(Server):
 
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
-        received_gpu_stats = []
+        # received_gpu_stats = []
         for client, fit_res in results:
             tmp_clients_training_stats = fit_res.metrics.pop("stats")
-            tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
-            received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
+            # tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
+            # received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
             received_clients_training_stats.append(
                 get_table_from_pyarrow_buffer(tmp_clients_training_stats)
             )
 
         # Append the statistics to the global statistics
-        if self.gpu_stats is None:
-            self.gpu_stats = pa.concat_tables(received_gpu_stats)
-        else:
-            self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
+        # if self.gpu_stats is None:
+        #     self.gpu_stats = pa.concat_tables(received_gpu_stats)
+        # else:
+        #     self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
         if self.clients_training_stats is None:
             self.clients_training_stats = pa.concat_tables(
                 received_clients_training_stats

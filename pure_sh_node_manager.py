@@ -31,7 +31,11 @@ from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_utils import get_pyarrow_buffer_from_table
-from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cuda_prop
+from resources_manager import (
+    Node,
+    get_cpu_prop,  # , DaemonResourcesMonitor
+    get_cuda_prop,
+)
 from utils import get_parameters, partially_aggregate_with_metrics
 from virtual_client import VirtualClient
 
@@ -416,15 +420,15 @@ class NodeManager(fl.client.NumPyClient):
         return get_parameters(tmp_client.net)
 
     def start_workers(self, config):
-        for device, worker_list in self.workers.items():
+        for _, worker_list in self.workers.items():
             for worker in worker_list:
                 if not worker.is_alive():
                     worker.start()
-        # Launch monitor
-        if self.monitor is None:
-            gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
-            self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
-            self.monitor.start()
+        # # Launch monitor
+        # if self.monitor is None:
+        #     gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
+        #     self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
+        #     self.monitor.start()
 
     def fit(self, parameters, config):
         # Update shared memories objects
@@ -443,7 +447,7 @@ class NodeManager(fl.client.NumPyClient):
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
-        self.monitor.gpu_stats = []
+        # self.monitor.gpu_stats = []
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
@@ -493,7 +497,7 @@ class NodeManager(fl.client.NumPyClient):
                 stats["end_time"].append(current_stats[2])
             num_processed_virtual_clients += 1
         # Collect statistics to pyarrow.Table
-        gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
+        # gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
         clients_training_stats = clients_training_stats.add_column(
@@ -507,7 +511,7 @@ class NodeManager(fl.client.NumPyClient):
             0, "node", pa.array([self.name] * len(clients_training_stats["cid"]))
         )
         # Prepare statistics to be sent to the server
-        gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
+        # gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         ## Node aggregation
         node_trained_params = aggregate(
@@ -530,7 +534,7 @@ class NodeManager(fl.client.NumPyClient):
                 "train_loss": node_train_loss,
                 "accuracy": node_accuracy,
                 "stats": clients_training_buf.to_pybytes(),
-                "gpu_stats": gpu_buf.to_pybytes(),
+                # "gpu_stats": gpu_buf.to_pybytes(),
             },
         )
 
@@ -539,12 +543,12 @@ class NodeManager(fl.client.NumPyClient):
 
     def __del__(self):
         log(DEBUG, "Closing stuff")
-        # Close monitor
-        while self.monitor.is_alive():
-            self.monitor.do_run = False
-            time.sleep(0.1)
-        del self.monitor
-        log(DEBUG, "Monitor closed")
+        # # Close monitor
+        # while self.monitor.is_alive():
+        #     self.monitor.do_run = False
+        #     time.sleep(0.1)
+        # del self.monitor
+        # log(DEBUG, "Monitor closed")
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():
                 [

@@ -27,10 +27,11 @@ transformers.logging.set_verbosity_error()
 def main(cfg: DictConfig) -> None:
     log(
         INFO,
-        "Task is: %s with fake=%s with run unique id: %s",
+        "Task is: %s with fake=%s with run unique id=%s and policy=%s",
         cfg.task.name,
         cfg.task.is_fake,
         cfg.run_uuid,
+        cfg.placement_policy,
     )
 
     # Get the list of cids
