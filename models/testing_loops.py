@@ -3,6 +3,7 @@ from typing import List, Tuple
 import hydra
 import torch
 import transformers
+import wandb
 import yaml
 from omegaconf import DictConfig
 from torch.nn import Module
@@ -11,12 +12,10 @@ from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
-import wandb
-
-transformers.logging.set_verbosity_error()
-
 from datasets.nlp_util import mask_tokens
 from utils import wandb_init
+
+transformers.logging.set_verbosity_error()
 
 
 def get_testing_loop(name: str):
@@ -209,7 +208,9 @@ def main(cfg: DictConfig) -> None:
 
     log(
         INFO,
-        f"Offline evaluation of task {cfg.task.name}. Using output_dir: {cfg.output_dir}",
+        "Offline evaluation of task %s. Using output_dir: %s",
+        cfg.task.name,
+        cfg.output_dir,
     )
     s_t = time.time()
     # Set the root directory
@@ -284,7 +285,9 @@ def main(cfg: DictConfig) -> None:
                     f.write(f"round,test_loss,{metrics}\n")
                 log(
                     INFO,
-                    f"A file containing the round number, the average test loss, and metrics ({metrics}) will be written",
+                    "A file containing the round number,"
+                    " the average test loss, and metrics (%s) will be written",
+                    metrics,
                 )
             with open(results_file, "a") as f:
                 metrics = ",".join([f"{v}" for _, v in test_res[2].items()])

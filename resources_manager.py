@@ -21,9 +21,21 @@ from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar, log
 from pyarrow import csv
 
-NVIDIA_SMI_GET_GPUS_ALL = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,noheader,nounits"
-NVIDIA_SMI_GET_GPUS_STATS = "nvidia-smi --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp --format=csv,nounits"
-NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = "nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
+NVIDIA_SMI_GET_GPUS_ALL = (
+    "nvidia-smi --query-gpu="
+    "index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version"
+    ",name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
+    " --format=csv,noheader,nounits"
+)
+NVIDIA_SMI_GET_GPUS_STATS = (
+    "nvidia-smi --query-gpu="
+    "index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
+    " --format=csv,nounits"
+)
+NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
+    "nvidia-smi --query-gpu"
+    "=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
+)
 
 
 def get_cuda_prop(
@@ -251,24 +263,17 @@ class ResourcesMonitor(Thread):
                     e.cmd, e.returncode, e.output
                 )
             )
-        # log(
-        #     DEBUG,
-        #     "ResourcesMonitor.get_gpu_memory: current_gpu_stats=%s, splitted_current_gpu_stats=%s",
-        #     current_gpu_stats,
-        #     current_gpu_stats.split(","),
-        # )
-        # NOTE: the ouput has the following values -- memory.total,memory.used,memory.free
         ret_val = (0.0, 0.0)
         try:
             ret_val = float(current_gpu_stats.split(",")[0]), float(
                 current_gpu_stats.split(",")[1]
             )
-        except:
+        except Exception as e:
             log(
                 DEBUG,
-                "ResourcesMonitor.get_gpu_memory: error=%s retrying",
+                "ResourcesMonitor.get_gpu_memory: error=%s, ret_val=%s. Retrying...",
+                e,
                 current_gpu_stats,
-                # ret_val
             )
             ret_val = self._get_gpu_memory()
         return ret_val
@@ -292,16 +297,6 @@ class ResourcesMonitor(Thread):
             self.pid_ram_used = [
                 psutil.Process(pid).memory_info().vms for pid in self.list_pids
             ]
-            # log(
-            #     DEBUG,
-            #     "ResourcesMonitor._update_max_values: "
-            #     "mem=%s, vram_total_memory=%s, vram_maximum_allocated_memory=%s, cpu_ram_total=%s, cpu_ram_available=%s",
-            #     mem,
-            #     self.vram_total_memory,
-            #     self.vram_maximum_allocated_memory,
-            #     self.cpu_ram_total,
-            #     self.cpu_ram_available,
-            # )
             time.sleep(self.frequency)
 
     def run(self):
@@ -347,13 +342,11 @@ class DaemonResourcesMonitor(Thread):
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
             )
-            # NOTE: the ouput has the following values -- index,uuid,**utilization.gpu,memory.total,memory.used,memory.free**,driver_version,name,gpu_serial,display_active,display_mode,**temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr**
             self.gpu_stats.append(csv.read_csv(io.BytesIO(current_gpu_stats)))
         except sp.CalledProcessError as e:
             raise RuntimeError(
-                "DaemonResourcesMonitor: command '{}' return with error (code {}): {}".format(
-                    e.cmd, e.returncode, e.output
-                )
+                f"DaemonResourcesMonitor: command '{e.cmd}' "
+                f"return with error (code {e.returncode}): {e.output}"
             )
 
     def _update_max_values(self):

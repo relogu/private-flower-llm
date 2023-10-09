@@ -137,7 +137,8 @@ class VirtualClient(fl.client.NumPyClient):
                 num_workers=config["n_workers"],
                 # NOTE: Prevent runtime error related to BatchNorm, apparently
                 drop_last=(self.name == "google_speech"),
-                pin_memory=True,  # copy Tensors into CUDA pinned memory before returning them
+                # copy Tensors into CUDA pinned memory before returning them
+                pin_memory=True,
                 pin_memory_device=str(
                     config["device"]
                 ),  # the device to be used for pinning the memory
@@ -147,12 +148,18 @@ class VirtualClient(fl.client.NumPyClient):
                 # NOTE: Default arguments
                 sampler=None,  # how to draw sample from the dataset
                 batch_sampler=None,  # like the above but for batches
-                timeout=0,  # if positive, the timeout value for collecting a batch from workers
+                # if positive, the timeout value for collecting a batch from workers
+                timeout=0,
                 worker_init_fn=None,  # init function for worker processes
                 multiprocessing_context=None,
                 generator=None,  # PRNG to use for random sampling
-                prefetch_factor=2,  # number of batches loaded in advance by each worker
-                persistent_workers=False,  # if True, the data loader will not shutdown the worker processes after a dataset has been consumed once. This allows to maintain the workers
+                prefetch_factor=2
+                if config["n_workers"] > 0
+                else None,  # number of batches loaded in advance by each worker
+                # if True, the data loader will not shutdown the worker processes
+                # after a dataset has been consumed once.
+                # This allows to maintain the workers
+                persistent_workers=False,
             )
             if not (config["is_fake"] or ds is None)
             else None
