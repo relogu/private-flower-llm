@@ -18,7 +18,6 @@ import concurrent.futures
 import os
 import sys
 import timeit
-from copy import deepcopy
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -39,7 +38,6 @@ from placements import get_placement_fn
 from pollen_client_manager import PollenClientManager
 from pollen_utils import get_table_from_pyarrow_buffer
 from resources_manager import Node
-from utils import invert_many_to_one_dictionary
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -337,8 +335,7 @@ class PollenServer(Server):
             self._client_manager.num_available(),
         )
 
-        # TODO: Translate `client_instruction` to `node_instructions`
-        # NOTE: `node_instructions` must contain
+        # Translate `client_instruction` to `node_instructions`
         node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[client.cid])
@@ -351,12 +348,12 @@ class PollenServer(Server):
             gpu_stats=self.gpu_stats,
             verbose=False,
         )
-        log(
-            DEBUG,
-            "Node assignments for fit_round %s: %s",
-            server_round,
-            node_assignments,
-        )
+        # log(
+        #     DEBUG,
+        #     "Node assignments for fit_round %s: %s",
+        #     server_round,
+        #     node_assignments,
+        # )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
@@ -372,7 +369,7 @@ class PollenServer(Server):
             # # TODO/FIXME: Set the level of concurrency
             # node_fit_config["concurrency"] = 1
 
-            # TODO/FIXME: Assign `cids`
+            # Assign `cids` to NodeManagers' devices
             node_fit_config.update(device_assignment)
 
             # Append instruction
@@ -559,53 +556,3 @@ def get_all_workers_properties(
         worker_properties = worker.get_properties(ins=ins, timeout=60).properties
         all_workers_properties[worker_id] = worker_properties
     return all_workers_properties
-
-
-# TODO/FIXME: This might need to change in light of the change of abstraction
-def assign_worker_to_resource(
-    connected_node_managers: Dict[str, ClientProxy],
-) -> Dict[str, Tuple[str, str, int, int]]:
-    # Getting nodes' resources information
-    worker_node_map: Dict = {}
-    node_gpu_n_workers_dict: Dict = {}
-    all_workers_properties = get_all_workers_properties(
-        connected_node_managers=connected_node_managers
-    )
-    for worker_id, properties in all_workers_properties.items():
-        worker_node_map[worker_id] = properties["node_name"]
-        gpu_workers_map = eval(properties["node_gpus"])
-        # log(
-        #     DEBUG, 'Worker %s in node %s has gpu_worker_map %s',
-        #     worker_id, node_name, gpu_workers_map
-        # )
-        if worker_node_map[worker_id] not in node_gpu_n_workers_dict:
-            node_gpu_n_workers_dict[worker_node_map[worker_id]] = gpu_workers_map
-    log(
-        DEBUG,
-        "Built the node to GPUs and number of workers map %s",
-        node_gpu_n_workers_dict,
-    )
-    log(DEBUG, "Built the worker to node map %s", worker_node_map)
-    # Assigning workers to resources
-    worker_resource_map: Dict[str, Tuple[str, int]] = {}
-    node_worker_map = invert_many_to_one_dictionary(worker_node_map)
-    for node, workers in node_worker_map.items():
-        workers_in_this_node: List[str] = deepcopy(workers)
-        concurrency = len(workers_in_this_node)
-        # Dict[<gpu_id>, Tuple[<gpu_name>, <n_workers>]]
-        node_resources: Dict[str, Tuple[str, int]] = deepcopy(
-            node_gpu_n_workers_dict[node]
-        )
-        while len(workers_in_this_node) > 0:
-            for gpu_id, (gpu_name, n_workers) in node_resources.items():
-                if n_workers > 0:
-                    worker_resource_map[workers_in_this_node.pop(0)] = (
-                        node,
-                        gpu_name,
-                        gpu_id,
-                        concurrency,
-                    )
-                    node_resources[gpu_id] = (gpu_name, n_workers - 1)
-                    break
-    log(DEBUG, "Assigned workers to resources %s", worker_resource_map)
-    return worker_resource_map
