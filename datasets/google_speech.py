@@ -73,9 +73,9 @@ GOOGLE_SPEECH_DTYPES = {
 }
 
 
-def chunks_idx(l, n):
-    d, r = divmod(len(l), n)
-    for i in range(n):
+def chunks_idx(list, n_chunks):
+    d, r = divmod(len(list), n_chunks)
+    for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
@@ -265,11 +265,6 @@ def dump_info(worker_idx, client_ids, dataset):
             dataset=dataset,
         )
         clients.append([client_id, len(ds)])
-        # if i % 10 == 0:
-        #     log(
-        #         INFO,
-        #         f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}",
-        #     )
     return clients
 
 
@@ -350,7 +345,6 @@ if __name__ == "__main__":
     from logging import INFO
     from multiprocessing import Pool
 
-    import pandas as pd
     import psutil
     from flwr.common.logger import log
     from tqdm import tqdm

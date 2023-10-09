@@ -5,13 +5,13 @@ from pathlib import Path
 import flwr as fl
 import hydra
 import transformers
+import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
-import wandb
 from pollen_client_manager import PollenClientManager
 from pollen_server import PollenServer
 from pollen_utils import get_clients_population_dict
@@ -27,7 +27,11 @@ transformers.logging.set_verbosity_error()
 def main(cfg: DictConfig) -> None:
     log(
         INFO,
-        f"Task is: {cfg.task.name} with fake={cfg.task.is_fake} with run unique id: {cfg.run_uuid}",
+        "Task is: %s with fake=%s with run unique id=%s and policy=%s",
+        cfg.task.name,
+        cfg.task.is_fake,
+        cfg.run_uuid,
+        cfg.placement_policy,
     )
 
     # Get the list of cids
@@ -92,9 +96,10 @@ def main(cfg: DictConfig) -> None:
                 client_fn=get_client_fn,
                 strategy=strategy,
                 client_manager=PollenClientManager(),
-                placement_policy="rr",
+                placement_policy=cfg.placement_policy,
                 saving_path=saving_path,
                 history=wandb_history,
+                num_nodes=cfg.num_nodes,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
         )

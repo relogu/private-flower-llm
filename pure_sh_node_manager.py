@@ -1,47 +1,47 @@
+import gc
 import os
 import pickle
 import time
 from collections import defaultdict
-from logging import DEBUG, INFO, ERROR
+from logging import DEBUG, ERROR
 from multiprocessing import resource_tracker
+from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
-
-import cloudpickle
-from flwr.client import NumPyClient
-from flwr.common.logger import log
-
-pickle.Pickler = cloudpickle.Pickler
 from typing import Callable, Dict, List, Tuple
 
+import cloudpickle
 import flwr as fl
 import hydra
 import multiprocess as mp
-from multiprocess import Queue
-from multiprocess import set_start_method
+import numpy as np
 import nvsmi
 import psutil
 import pyarrow as pa
 import pynvml
+import torch
+import transformers
+from flwr.client import NumPyClient
 from flwr.common import Config, NDArrays, Scalar
+from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from hydra.utils import call
+from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_utils import get_pyarrow_buffer_from_table
-from resources_manager import DaemonResourcesMonitor, Node, get_cpu_prop, get_cuda_prop
+from resources_manager import (
+    Node,
+    get_cpu_prop,  # , DaemonResourcesMonitor
+    get_cuda_prop,
+)
 from utils import get_parameters, partially_aggregate_with_metrics
 from virtual_client import VirtualClient
 
-set_start_method("spawn", force=True)
-import gc
-
-import numpy as np
-import torch
-import transformers
-
+pickle.Pickler = cloudpickle.Pickler
 transformers.logging.set_verbosity_error()
+set_start_method("spawn", force=True)
 
 POLLEN_CONFIG_SHM = "pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
@@ -112,8 +112,8 @@ class Worker(mp.Process):
         client_fn: Callable[[int], NumPyClient],
         device: str,
         worker_id: str,
-        task_queue: Queue,
-        result_queue: Queue,
+        task_queue: QueueType,
+        result_queue: QueueType,
         run_uuid: str,
         concurrency: int,
     ):
@@ -121,8 +121,8 @@ class Worker(mp.Process):
         self.worker_id = worker_id
         self.device = device
         self.client_fn: Callable[[int], NumPyClient] = client_fn
-        self.task_queue: Queue = task_queue
-        self.result_queue: Queue = result_queue
+        self.task_queue = task_queue
+        self.result_queue = result_queue
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.concurrency = concurrency
@@ -164,7 +164,14 @@ class Worker(mp.Process):
                 )
                 done = True
             except Exception as e:
-                log(ERROR, f"Worker {self.worker_id} failed in training client {client_id} with exception {e}. Retrying...")
+                log(
+                    ERROR,
+                    "Worker %s failed in training client %s with exception %s."
+                    " Retrying...",
+                    self.worker_id,
+                    client_id,
+                    e,
+                )
 
         # If new round, then copy result to shared memory directly
         if config["server_round"] > self.current_round:
@@ -213,7 +220,15 @@ class Worker(mp.Process):
         # Take the timestamp after the task is done
         end_time = time.time_ns()
         self.result_queue.put([int(client_id), start_time, end_time])
-        # NOTE: PyTorch's memory management works bad with multiprocessing. In our case, it might happen that each process eagerly allocates more MBs of memory on the same VRAM at the same w/o cleaning the cache because each of them thinks that it is the only one using the GPU. We need to clean the cache manually to prevent this, i.e. call `torch.cuda.empty_cache()`. When to call it is a trade-off between performance and memory usage because cleaning the cache is time expensive (for Reddit it costs ~15 seconds, quick took ~333s slow took ~348s in 10 rounds, 100 clients/round, 1 A40). We call it after each client, but it might be better to call it after each round.
+        # NOTE: PyTorch's memory management works bad with multiprocessing. In our case,
+        # it might happen that each process eagerly allocates more MBs of memory on the
+        # same VRAM at the same w/o cleaning the cache because each of them thinks that
+        # it is the only one using the GPU. We need to clean the cache manually to
+        # prevent this, i.e. call `torch.cuda.empty_cache()`. When to call it is a
+        # trade-off between performance and memory usage because cleaning the cache
+        # is time expensive (for Reddit it costs ~15 seconds, quick took ~333s slow
+        # took ~348s in 10 rounds, 100 clients/round, 1 A40). We call it after each
+        # client, but it might be better to call it after each round.
         for dev_id in range(pynvml.nvmlDeviceGetCount()):
             handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
             for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
@@ -289,15 +304,17 @@ class NodeManager(fl.client.NumPyClient):
         self.run_uuid = run_uuid
 
         # One task_queue per GPU make this ctypes array
-        self.task_queues = {f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus}
-        self.result_queue = Queue()  # One result_queue for all GPUs
+        self.task_queues: Dict[str, QueueType] = {
+            f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus
+        }
+        self.result_queue: QueueType = Queue()  # One result_queue for all GPUs
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
             name=self.run_uuid + POLLEN_CONFIG_SHM, create=True, size=10000
         )
         # Allocate shared memory for round parameters
-        self.client_fn: Callable[[int], NumPyClient] = client_fn
+        self.client_fn = client_fn
         tmp_client: VirtualClient = client_fn(client_id=0)
         (
             self.round_parameters,
@@ -315,7 +332,7 @@ class NodeManager(fl.client.NumPyClient):
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # max_proc_device = [('cuda:0', 1)]
-        log(DEBUG, f"Node {self.name} has max_proc_device {max_proc_device}")
+        # log(DEBUG, f"Node {self.name} has max_proc_device {max_proc_device}")
 
         # Allocate shared memory for partial aggregation
         # and create workers
@@ -356,7 +373,7 @@ class NodeManager(fl.client.NumPyClient):
     def get_node_properties(self) -> Dict[str, Scalar]:
         device_info = {}
         # Get hardware accelerator properties
-        tmp_client = self.client_fn(client_id=0)
+        tmp_client: VirtualClient = self.client_fn(client_id=0)
         tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
             # log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
@@ -364,17 +381,19 @@ class NodeManager(fl.client.NumPyClient):
                 get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
             )
-        if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        if torch._C._is_mps_available() and torch._C.has_mps():
             # log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
             )
         if not device_info:
-            log(
-                INFO,
-                f"Node {self.name}, No hardware accelerator available. Assessing CPU execution.",
-            )
+            # log(
+            #     INFO,
+            #     "Node %s, No hardware accelerator available."
+            #     " Assessing CPU execution.",
+            #     self.name
+            # )
             device_info = get_cpu_prop("cpu")
         try:
             cpus = len(psutil.Process().cpu_affinity())
@@ -389,7 +408,7 @@ class NodeManager(fl.client.NumPyClient):
             - psutil.virtual_memory().used,
             device_info=device_info,
         )
-        log(DEBUG, f"Node {getfqdn()} has complete properties {self.node}")
+        # log(DEBUG, f"Node {getfqdn()} has complete properties {self.node}")
 
         return {"node": str(self.node)}
 
@@ -401,15 +420,15 @@ class NodeManager(fl.client.NumPyClient):
         return get_parameters(tmp_client.net)
 
     def start_workers(self, config):
-        for device, worker_list in self.workers.items():
+        for _, worker_list in self.workers.items():
             for worker in worker_list:
                 if not worker.is_alive():
                     worker.start()
-        # Launch monitor
-        if self.monitor is None:
-            gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
-            self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
-            self.monitor.start()
+        # # Launch monitor
+        # if self.monitor is None:
+        #     gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
+        #     self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
+        #     self.monitor.start()
 
     def fit(self, parameters, config):
         # Update shared memories objects
@@ -428,12 +447,12 @@ class NodeManager(fl.client.NumPyClient):
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
-        self.monitor.gpu_stats = []
+        # self.monitor.gpu_stats = []
         for device in self.workers.keys():
             list_ids_for_this_gpu = config[device].split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
-            # Close useless workers
+            # Close useless workers, one by one
             while len(list_ids_for_this_gpu) < len(self.workers[device]):
                 # Put a None for a worker to terminate it
                 self.task_queues[device].put(None)
@@ -456,7 +475,7 @@ class NodeManager(fl.client.NumPyClient):
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
-        
+
         # Create cid->GPU mapping
         cid_gpu_mapping = {}
         for device in self.workers.keys():
@@ -478,17 +497,21 @@ class NodeManager(fl.client.NumPyClient):
                 stats["end_time"].append(current_stats[2])
             num_processed_virtual_clients += 1
         # Collect statistics to pyarrow.Table
-        gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
+        # gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
-        clients_training_stats.add_column(
-            0, "gpu", pa.array([cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]])
+        clients_training_stats = clients_training_stats.add_column(
+            0,
+            "gpu",
+            pa.array(
+                [cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]]
+            ),
         )
-        clients_training_stats.add_column(
-            0, "node", pa.array([self.name]*len(clients_training_stats["cid"]))
+        clients_training_stats = clients_training_stats.add_column(
+            0, "node", pa.array([self.name] * len(clients_training_stats["cid"]))
         )
         # Prepare statistics to be sent to the server
-        gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
+        # gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         ## Node aggregation
         node_trained_params = aggregate(
@@ -511,7 +534,7 @@ class NodeManager(fl.client.NumPyClient):
                 "train_loss": node_train_loss,
                 "accuracy": node_accuracy,
                 "stats": clients_training_buf.to_pybytes(),
-                "gpu_stats": gpu_buf.to_pybytes(),
+                # "gpu_stats": gpu_buf.to_pybytes(),
             },
         )
 
@@ -520,12 +543,12 @@ class NodeManager(fl.client.NumPyClient):
 
     def __del__(self):
         log(DEBUG, "Closing stuff")
-        # Close monitor
-        while self.monitor.is_alive():
-            self.monitor.do_run = False
-            time.sleep(0.1)
-        del self.monitor
-        log(DEBUG, "Monitor closed")
+        # # Close monitor
+        # while self.monitor.is_alive():
+        #     self.monitor.do_run = False
+        #     time.sleep(0.1)
+        # del self.monitor
+        # log(DEBUG, "Monitor closed")
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():
                 [

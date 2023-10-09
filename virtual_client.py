@@ -137,22 +137,34 @@ class VirtualClient(fl.client.NumPyClient):
                 num_workers=config["n_workers"],
                 # NOTE: Prevent runtime error related to BatchNorm, apparently
                 drop_last=(self.name == "google_speech"),
-                pin_memory=True,  # copy Tensors into CUDA pinned memory before returning them
-                pin_memory_device=str(
-                    config["device"]
-                ),  # the device to be used for pinning the memory
+                # copy Tensors into CUDA pinned memory before returning them
+                pin_memory=True,
+                # the device to be used for pinning the memory
+                pin_memory_device=str(config["device"]),
+                # builds batches from samples
                 collate_fn=get_collate_fn(tokenizer=tokenizer)
                 if tokenizer is not None
-                else None,  # builds batches from samples
+                else None,
+                # NOTE: This parameter is handled differently by different
+                # versions of PyTorch!
+                # # number of batches loaded in advance by each worker
+                # # if True, the data loader will not shutdown the worker processes
+                # # after a dataset has been consumed once.
+                # # This allows to maintain the workers
+                # prefetch_factor=2 if config["n_workers"] > 0 else None,
                 # NOTE: Default arguments
-                sampler=None,  # how to draw sample from the dataset
-                batch_sampler=None,  # like the above but for batches
-                timeout=0,  # if positive, the timeout value for collecting a batch from workers
-                worker_init_fn=None,  # init function for worker processes
+                # how to draw sample from the dataset
+                sampler=None,
+                # like the above but for batches
+                batch_sampler=None,
+                # if positive, the timeout value for collecting a batch from workers
+                timeout=0,
+                # init function for worker processes
+                worker_init_fn=None,
                 multiprocessing_context=None,
-                generator=None,  # PRNG to use for random sampling
-                prefetch_factor=2,  # number of batches loaded in advance by each worker
-                persistent_workers=False,  # if True, the data loader will not shutdown the worker processes after a dataset has been consumed once. This allows to maintain the workers
+                # PRNG to use for random sampling
+                generator=None,
+                persistent_workers=False,
             )
             if not (config["is_fake"] or ds is None)
             else None
