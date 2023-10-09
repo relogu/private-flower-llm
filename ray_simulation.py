@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import warnings
@@ -10,6 +9,7 @@ import hydra
 import nvsmi
 import torch
 import transformers
+import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -17,7 +17,6 @@ from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
-import wandb
 from pollen_utils import get_clients_population_dict
 from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient
@@ -27,12 +26,6 @@ from wandb_server import WandbServer
 transformers.logging.set_verbosity_error()
 
 warnings.filterwarnings("ignore", category=UserWarning)
-
-parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
-
-parser.add_argument("--num_client_cpus", type=int, default=1)
-parser.add_argument("--num_rounds", type=int, default=1)
-parser.add_argument("--name", type=str, default="openimage")
 
 
 def get_n_worker_gpu_type(name: str = "openimage"):
@@ -60,26 +53,35 @@ def get_n_worker_gpu_type(name: str = "openimage"):
     raise ValueError(f"Unknown dataset name: {name}")
 
 
-# Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     log(
         INFO,
-        f"Task is: {cfg.task.name} with fake={cfg.task.is_fake} with run unique id: {cfg.run_uuid}",
+        "Task is: %s with fake=%s with run unique id: %s",
+        cfg.task.name,
+        cfg.task.is_fake,
+        cfg.run_uuid,
     )
 
-    # number of dataset partions (= number of total clients)
-    pool_size = 10 if "shakespeare" in cfg.task.name else 100
+    # Setting up the expected number of Ray workers
+    pool_size = cfg.task.n_clients_per_round
     num_available_gpus = torch.cuda.device_count()
     gpu_name = [gpu.name for gpu in nvsmi.get_gpus()]
+    if cfg.num_nodes > 1:
+        # NOTE: We need to account for the minimum number of workers that the GPUs offer
+        n_w_expected = min([v for _, v in get_n_worker_gpu_type(cfg.task.name).items()])
+    else:
+        n_w_expected = get_n_worker_gpu_type(cfg.task.name)[gpu_name[0]]
     n_workers = min(
         pool_size,
-        num_available_gpus * get_n_worker_gpu_type(cfg.task.name)[gpu_name[0]],
+        num_available_gpus * n_w_expected,
     )
-    print(f"n_workers: {n_workers}")
+    log(INFO, "This Ray-based simulation will use %s workers", n_workers)
 
     client_resources = {
         "num_gpus": num_available_gpus / n_workers,
+        # FIXME: How can we set this up?
+        "num_cpus": 1,
     }
 
     # Get the list of cids
@@ -101,9 +103,8 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
 
-    # configure the strategy
+    # Configure the strategy
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
-
     saving_path = Path(hydra_cfg["runtime"]["output_dir"])
     strategy = instantiate(
         cfg.task.strategy,
@@ -121,23 +122,13 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
 
-    # (optional) specify Ray config
-    print(f"Using {int(n_workers)} CPUs overall")
-    print(f"Having affinity {os.sched_getaffinity(0)}")
+    # (Otional) Specify Ray configuration
+    log(INFO, f"This simulation has affinity: {os.sched_getaffinity(0)}")
     ray_init_args = {
-        # "address": cfg.ray_address,
+        "address": cfg.ray_address,
         "include_dashboard": False,
-        "num_cpus": len(os.sched_getaffinity(0)),
-        "logging_level": INFO,
-        "log_to_driver": True,
-        "_system_config": {
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {"directory_path": "/hdd1/ray/"},
-                },
-            )
-        },
+        # FIXME: Do we need to set this up?
+        # "num_cpus": len(os.sched_getaffinity(0)),
     }
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
