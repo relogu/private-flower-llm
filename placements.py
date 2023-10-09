@@ -91,6 +91,7 @@ def learning_based_placement(
             clients_stats, batch_size, cids
         )
         # TODO: Come up with a procedure when a new NodeManager appears after round 1
+        # TODO: Deal with dropped NodeManagers
         # Split clients_stats table into a list of tables, one per client
         clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
         # Train models
@@ -102,9 +103,10 @@ def learning_based_placement(
         # Check scores
         log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
 
-        # # TODO/FIXME: Estimate the threshold better
+        # TODO: Estimate the threshold to fall back to RR
         # if max([abs(score) for score in current_scores]) > 10e-1:
         #     return round_robin_placement(sampled_virtual_cids, nodes_dict)
+        # TODO: Adaptive discard of the old data
 
         # Sorting by batch size (decreasing order)
         # This is a list of tuples (cid, list of samples)
@@ -201,7 +203,7 @@ def round_robin_placement(
             for _, (_, node) in nodes_dict.items()
         ]
     )
-    log(DEBUG, f"n_total_workers {n_total_workers}")
+    log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
     # Init the device assignment and the return value
     device_assignment = defaultdict(list)
@@ -277,7 +279,7 @@ def sorted_round_robin_placement(
     if verbose:
         log(
             DEBUG,
-            "Round Robin (RR) placement :: tuple(node, device assignements) %s",
+            "Sorted Round Robin (SRR) placement :: tuple(node, device assignements) %s",
             node_assignments,
         )
     return node_assignments
@@ -471,11 +473,11 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
     # NOTE: This might be unnecessary with the defaults in the `filter` function
     # Remove None values
     output = {k: v for k, v in output.items() if v is not None}
-    log(
-        DEBUG,
-        "split_clients_training_table after checking for Nones :: output %s",
-        output,
-    )
+    # log(
+    #     DEBUG,
+    #     "split_clients_training_table after checking for Nones :: output %s",
+    #     output,
+    # )
     # Return the cleaned list of tables
     return output
 
