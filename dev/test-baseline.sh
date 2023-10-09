@@ -6,18 +6,19 @@ echo "=== test.sh ==="
 echo "- Start Python checks"
 
 echo "- isort: start"
-python -m isort --check-only .
+poetry python -m isort --check-only src/
 echo "- isort: done"
 
 echo "- black: start"
-python -m black --check .
+poetry python -m black --check src/
 echo "- black: done"
 
 echo "- docformatter: start"
-python -m docformatter -c -r .
+poetry python -m docformatter -c -r src/
 echo "- docformatter:  done"
 
 echo "- ruff: start"
-python -m ruff check .
+poetry python -m ruff check src/
 echo "- ruff: done"
+
 

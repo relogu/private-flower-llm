@@ -1,9 +1,12 @@
+---
 project: pollen
-program: "ray_simulation.py"
+program: ray_simulation.py
 method: bayes
+
 metric:
   goal: maximize
   name: accuracy
+
 parameters:
   task.learning_rate:
     min: 0.0
@@ -15,16 +18,13 @@ parameters:
     min: 0.00000001
     max: 0.01
   local_epochs:
-    values:
-      - 1
-      - 2
-      - 3
-      - 5
-      - 8
+    values: [1, 2, 3, 5, 8]
+
 early_terminate:
   type: hyperband
   min_iter: 6
   eta: 2
+
 command:
   - python
   - ${program}
@@ -32,4 +32,3 @@ command:
   - task=google_speech
   - task.num_rounds=100
   - ${args_no_hyphens}
-
