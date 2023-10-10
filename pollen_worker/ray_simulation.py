@@ -81,8 +81,10 @@ def main(cfg: DictConfig) -> None:
     client_resources = {
         "num_gpus": num_available_gpus / n_workers,
         # FIXME: How can we set this up?
-        "num_cpus": 1,
+        # "num_cpus": 1,
+        "num_cpus": max(1, len(os.sched_getaffinity(0)) / n_workers),
     }
+    log(INFO, "Client resources are: %s", client_resources)
 
     # Get the list of cids
     cid_samples_dict = get_clients_population_dict(
@@ -126,8 +128,11 @@ def main(cfg: DictConfig) -> None:
     log(INFO, f"This simulation has affinity: {os.sched_getaffinity(0)}")
     ray_init_args = {
         "address": cfg.ray_address,
-        "include_dashboard": False,
-        # FIXME: Do we need to set this up?
+        "_redis_password": cfg.ray_redis_password,
+        "_node_ip_address": cfg.ray_node_ip_address,
+        
+        # "include_dashboard": False,
+        # # FIXME: Do we need to set this up?
         # "num_cpus": len(os.sched_getaffinity(0)),
     }
 

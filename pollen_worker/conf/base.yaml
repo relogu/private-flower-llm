@@ -2,6 +2,8 @@
 local_epochs: 1
 flwr_address: 127.0.0.1:1042
 ray_address: localhost:8042
+ray_redis_password: culo
+ray_node_ip_address: localhost
 run_uuid: 0
 save_freq: 100
 output_dir: /nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25
