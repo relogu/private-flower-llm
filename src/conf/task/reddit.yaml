@@ -1,0 +1,18 @@
+---
+name: reddit
+data_root: /datasets/FedScale/reddit/reddit
+learning_rate: 4e-5
+num_rounds: 100
+n_clients_per_round: 100
+batch_size: 20
+momentum: 0.0
+weight_decay: 1e-2
+block_size: 64
+model: albert-base-v2
+tokenizer: albert-base-v2
+
+strategy:
+  _target_: rs_fedavg.FedAvgRSModel
+
+is_fake: false
+n_clients: 0.1

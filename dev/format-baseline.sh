@@ -3,11 +3,14 @@
 
 echo "Formatting started"
 echo "Run isort"
-python -m isort .
+poetry run python -m isort src/
 echo "Run black"
-python -m black -q .
+poetry run python -m black -q src/
+echo "Run yamlfix"
+poetry run yamlfix src/conf/
+poetry run yamlfix sweepers/
 echo "Run docformatter"
-python -m docformatter -i -r .
+poetry run python -m docformatter -i -r src/
 echo "Run ruff"
-python -m ruff check --fix .
+poetry run python -m ruff check --fix src/
 echo "Formatting done"
