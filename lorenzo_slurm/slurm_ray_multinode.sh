@@ -13,7 +13,8 @@
 # Load modules or your own conda environment here
 # module load pytorch/v1.4.0-gpu
 # conda activate ${CONDA_ENV}
-source /nfs-share/ls985/anaconda3/bin/activate flwr15
+cd /nfs-share/ls985/pollen_worker
+poetry shell
 
 # ===== DO NOT CHANGE THINGS HERE UNLESS YOU KNOW WHAT YOU ARE DOING =====
 # This script is a modification to the implementation suggest by gregSchwartz18 here:
@@ -71,7 +72,7 @@ done
 CUSTOM_HYDRA_ARGS="run_uuid=$(uuidgen) task=openimage task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address=auto is_multinode=True"
 
 echo "LAUNCHING SIMULATION"
-python ray_simulation.py $CUSTOM_HYDRA_ARGS 
+poetry run python src/ray_simulation.py $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
 # srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash slurm_ray_multinode.sh

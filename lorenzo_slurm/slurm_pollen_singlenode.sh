@@ -10,18 +10,18 @@
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-source /nfs-share/ls985/anaconda3/bin/activate ray111-test
 cd /nfs-share/ls985/pollen_worker
+poetry shell
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
 # CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=10 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=127.0.0.1:1044"
 CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=openimage task.n_clients_per_round=10 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=127.0.0.1:1044"
 
 # Launch the server.
-python server_with+pollen.py $CUSTOM_HYDRA_ARGS &
+poetry run python src/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
 
 # Launch the node manager.
-python pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
+poetry run python src/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode.sh
