@@ -5,11 +5,13 @@ import os.path
 import pickle
 import time
 import warnings
+from logging import INFO
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from flwr.common.logger import log
 from torch.utils.data import DataLoader, Dataset
 from transformers import AlbertTokenizer
 
@@ -65,7 +67,8 @@ class Reddit(Dataset):
         else:
             self.raw_data = self.raw_data[:10000000]
 
-        # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
+        # we can't enumerate the raw data,
+        # thus generating artificial data to cheat the divide_data_loader
         self.data = [-1, len(self.dict)]
         self.targets = [-1, len(self.dict)]
 
@@ -132,13 +135,13 @@ class Reddit(Dataset):
         mapping_dict = {}
 
         if os.path.exists(cache_path):
-            print("====Load {} from cache".format(file_name))
+            log(INFO, "====Load %s from cache", file_name)
             # dump the cache
             with open(cache_path, "rb") as fin:
                 text = pickle.load(fin)
                 mapping_dict = pickle.load(fin)
         else:
-            print("====Load {} from scratch".format(file_name))
+            log(INFO, "====Load %s from scratch", file_name)
             # Mapping from sample id to target tag
             # First, get the token and tag dict
             vocab_tokens = self.load_token_vocab(self.vocab_tokens_size, path)
@@ -150,7 +153,7 @@ class Reddit(Dataset):
                 data_files = sorted(glob.glob(file_name + "/*.json"))
 
                 for f in data_files[:2]:
-                    print("========Loading {}=========".format(f))
+                    log(INFO, "========Loading %s=========", f)
                     with open(f, "rb") as cin:
                         data = json.load(cin)
                     client_data_list.append(data)
@@ -187,11 +190,11 @@ class Reddit(Dataset):
                     clientCount += 1
 
                     num_of_remains = 1628176 - int(client)
-                    print(
-                        "====In loading data, remains {} clients, may take {} sec".format(
-                            num_of_remains,
-                            (time.time() - start_time) / clientCount * num_of_remains,
-                        )
+                    log(
+                        INFO,
+                        "====In loading data, remains %s clients, may take %s sec",
+                        num_of_remains,
+                        (time.time() - start_time) / clientCount * num_of_remains,
                     )
                     if clientId % 5000 == 0:
                         # dump the cache
@@ -199,7 +202,7 @@ class Reddit(Dataset):
                             pickle.dump(text, fout)
                             pickle.dump(mapping_dict, fout)
 
-                        print("====Dump for {} clients".format(clientId))
+                        log(INFO, "====Dump for %s clients", clientId)
 
             # dump the cache
             with open(cache_path, "wb") as fout:
@@ -228,4 +231,4 @@ if __name__ == "__main__":
     )
 
     for example in train_dataloader:
-        print(example)
+        log(INFO, example)

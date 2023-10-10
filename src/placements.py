@@ -1,13 +1,18 @@
 import sys
+import time
 from collections import defaultdict
 from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
+from multiprocessing import Pool
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import psutil
+import pyarrow as pa
+import pyarrow.compute as pc
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
@@ -16,7 +21,6 @@ from scipy.optimize import curve_fit
 from pollen_utils import (
     get_clients_dataframe_from_dict,
     get_ctt_dataframe_from_pickle,
-    invert_many_to_one_dictionary,
     merge_ctt_size,
 )
 from resources_manager import Node
@@ -27,7 +31,8 @@ The known values are:
  - `rr` for round robin placement;
  - `srr` for sorted round robin placement;
  - `bu` for batch uniform placement;
- - `lb` for learning-based placement;
+ - `lb` for Pollen's learning-based placement;
+ - `llb` for Parrot's learning-based placement;
  - `su` for sample uniform placement;
  - `lbu` for logarithm batch uniform placement.
 """
@@ -41,7 +46,9 @@ def get_placement_fn(policy: str = "rr"):
     elif policy == "bu":
         return batches_placement
     elif policy == "lb":
-        return learning_based_placement
+        return pollen_learning_based_placement
+    elif policy == "llb":
+        return parrot_learning_based_placement
     elif policy == "su":
         return samples_placement
     elif policy == "lbu":
@@ -51,137 +58,130 @@ def get_placement_fn(policy: str = "rr"):
         sys.exit()
 
 
+def pollen_learning_based_placement(
+    **kwargs,
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    return learning_based_placement(fn=pollen_function, **kwargs)
+
+
+def parrot_learning_based_placement(
+    **kwargs,
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    return learning_based_placement(fn=linear, **kwargs)
+
+
 def learning_based_placement(
+    fn: Callable,
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
-    server_round: int,
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
-    cids: Dict[str, int],
-    worker_to_resource: Dict[str, Tuple[str, str, int, int]],
+    cids: Union[Dict[str, int], Dict[int, int]],
+    clients_stats: pa.Table = None,
+    gpu_stats: pa.Table = None,
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
-    if server_round == 1:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    if clients_stats is None:  #  or gpu_stats is None:
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
-        current_scores = []
-        map_workers_models = {
-            k: f"{node}_{gpu_name}"
-            for k, (node, gpu_name, gpu_id, concurrency) in worker_to_resource.items()
-        }
-        map_models_workers = invert_many_to_one_dictionary(map_workers_models)
-        for model_name, worker_ids in map_models_workers.items():
-            try:
-                # TODO: Load data, re-think this procedure to make it more
-                # efficient and eventually force PollenWorkers to send
-                # through the network the statistics round by round.
-                # This is a dictionary {'model_name': (x_train, y_train)}
-                data = get_train_data(
-                    path_save_stats=self.path_save_stats,
-                    cid_samples_dict=cids,
-                    worker_ids=[
-                        self.map_workers_address_id[w_id] for w_id in worker_ids
-                    ],
-                    # TODO: Reset data for the model given a condition
-                    reset=False,
-                )
-                # Fit data
-                # This is a dictionary {'model_name': (trained_model)}
-                try:
-                    trained_models[model_name] = get_trained_model(data=data)
-                    # Get scores
-                    current_scores.append(
-                        get_model_score(trained_models[model_name], data)
-                    )
-                except RuntimeError as e:
-                    log(ERROR, f"Exception in getting trained model: {e}")
-                    trained_models = {}
-                    current_scores.append(10)
-            except RuntimeError as e:
-                log(ERROR, f"Exception in getting data: {e}")
-                trained_models = {}
-                current_scores.append(10)
+        start_time = time.time()
+        ## Prepare data
+        # Add n_batches column to clients_stats table
+        clients_stats = add_n_batches_column_to_clients_stats_table(
+            clients_stats, batch_size, cids
+        )
+        # TODO: Come up with a procedure when a new NodeManager appears after round 1
+        # TODO: Deal with dropped NodeManagers
+        # Split clients_stats table into a list of tables, one per client
+        clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
+        # Train models
+        trained_models: Dict[str, Any] = parallel_train_models(fn, clients_stats)
+        # Get models' scores
+        current_scores: Dict[str, float] = parallel_get_models_scores(
+            fn, trained_models, clients_stats
+        )
         # Check scores
-        log(DEBUG, "PollenStrategy::poly3 : models' scores %s", current_scores)
-        # TODO/FIXME: Estimate the threshold better
-        if max([abs(score) for score in current_scores]) > 10e-1:
-            lists_cids = round_robin_placement(sampled_virtual_cids, nodes_dict)
-        else:
-            # Sorting by batch size (decreasing order)
-            # This is a list of tuples (cid, list of samples)
-            sampled_virtual_cids = sorted(
-                sampled_virtual_cids,
-                key=lambda x: x[1] / batch_size,
-                reverse=True,
-            )
-            # Order models from the fastest to the slowest according to the prediction
-            # This is a dictionary {'model_name': (trained_model)}
-            trained_models = dict(
-                sorted(
-                    trained_models.items(),
-                    key=lambda item: predict_single_client(
-                        model=item[1],
-                        n_samples=sampled_virtual_cids[0][1],
-                        batch_size=batch_size,
-                    ),
-                )
-            )
-            # Initial assignment
-            lists_cids = defaultdict(list)
-            for model_name, predictor in trained_models.items():
-                for worker in map_models_workers[model_name]:
-                    cid, n_samples = sampled_virtual_cids.pop(0)
-                    lists_cids[worker].append(
-                        (
-                            cid,
-                            n_samples,
-                            predict_single_client(
-                                model=predictor,
-                                n_samples=n_samples,
-                                batch_size=batch_size,
-                            ),
-                        )
-                    )
-            # Placement
-            for virtual_cid, num_samples in sampled_virtual_cids:
-                # Loop over workers to get the less loaded one
-                min_w_id, load = None, None
-                for w_id, worker in nodes_dict.items():
-                    current_load = sum([c[2] for c in lists_cids[w_id]])
-                    if min_w_id is None:
-                        min_w_id, load = w_id, current_load
-                    elif current_load < load:
-                        min_w_id, load = w_id, current_load
+        log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
 
-                lists_cids[min_w_id].append(
-                    (
-                        virtual_cid,
-                        num_samples,
-                        predict_single_client(
-                            model=trained_models[map_workers_models[min_w_id]],
-                            n_samples=n_samples,
-                            batch_size=batch_size,
-                        ),
-                    )
-                )
-            # Results of the placement
-            if verbose:
-                placement = {
-                    w_id: (
-                        sum([x[2] for x in load]),
-                        len(load),
-                        sum([x[1] for x in load]),
-                        [x[0] for x in load],
-                    )
-                    for w_id, load in lists_cids.items()
-                }
-                log(
-                    DEBUG,
-                    "PollenStrategy :: poly3 placement"
-                    " dict(w_id: (sum_of_ctt, n_clients, sum_of_batches, [cids])) %s",
-                    placement,
-                )
-            return {w_id: [x[0] for x in load] for w_id, load in lists_cids.items()}
+        # TODO: Estimate the threshold to fall back to RR
+        # if max([abs(score) for score in current_scores]) > 10e-1:
+        #     return round_robin_placement(sampled_virtual_cids, nodes_dict)
+        # TODO: Adaptive discard of the old data
+
+        # Sorting by batch size (decreasing order)
+        # This is a list of tuples (cid, list of samples)
+        sampled_virtual_cids = sorted(
+            sampled_virtual_cids,
+            key=lambda x: x[1] // batch_size,
+            reverse=True,
+        )
+        # Order models from the fastest to the slowest according to the prediction
+        # This is a dictionary {'model_name': (trained_model)}
+        trained_models = {
+            k: v
+            for k, v in sorted(
+                trained_models.items(),
+                key=lambda item: predict_single_client(
+                    model=item[1],
+                    fn=fn,
+                    n_samples=sampled_virtual_cids[0][1],
+                    batch_size=batch_size,
+                ),
+            )
+        }
+
+        # Init the device assignment and the return value
+        devices_assignment = [
+            [
+                v,  # Model parameters
+                [],  # List of cids
+                0.0,  # Device load
+                k.split("_")[0],  # Node name
+                k.split("_")[1],  # Device name
+            ]
+            for k, v in trained_models.items()
+        ]
+
+        # Assignment
+        while len(sampled_virtual_cids) > 0:
+            # Extract the first element of the list
+            virtual_cid, num_samples = sampled_virtual_cids.pop(0)
+            # Assign client to the least loaded device
+            devices_assignment[0][1].append(virtual_cid)
+            # Get device load
+            load = predict_single_client(
+                model=devices_assignment[0][0],
+                fn=fn,
+                n_samples=num_samples,
+                batch_size=batch_size,
+            )
+            devices_assignment[0][2] += load
+            # Sort devices by load (increasing order)
+            devices_assignment = sorted(
+                devices_assignment,
+                key=lambda x: x[2],
+            )
+
+        # Build node assignments
+        node_assignments = []
+        for _, (client_proxy, node) in nodes_dict.items():
+            devices_assignment_node = {
+                dev_name: convert_list_of_int_to_string(list_of_cids)
+                for _, list_of_cids, _, node_dev_name, dev_name in devices_assignment
+                if node_dev_name == node.name
+            }
+            node_assignments.append((client_proxy, devices_assignment_node))
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: placement took {time.time()-start_time} seconds",
+        )
+        if verbose:
+            log(
+                DEBUG,
+                "Pollen-MLStrategy placement :: tuple(node, device assignements) %s",
+                node_assignments,
+            )
+        return node_assignments
 
 
 def round_robin_placement(
@@ -203,6 +203,7 @@ def round_robin_placement(
             for _, (_, node) in nodes_dict.items()
         ]
     )
+    log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
     # Init the device assignment and the return value
     device_assignment = defaultdict(list)
@@ -217,10 +218,11 @@ def round_robin_placement(
             node_assignments, nodes_dict.items()
         ):
             # Loop over devices in the current node
-            for device_id, _device in node.device_info.items():
-                current_split = splits.pop(0)
-                if len(current_split) > 0:
-                    [device_assignment[device_id].append(c) for c in current_split]
+            for device_id, device in node.device_info.items():
+                for _ in range(device.concurrency):
+                    current_split = splits.pop(0)
+                    if len(current_split) > 0:
+                        [device_assignment[device_id].append(c) for c in current_split]
     # Covert list of int to string
     node_assignments = [
         (
@@ -232,7 +234,8 @@ def round_robin_placement(
     if verbose:
         log(
             DEBUG,
-            f"Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}",
+            "Round Robin (RR) placement :: tuple(node, device assignements) %s",
+            node_assignments,
         )
     return node_assignments
 
@@ -276,7 +279,8 @@ def sorted_round_robin_placement(
     if verbose:
         log(
             DEBUG,
-            f"Round Robin (RR) placement :: tuple(node, device assignements) {node_assignments}",
+            "Sorted Round Robin (SRR) placement :: tuple(node, device assignements) %s",
+            node_assignments,
         )
     return node_assignments
 
@@ -373,7 +377,8 @@ def log_batches_placement(
         placement = [(k, v) for k, v in lists_cids.items()]
         log(
             DEBUG,
-            f"Logarithm of number of batches placement :: dict(worker_id, [cids]) {placement}",
+            "Logarithm of number of batches placement :: dict(worker_id, [cids]) %s",
+            placement,
         )
     return lists_cids
 
@@ -400,24 +405,143 @@ def get_train_data(
     return x_train, y_train
 
 
-def fn(x, A, B, C, D):
-    y = A * x + B * np.log(C * x + 1e-8) + D
+# def fn(x, A, B, C, D):
+#     y = A * x + B * np.log(C * x + 1e-8) + D
+#     return y
+
+
+# def fn(x, A, B, C):
+#     y = A + B * np.log(C * x)
+#     return y
+
+
+def pollen_function(x, A, B):
+    y = A + B * np.log(x)
     return y
 
 
-def get_trained_model(data: Tuple[np.ndarray, np.ndarray]):
-    return curve_fit(fn, data[0].flatten(), data[1])
+def linear(x, A, B):
+    y = A + B * x
+    return y
 
 
-def get_model_score(model, data):
-    parameters, _ = model
-    return np.sum((data[1] - fn(data[0].flatten(), *parameters)))
-
-
-def predict_single_client(model, n_samples: int, batch_size: int):
+def predict_single_client(model, fn: Callable, n_samples: int, batch_size: int):
     parameters, covariance = model
     return fn(n_samples // batch_size, *parameters)
 
 
 def convert_list_of_int_to_string(list_of_int: List[int]) -> str:
     return ",".join([str(i) for i in list_of_int])
+
+
+def add_n_batches_column_to_clients_stats_table(
+    input: pa.Table,
+    batch_size: int,
+    cids: Union[Dict[str, int], Dict[int, int]],
+) -> pa.Table:
+    return input.add_column(
+        0,
+        "n_batches",
+        pa.array([cids[int(cid.as_py())] // batch_size for cid in input["cid"]]),
+    )
+
+
+def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
+    """Split the training table into a list of tables, one per GPU.
+
+    Args:
+        input (pa.Table): the training table.
+
+    Returns:
+        List[pa.Table]: a list of tables, one per GPU.
+    """
+    # Get the list of unique node names
+    unique_node_names = np.unique(input.column("node").to_numpy())
+    # Get the list of unique GPU names
+    unique_gpu_names = np.unique(input.column("gpu").to_numpy())
+    # Create cross product iterator
+    iterator = ((a, b) for a in unique_node_names for b in unique_gpu_names)
+    # Create a list of tables, one per GPU
+    output = {
+        # f"{a}_{b}": input.filter(expr(a, b))
+        f"{a}_{b}": input.filter(pc.field("node") == pc.scalar(a)).filter(
+            pc.field("gpu") == pc.scalar(b)
+        )
+        for a, b in iterator
+    }
+    # log(DEBUG, f"split_clients_training_table :: output {output}")
+    # NOTE: This might be unnecessary with the defaults in the `filter` function
+    # Remove None values
+    output = {k: v for k, v in output.items() if v is not None}
+    # log(
+    #     DEBUG,
+    #     "split_clients_training_table after checking for Nones :: output %s",
+    #     output,
+    # )
+    # Return the cleaned list of tables
+    return output
+
+
+def parallel_train_models(
+    fn: Callable, clients_stats: Dict[str, pa.Table]
+) -> Dict[str, Any]:
+    # Set up the parallelisation
+    n_jobs = 100
+    try:
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    if n_jobs > cpus:
+        n_jobs = cpus
+    n_jobs = min(n_jobs, len(clients_stats))
+    pool = Pool(n_jobs)
+    # Execute the pool
+    pool_outputs = pool.starmap(
+        train_model, [[fn, k, v] for k, v in clients_stats.items()]
+    )
+    pool.close()
+    pool.join()
+    # Return the results from the pool
+    return {k: v for result in pool_outputs for k, v in result.items()}
+
+
+def train_model(fn: Callable, model_name: str, data: pa.Table) -> Dict[str, Any]:
+    x = data.column("n_batches").to_numpy()
+    y1 = data.column("end_time").to_numpy()
+    y0 = data.column("start_time").to_numpy()
+    delta = (y1 - y0) * 1e-9
+    return {model_name: curve_fit(fn, x, delta)}
+
+
+def parallel_get_models_scores(
+    fn: Callable, models: Dict[str, Any], clients_stats: Dict[str, pa.Table]
+) -> Dict[str, float]:
+    # Set up the parallelisation
+    n_jobs = 100
+    try:
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    if n_jobs > cpus:
+        n_jobs = cpus
+    n_jobs = min(n_jobs, len(models))
+    pool = Pool(n_jobs)
+    # Execute the pool
+    pool_outputs = pool.starmap(
+        get_model_score, [[fn, k, models[k], clients_stats[k]] for k in models.keys()]
+    )
+    pool.close()
+    pool.join()
+    # Return the results from the pool
+    return {k: v for result in pool_outputs for k, v in result.items()}
+
+
+def get_model_score(
+    fn: Callable, model_name: str, model: Any, data: pa.Table
+) -> Dict[str, float]:
+    parameters, _ = model
+    x = data.column("n_batches").to_numpy()
+    y1 = data.column("end_time").to_numpy()
+    y0 = data.column("start_time").to_numpy()
+    delta = (y1 - y0) * 1e-9
+    return {model_name: np.sum((delta - fn(x, *parameters)))}

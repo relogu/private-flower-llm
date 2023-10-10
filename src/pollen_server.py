@@ -18,7 +18,6 @@ import concurrent.futures
 import os
 import sys
 import timeit
-from copy import copy, deepcopy
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -35,6 +34,11 @@ from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
 
+from placements import get_placement_fn
+from pollen_client_manager import PollenClientManager
+from pollen_utils import get_table_from_pyarrow_buffer
+from resources_manager import Node
+
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
     List[Union[Tuple[ClientProxy, FitRes], BaseException]],
@@ -47,12 +51,6 @@ ReconnectResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, DisconnectRes]],
     List[Union[Tuple[ClientProxy, DisconnectRes], BaseException]],
 ]
-
-from placements import get_placement_fn
-from pollen_client_manager import PollenClientManager
-from pollen_utils import get_table_from_pyarrow_buffer
-from resources_manager import Node
-from utils import invert_many_to_one_dictionary
 
 GetPropResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, Node]],
@@ -73,6 +71,7 @@ class PollenServer(Server):
         placement_policy: str = "rr",
         saving_path: Optional[Path] = None,
         history: Optional[History] = None,
+        num_nodes: int = 1,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -93,9 +92,10 @@ class PollenServer(Server):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
-        self.gpu_stats = None
+        # self.gpu_stats = None
         self.clients_training_stats = None
         self.history = history
+        self.num_nodes = num_nodes
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -136,22 +136,18 @@ class PollenServer(Server):
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
-        self._client_manager.wait_for_node_managers(1)
-        # Get the initial number of connected NodeManagers
-        connected_node_managers: Dict[str, ClientProxy] = copy(
-            self._client_manager.node_managers
-        )
-        # Collect nodes' preoperties
+        self._client_manager.wait_for_node_managers(self.num_nodes)
+        # Collect nodes' properties
         # NOTE: Ideally, we want to get here the info about the concurrency
         # per hardware accelerator because everything from the server-side
         # has been launched and running, e.g. centralised evaluation (on GPU).
         log(
             DEBUG,
             "Asking for nodes properties to %s NodeManagers",
-            connected_node_managers,
+            self._client_manager.node_managers,
         )
         results, failures = get_nodes_properties(
-            node_managers=connected_node_managers,
+            node_managers=self._client_manager.node_managers,
             max_workers=self.max_workers,
         )
         log(
@@ -179,23 +175,30 @@ class PollenServer(Server):
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
             # Check for changes in connected NodeManagers
-            dropped, new, connected_node_managers = check_connected_node_managers(
-                old_connected_node_managers=connected_node_managers,
-                new_connected_node_managers=self._client_manager.node_managers,
+            dropped, new = check_connected_node_managers(
+                old_connected_node_managers_cid=self.nodes_dict.keys(),
+                new_connected_node_managers_cid=self._client_manager.node_managers.keys(),
             )
-            if bool(dropped):
+            if len(dropped) > 0:
                 # Handle dropped NodeManagers
-                log(DEBUG, f"{len(dropped)} NodeManagers have been dropped")
-                [self.nodes_dict.pop(k) for k, _ in dropped.items()]
-            if bool(new):
+                [self.nodes_dict.pop(k) for k in dropped]
+            if len(new) > 0:
                 # Handle newly added NodeManagers
-                log(DEBUG, f"There are new {len(new)} NodeManagers connected")
+                results, failures = get_nodes_properties(
+                    node_managers={
+                        k: self._client_manager.node_managers[k] for k in new
+                    },
+                    max_workers=self.max_workers,
+                )
+                log(
+                    INFO,
+                    "Get nodes properties: there are %s results and %s failures",
+                    len(results),
+                    len(failures),
+                )
                 new_nodes_dict = {
                     client_proxy.cid: (client_proxy, node)
-                    for client_proxy, node in get_nodes_properties(
-                        node_managers=new,
-                        max_workers=self.max_workers,
-                    )
+                    for client_proxy, node in results
                 }
                 self.nodes_dict.update(new_nodes_dict)
 
@@ -242,8 +245,8 @@ class PollenServer(Server):
                     )
 
         # Save the statistics to a parquet file
-        if self.gpu_stats is not None:
-            pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
+        # if self.gpu_stats is not None:
+        #     pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
         if self.clients_training_stats is not None:
             pq.write_table(
                 self.clients_training_stats,
@@ -330,8 +333,7 @@ class PollenServer(Server):
             self._client_manager.num_available(),
         )
 
-        # TODO: Translate `client_instruction` to `node_instructions`
-        # NOTE: `node_instructions` must contain
+        # Translate `client_instruction` to `node_instructions`
         node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[client.cid])
@@ -339,6 +341,9 @@ class PollenServer(Server):
             ],
             nodes_dict=self.nodes_dict,
             batch_size=self.on_fit_config(server_round)["batch_size"],
+            cids=self.cids,
+            clients_stats=self.clients_training_stats,
+            # gpu_stats=self.gpu_stats,
             verbose=False,
         )
         # log(
@@ -362,7 +367,7 @@ class PollenServer(Server):
             # # TODO/FIXME: Set the level of concurrency
             # node_fit_config["concurrency"] = 1
 
-            # TODO/FIXME: Assign `cids`
+            # Assign `cids` to NodeManagers' devices
             node_fit_config.update(device_assignment)
 
             # Append instruction
@@ -400,20 +405,20 @@ class PollenServer(Server):
 
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
-        received_gpu_stats = []
-        for _client, fit_res in results:
+        # received_gpu_stats = []
+        for client, fit_res in results:
             tmp_clients_training_stats = fit_res.metrics.pop("stats")
-            tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
-            received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
+            # tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
+            # received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
             received_clients_training_stats.append(
                 get_table_from_pyarrow_buffer(tmp_clients_training_stats)
             )
 
         # Append the statistics to the global statistics
-        if self.gpu_stats is None:
-            self.gpu_stats = pa.concat_tables(received_gpu_stats)
-        else:
-            self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
+        # if self.gpu_stats is None:
+        #     self.gpu_stats = pa.concat_tables(received_gpu_stats)
+        # else:
+        #     self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
         if self.clients_training_stats is None:
             self.clients_training_stats = pa.concat_tables(
                 received_clients_training_stats
@@ -501,8 +506,9 @@ def check_strategy_for_pollen(
     if strategy.on_fit_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't have a proper `on_fit_config_fn` attribute."
-            "The user must define such method as type `Callable[[int], Dict]`"
+            "The strategy, %s, passed to the `PollenServer` doesn't"
+            " have a proper `on_fit_config_fn` attribute. The user"
+            " must define such method as type `Callable[[int], Dict]`"
             "Currently, `on_fit_config_fn` is %s.",
             strategy,
             strategy.on_fit_config_fn,
@@ -513,27 +519,28 @@ def check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_fit_config_fn` function of the strategy passed to the `PollenServer`"
-            " must have a proper `batch_size` key with an `int` value."
-            "The call `strategy.on_fit_config_fn(0)` returned %s instead",
+            "The `on_fit_config_fn` function of the strategy passed"
+            " to the `PollenServer` must have a proper `batch_size`"
+            " key with an `int` value. The call"
+            " `strategy.on_fit_config_fn(0)` returned %s instead",
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
 
 
 def check_connected_node_managers(
-    old_connected_node_managers: Dict[str, ClientProxy],
-    new_connected_node_managers: Dict[str, ClientProxy],
-) -> Tuple[Dict[str, ClientProxy], Dict[str, ClientProxy], Dict[str, ClientProxy]]:
-    dropped: Dict[str, ClientProxy] = {}
-    new: Dict[str, ClientProxy] = {}
-    for key in old_connected_node_managers.keys():
-        if key not in new_connected_node_managers:
-            dropped[key] = old_connected_node_managers[key]
-    for key in new_connected_node_managers.keys():
-        if key not in old_connected_node_managers:
-            new[key] = new_connected_node_managers[key]
-    return dropped, new, new_connected_node_managers
+    old_connected_node_managers_cid: List[str],
+    new_connected_node_managers_cid: List[str],
+) -> Tuple[List[str], List[str]]:
+    dropped: List[str] = []
+    new: List[str] = []
+    for old_cid in old_connected_node_managers_cid:
+        if old_cid not in set(new_connected_node_managers_cid):
+            dropped.append(old_cid)
+    for new_cid in new_connected_node_managers_cid:
+        if new_cid not in set(old_connected_node_managers_cid):
+            new.append(new_cid)
+    return dropped, new
 
 
 def get_all_workers_properties(
@@ -546,53 +553,3 @@ def get_all_workers_properties(
         worker_properties = worker.get_properties(ins=ins, timeout=60).properties
         all_workers_properties[worker_id] = worker_properties
     return all_workers_properties
-
-
-# TODO/FIXME: This might need to change in light of the change of abstraction
-def assign_worker_to_resource(
-    connected_node_managers: Dict[str, ClientProxy],
-) -> Dict[str, Tuple[str, str, int, int]]:
-    # Getting nodes' resources information
-    worker_node_map: Dict = {}
-    node_gpu_n_workers_dict: Dict = {}
-    all_workers_properties = get_all_workers_properties(
-        connected_node_managers=connected_node_managers
-    )
-    for worker_id, properties in all_workers_properties.items():
-        worker_node_map[worker_id] = properties["node_name"]
-        gpu_workers_map = eval(properties["node_gpus"])
-        # log(
-        #     DEBUG, 'Worker %s in node %s has gpu_worker_map %s',
-        #     worker_id, node_name, gpu_workers_map
-        # )
-        if worker_node_map[worker_id] not in node_gpu_n_workers_dict:
-            node_gpu_n_workers_dict[worker_node_map[worker_id]] = gpu_workers_map
-    log(
-        DEBUG,
-        "Built the node to GPUs and number of workers map %s",
-        node_gpu_n_workers_dict,
-    )
-    log(DEBUG, "Built the worker to node map %s", worker_node_map)
-    # Assigning workers to resources
-    worker_resource_map: Dict[str, Tuple[str, int]] = {}
-    node_worker_map = invert_many_to_one_dictionary(worker_node_map)
-    for node, workers in node_worker_map.items():
-        workers_in_this_node: List[str] = deepcopy(workers)
-        concurrency = len(workers_in_this_node)
-        # Dict[<gpu_id>, Tuple[<gpu_name>, <n_workers>]]
-        node_resources: Dict[str, Tuple[str, int]] = deepcopy(
-            node_gpu_n_workers_dict[node]
-        )
-        while len(workers_in_this_node) > 0:
-            for gpu_id, (gpu_name, n_workers) in node_resources.items():
-                if n_workers > 0:
-                    worker_resource_map[workers_in_this_node.pop(0)] = (
-                        node,
-                        gpu_name,
-                        gpu_id,
-                        concurrency,
-                    )
-                    node_resources[gpu_id] = (gpu_name, n_workers - 1)
-                    break
-    log(DEBUG, "Assigned workers to resources %s", worker_resource_map)
-    return worker_resource_map

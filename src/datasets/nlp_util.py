@@ -48,9 +48,9 @@ REDDIT_DTYPES = {
 }
 
 
-def chunks_idx(l, n):
-    d, r = divmod(len(l), n)
-    for i in range(n):
+def chunks_idx(list, n_chunks):
+    d, r = divmod(len(list), n_chunks)
+    for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
@@ -92,7 +92,8 @@ def feature_creation_worker(
                 )
                 if isinstance(tokenized_text, int):
                     raise ValueError(
-                        f"Expected tokenized text to be a list of integers instead of {tokenized_text}"
+                        "Expected tokenized text to be a list of integers"
+                        f" instead of {tokenized_text}"
                     )
                 examples = []
                 # Truncate in blocks of length `block_size``
@@ -110,10 +111,6 @@ def feature_creation_worker(
             except Exception as e:
                 log(ERROR, f"Worker {worker_idx}: fail due to {e}")
         if i % 10000 == 0:
-            # log(
-            #     INFO,
-            #     f"Worker {worker_idx}: {len(files)-i} files left, {i} files complete, remaining time {(time.time()-start_time)/(i+1)*(len(files)-i)}",
-            # )
             gc.collect()
 
 
@@ -152,7 +149,11 @@ class TextDataset(Dataset):
             self.examples = examples
         elif os.path.exists(self.cached_features_file) and not overwrite_cache:
             # If the features are stored, load them
-            # log(INFO, "Loading features from cached file %s", self.cached_features_file)
+            # log(
+            #     INFO,
+            #     "Loading features from cached file %s",
+            #     self.cached_features_file
+            # )
             gc.disable()
             with open(self.cached_features_file, "rb") as f:
                 self.examples = pickle.load(f)
@@ -179,7 +180,8 @@ class TextDataset(Dataset):
                 )
                 log(
                     INFO,
-                    "Creating features from dataset file at %s for the entire dataset, params are model: %s, tokenizer: %s, block_size: %s",
+                    "Creating features from dataset file at %s for the entire dataset,"
+                    " params are model: %s, tokenizer: %s, block_size: %s",
                     file_path,
                     model,
                     tokenizer,
@@ -271,7 +273,8 @@ def mask_tokens(
     random, 10% original.
     """
     labels = inputs.clone().to(device=device)
-    # We sample a few tokens in each sequence for masked-LM training (with probability mlm_probability defaults to 0.15 in Bert/RoBERTa)
+    # We sample a few tokens in each sequence for masked-LM training
+    # (with probability mlm_probability defaults to 0.15 in Bert/RoBERTa)
     probability_matrix = torch.full(labels.shape, mlm_probability, device=device)
     special_tokens_mask = [
         tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True)
@@ -324,10 +327,6 @@ def dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
             dataset=dataset,
         )
         clients.append([client_id, len(ds)])
-        # if i % 10 == 0:
-        #     log(INFO,
-        #         f"Worker {worker_idx}: {len(client_ids)-i} client_ids left, {i} client_ids complete, remaining time {(time.time()-start_time)/(i+1)*(len(client_ids)-i)}"
-        #     )
     return clients
 
 
@@ -388,7 +387,9 @@ def create_parquet_clients_dict(
     log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
     log(
         INFO,
-        f"This dataset has {len(df)} clients of which {len(df[df['samples'] == 0])} are empty",
+        "This dataset has %s clients of which %s are empty",
+        len(df),
+        len(df[df["samples"] == 0]),
     )
     s_t = time.time()
     samples = []

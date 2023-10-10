@@ -172,7 +172,8 @@ class PollenClientManager(ClientManager):
         if min_num_clients is None:
             min_num_clients = num_clients
 
-        # NOTE: This is not need anymore because we assume all the VirtualClients to be connected
+        # NOTE: This is not need anymore because we assume
+        # all the VirtualClients to be connected
         # self.wait_for(min_num_clients)
 
         # Sample clients which meet the criterion

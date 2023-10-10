@@ -380,9 +380,9 @@ def _get_dataset_root(name: str) -> Path:
     raise ValueError("No dataset for the requested dataset name")
 
 
-def chunks_idx(l, n):
-    d, r = divmod(len(l), n)
-    for i in range(n):
+def chunks_idx(list, n_chunks):
+    d, r = divmod(len(list), n_chunks)
+    for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
