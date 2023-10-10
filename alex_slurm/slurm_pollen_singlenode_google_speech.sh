@@ -35,6 +35,6 @@ poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS # >> 
 #   
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_pollen_singlenode_google_speech.sh
+# srun -w mauao -c 8 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode_google_speech.sh
 # Use what follows for a batch job
-# sbatch alex_slurm/slurm_pollen_singlenode.sh
+# sbatch slurm_pollen_singlenode.sh

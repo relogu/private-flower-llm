@@ -23,6 +23,6 @@ CUSTOM_HYDRA_ARGS="-m run_uuid=$run_uuid task=reddit task.num_rounds=100 local_e
 poetry run python pollen_worker/ray_simulation.py $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_ray_singlenode.sh
+# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
 # Use what follows for a batch job
-# sbatch alex_slurm/slurm_ray_singlenode.sh
+# sbatch slurm_ray_singlenode.sh

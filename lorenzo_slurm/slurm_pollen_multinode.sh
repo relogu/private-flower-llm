@@ -50,6 +50,6 @@ srun --nodes=1 --ntasks=1 -w "$node_2" \
 
 
 # How to use this script? Use what follows for a interactive job
-# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash lorenzo_slurm/slurm_pollen_multinode.sh
+# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash slurm_pollen_multinode.sh
 # Use what follows for a batch job
-# sbatch lorenzo_slurm/slurm_pollen_multinode.sh
+# sbatch slurm_pollen_multinode.sh
