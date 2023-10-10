@@ -20,7 +20,7 @@ CUSTOM_HYDRA_ARGS="multirun_output_dir=/nfs-share/aai30/projects/pollen_worker/m
 
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m src.models.multirun_testing_loops $CUSTOM_HYDRA_ARGS 
+poetry run python -m pollen_worker.models.multirun_testing_loops $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash alex_slurm/evaluate/slurm_ray_singlenode.sh

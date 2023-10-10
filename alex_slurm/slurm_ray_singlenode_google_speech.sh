@@ -18,7 +18,7 @@ CUSTOM_HYDRA_ARGS="-m run_uuid=$run_uuid task=google_speech task.num_rounds=100 
 
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python src/ray_simulation.py $CUSTOM_HYDRA_ARGS 
+poetry run python pollen_worker/ray_simulation.py $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_ray_singlenode.sh

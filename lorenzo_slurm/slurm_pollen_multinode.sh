@@ -34,15 +34,15 @@ poetry shell
 CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip_head"
 
 echo "STARTING POLLEN SERVER at $node_1"
-poetry run python src/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
+poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
 
 echo "STARTING POLLEN NODE MANAGER at $node_1"
 srun --nodes=1 --ntasks=1 -w "$node_1" \
-    poetry run python src/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS &
+    poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS &
 
 echo "STARTING POLLEN NODE MANAGER at $node_2"
 srun --nodes=1 --ntasks=1 -w "$node_2" \
-    poetry run python src/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
+    poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
 
 
 # How to use this script? Use what follows for a interactive job
