@@ -87,18 +87,42 @@ def learning_based_placement(
         start_time = time.time()
         ## Prepare data
         # Add n_batches column to clients_stats table
+        t_0 = time.time()
         clients_stats = add_n_batches_column_to_clients_stats_table(
             clients_stats, batch_size, cids
+        )
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: add batches to table took {time.time()-t_0} seconds",
         )
         # TODO: Come up with a procedure when a new NodeManager appears after round 1
         # TODO: Deal with dropped NodeManagers
         # Split clients_stats table into a list of tables, one per client
+        t_0 = time.time()
         clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
+        )
         # Train models
-        trained_models: Dict[str, Any] = parallel_train_models(fn, clients_stats)
+        t_0 = time.time()
+        # trained_models: Dict[str, Any] = parallel_train_models(fn, clients_stats)
+        trained_models: Dict[str, Any] = sequential_train_models(fn, clients_stats)
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
+        )
         # Get models' scores
-        current_scores: Dict[str, float] = parallel_get_models_scores(
+        t_0 = time.time()
+        # current_scores: Dict[str, float] = parallel_get_models_scores(
+        #     fn, trained_models, clients_stats
+        # )
+        current_scores: Dict[str, float] = sequential_get_models_scores(
             fn, trained_models, clients_stats
+        )
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
         )
         # Check scores
         log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
@@ -110,13 +134,19 @@ def learning_based_placement(
 
         # Sorting by batch size (decreasing order)
         # This is a list of tuples (cid, list of samples)
+        t_0 = time.time()
         sampled_virtual_cids = sorted(
             sampled_virtual_cids,
             key=lambda x: x[1] // batch_size,
             reverse=True,
         )
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
+        )
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
+        t_0 = time.time()
         trained_models = {
             k: v
             for k, v in sorted(
@@ -129,8 +159,13 @@ def learning_based_placement(
                 ),
             )
         }
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: ordering models took {time.time()-t_0} seconds",
+        )
 
         # Init the device assignment and the return value
+        t_0 = time.time()
         devices_assignment = [
             [
                 v,  # Model parameters
@@ -141,8 +176,13 @@ def learning_based_placement(
             ]
             for k, v in trained_models.items()
         ]
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: init assignments took {time.time()-t_0} seconds",
+        )
 
         # Assignment
+        t_0 = time.time()
         while len(sampled_virtual_cids) > 0:
             # Extract the first element of the list
             virtual_cid, num_samples = sampled_virtual_cids.pop(0)
@@ -161,8 +201,13 @@ def learning_based_placement(
                 devices_assignment,
                 key=lambda x: x[2],
             )
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: assignment took {time.time()-t_0} seconds",
+        )
 
         # Build node assignments
+        t_0 = time.time()
         node_assignments = []
         for _, (client_proxy, node) in nodes_dict.items():
             devices_assignment_node = {
@@ -171,6 +216,10 @@ def learning_based_placement(
                 if node_dev_name == node.name
             }
             node_assignments.append((client_proxy, devices_assignment_node))
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: building node assignments {time.time()-t_0} seconds",
+        )
         log(
             DEBUG,
             f"Pollen-MLStrategy :: placement took {time.time()-start_time} seconds",
@@ -463,13 +512,11 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
     iterator = ((a, b) for a in unique_node_names for b in unique_gpu_names)
     # Create a list of tables, one per GPU
     output = {
-        # f"{a}_{b}": input.filter(expr(a, b))
         f"{a}_{b}": input.filter(pc.field("node") == pc.scalar(a)).filter(
             pc.field("gpu") == pc.scalar(b)
         )
         for a, b in iterator
     }
-    # log(DEBUG, f"split_clients_training_table :: output {output}")
     # NOTE: This might be unnecessary with the defaults in the `filter` function
     # Remove None values
     output = {k: v for k, v in output.items() if v is not None}
@@ -504,13 +551,23 @@ def parallel_train_models(
     # Return the results from the pool
     return {k: v for result in pool_outputs for k, v in result.items()}
 
+def sequential_train_models(
+    fn: Callable, clients_stats: Dict[str, pa.Table]
+) -> Dict[str, Any]:
+    # Init return dict
+    ret = dict()
+    # Loop over model names
+    for k, v in clients_stats.items():
+        ret.update(train_model(fn, k, v))
+    return ret
+
 
 def train_model(fn: Callable, model_name: str, data: pa.Table) -> Dict[str, Any]:
     x = data.column("n_batches").to_numpy()
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
-    return {model_name: curve_fit(fn, x, delta)}
+    return {model_name: curve_fit(fn, x, delta, [delta.min(), 0.0])}
 
 
 def parallel_get_models_scores(
@@ -534,6 +591,17 @@ def parallel_get_models_scores(
     pool.join()
     # Return the results from the pool
     return {k: v for result in pool_outputs for k, v in result.items()}
+
+
+def sequential_get_models_scores(
+    fn: Callable, models: Dict[str, Any], clients_stats: Dict[str, pa.Table]
+) -> Dict[str, float]:
+    # Init return dict
+    ret = dict()
+    # Loop over model names
+    for k in models.keys():
+        ret.update(get_model_score(fn, k, models[k], clients_stats[k]))
+    return ret
 
 
 def get_model_score(
