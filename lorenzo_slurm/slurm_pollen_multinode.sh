@@ -24,32 +24,27 @@ poetry shell
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6379"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6380"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6381"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6382"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6383"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6384"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6385"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6386"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6387"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6388"
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6389"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6390"
+for policy in "lb" "llb" "rr"; do
+    echo "Using policy $policy"
+    # CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=1 local_epochs=1 placement_policy=$policy flwr_address=$ip:6379"
+    # CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=$ip:6382"
+    # CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=$ip:6385"
+    CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=$ip:6388"
 
-echo "STARTING POLLEN SERVER at $node_1"
-poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
+    echo "STARTING POLLEN SERVER at $node_1"
+    poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
 
-echo "STARTING POLLEN NODE MANAGER at $node_1"
-srun --nodes=1 --ntasks=1 -w "$node_1" \
-    poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS &
+    echo "STARTING POLLEN NODE MANAGER at $node_1"
+    srun --nodes=1 --ntasks=1 -w "$node_1" \
+        poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS &
 
-echo "STARTING POLLEN NODE MANAGER at $node_2"
-srun --nodes=1 --ntasks=1 -w "$node_2" \
-    poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
+    echo "STARTING POLLEN NODE MANAGER at $node_2"
+    srun --nodes=1 --ntasks=1 -w "$node_2" \
+        poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
+done
 
 
 # How to use this script? Use what follows for a interactive job
-# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash slurm_pollen_multinode.sh
+# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash lorenzo_slurm/slurm_pollen_multinode.sh
 # Use what follows for a batch job
-# sbatch slurm_pollen_multinode.sh
+# sbatch lorenzo_slurm/slurm_pollen_multinode.sh
