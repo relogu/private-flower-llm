@@ -22,4 +22,4 @@ poetry run python src/ray_simulation.py $CUSTOM_HYDRA_ARGS
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
 # srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_ray_singlenode.sh
 # Use what follows for a batch job
-# sbatch slurm_ray_singlenode.sh
+# sbatch alex_slurm/slurm_ray_singlenode.sh

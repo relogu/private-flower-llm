@@ -9,8 +9,8 @@
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-source /nfs-share/ls985/anaconda3/bin/activate ray111-test
 cd /nfs-share/aai30/projects/pollen_worker
+poetry shell
 
 # Clean the shared memory objects
   
@@ -20,9 +20,9 @@ CUSTOM_HYDRA_ARGS="multirun_output_dir=/nfs-share/aai30/projects/pollen_worker/m
 
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m models.multirun_testing_loops $CUSTOM_HYDRA_ARGS 
+poetry run python -m src.models.multirun_testing_loops $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
+# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash alex_slurm/evaluate/slurm_ray_singlenode.sh
 # Use what follows for a batch job
-# sbatch slurm_ray_singlenode.sh
+# sbatch alex_slurm/evaluate/slurm_ray_singlenode.sh
