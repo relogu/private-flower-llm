@@ -20,7 +20,7 @@ poetry shell
 CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=google_speech task.num_rounds=100 flwr_address=127.0.0.1:1043"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python src/server_with+pollen.py $CUSTOM_HYDRA_ARGS & # >> server_$timestamp.out 2>&1 &
+poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS & # >> server_$timestamp.out 2>&1 &
 
 # Launch the node manager, uncomment the end of the line if you what separed output logs.
 # NOTE that the `nsys` command is used to profile the node manager. It uses Nsight Systems software for NVIDIA.
@@ -28,13 +28,13 @@ poetry run python src/server_with+pollen.py $CUSTOM_HYDRA_ARGS & # >> server_$ti
 # -f true --cudabacktrace=true \
 # --osrt-threshold=10000 -x true \
 # -o ${timestamp}_nvidia_nsight \
-poetry run python src/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS # >> node_manager_$timestamp.out 2>&1
+poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS # >> node_manager_$timestamp.out 2>&1
 
 # This might become necessary, kept just in case.
 # # Clean the shared memory objects
 #   
 
 # How to use this script? Use what follows for a interactive job
-# srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_pollen_singlenode_google_speech.sh
+# srun -w mauao -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_pollen_singlenode_google_speech.sh
 # Use what follows for a batch job
-# sbatch slurm_pollen_singlenode.sh
+# sbatch alex_slurm/slurm_pollen_singlenode.sh

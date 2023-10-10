@@ -17,7 +17,7 @@ poetry shell
  
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.num_rounds=100 flwr_address=127.0.0.1:1043"
+CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=openimage task.num_rounds=100 flwr_address=127.0.0.1:1043"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
 poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS & # >> server_$timestamp.out 2>&1 &
@@ -35,6 +35,6 @@ poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS # >> 
 #   
 
 # How to use this script? Use what follows for a interactive job
-# srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_pollen_singlenode.sh
+# srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash alex_slurm/slurm_pollen_singlenode_openimage.sh
 # Use what follows for a batch job
 # sbatch alex_slurm/slurm_pollen_singlenode.sh

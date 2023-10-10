@@ -72,9 +72,9 @@ done
 CUSTOM_HYDRA_ARGS="run_uuid=$(uuidgen) task=openimage task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address=auto is_multinode=True"
 
 echo "LAUNCHING SIMULATION"
-poetry run python src/ray_simulation.py $CUSTOM_HYDRA_ARGS 
+poetry run python pollen_worker/ray_simulation.py $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
-# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash slurm_ray_multinode.sh
+# srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash lorenzo_slurm/slurm_ray_multinode.sh
 # Use what follows for a batch job
-# sbatch slurm_ray_multinode.sh
+# sbatch lorenzo_slurm/slurm_ray_multinode.sh

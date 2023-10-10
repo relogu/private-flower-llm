@@ -61,6 +61,7 @@ scipy = "^1.11.3"
 librosa = "^0.10.1"
 flwr = {extras = ["simulation"], version = "^1.5.0"}
 nvidia-ml-py = "11.495.46"
+sentencepiece = "^0.1.99"
 
 
 [tool.poetry.dev-dependencies]
