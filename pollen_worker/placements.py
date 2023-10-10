@@ -61,17 +61,17 @@ def get_placement_fn(policy: str = "rr"):
 def pollen_learning_based_placement(
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
-    return learning_based_placement(fn=pollen_function, **kwargs)
+    return learning_based_placement(fns=[pollen_function, jacobian_pollen_function], **kwargs)
 
 
 def parrot_learning_based_placement(
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
-    return learning_based_placement(fn=linear, **kwargs)
+    return learning_based_placement(fns=[linear, jacobian_linear], **kwargs)
 
 
 def learning_based_placement(
-    fn: Callable,
+    fns: List[Callable],
     sampled_virtual_cids: List[Tuple[int, int]],
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
@@ -106,8 +106,8 @@ def learning_based_placement(
         )
         # Train models
         t_0 = time.time()
-        # trained_models: Dict[str, Any] = parallel_train_models(fn, clients_stats)
-        trained_models: Dict[str, Any] = sequential_train_models(fn, clients_stats)
+        # trained_models: Dict[str, Any] = parallel_train_models(fns, clients_stats)
+        trained_models: Dict[str, Any] = sequential_train_models(fns, clients_stats)
         log(
             DEBUG,
             f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
@@ -115,10 +115,10 @@ def learning_based_placement(
         # Get models' scores
         t_0 = time.time()
         # current_scores: Dict[str, float] = parallel_get_models_scores(
-        #     fn, trained_models, clients_stats
+        #     fns, trained_models, clients_stats
         # )
         current_scores: Dict[str, float] = sequential_get_models_scores(
-            fn, trained_models, clients_stats
+            fns[0], trained_models, clients_stats
         )
         log(
             DEBUG,
@@ -151,7 +151,7 @@ def learning_based_placement(
                 trained_models.items(),
                 key=lambda item: predict_single_client(
                     model=item[1],
-                    fn=fn,
+                    fn=fns[0],
                     n_samples=sampled_virtual_cids[0][1],
                     batch_size=batch_size,
                 ),
@@ -185,7 +185,7 @@ def learning_based_placement(
             # Get device load
             load = predict_single_client(
                 model=devices_assignment[0][0],
-                fn=fn,
+                fn=fns[0],
                 n_samples=num_samples,
                 batch_size=batch_size,
             )
@@ -448,16 +448,6 @@ def get_train_data(
     return x_train, y_train
 
 
-# def fn(x, A, B, C, D):
-#     y = A * x + B * np.log(C * x + 1e-8) + D
-#     return y
-
-
-# def fn(x, A, B, C):
-#     y = A + B * np.log(C * x)
-#     return y
-
-
 def pollen_function(x, A, B):
     y = A + B * np.log(x)
     return y
@@ -466,6 +456,16 @@ def pollen_function(x, A, B):
 def linear(x, A, B):
     y = A + B * x
     return y
+
+def jacobian_pollen_function(x, A, B):
+    dA = np.ones_like(x)
+    dB = np.log(x)
+    return np.hstack((dA.reshape(-1,1), dB.reshape(-1,1)))
+
+
+def jacobian_linear(x, A, B):
+    dA = np.ones_like(x)
+    return np.hstack((dA.reshape(-1,1), x.reshape(-1,1)))
 
 
 def predict_single_client(model, fn: Callable, n_samples: int, batch_size: int):
@@ -525,7 +525,7 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
 
 
 def parallel_train_models(
-    fn: Callable, clients_stats: Dict[str, pa.Table]
+    fns: List[Callable], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, Any]:
     # Set up the parallelisation
     n_jobs = 100
@@ -539,7 +539,7 @@ def parallel_train_models(
     pool = Pool(n_jobs)
     # Execute the pool
     pool_outputs = pool.starmap(
-        train_model, [[fn, k, v] for k, v in clients_stats.items()]
+        train_model, [[fns, k, v] for k, v in clients_stats.items()]
     )
     pool.close()
     pool.join()
@@ -547,22 +547,32 @@ def parallel_train_models(
     return {k: v for result in pool_outputs for k, v in result.items()}
 
 def sequential_train_models(
-    fn: Callable, clients_stats: Dict[str, pa.Table]
+    fns: List[Callable], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, Any]:
     # Init return dict
     ret = dict()
     # Loop over model names
     for k, v in clients_stats.items():
-        ret.update(train_model(fn, k, v))
+        ret.update(train_model(fns, k, v))
     return ret
 
 
-def train_model(fn: Callable, model_name: str, data: pa.Table) -> Dict[str, Any]:
+def train_model(fns: List[Callable], model_name: str, data: pa.Table) -> Dict[str, Any]:
     x = data.column("n_batches").to_numpy()
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
-    return {model_name: curve_fit(fn, x, delta, [delta.min(), 0.0])}
+    # return {model_name: curve_fit(fn, x, delta, [delta.min(), 0.0])}
+    return {model_name: curve_fit(
+        f=fns[0],
+        xdata=x,
+        ydata=delta,
+        p0=[0.0, 0.0],
+        jac=fns[1],
+        ftol=1e-3,
+        xtol=1e-3,
+        gtol=1e-3,
+    )}
 
 
 def parallel_get_models_scores(
