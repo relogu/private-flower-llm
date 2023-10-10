@@ -23,6 +23,6 @@ CUSTOM_HYDRA_ARGS="multirun_output_dir=/nfs-share/aai30/projects/pollen_worker/m
 poetry run python -m pollen_worker.models.multirun_testing_loops $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash alex_slurm/evaluate/slurm_ray_singlenode.sh
+# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash evaluate/slurm_ray_singlenode.sh
 # Use what follows for a batch job
-# sbatch alex_slurm/evaluate/slurm_ray_singlenode.sh
+# sbatch evaluate/slurm_ray_singlenode.sh
