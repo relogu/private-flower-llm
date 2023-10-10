@@ -7,7 +7,7 @@ save_freq: 100
 output_dir: /nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25
 multirun_output_dir: null
 seed: 1337
-placement_policy: "rr" # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
+placement_policy: rr   # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
 num_nodes: 1
 
 # Task

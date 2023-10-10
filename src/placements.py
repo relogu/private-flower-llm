@@ -117,9 +117,8 @@ def learning_based_placement(
         )
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
-        trained_models = {
-            k: v
-            for k, v in sorted(
+        trained_models = dict(
+            sorted(
                 trained_models.items(),
                 key=lambda item: predict_single_client(
                     model=item[1],
@@ -128,7 +127,7 @@ def learning_based_placement(
                     batch_size=batch_size,
                 ),
             )
-        }
+        )
 
         # Init the device assignment and the return value
         devices_assignment = [
@@ -452,7 +451,8 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
     Args:
         input (pa.Table): the training table.
 
-    Returns:
+    Returns
+    -------
         List[pa.Table]: a list of tables, one per GPU.
     """
     # Get the list of unique node names

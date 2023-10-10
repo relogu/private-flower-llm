@@ -6,10 +6,10 @@ from typing import Callable, Dict, List, Tuple
 import pandas as pd
 import ray
 import torch
-import wandb
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
+import wandb
 from datasets.shakespeare import SHAKESPEARE_DTYPES
 from datasets.shakespeare import SHAKESPEARE_LOADED as ShakespeareDataset
 

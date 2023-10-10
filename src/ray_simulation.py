@@ -9,7 +9,6 @@ import hydra
 import nvsmi
 import torch
 import transformers
-import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -17,6 +16,7 @@ from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
+import wandb
 from pollen_utils import get_clients_population_dict
 from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient

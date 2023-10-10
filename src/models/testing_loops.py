@@ -3,7 +3,6 @@ from typing import List, Tuple
 import hydra
 import torch
 import transformers
-import wandb
 import yaml
 from omegaconf import DictConfig
 from torch.nn import Module
@@ -12,6 +11,7 @@ from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
+import wandb
 from datasets.nlp_util import mask_tokens
 from utils import wandb_init
 

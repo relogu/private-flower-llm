@@ -3,11 +3,7 @@ import os
 import pickle
 import time
 from collections import defaultdict
-<<<<<<< HEAD
-from logging import DEBUG, INFO, ERROR
-=======
 from logging import DEBUG, ERROR
->>>>>>> main
 from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
@@ -35,11 +31,8 @@ from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_utils import get_pyarrow_buffer_from_table
-from resources_manager import (
-    Node,
-    get_cpu_prop,  # , DaemonResourcesMonitor
-    get_cuda_prop,
-)
+from resources_manager import get_cpu_prop  # , DaemonResourcesMonitor
+from resources_manager import Node, get_cuda_prop
 from utils import get_parameters, partially_aggregate_with_metrics
 from virtual_client import VirtualClient
 
@@ -570,7 +563,7 @@ class NodeManager(fl.client.NumPyClient):
         self.round_shm.close()
         self.config_shm.unlink()
         self.round_shm.unlink()
-        for i, v in enumerate(self.shared_local_agg.values()):
+        for _i, v in enumerate(self.shared_local_agg.values()):
             v[4].close()
             v[4].unlink()
         log(DEBUG, "Shared memories closed")

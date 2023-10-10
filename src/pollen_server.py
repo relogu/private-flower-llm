@@ -406,7 +406,7 @@ class PollenServer(Server):
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
         # received_gpu_stats = []
-        for client, fit_res in results:
+        for _client, fit_res in results:
             tmp_clients_training_stats = fit_res.metrics.pop("stats")
             # tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
             # received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
