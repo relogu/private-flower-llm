@@ -3,11 +3,7 @@ import os
 import pickle
 import time
 from collections import defaultdict
-<<<<<<< HEAD
-from logging import DEBUG, INFO, ERROR
-=======
 from logging import DEBUG, ERROR
->>>>>>> main
 from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
