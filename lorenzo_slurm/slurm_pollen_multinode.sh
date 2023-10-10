@@ -13,11 +13,7 @@
 #! Head node is `mauao`, 128.232.115.0
 node_1="mauao"
 node_2="ngongotaha"
-port=6380
 ip="128.232.115.0"
-ip_head="$ip:$port"
-export ip_head
-echo "IP Head: $ip_head"
 
 # Get the timestamp and the unique run id
 timestamp=$(date +%Y-%m-%d_%H%M%S)
@@ -28,10 +24,18 @@ poetry shell
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip_head"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip_head"
-# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip_head"
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip_head"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6379"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6380"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6381"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6382"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6383"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6384"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6385"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6386"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6387"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=lb flwr_address=$ip:6388"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6389"
+# CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6390"
 
 echo "STARTING POLLEN SERVER at $node_1"
 poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
