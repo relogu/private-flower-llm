@@ -30,7 +30,7 @@ transformers.logging.set_verbosity_error()
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    """Implement main function to lauch a Pollen's Server."""
+    """Implement main function to launch a Pollen's Server."""
     log(
         INFO,
         "Task is: %s with fake=%s with run unique id=%s and policy=%s",

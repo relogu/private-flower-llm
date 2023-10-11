@@ -1,4 +1,6 @@
-"""The ResNet model at different sizes."""
+"""The ResNet model at different sizes.
+
+Used for the openimages task in the Pollen paper."""
 import math
 
 from torch import nn
