@@ -1,3 +1,4 @@
+"""ResNet model used for Open Image task."""
 import math
 
 from torch import nn

@@ -1,3 +1,4 @@
+"""Generic utility functions."""
 import shutil
 from collections import OrderedDict, defaultdict
 from pathlib import Path

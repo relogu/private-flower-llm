@@ -1,3 +1,4 @@
+"""Script for running hyperparameter search."""
 from copy import deepcopy
 from pathlib import Path
 

@@ -1,3 +1,4 @@
+"""The corrent module contains our placement strategies."""
 import sys
 import time
 from collections import defaultdict
@@ -123,43 +124,44 @@ def learning_based_placement(
         start_time = time.time()
         ## Prepare data
         # Add n_batches column to clients_stats table
-        t_0 = time.time()
+        # t_0 = time.time()
         clients_stats = add_n_batches_column_to_clients_stats_table(
             clients_stats, batch_size, cids
         )
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: add batches to table took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     "Pollen-MLStrategy :: add batches to table took %s seconds",
+        #     time.time()-t_0
+        # )
         # TODO: Come up with a procedure when a new NodeManager appears after round 1
         # TODO: Deal with dropped NodeManagers
         # Split clients_stats table into a list of tables, one per client
-        t_0 = time.time()
+        # t_0 = time.time()
         clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
+        # )
         # Train models
-        t_0 = time.time()
+        # t_0 = time.time()
         # trained_models: Dict[str, Any] = parallel_train_models(fns, clients_stats)
         trained_models: Dict[str, Any] = sequential_train_models(fns, clients_stats)
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
+        # )
         # Get models' scores
-        t_0 = time.time()
+        # t_0 = time.time()
         # current_scores: Dict[str, float] = parallel_get_models_scores(
         #     fns, trained_models, clients_stats
         # )
         current_scores: Dict[str, float] = sequential_get_models_scores(
             fns[0], trained_models, clients_stats
         )
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
+        # )
         # Check scores
         log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
 
@@ -170,17 +172,17 @@ def learning_based_placement(
 
         # Sorting by batch size (decreasing order)
         # This is a list of tuples (cid, list of samples)
-        t_0 = time.time()
+        # t_0 = time.time()
         sampled_virtual_cids = sorted(
             sampled_virtual_cids,
             key=lambda x: x[1] // batch_size,
             reverse=True,
         )
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
-        )
-        t_0 = time.time()
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
+        # )
+        # t_0 = time.time()
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
         trained_models = dict(
@@ -194,13 +196,13 @@ def learning_based_placement(
                 ),
             )
         )
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
+        # )
 
         # Init the device assignment and the return value
-        t_0 = time.time()
+        # t_0 = time.time()
         devices_assignment = [
             [
                 v,  # Model parameters
@@ -211,13 +213,13 @@ def learning_based_placement(
             ]
             for k, v in trained_models.items()
         ]
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: init assignments took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: init assignments took {time.time()-t_0} seconds",
+        # )
 
         # Assignment
-        t_0 = time.time()
+        # t_0 = time.time()
         while len(sampled_virtual_cids) > 0:
             # Extract the first element of the list
             virtual_cid, num_samples = sampled_virtual_cids.pop(0)
@@ -236,13 +238,13 @@ def learning_based_placement(
                 devices_assignment,
                 key=lambda x: x[2],
             )
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: assignment took {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: assignment took {time.time()-t_0} seconds",
+        # )
 
         # Build node assignments
-        t_0 = time.time()
+        # t_0 = time.time()
         node_assignments = []
         for _, (client_proxy, node) in nodes_dict.items():
             devices_assignment_node = {
@@ -251,10 +253,11 @@ def learning_based_placement(
                 if node_dev_name == node.name
             }
             node_assignments.append((client_proxy, devices_assignment_node))
-        log(
-            DEBUG,
-            f"Pollen-MLStrategy :: building node assignments {time.time()-t_0} seconds",
-        )
+        # log(
+        #     DEBUG,
+        #     "Pollen-MLStrategy :: building node assignments %s seconds",
+        #     time.time()-t_0,
+        # )
         log(
             DEBUG,
             f"Pollen-MLStrategy :: placement took {time.time()-start_time} seconds",

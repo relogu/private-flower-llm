@@ -1,3 +1,4 @@
+"""Script to launch the NodeManager."""
 import gc
 import os
 import pickle
@@ -583,6 +584,7 @@ class NodeManager(fl.client.NumPyClient):
 
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Laucnh the node manager."""
     # Start NodeManager
     warm_up_config = call(cfg.gen_on_fit_config_fn)(0)
     node_manager = NodeManager(

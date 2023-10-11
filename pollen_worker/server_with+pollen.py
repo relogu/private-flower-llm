@@ -1,3 +1,4 @@
+"""Script to launch the Pollen server."""
 import json
 from logging import DEBUG, INFO
 from pathlib import Path

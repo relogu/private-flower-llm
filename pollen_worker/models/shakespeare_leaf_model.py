@@ -1,3 +1,4 @@
+"""Model used for the Shakespeare tasks in LEAF."""
 from torch import nn
 
 LEAF_CHARACTERS = (

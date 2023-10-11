@@ -1,3 +1,4 @@
+"""Virtual client for Flower Framework."""
 from collections import OrderedDict
 from logging import INFO
 from typing import Callable, Dict, Optional, Union

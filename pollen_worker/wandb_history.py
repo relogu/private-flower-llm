@@ -1,3 +1,4 @@
+"""History object for Flower Framework accounting for using Weights&Biases."""
 from typing import Dict
 
 import wandb

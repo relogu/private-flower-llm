@@ -1,3 +1,4 @@
+"""Script to launch the Ray-based simulation."""
 import json
 import os
 import warnings

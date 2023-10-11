@@ -1,3 +1,4 @@
+"""Shakespeare dataset."""
 import csv
 import os
 import pickle

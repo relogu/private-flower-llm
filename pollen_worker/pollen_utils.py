@@ -1,3 +1,4 @@
+"""Utility functions related to Pollen."""
 from argparse import ArgumentTypeError
 from functools import reduce
 from logging import DEBUG, INFO

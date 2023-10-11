@@ -1,3 +1,4 @@
+"""Utility functions related to resource management."""
 from __future__ import annotations
 
 import io

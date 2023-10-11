@@ -1,3 +1,4 @@
+"""Google Speech dataset."""
 import os
 from pathlib import Path
 
