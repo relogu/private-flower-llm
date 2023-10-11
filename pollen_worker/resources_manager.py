@@ -1,4 +1,7 @@
-"""Utility functions related to resource management."""
+"""Resources manager for the Pollen worker.
+
+Handles both metric collection and GPU/CPU resources allocation to workers.
+"""
 from __future__ import annotations
 
 import io
@@ -151,7 +154,7 @@ class Device:
         total_memory: float,
         allocated_memory: float,
         concurrency: int,
-    ):
+    ) -> None:
         self.id = id
         self.name = name
         self.type = type
@@ -159,7 +162,7 @@ class Device:
         self.allocated_memory = allocated_memory
         self.concurrency = concurrency
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return the string representation."""
         return json.dumps(asdict(self))
 
@@ -194,19 +197,19 @@ class Node:
         cpu_ram_total: int,
         cpu_ram_available: int,
         device_info: Dict[str, Device],
-    ):
+    ) -> None:
         self.name = name
         self.cpu_num = cpu_num
         self.cpu_ram_total = cpu_ram_total
         self.cpu_ram_available = cpu_ram_available
         self.device_info = device_info
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return the string representation."""
         return json.dumps(asdict(self))
 
     @staticmethod
-    def from_str(d: str):
+    def from_str(d: str) -> "Node":
         """Create a Node from a string (built with str(Node))."""
         d = json.loads(d)
         return Node(
@@ -288,7 +291,7 @@ class ResourcesMonitor(Thread):
             ret_val = self._get_gpu_memory()
         return ret_val
 
-    def _update_max_values(self):
+    def _update_max_values(self) -> None:
         """Call itself every `self.frequency` secs.
 
         Updates the maximum values for `self.vram_total_memory` and
@@ -311,7 +314,7 @@ class ResourcesMonitor(Thread):
             ]
             time.sleep(self.frequency)
 
-    def run(self):
+    def run(self) -> None:
         """Represent the thread's activity.
 
         You may override this method in a subclass. The standard run() method invokes
@@ -346,8 +349,8 @@ class DaemonResourcesMonitor(Thread):
         self.do_run = True
         self.gpu_stats = []
 
-    def _get_gpu_stats(self):
-        def output_to_list(x):
+    def _get_gpu_stats(self) -> None:
+        def output_to_list(x) -> bytes:
             return bytes(x)
 
         command = NVIDIA_SMI_GET_GPUS_STATS + f" -i {','.join(self.gpu_ids)}"
@@ -362,12 +365,12 @@ class DaemonResourcesMonitor(Thread):
                 f"return with error (code {e.returncode}): {e.output}"
             ) from e
 
-    def _update_max_values(self):
+    def _update_max_values(self) -> None:
         while self.do_run:
             self._get_gpu_stats()
             time.sleep(self.frequency)
 
-    def run(self):
+    def run(self) -> None:
         """Represent the thread's activity.
 
         You may override this method in a subclass. The standard run() method invokes

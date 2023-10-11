@@ -1,4 +1,8 @@
-"""Script to launch the Ray-based simulation."""
+"""Run a Ray-based Flower simulation.
+
+Serves as a baseline for the Pollen paper. It supports using wandb for logging and hydra
+for exeperiment configuration.
+"""
 import json
 import os
 import warnings
@@ -10,25 +14,26 @@ import hydra
 import nvsmi
 import torch
 import transformers
-import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-from pollen_utils import get_clients_population_dict
-from utils import RayContextManager, wandb_init, weighted_average
-from virtual_client import VirtualClient
-from wandb_history import WandbHistory
-from wandb_server import WandbServer
+
+import wandb
+from pollen_worker.pollen_utils import get_clients_population_dict
+from pollen_worker.utils import RayContextManager, wandb_init, weighted_average
+from pollen_worker.virtual_client import VirtualClient
+from pollen_worker.wandb_history import WandbHistory
+from pollen_worker.wandb_server import WandbServer
 
 transformers.logging.set_verbosity_error()
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def get_n_worker_gpu_type(name: str = "openimage"):
+def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     """Return the mapping between GPU resources and number of Ray clients."""
     # NOTE: These numbers are compatible with the last version of Pollen
     if name == "reddit":

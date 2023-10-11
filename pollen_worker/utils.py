@@ -1,14 +1,28 @@
-"""Generic utility functions."""
+"""Utility functions for FL and experiment management.
+
+They assure compatibility with the Flower and wandb APIs.
+"""
 import shutil
 from collections import OrderedDict, defaultdict
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import ray
 import torch
-import wandb
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+
+import wandb
 
 
 #### Server ####
@@ -141,7 +155,9 @@ class NoOpContextManager:
         """Do nothing."""
 
 
-def wandb_init(wandb_enabled: bool, *args, **kwargs):
+def wandb_init(
+    wandb_enabled: bool, *args, **kwargs
+) -> Optional[Union[NoOpContextManager, Any]]:
     """Initialize wandb if enabled."""
     if wandb_enabled:
         return wandb.init(*args, **kwargs)
@@ -168,3 +184,11 @@ class RayContextManager:
             print(
                 f"Cleaned up ray temp session: {temp_dir} with size: {directory_size}"
             )
+
+
+def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any, None]:
+    """Split a list in n_chunks of equal length."""
+    d, r = divmod(len(list), n_chunks)
+    for i in range(n_chunks):
+        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+        yield si, si + (d + 1 if i < r else d)

@@ -1,14 +1,15 @@
-"""Functions related to training loops for out tasks of interest."""
+"""Training loops for the different tasks of the Pollen paper."""
 from typing import Dict, Tuple
 
 import torch
-from datasets.nlp_util import mask_tokens
 from flwr.common import Scalar
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
+
+from pollen_worker.datasets.nlp_util import mask_tokens
 
 
 def get_training_loop(name: str):

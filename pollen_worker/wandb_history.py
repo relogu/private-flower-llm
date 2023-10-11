@@ -1,9 +1,14 @@
-"""History object for Flower Framework accounting for using Weights&Biases."""
+"""History class which sends metrics to wandb.
+
+This means metrics are collected only at the central server, minimizing communication
+costs. Metric collection only happens if wandb is turned on.
+"""
 from typing import Dict
 
-import wandb
 from flwr.common.typing import Scalar
 from flwr.server.history import History
+
+import wandb
 
 
 class WandbHistory(History):

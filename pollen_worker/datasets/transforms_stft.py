@@ -6,8 +6,9 @@ import random
 
 import librosa
 import numpy as np
-from datasets.transforms_wav import should_apply_transform
 from torch.utils.data import Dataset
+
+from pollen_worker.datasets.transforms_wav import should_apply_transform
 
 random.seed(233)
 
@@ -143,7 +144,7 @@ class DeleteSTFT(object):
     """
 
     def __call__(self, data):
-        """Implement the execution function."""
+        """Remove the stft from the data."""
         del data["stft"]
         return data
 

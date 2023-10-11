@@ -1,4 +1,10 @@
-"""The corrent module contains our placement strategies."""
+"""The placement policies used in the Pollen paper.
+
+A placement policy asssigns clients to devices according to a certain strategy. The
+official strategy representing Pollen is the learning-based placement. However, we also
+provide other strategies as baselines. Round-robin should be considered the default
+baseline.
+"""
 import sys
 import time
 from collections import defaultdict
@@ -15,8 +21,9 @@ import pyarrow.compute as pc
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
-from resources_manager import Node
 from scipy.optimize import curve_fit
+
+from pollen_worker.resources_manager import Node
 
 INVALID_ARGUMENTS_GET_PLACEMENT_FN = """
 The `policy` passed to `get_placement_fn` is unknown.

@@ -96,7 +96,8 @@ CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n
 
 echo "LAUNCHING SIMULATION at $this_hostname"
 
-poetry run python pollen_worker/ray_simulation.py $CUSTOM_HYDRA_ARGS 
+echo "LAUNCHING SIMULATION at this_hostname"
+poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
 # srun --nodelist mauao,ngongotaha --cpus-per-task 8 --ntasks-per-node=1 --gres=gpu:1 --partition=interactive bash lorenzo_slurm/slurm_ray_multinode.sh
