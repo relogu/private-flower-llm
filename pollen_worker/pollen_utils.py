@@ -9,16 +9,23 @@ from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
 import pandas as pd
 import psutil
 import pyarrow as pa
 import torch
-from datasets.google_speech import SPEECH
-from datasets.nlp_util import TextDataset
-from datasets.openimage import OpenImage
-from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays
 from flwr.server.strategy.aggregate import aggregate
@@ -27,6 +34,11 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import AlbertTokenizer
+
+from pollen_worker.datasets.google_speech import SPEECH
+from pollen_worker.datasets.nlp_util import TextDataset
+from pollen_worker.datasets.openimage import OpenImage
+from pollen_worker.datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 
 
 def get_device() -> device_type:
@@ -141,11 +153,11 @@ def get_model(name: str) -> Module:
     """Return the model given the task's name."""
     # NOTE: we may want to load this once and then deepcopying it when needed
     if name == "shakespeare":
-        from models.shakespeare_leaf_model import ShakespeareLeafNet
+        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "shakespeare_memory":
-        from models.shakespeare_leaf_model import ShakespeareLeafNet
+        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "reddit":
@@ -153,7 +165,7 @@ def get_model(name: str) -> Module:
 
         return AlbertForMaskedLM.from_pretrained("albert-base-v2")  # type: ignore
     if name == "google_speech":
-        from models.resnet_util import resnet34
+        from pollen_worker.models.resnet_util import resnet34
 
         return resnet34(num_classes=35, in_channels=1)
     if name == "openimage":
@@ -220,7 +232,7 @@ def get_client_ds_fn(
 ) -> Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]:
     """Return the function that returns the dataset given the task's name."""
 
-    def get_ds_fn(client_id: int):
+    def get_ds_fn(client_id: int) -> Tuple[Dataset[Any], Optional[AlbertTokenizer]]:
         return get_client_ds(
             cid=client_id,
             dataset_root=dataset_root,
@@ -307,14 +319,11 @@ def _get_dataset_root(name: str) -> Path:
     raise ValueError("No dataset for the requested dataset name")
 
 
-def _chunks_idx(list, n_chunks):
-    d, r = divmod(len(list), n_chunks)
-    for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-        yield si, si + (d + 1 if i < r else d)
 
 
-def _get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
+def _get_list_of_clients_ds(
+    name: str, cids: List[int], dataset: str
+) -> tuple[list[Any], Union[AlbertTokenizer, None]]:
     clients_test_sets = []
     tokenizer = None
     for cid in cids:
@@ -365,7 +374,7 @@ def get_centralised_eval_set(
         raise ValueError("n_clients must be either an int or a float")
 
     # Split the clients in chunks
-    for begin, end in _chunks_idx(range(len(client_ids)), n_jobs):
+    for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
         pool_inputs.append([name, client_ids[begin:end], "test"])
     pool_outputs = pool.starmap(_get_list_of_clients_ds, pool_inputs)
     pool.close()

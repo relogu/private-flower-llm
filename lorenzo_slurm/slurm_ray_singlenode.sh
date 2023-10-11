@@ -67,7 +67,7 @@ sleep 5
 CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python pollen_worker/ray_simulation.py $CUSTOM_HYDRA_ARGS 
+poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash lorenzo_slurm/slurm_ray_singlenode.sh

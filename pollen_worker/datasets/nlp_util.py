@@ -43,19 +43,14 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+from pollen_worker.utils import chunks_idx
+
 REDDIT_DTYPES = {
     "client_id": np.int64,
     "sample_path": "string",
     "label_name": np.int64,
     "label_id": np.int64,
 }
-
-
-def _chunks_idx(list, n_chunks):
-    d, r = divmod(len(list), n_chunks)
-    for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-        yield si, si + (d + 1 if i < r else d)
 
 
 def get_collate_fn(tokenizer: PreTrainedTokenizer):
@@ -198,7 +193,7 @@ class TextDataset(Dataset):
                 pool_inputs = []
                 pool = Pool(n_jobs)
                 worker_cnt = 0
-                for begin, end in _chunks_idx(range(len(files)), n_jobs):
+                for begin, end in chunks_idx(range(len(files)), n_jobs):
                     pool_inputs.append(
                         [
                             list(range(len(files)))[begin:end],
@@ -364,7 +359,7 @@ def _create_parquet_clients_dict(
         pool_inputs = []
         pool = Pool(n_jobs)
         cnt = 0
-        for begin, end in _chunks_idx(range(len(files)), n_jobs):
+        for begin, end in chunks_idx(range(len(files)), n_jobs):
             pool_inputs.append(
                 [
                     cnt,

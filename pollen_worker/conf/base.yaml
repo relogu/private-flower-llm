@@ -9,7 +9,7 @@ save_freq: 100
 output_dir: /nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25
 multirun_output_dir: null
 seed: 1337
-placement_policy: rr   # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
+placement_policy: rr # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
 num_nodes: 1
 
 # Task
@@ -18,18 +18,18 @@ defaults:
   - task: reddit
 
 gen_num_total_virtual_clients:
-  _target_: utils.shakespeare_gen_num_total_virtual_clients
+  _target_: pollen_worker.utils.shakespeare_gen_num_total_virtual_clients
   data_root: ${task.data_root}
   dataset: train
   min_samples_per_client: ${task.batch_size}
 
 # Client Fit Function
 gen_client_fn:
-  _target_: virtual_client.gen_client_fn
+  _target_: pollen_worker.virtual_client.gen_client_fn
   name: ${task.name}
 
 gen_on_fit_config_fn:
-  _target_: utils.gen_on_fit_config_fn
+  _target_: pollen_worker.utils.gen_on_fit_config_fn
   batch_size: ${task.batch_size}
   local_epochs: ${local_epochs}
   learning_rate: ${task.learning_rate}

@@ -17,7 +17,7 @@ weight_decay: 5e-4
 fraction_fit: 0.037
 
 gen_num_total_virtual_clients:
-  _target_: utils.shakespeare_gen_num_total_virtual_clients
+  _target_: pollen_worker.utils.shakespeare_gen_num_total_virtual_clients
   data_root: ${data_root}
   dataset: train
   min_samples_per_client: 20
@@ -26,11 +26,11 @@ gen_num_total_virtual_clients:
 gen_client_fn:
   # _target_: clients.gen_shakespeare_client_fn
   # data_root: ${data_root}
-  _target_: virtual_client.gen_client_fn
+  _target_: pollen_worker.virtual_client.gen_client_fn
   name: shakespeare_memory
 
 gen_on_fit_config_fn:
-  _target_: utils.gen_on_fit_config_fn
+  _target_: pollen_worker.utils.gen_on_fit_config_fn
   batch_size: ${batch_size}
   local_epochs: ${local_epochs}
   learning_rate: ${learning_rate}

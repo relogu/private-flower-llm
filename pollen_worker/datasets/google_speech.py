@@ -10,7 +10,10 @@ from pathlib import Path
 import librosa
 import numpy as np
 import pandas as pd
-from datasets.transforms_stft import (
+from torch.utils.data import Dataset
+from torchvision import transforms
+
+from pollen_worker.datasets.transforms_stft import (
     AddBackgroundNoiseOnSTFT,
     DeleteSTFT,
     FixSTFTDimension,
@@ -19,7 +22,7 @@ from datasets.transforms_stft import (
     ToMelSpectrogramFromSTFT,
     ToSTFT,
 )
-from datasets.transforms_wav import (
+from pollen_worker.datasets.transforms_wav import (
     ChangeAmplitude,
     ChangeSpeedAndPitchAudio,
     FixAudioLength,
@@ -27,8 +30,7 @@ from datasets.transforms_wav import (
     ToMelSpectrogram,
     ToTensor,
 )
-from torch.utils.data import Dataset
-from torchvision import transforms
+from pollen_worker.utils import chunks_idx
 
 CLASSES = [
     "up",
@@ -75,13 +77,6 @@ GOOGLE_SPEECH_DTYPES = {
     "label_name": "string",
     "label_id": np.int64,
 }
-
-
-def _chunks_idx(list, n_chunks):
-    d, r = divmod(len(list), n_chunks)
-    for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-        yield si, si + (d + 1 if i < r else d)
 
 
 class BackgroundNoiseDataset:
@@ -265,9 +260,7 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
     cnt = 0
-    for begin, end in _chunks_idx(
-        range(len(pd.unique(dataframe["client_id"]))), n_jobs
-    ):
+    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
         cnt += 1
     pool_outputs = pool.starmap(_dump_info, pool_inputs)

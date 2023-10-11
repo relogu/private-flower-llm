@@ -12,7 +12,7 @@ model: albert-base-v2
 tokenizer: albert-base-v2
 
 strategy:
-  _target_: rs_fedavg.FedAvgRSModel
+  _target_: pollen_worker.rs_fedavg.FedAvgRSModel
 
 is_fake: false
 n_clients: 0.1
