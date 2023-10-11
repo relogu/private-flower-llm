@@ -5,13 +5,12 @@ from pathlib import Path
 import flwr as fl
 import hydra
 import transformers
+import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-
-import wandb
 from pollen_client_manager import PollenClientManager
 from pollen_server import PollenServer
 from pollen_utils import get_clients_population_dict
@@ -25,6 +24,7 @@ transformers.logging.set_verbosity_error()
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Implement main function to lauch a Pollen's Server."""
     log(
         INFO,
         "Task is: %s with fake=%s with run unique id=%s and policy=%s",

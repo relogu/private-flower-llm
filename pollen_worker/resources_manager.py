@@ -41,6 +41,7 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
 def get_cuda_prop(
     client: NumPyClient, params: NDArrays, config: Dict[str, Scalar]
 ) -> Dict[str, Device]:
+    """Assesses the capabilities of the CUDA resources available."""
     gpus_prop = {}
     # NOTE: This is for controlling the GPU memory allocation
     pynvml.nvmlInit()
@@ -98,6 +99,7 @@ def get_cpu_prop(
     params: NDArrays,
     config: Dict[str, Scalar],
 ) -> Dict[str, Device]:
+    """Assesses the capabilities of the CPU resources available."""
     monitor = ResourcesMonitor(gpu_id=-1, list_pids=[os.getpid()])
     monitor.start()
     time.sleep(1)
@@ -157,6 +159,7 @@ class Device:
         self.concurrency = concurrency
 
     def __repr__(self):
+        """Return the string representation."""
         return json.dumps(asdict(self))
 
     @staticmethod
@@ -198,6 +201,7 @@ class Node:
         self.device_info = device_info
 
     def __repr__(self):
+        """Return the string representation."""
         return json.dumps(asdict(self))
 
     @staticmethod
@@ -217,6 +221,8 @@ class Node:
 
 
 class ResourcesMonitor(Thread):
+    """Simple resources monitor for CPU and GPU."""
+
     def __init__(
         self,
         gpu_id: int,
@@ -236,8 +242,9 @@ class ResourcesMonitor(Thread):
         self.dead = False
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
-        """This function reads the output of `nvidia-smi --query` launched as a
-        subprocess. The GPU is selected by `self.gpu_id`. In particular, it reads the
+        """Read the output of `nvidia-smi --query` launched as a subprocess.
+
+        The GPU is selected by `self.gpu_id`. In particular, it reads the
         total and allocated memory in MB.
 
         Raises
@@ -264,7 +271,7 @@ class ResourcesMonitor(Thread):
                 "command '{}' return with error (code {}): {}".format(
                     e.cmd, e.returncode, e.output
                 )
-            )
+            ) from e
         ret_val = (0.0, 0.0)
         try:
             ret_val = float(current_gpu_stats.split(",")[0]), float(
@@ -281,8 +288,9 @@ class ResourcesMonitor(Thread):
         return ret_val
 
     def _update_max_values(self):
-        """This function calls itself every `self.frequency` secs and updates the
-        maximum values for `self.vram_total_memory` and
+        """Call itself every `self.frequency` secs.
+
+        Updates the maximum values for `self.vram_total_memory` and
         `self.vram_maximum_allocated_memory`.
         """
         while self.do_run:
@@ -303,7 +311,7 @@ class ResourcesMonitor(Thread):
             time.sleep(self.frequency)
 
     def run(self):
-        """Method representing the thread's activity.
+        """Represent the thread's activity.
 
         You may override this method in a subclass. The standard run() method invokes
         the callable object passed to the object's constructor as the target argument,
@@ -324,6 +332,8 @@ class ResourcesMonitor(Thread):
 
 
 class DaemonResourcesMonitor(Thread):
+    """Simple resources monitor for GPU."""
+
     def __init__(
         self,
         gpu_ids: List[int],
@@ -349,7 +359,7 @@ class DaemonResourcesMonitor(Thread):
             raise RuntimeError(
                 f"DaemonResourcesMonitor: command '{e.cmd}' "
                 f"return with error (code {e.returncode}): {e.output}"
-            )
+            ) from e
 
     def _update_max_values(self):
         while self.do_run:
@@ -357,6 +367,13 @@ class DaemonResourcesMonitor(Thread):
             time.sleep(self.frequency)
 
     def run(self):
+        """Represent the thread's activity.
+
+        You may override this method in a subclass. The standard run() method invokes
+        the callable object passed to the object's constructor as the target argument,
+        if any, with sequential and keyword arguments taken from the args and kwargs
+        arguments, respectively.
+        """
         try:
             self._update_max_values()
             log(

@@ -6,9 +6,8 @@ import random
 
 import librosa
 import numpy as np
-from torch.utils.data import Dataset
-
 from datasets.transforms_wav import should_apply_transform
+from torch.utils.data import Dataset
 
 random.seed(233)
 
@@ -21,6 +20,7 @@ class ToSTFT(object):
         self.hop_length = hop_length
 
     def __call__(self, data):
+        """Implement the execution function."""
         samples = data["samples"]
         data["sample_rate"]
         data["n_fft"] = self.n_fft
@@ -39,6 +39,7 @@ class StretchAudioOnSTFT(object):
         self.max_scale = max_scale
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -60,6 +61,7 @@ class TimeshiftAudioOnSTFT(object):
         self.max_shift = max_shift
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -84,6 +86,7 @@ class AddBackgroundNoiseOnSTFT(Dataset):
         self.max_percentage = max_percentage
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -94,11 +97,13 @@ class AddBackgroundNoiseOnSTFT(Dataset):
 
 
 class FixSTFTDimension(object):
-    """Either pads or truncates in the time axis on the frequency domain, applied after
-    stretching, time shifting etc.
+    """Pad or truncate in the time axis on the frequency domain.
+
+    This is applied after stretching, time shifting etc.
     """
 
     def __call__(self, data):
+        """Implement the execution function."""
         stft = data["stft"]
         t_len = stft.shape[1]
         orig_t_len = data["stft_shape"][1]
@@ -112,7 +117,7 @@ class FixSTFTDimension(object):
 
 
 class ToMelSpectrogramFromSTFT(object):
-    """Creates the mel spectrogram from the short time fourier transform of a file.
+    """Create the mel spectrogram from the short time fourier transform of a file.
 
     The result is a 32x32 matrix.
     """
@@ -121,6 +126,7 @@ class ToMelSpectrogramFromSTFT(object):
         self.n_mels = n_mels
 
     def __call__(self, data):
+        """Implement the execution function."""
         stft = data["stft"]
         sample_rate = data["sample_rate"]
         n_fft = data["n_fft"]
@@ -131,8 +137,9 @@ class ToMelSpectrogramFromSTFT(object):
 
 
 class DeleteSTFT(object):
-    """Pytorch doesn't like complex numbers, use this transform to remove STFT after
-    computing the mel spectrogram.
+    """Remove STFT after computing the mel spectrogram.
+
+    Pytorch doesn't like complex numbers.
     """
 
     def __call__(self, data):
@@ -144,6 +151,7 @@ class AudioFromSTFT(object):
     """Inverse short time fourier transform."""
 
     def __call__(self, data):
+        """Implement the execution function."""
         stft = data["stft"]
         data["istft_samples"] = librosa.core.istft(stft, dtype=data["samples"].dtype)
         return data

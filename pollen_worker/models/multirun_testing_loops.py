@@ -2,9 +2,8 @@ from copy import deepcopy
 from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig
-
 from models.testing_loops import main as test_main
+from omegaconf import DictConfig
 
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)

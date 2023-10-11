@@ -1,7 +1,6 @@
 import csv
 import os
 import pickle
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +19,7 @@ SHAKESPEARE_DTYPES = {
 }
 
 
-def chunks_idx(list, n_chunks):
+def _chunks_idx(list, n_chunks):
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
@@ -28,27 +27,9 @@ def chunks_idx(list, n_chunks):
 
 
 class SHAKESPEARE(Dataset):
+    """Shakespeare dataset object."""
+
     classes = []
-
-    @property
-    def train_labels(self):
-        warnings.warn("train_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def test_labels(self):
-        warnings.warn("test_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def train_data(self):
-        warnings.warn("train_data has been renamed data")
-        return self.data
-
-    @property
-    def test_data(self):
-        warnings.warn("test_data has been renamed data")
-        return self.data
 
     def __init__(
         self,
@@ -66,13 +47,16 @@ class SHAKESPEARE(Dataset):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
+        self.path_to_mapping = Path(self.root, "client_data_mapping")
+        self.path_to_data = Path(self.root, "data")
 
         # load data and targets
-        self.data, self.targets = self.load_file()
+        self.data, self.targets = self._load_file()
 
-    def word_to_indices(self, word):
-        """Converts a sequence of characters into position indices in the reference
-        string `self.characters`.
+    def _word_to_indices(self, word):
+        """Convert a sequence of characters into position indices.
+
+        The reference string `self.characters` is used.
 
         Args:
             word (str): Sequence of characters to be converted.
@@ -85,47 +69,25 @@ class SHAKESPEARE(Dataset):
         return indices
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index.
-
-        Returns
-        -------
-            tuple: (image, target) where target is index of the target class.
-        """
-        with open(self.path_to_data / self.name / self.data.iloc[index], "rb") as f:  # type: ignore
+        """Return the sample at current `index`."""
+        with open(self.path_to_data / self.name / self.data.iloc[index], "rb") as f:
             d = pickle.load(f)
             x = d["x"]
             y = d["y"]
 
-        sentence_indices = np.array(self.word_to_indices(x))
+        sentence_indices = np.array(self._word_to_indices(x))
         next_word_index = np.array(self.characters.find(y))
 
         return sentence_indices, next_word_index
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.data)
-
-    @property
-    def raw_folder(self):
-        return self.root
-
-    @property
-    def processed_folder(self):
-        return self.root
-
-    @property
-    def path_to_data(self):
-        return Path(self.processed_folder, "data")
-
-    @property
-    def path_to_mapping(self):
-        return Path(self.processed_folder, "client_data_mapping")
 
     def _check_exists(self):
         return os.path.exists(self.path_to_data)
 
-    def old_load_meta_data(self, path):
+    def _old__load_meta_data(self, path):
         data, labels = [], []
 
         with open(path) as csv_file:
@@ -139,7 +101,7 @@ class SHAKESPEARE(Dataset):
 
         return data, labels
 
-    def load_meta_data(self, path):
+    def _load_meta_data(self, path):
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -150,36 +112,18 @@ class SHAKESPEARE(Dataset):
 
         return dataframe["sample_path"], dataframe["label"]
 
-    def load_file(self):
+    def _load_file(self):
         path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
         # Load meta file to get samples path and labels
-        data, labels = self.load_meta_data(path)
+        data, labels = self._load_meta_data(path)
 
         return data, labels
 
 
 class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
+    """Shakespeare dataset object stored in the RAM."""
+
     classes = []
-
-    @property
-    def train_labels(self):
-        warnings.warn("train_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def test_labels(self):
-        warnings.warn("test_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def train_data(self):
-        warnings.warn("train_data has been renamed data")
-        return self.data
-
-    @property
-    def test_data(self):
-        warnings.warn("test_data has been renamed data")
-        return self.data
 
     def __init__(
         self,
@@ -197,13 +141,16 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
+        self.path_to_mapping = Path(self.root, "client_data_mapping")
+        self.path_to_data = Path(self.root, "data")
 
         # load data and targets
-        self.data, self.targets = self.load_file()
+        self.data, self.targets = self._load_file()
 
-    def word_to_indices(self, word):
-        """Converts a sequence of characters into position indices in the reference
-        string `self.characters`.
+    def _word_to_indices(self, word):
+        """Convert a sequence of characters into position indices.
+
+        The reference string `self.characters` is used.
 
         Args:
             word (str): Sequence of characters to be converted.
@@ -216,46 +163,24 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         return indices
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index.
-
-        Returns
-        -------
-            tuple: (image, target) where target is index of the target class.
-        """
+        """Return the sample at current `index`."""
         x = self.data[index]
         # y = self.data[index+1][0]
         y = str(self.targets[index])
 
-        sentence_indices = np.array(self.word_to_indices(x))
+        sentence_indices = np.array(self._word_to_indices(x))
         next_word_index = np.array(self.characters.find(y))
 
         return sentence_indices, next_word_index
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.data)
-
-    @property
-    def raw_folder(self):
-        return self.root
-
-    @property
-    def processed_folder(self):
-        return self.root
-
-    @property
-    def path_to_data(self):
-        return Path(self.processed_folder, "data")
-
-    @property
-    def path_to_mapping(self):
-        return Path(self.processed_folder, "client_data_mapping")
 
     def _check_exists(self):
         return os.path.exists(self.path_to_data)
 
-    def old_load_meta_data(self, path):
+    def _old__load_meta_data(self, path):
         data, labels = [], []
 
         with open(path) as csv_file:
@@ -269,7 +194,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
 
         return data, labels
 
-    def load_meta_data(self, path):
+    def _load_meta_data(self, path):
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -280,10 +205,10 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
 
         return dataframe["sample_path"], dataframe["label"]
 
-    def load_file(self):
+    def _load_file(self):
         path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
         # Load meta file to get samples path and labels
-        samples, labels = self.load_meta_data(path)
+        samples, labels = self._load_meta_data(path)
         data = []
         labels = []
         for _i, sample in enumerate(samples):
@@ -296,7 +221,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         return data, labels
 
 
-def dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx, client_ids, dataset):
     clients = []
     time.time()
     for _i, client_id in enumerate(client_ids):
@@ -309,7 +234,7 @@ def dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -325,10 +250,12 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
     cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for begin, end in _chunks_idx(
+        range(len(pd.unique(dataframe["client_id"]))), n_jobs
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
         cnt += 1
-    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
     log(INFO, f"Pool outputs length: {len(pool_outputs)}")
@@ -354,7 +281,7 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
 
 
-def create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train"):
     dataframe = pd.read_csv(
         Path(f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}.csv"),
         engine="pyarrow",
@@ -399,8 +326,8 @@ if __name__ == "__main__":
     dataset = "train"
 
     for dataset in ["train", "test"]:
-        create_parquet_client_samples_map(dataset=dataset)
+        _create_parquet_client_samples_map(dataset=dataset)
         if not Path(
             f"/datasets/FedScale/leaf_shakespeare/clients_data_mapping/{dataset}_clients_dict.parquet"
         ).exists():
-            create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
+            _create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)

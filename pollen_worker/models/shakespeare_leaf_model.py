@@ -38,7 +38,7 @@ class ShakespeareLeafNet(nn.Module):  # type: ignore
         self.decoder = nn.Linear(self.hidden_size, self.dict_size)
 
     def forward(self, sentence):
-        """Forwards sentence to obtain next character.
+        """Forward sentence to obtain next character.
 
         Args:
             sentence (torch.Tensor): Tensor containing indices of characters

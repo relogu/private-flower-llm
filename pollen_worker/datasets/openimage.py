@@ -2,7 +2,6 @@ from __future__ import print_function
 
 import os
 import os.path
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -46,26 +45,6 @@ def chunks_idx(list, n_chunks):
 
 class OpenImage(Dataset):
     classes = []
-
-    @property
-    def train_labels(self):
-        warnings.warn("train_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def test_labels(self):
-        warnings.warn("test_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def train_data(self):
-        warnings.warn("train_data has been renamed data")
-        return self.data
-
-    @property
-    def test_data(self):
-        warnings.warn("test_data has been renamed data")
-        return self.data
 
     def __init__(
         self,

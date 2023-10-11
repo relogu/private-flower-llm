@@ -5,20 +5,21 @@ from typing import Callable, Dict, Optional, Union
 import flwr as fl
 import torch
 import transformers
+from datasets.nlp_util import get_collate_fn
 from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
+from models.training_loops import get_input_shapes, get_training_loop
+from pollen_utils import get_client_ds, get_device, get_model, get_optimizer
 from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from datasets.nlp_util import get_collate_fn
-from models.training_loops import get_input_shapes, get_training_loop
-from pollen_utils import get_client_ds, get_device, get_model, get_optimizer
-
 
 class VirtualClient(fl.client.NumPyClient):
+    """Implement the most lightweight Flower Client."""
+
     def __init__(
         self,
         *,
@@ -31,12 +32,15 @@ class VirtualClient(fl.client.NumPyClient):
         # log(INFO, f'VirtualClient.__init__ :: cid {self.cid}')
 
     def __repr__(self) -> str:
+        """Implement the string representation."""
         return f"VirtualClient(name={self.name}, cid={self.cid})"
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
+        """Implement how to get properties."""
         return {}
 
     def get_parameters(self, config, net=None, device="cpu", to_numpy=True):
+        """Implement how to get parameters."""
         if net is None:
             net = get_model(name=self.name)
         net.eval()
@@ -66,6 +70,7 @@ class VirtualClient(fl.client.NumPyClient):
         net: Optional[Module] = None,
         device: Union[str, device_type] = "cpu",
     ):
+        """Implement how to set parameters."""
         if net is None:
             net = get_model(name=self.name)
         net.eval()
@@ -117,6 +122,7 @@ class VirtualClient(fl.client.NumPyClient):
         return net, {}
 
     def fit(self, parameters: NDArrays, config: Dict):
+        """Implement the fit step."""
         # log(INFO, f'VirtualClient.fit :: {config}')
         if "device" not in config:
             config["device"] = get_device()
@@ -207,10 +213,13 @@ class VirtualClient(fl.client.NumPyClient):
         parameters: NDArrays,
         config: Dict[str, Scalar],
     ):
+        """Implement the evaluation step."""
         return 0.0, 0, {"local_accuracy": 0.0}
 
 
 def gen_client_fn(name: str = "openimage", **kwargs) -> Callable[[int], NumPyClient]:
+    """Return generic `client_fn` for Flower Framework."""
+
     def client_fn(client_id: int) -> NumPyClient:
         client = VirtualClient(name=name, cid=client_id)
         return client

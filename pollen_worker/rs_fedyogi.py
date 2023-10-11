@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Federated Averaging (FedAvg) [McMahan et al., 2016] strategy.
+"""Federated Yogi (FedYogi) [Reddi et al., 2020] strategy.
 
-Paper: https://arxiv.org/abs/1602.05629
+Paper: https://arxiv.org/abs/2003.00295v5
 """
 
 import os

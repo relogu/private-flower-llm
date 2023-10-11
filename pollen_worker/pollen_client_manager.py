@@ -37,6 +37,7 @@ class PollenClientManager(ClientManager):
         self._cv = threading.Condition()
 
     def __len__(self) -> int:
+        """Retunr the lenght of the pool of virtual clients."""
         return len(self.clients)
 
     def num_available(self) -> int:
@@ -111,6 +112,7 @@ class PollenClientManager(ClientManager):
 
     def register(self, client: ClientProxy) -> bool:
         """Register Flower ClientProxy instance.
+
         NOTE: Here, ClientProxies are `NodeManager`s.
 
         Parameters
@@ -136,6 +138,7 @@ class PollenClientManager(ClientManager):
 
     def unregister(self, client: ClientProxy) -> None:
         """Unregister Flower ClientProxy instance.
+
         NOTE: Here, ClientProxies are `NodeManager`s.
 
         This method is idempotent.

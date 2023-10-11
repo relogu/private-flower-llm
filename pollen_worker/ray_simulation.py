@@ -9,14 +9,13 @@ import hydra
 import nvsmi
 import torch
 import transformers
+import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-
-import wandb
 from pollen_utils import get_clients_population_dict
 from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient
@@ -29,6 +28,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def get_n_worker_gpu_type(name: str = "openimage"):
+    """Return the mapping between GPU resources and number of Ray clients."""
     # NOTE: These numbers are compatible with the last version of Pollen
     if name == "reddit":
         return {
@@ -55,6 +55,7 @@ def get_n_worker_gpu_type(name: str = "openimage"):
 
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Implement main function to lauch a Ray-based simulation."""
     log(
         INFO,
         "Task is: %s with fake=%s with run unique id: %s",
@@ -130,7 +131,6 @@ def main(cfg: DictConfig) -> None:
         "address": cfg.ray_address,
         "_redis_password": cfg.ray_redis_password,
         "_node_ip_address": cfg.ray_node_ip_address,
-        
         # "include_dashboard": False,
         # # FIXME: Do we need to set this up?
         # "num_cpus": len(os.sched_getaffinity(0)),

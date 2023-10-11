@@ -1,30 +1,26 @@
-import pickle
 from argparse import ArgumentTypeError
-from collections import defaultdict
 from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Callable, Dict, List, Optional, Tuple, Union, cast
 
-import numpy as np
 import pandas as pd
 import psutil
 import pyarrow as pa
 import torch
+from datasets.google_speech import SPEECH
+from datasets.nlp_util import TextDataset
+from datasets.openimage import OpenImage
+from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 from flwr.common.logger import log
-from flwr.common.typing import Metrics, NDArrays
+from flwr.common.typing import NDArrays
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import AlbertTokenizer
-
-from datasets.google_speech import SPEECH
-from datasets.nlp_util import TextDataset
-from datasets.openimage import OpenImage
-from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 
 
 def get_device() -> device_type:
@@ -37,31 +33,13 @@ def get_device() -> device_type:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():  # type: ignore
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = "mps"
     return cast(device_type, device)
 
 
-def invert_many_to_one_dictionary(
-    input: Dict,
-) -> Dict:
-    output: Dict = defaultdict(list)
-    for k, v in input.items():
-        output[v] = output.get(v, []) + [k]
-    return output
-
-
-def invert_one_to_many_dictionary(
-    input: Dict,
-) -> Dict:
-    output: Dict = {}
-    for k, v in input.items():
-        for w in v:
-            output[w] = k
-    return output
-
-
 def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
+    """Cast a PyArrow Table into a Buffer."""
     buffer = pa.BufferOutputStream()
     with pa.ipc.new_file(buffer, table.schema) as writer:
         writer.write_table(table)
@@ -69,20 +47,11 @@ def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
 
 
 def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
+    """Cast a Buffer into a PyArrow Table ."""
     ret_table = None
     with pa.ipc.open_file(buffer) as reader:
         ret_table = reader.read_all()
     return ret_table
-
-
-# Define metric aggregation function
-def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    # Multiply accuracy of each client by number of examples used
-    accuracies = [num_examples * float(m["accuracy"]) for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
-
-    # Aggregate and return custom metric (weighted average)
-    return {"accuracy": sum(accuracies) / sum(examples)}
 
 
 def aggregate_pytorch_tensor(
@@ -144,14 +113,14 @@ def partial_aggregation_NDArrays(
 
 
 def valid_folder(path_str: str) -> Path:
-    """Tests if a path is a valid FL partition folder.
+    """Test if a path is a valid FL partition folder.
 
     Args:
-                path_str (str): Path to directory containing train and test folder.
+        path_str (str): Path to directory containing train and test folder.
 
     Returns
     -------
-                bool: result of checks
+        bool: result of checks
     """
     tmp_path = Path(path_str)
     test = True
@@ -162,61 +131,8 @@ def valid_folder(path_str: str) -> Path:
     return tmp_path
 
 
-def read_all_pickle(path: Path) -> List[List[Any]]:
-    out = []
-    with open(path, "rb") as f:
-        try:
-            while True:
-                out.append(pickle.load(f))
-        except EOFError:
-            pass
-    return out
-
-
-def get_ctt_dataframe_from_pickle(path_to_pickle: Path) -> pd.DataFrame:
-    """Reads a pickle file and returns a dataframe with the CCT data."""
-    functions = {
-        0: "init",
-        1: "fit",
-        2: "end fit-begin aggregate",
-        3: "end aggregate",
-        4: "end fit",
-    }
-    worker_out = read_all_pickle(path_to_pickle)
-    df = pd.DataFrame(
-        np.concatenate(worker_out),
-        columns=["fn", "timestamp", "round", "cid", "n_batches"],
-        dtype=np.float64,
-    )
-    df.fn = df.fn.apply(lambda x: functions[x])
-    df["timedelta"] = df.timestamp.map(lambda a: a - df.timestamp[0])
-    df = (
-        df.groupby(["cid", "round", "n_batches"])
-        .timestamp.agg(["min", "max"])
-        .reset_index()
-    )
-    df["delta"] = df["max"] - df["min"]
-    return df[df.cid != -1]
-
-
-def get_clients_dataframe_from_dict(
-    clients_dict: Dict[int, int], batch_size: int = 20
-) -> pd.DataFrame:
-    clients_df = pd.DataFrame(clients_dict.items(), columns=["cid", "n_samples"])
-    clients_df["n_batches"] = clients_df.n_samples // batch_size
-    return clients_df
-
-
-def merge_ctt_size(
-    ctt_df: pd.DataFrame, clients_df: pd.DataFrame
-) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-    dff = ctt_df.merge(clients_df, how="inner", on="cid")
-    dff.drop_duplicates(subset=["cid"], inplace=True)
-    dff.reset_index(drop=True)
-    return dff, dff.n_batches.to_numpy().reshape((-1, 1)), dff.delta.to_numpy()
-
-
 def get_model(name: str) -> Module:
+    """Return the model given the task's name."""
     # NOTE: we may want to load this once and then deepcopying it when needed
     if name == "shakespeare":
         from models.shakespeare_leaf_model import ShakespeareLeafNet
@@ -248,6 +164,7 @@ def get_client_ds(
     name: str = "openimage",
     dataset: str = "train",
 ) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
+    """Return the dataset object given the task's name."""
     if name == "shakespeare":
         ds = SHAKESPEARE(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
@@ -295,6 +212,8 @@ def get_client_ds_fn(
     name: str = "openimage",
     dataset: str = "train",
 ) -> Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]:
+    """Return the function that returns the dataset given the task's name."""
+
     def get_ds_fn(client_id: int):
         return get_client_ds(
             cid=client_id,
@@ -307,6 +226,7 @@ def get_client_ds_fn(
 
 
 def get_optimizer(name: str, model: Module) -> Optimizer:
+    """Return the optimiser object given the task's name."""
     optimizer = None
     lr = 0.05
     if name == "shakespeare" or name == "shakespeare_memory":
@@ -351,6 +271,7 @@ def get_clients_population_dict(
     dataset: str = "train",
     batch_size: int = 20,
 ) -> Dict[str, int]:
+    """Return the client-samples mapping given the task's name."""
     dataframe = pd.read_parquet(
         _get_dataset_root(name)
         / "client_data_mapping"
@@ -380,14 +301,14 @@ def _get_dataset_root(name: str) -> Path:
     raise ValueError("No dataset for the requested dataset name")
 
 
-def chunks_idx(list, n_chunks):
+def _chunks_idx(list, n_chunks):
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
 
-def get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
+def _get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
     clients_test_sets = []
     tokenizer = None
     for cid in cids:
@@ -401,6 +322,7 @@ def get_centralised_eval_set(
     seed: int,
     n_clients: Union[int, float],
 ) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
+    """Return the centralised evaluation dataset given the task's name."""
     # Get the list of cids
     cid_samples_dict = get_clients_population_dict(
         name=name,
@@ -437,9 +359,9 @@ def get_centralised_eval_set(
         raise ValueError("n_clients must be either an int or a float")
 
     # Split the clients in chunks
-    for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
+    for begin, end in _chunks_idx(range(len(client_ids)), n_jobs):
         pool_inputs.append([name, client_ids[begin:end], "test"])
-    pool_outputs = pool.starmap(get_list_of_clients_ds, pool_inputs)
+    pool_outputs = pool.starmap(_get_list_of_clients_ds, pool_inputs)
     pool.close()
     pool.join()
     # Retrieve the results fro the pool

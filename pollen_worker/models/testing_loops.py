@@ -3,22 +3,22 @@ from typing import List, Tuple
 import hydra
 import torch
 import transformers
+import wandb
 import yaml
+from datasets.nlp_util import mask_tokens
 from omegaconf import DictConfig
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
-
-import wandb
-from datasets.nlp_util import mask_tokens
 from utils import wandb_init
 
 transformers.logging.set_verbosity_error()
 
 
 def get_testing_loop(name: str):
+    """Return the test loop function given the task's name."""
     if name == "reddit":
         return reddit_testing_loop
     elif name == "google_speech":
@@ -34,6 +34,7 @@ def reddit_testing_loop(
     tokenizer: AlbertTokenizer,
     **kwargs,
 ):
+    """Implement Reddit task's test loop."""
     test_loss = 0.0
     test_len = 0
     num_masked = 0
@@ -85,6 +86,7 @@ def google_speech_testing_loop(
     criterion: Module,
     **kwargs,
 ):
+    """Implement Google Speech task's test loop."""
     test_loss = 0
     test_len = 0
     num_correct = 0
@@ -131,6 +133,7 @@ def general_testing_loop(
     criterion: Module,
     **kwargs,
 ):
+    """Implement Shakespeare and Open Image task's test loop."""
     test_loss = 0
     test_len = 0
     num_correct = 0
@@ -171,9 +174,7 @@ def general_testing_loop(
 def accuracy(
     output: torch.Tensor, target: torch.Tensor, topk: Tuple[int] = (1,)
 ) -> List[torch.Tensor]:
-    """Computes the accuracy over the k top predictions for the specified values of
-    k.
-    """
+    """Compute the accuracy over the k top predictions for the specified values of k."""
     with torch.no_grad():
         maxk = max(topk)
 
@@ -191,17 +192,17 @@ def accuracy(
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Implement main function for offline evaluation."""
     import pickle
     import time
     from logging import INFO
     from pathlib import Path
 
     import psutil
+    from datasets.nlp_util import get_collate_fn
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
     from flwr.common.typing import Parameters
-
-    from datasets.nlp_util import get_collate_fn
     from pollen_utils import get_centralised_eval_set, get_device, get_model
     from utils import set_parameters
 

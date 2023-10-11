@@ -27,13 +27,12 @@ import pyarrow.parquet as pq
 from flwr.client import ClientLike
 from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
-from flwr.common.typing import GetPropertiesIns, GetPropertiesRes, Properties
+from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
 from flwr.server.strategy import FedAvg, Strategy
-
 from placements import get_placement_fn
 from pollen_client_manager import PollenClientManager
 from pollen_utils import get_table_from_pyarrow_buffer
@@ -83,7 +82,7 @@ class PollenServer(Server):
             tensors=[], tensor_type="numpy.ndarray"
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
-        check_strategy_for_pollen(self.strategy)
+        _check_strategy_for_pollen(self.strategy)
         self.on_fit_config: Callable[
             [int], Dict[str, Scalar]
         ] = self.strategy.on_fit_config_fn
@@ -175,7 +174,7 @@ class PollenServer(Server):
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
             # Check for changes in connected NodeManagers
-            dropped, new = check_connected_node_managers(
+            dropped, new = _check_connected_node_managers(
                 old_connected_node_managers_cid=self.nodes_dict.keys(),
                 new_connected_node_managers_cid=self._client_manager.node_managers.keys(),
             )
@@ -500,7 +499,7 @@ def _handle_finished_future_after_get_properties(
     results.append(result)
 
 
-def check_strategy_for_pollen(
+def _check_strategy_for_pollen(
     strategy: Strategy,
 ) -> bool:
     if strategy.on_fit_config_fn is None:
@@ -528,7 +527,7 @@ def check_strategy_for_pollen(
         sys.exit(0)
 
 
-def check_connected_node_managers(
+def _check_connected_node_managers(
     old_connected_node_managers_cid: List[str],
     new_connected_node_managers_cid: List[str],
 ) -> Tuple[List[str], List[str]]:
@@ -541,15 +540,3 @@ def check_connected_node_managers(
         if new_cid not in set(old_connected_node_managers_cid):
             new.append(new_cid)
     return dropped, new
-
-
-def get_all_workers_properties(
-    connected_node_managers: Dict[str, ClientProxy],
-) -> Dict[str, Properties]:
-    ins = GetPropertiesIns(config={})
-    all_workers_properties: Dict[str, GetPropertiesRes] = {}
-    for worker_dict in connected_node_managers.items():
-        worker_id, worker = worker_dict
-        worker_properties = worker.get_properties(ins=ins, timeout=60).properties
-        all_workers_properties[worker_id] = worker_properties
-    return all_workers_properties

@@ -5,6 +5,8 @@ from torch.hub import load_state_dict_from_url
 
 
 class ResNet(nn.Module):
+    """ResNet model from torchvision."""
+
     def __init__(self, block, layers, num_classes=1000, in_channels=3):
         self.inplanes = 64
         super(ResNet, self).__init__()
@@ -52,6 +54,7 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        """Implement forward pass."""
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -77,6 +80,8 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 
 class BasicBlock(nn.Module):
+    """Basic block for ResNet."""
+
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
@@ -90,6 +95,7 @@ class BasicBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x):
+        """Implement forward pass."""
         residual = x
 
         out = self.conv1(x)
@@ -109,7 +115,7 @@ class BasicBlock(nn.Module):
 
 
 def resnet34(pretrained=False, **kwargs):
-    """Constructs a ResNet-34 model.
+    """Construct a ResNet-34 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet

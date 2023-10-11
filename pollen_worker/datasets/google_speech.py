@@ -1,13 +1,9 @@
 import os
-import warnings
 from pathlib import Path
 
 import librosa
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset
-from torchvision import transforms
-
 from datasets.transforms_stft import (
     AddBackgroundNoiseOnSTFT,
     DeleteSTFT,
@@ -25,6 +21,8 @@ from datasets.transforms_wav import (
     ToMelSpectrogram,
     ToTensor,
 )
+from torch.utils.data import Dataset
+from torchvision import transforms
 
 CLASSES = [
     "up",
@@ -73,7 +71,7 @@ GOOGLE_SPEECH_DTYPES = {
 }
 
 
-def chunks_idx(list, n_chunks):
+def _chunks_idx(list, n_chunks):
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
@@ -101,9 +99,11 @@ class BackgroundNoiseDataset:
         self.path = folder
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.samples)
 
     def __getitem__(self, index):
+        """Return the sample at current `index`."""
         data = {
             "samples": self.samples[index],
             "sample_rate": self.sample_rate,
@@ -118,27 +118,9 @@ class BackgroundNoiseDataset:
 
 
 class SPEECH(Dataset):
+    """Google Speech dataset object."""
+
     classes = []
-
-    @property
-    def train_labels(self):
-        warnings.warn("train_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def test_labels(self):
-        warnings.warn("test_labels has been renamed targets")
-        return self.targets
-
-    @property
-    def train_data(self):
-        warnings.warn("train_data has been renamed data")
-        return self.data
-
-    @property
-    def test_data(self):
-        warnings.warn("test_data has been renamed data")
-        return self.data
 
     def __init__(
         self,
@@ -155,24 +137,17 @@ class SPEECH(Dataset):
         self.client_id = client_id
         self.data_file = dataset  # 'train', 'test', 'validation'
         if self.transform is None:
-            self.set_default_transform()
+            self._set_default_transform()
 
         self.classMapping = {classes[i]: i for i in range(len(classes))}
 
         # load data and targets
-        self.data, self.targets = self.load_file()
+        self.data, self.targets = self._load_file()
 
         self.data_dir = self.root / self.data_file
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index.
-
-        Returns
-        -------
-            tuple: (image, target) where target is index of the target class.
-        """
+        """Return the sample at current `index`."""
         path, target = self.data[index], int(self.targets[index])
         data = {"path": os.path.join(self.data_dir, path), "target": target}
 
@@ -182,16 +157,13 @@ class SPEECH(Dataset):
         return data["input"], data["target"]
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.data)
-
-    @property
-    def class_to_idx(self):
-        return {_class: i for i, _class in enumerate(self.classes)}
 
     def _check_exists(self):
         return os.path.exists(os.path.join(self.root, self.data_file))
 
-    def load_meta_data(self, path):
+    def _load_meta_data(self, path):
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -206,7 +178,7 @@ class SPEECH(Dataset):
 
         return dataframe["sample_path"].tolist(), dataframe["label_name"].tolist()
 
-    def load_file(self):
+    def _load_file(self):
         sample_paths, label_names = [], []
         filename = Path(
             self.root
@@ -215,11 +187,11 @@ class SPEECH(Dataset):
             / f"{self.client_id}.parquet"
         )
         # Load meta file to get sample paths and labels
-        sample_paths, label_names = self.load_meta_data(filename)
+        sample_paths, label_names = self._load_meta_data(filename)
 
         return sample_paths, label_names
 
-    def set_default_transform(self):
+    def _set_default_transform(self):
         if self.data_file == "train":
             bkg = "_background_noise_"
             data_aug_transform = transforms.Compose(
@@ -256,7 +228,7 @@ class SPEECH(Dataset):
             )
 
 
-def dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx, client_ids, dataset):
     clients = []
     time.time()
     for _i, client_id in enumerate(client_ids):
@@ -269,7 +241,7 @@ def dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -287,10 +259,12 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
     cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for begin, end in _chunks_idx(
+        range(len(pd.unique(dataframe["client_id"]))), n_jobs
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
         cnt += 1
-    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
     log(INFO, f"Pool outputs length: {len(pool_outputs)}")
@@ -316,7 +290,7 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
 
 
-def create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train"):
     dataframe = pd.read_csv(
         Path(
             f"/datasets/FedScale/google_speech/google_speech/client_data_mapping/{dataset}.csv"
@@ -362,8 +336,8 @@ if __name__ == "__main__":
     dataset = "train"
 
     for dataset in ["train", "test", "val"]:
-        create_parquet_client_samples_map(dataset=dataset)
+        _create_parquet_client_samples_map(dataset=dataset)
         if not Path(
             f"/datasets/FedScale/google_speech/google_speech/client_data_mapping/{dataset}_clients_dict.parquet"
         ).exists():
-            create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
+            _create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)

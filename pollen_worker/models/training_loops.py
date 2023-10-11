@@ -1,6 +1,7 @@
 from typing import Dict, Tuple
 
 import torch
+from datasets.nlp_util import mask_tokens
 from flwr.common import Scalar
 from torch.nn import Module
 from torch.optim import Optimizer
@@ -8,10 +9,9 @@ from torch.utils.data import DataLoader
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
-from datasets.nlp_util import mask_tokens
-
 
 def get_training_loop(name: str):
+    """Return the train loop function given the task's name."""
     if name == "reddit":
         return reddit_training_loop
     elif name == "google_speech":
@@ -21,6 +21,7 @@ def get_training_loop(name: str):
 
 
 def get_input_shapes(name: str):
+    """Return the input shapes given the task's name."""
     if name == "reddit":
         return (64,)
     elif name == "google_speech":
@@ -40,6 +41,7 @@ def reddit_training_loop(
     tokenizer: AlbertTokenizer,
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
+    """Implement Reddit task's train loop."""
     for _ in range(epochs):
         current_loss = 0.0
         num_masked = 0
@@ -92,6 +94,7 @@ def google_speech_training_loop(
     criterion: Module,
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
+    """Implement Google Speech task's train loop."""
     for _ in range(epochs):
         current_loss = 0.0
         num_samples = 0
@@ -134,6 +137,7 @@ def general_training_loop(
     criterion: Module,
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
+    """Implement Shakespeare and Open Image task's train loop."""
     for _ in range(epochs):
         current_loss = 0.0
         num_samples = 0

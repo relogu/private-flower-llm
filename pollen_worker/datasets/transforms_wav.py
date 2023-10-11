@@ -13,7 +13,7 @@ random.seed(233)
 
 
 def should_apply_transform(prob=0.5):
-    """Transforms are only randomly applied with the given probability."""
+    """Transform are only randomly applied with the given probability."""
     return random.random() < prob
 
 
@@ -24,6 +24,7 @@ class LoadAudio(object):
         self.sample_rate = sample_rate
 
     def __call__(self, data):
+        """Implement the execution function."""
         path = data["path"]
         if path:
             samples, sample_rate = librosa.load(path, sr=self.sample_rate)
@@ -43,6 +44,7 @@ class FixAudioLength(object):
         self.time = time
 
     def __call__(self, data):
+        """Implement the execution function."""
         samples = data["samples"]
         sample_rate = data["sample_rate"]
         length = int(self.time * sample_rate)
@@ -60,6 +62,7 @@ class ChangeAmplitude(object):
         self.amplitude_range = amplitude_range
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -77,6 +80,7 @@ class ChangeSpeedAndPitchAudio(object):
         self.max_scale = max_scale
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -97,6 +101,7 @@ class StretchAudio(object):
         self.max_scale = max_scale
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -112,6 +117,7 @@ class TimeshiftAudio(object):
         self.max_shift_seconds = max_shift_seconds
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -134,6 +140,7 @@ class AddBackgroundNoise(Dataset):
         self.max_percentage = max_percentage
 
     def __call__(self, data):
+        """Implement the execution function."""
         if not should_apply_transform():
             return data
 
@@ -154,6 +161,7 @@ class ToMelSpectrogram(object):
         self.n_mels = n_mels
 
     def __call__(self, data):
+        """Implement the execution function."""
         samples = data["samples"]
         sample_rate = data["sample_rate"]
         s = librosa.feature.melspectrogram(
@@ -172,6 +180,7 @@ class ToTensor(object):
         self.normalize = normalize
 
     def __call__(self, data):
+        """Implement the execution function."""
         tensor = torch.FloatTensor(data[self.np_name])
         if self.normalize is not None:
             mean, std = self.normalize

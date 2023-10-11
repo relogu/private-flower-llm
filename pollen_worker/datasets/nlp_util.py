@@ -13,8 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Fine-tuning the library models for language modeling on a text file (GPT, GPT-2,
-BERT, RoBERTa).
+"""Fine-tuning the library models for language modeling on a text file.
+
+Models like GPT, GPT-2, BERT or RoBERTa can be used.
 
 GPT and GPT-2 are fine-tuned using a causal language modeling (CLM) loss while BERT and
 RoBERTa are fine-tuned using a masked language modeling (MLM) loss.
@@ -48,7 +49,7 @@ REDDIT_DTYPES = {
 }
 
 
-def chunks_idx(list, n_chunks):
+def _chunks_idx(list, n_chunks):
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
@@ -56,6 +57,8 @@ def chunks_idx(list, n_chunks):
 
 
 def get_collate_fn(tokenizer: PreTrainedTokenizer):
+    """Return the collate function for this dataset."""
+
     def collate_fn(examples):
         if tokenizer._pad_token is None or tokenizer.pad_token_id is None:
             return pad_sequence(examples, batch_first=True)
@@ -67,7 +70,7 @@ def get_collate_fn(tokenizer: PreTrainedTokenizer):
     return collate_fn
 
 
-def feature_creation_worker(
+def _feature_creation_worker(
     indices: List[int],
     files: List[str],
     tokenizer: PreTrainedTokenizer,
@@ -115,6 +118,8 @@ def feature_creation_worker(
 
 
 class TextDataset(Dataset):
+    """Dataset object for text data, e.g. Reddit."""
+
     def __init__(
         self,
         model: str,
@@ -191,7 +196,7 @@ class TextDataset(Dataset):
                 pool_inputs = []
                 pool = Pool(n_jobs)
                 worker_cnt = 0
-                for begin, end in chunks_idx(range(len(files)), n_jobs):
+                for begin, end in _chunks_idx(range(len(files)), n_jobs):
                     pool_inputs.append(
                         [
                             list(range(len(files)))[begin:end],
@@ -204,7 +209,7 @@ class TextDataset(Dataset):
                         ]
                     )
                     worker_cnt += 1
-                pool.starmap(feature_creation_worker, pool_inputs)
+                pool.starmap(_feature_creation_worker, pool_inputs)
                 pool.close()
                 pool.join()
             elif client_id >= len(files):
@@ -217,7 +222,7 @@ class TextDataset(Dataset):
                     client_id,
                 )
                 # Single client tokenisation
-                feature_creation_worker(
+                _feature_creation_worker(
                     [client_id],
                     [files[client_id]],
                     tokenizer,
@@ -235,9 +240,11 @@ class TextDataset(Dataset):
         self.targets = [0] * len(self.examples)
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.examples)
 
     def __getitem__(self, item):
+        """Return the sample at current `index`."""
         return torch.tensor(self.examples[item], dtype=torch.long)
 
 
@@ -269,8 +276,9 @@ def mask_tokens(
     mlm_probability: float,
     device: str = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10%
-    random, 10% original.
+    """Prepare masked tokens inputs/labels for masked language modeling.
+
+    The tokens are splitted as follow: 80% MASK, 10% random, 10% original.
     """
     labels = inputs.clone().to(device=device)
     # We sample a few tokens in each sequence for masked-LM training
@@ -293,7 +301,7 @@ def mask_tokens(
     indices_replaced = (torch.bernoulli(torch.full(labels.shape, 0.8)) == 1).to(
         device=device
     ) & masked_indices
-    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)  # type: ignore
+    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
 
     # 10% of the time, we replace masked input tokens with random word
     indices_random = (
@@ -311,7 +319,7 @@ def mask_tokens(
     return inputs, labels, masked_indices
 
 
-def dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
+def _dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
     clients = []
     time.time()
     for _i, client_id in enumerate(client_ids):
@@ -330,7 +338,7 @@ def dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
     return clients
 
 
-def create_parquet_clients_dict(
+def _create_parquet_clients_dict(
     dataset: str = "train",
     n_jobs: int = 100,
     model: str = "albert",
@@ -354,7 +362,7 @@ def create_parquet_clients_dict(
         pool_inputs = []
         pool = Pool(n_jobs)
         cnt = 0
-        for begin, end in chunks_idx(range(len(files)), n_jobs):
+        for begin, end in _chunks_idx(range(len(files)), n_jobs):
             pool_inputs.append(
                 [
                     cnt,
@@ -366,7 +374,7 @@ def create_parquet_clients_dict(
                 ]
             )
             cnt += 1
-        pool_outputs = pool.starmap(dump_info, pool_inputs)
+        pool_outputs = pool.starmap(_dump_info, pool_inputs)
         pool.close()
         pool.join()
         log(INFO, f"Pool outputs length: {len(pool_outputs)}")
@@ -400,6 +408,7 @@ def create_parquet_clients_dict(
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Implement main function for creating useful files."""
     from pathlib import Path
 
     import psutil
@@ -435,7 +444,7 @@ def main(cfg: DictConfig) -> None:
             block_size=cfg.task.block_size,
             dataset=dataset,
         )
-        create_parquet_clients_dict(
+        _create_parquet_clients_dict(
             dataset=dataset,
             n_jobs=n_jobs,
             model=cfg.task.model,

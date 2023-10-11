@@ -29,7 +29,6 @@ from hydra.utils import call
 from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig
-
 from pollen_utils import get_pyarrow_buffer_from_table
 from resources_manager import get_cpu_prop  # , DaemonResourcesMonitor
 from resources_manager import Node, get_cuda_prop
@@ -50,6 +49,7 @@ def allocate_shm(
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,
 ) -> Tuple[NDArrays, np.ndarray, np.ndarray, np.ndarray, SharedMemory]:
+    """Allocate a Shared Memory object and backed arrays."""
     # Allocate memory for parameters and num_samples
     nbytes_params = [val.nbytes for val in parameters]
     nbytes_int = np.dtype(np.int64).itemsize
@@ -93,6 +93,7 @@ def write_to_fit_result_shm(
     new_train_loss: float,
     new_train_accuracy: float,
 ) -> None:
+    """Write to Shared Memory through backed arrays."""
     for i in range(len(new_ndarrays)):
         if len(new_ndarrays[i].shape) == 0:
             buffer_backed_ndarrays[i] = new_ndarrays[i]
@@ -104,6 +105,8 @@ def write_to_fit_result_shm(
 
 
 class Worker(mp.Process):
+    """Worker Process child of the NodeManager."""
+
     def __init__(
         self,
         client_fn: Callable[[int], NumPyClient],
@@ -143,6 +146,7 @@ class Worker(mp.Process):
         self.test_params = None
 
     def process_task(self, client_id: int):
+        """Process the received task."""
         # Take the timestamp before training a single client
         start_time = time.time_ns()
         # Loads a dict from the shared memory buffer
@@ -236,6 +240,7 @@ class Worker(mp.Process):
                         gc.collect()
 
     def run(self):
+        """Start the process."""
         # Allocate shared memories.
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
@@ -286,6 +291,8 @@ class Worker(mp.Process):
 
 # Define Flower client
 class NodeManager(fl.client.NumPyClient):
+    """NodeManager of Pollen."""
+
     def __init__(
         self,
         client_fn: Callable[[int], NumPyClient],
@@ -325,7 +332,7 @@ class NodeManager(fl.client.NumPyClient):
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Get node properties about hardware accelerators
-        self.properties = self.get_node_properties()
+        self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # max_proc_device = [('cuda:0', 1)]
@@ -365,9 +372,9 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 worker_cnt += 1
         # Start all the workers
-        self.start_workers({})
+        self._start_workers({})
 
-    def get_node_properties(self) -> Dict[str, Scalar]:
+    def _get_node_properties(self) -> Dict[str, Scalar]:
         device_info = {}
         # Get hardware accelerator properties
         tmp_client: VirtualClient = self.client_fn(client_id=0)
@@ -410,13 +417,15 @@ class NodeManager(fl.client.NumPyClient):
         return {"node": str(self.node)}
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
+        """Implement how to get properties."""
         return self.properties
 
     def get_parameters(self, config):
+        """Implement how to get parameters."""
         tmp_client = self.client_fn(client_id=0)
         return get_parameters(tmp_client.net)
 
-    def start_workers(self, config):
+    def _start_workers(self, config):
         for _, worker_list in self.workers.items():
             for worker in worker_list:
                 if not worker.is_alive():
@@ -428,6 +437,7 @@ class NodeManager(fl.client.NumPyClient):
         #     self.monitor.start()
 
     def fit(self, parameters, config):
+        """Implement the fit step."""
         # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
@@ -536,9 +546,11 @@ class NodeManager(fl.client.NumPyClient):
         )
 
     def evaluate(self, parameters, config):
+        """Implement the evaluation step."""
         return 0.0, 1, {}
 
     def __del__(self):
+        """Implement the closing on the NodeManager."""
         log(DEBUG, "Closing stuff")
         # # Close monitor
         # while self.monitor.is_alive():

@@ -5,25 +5,17 @@ from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
-import pandas as pd
 import psutil
 import pyarrow as pa
 import pyarrow.compute as pc
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
-from scipy.optimize import curve_fit
-
-from pollen_utils import (
-    get_clients_dataframe_from_dict,
-    get_ctt_dataframe_from_pickle,
-    merge_ctt_size,
-)
 from resources_manager import Node
+from scipy.optimize import curve_fit
 
 INVALID_ARGUMENTS_GET_PLACEMENT_FN = """
 The `policy` passed to `get_placement_fn` is unknown.
@@ -38,7 +30,16 @@ The known values are:
 """
 
 
-def get_placement_fn(policy: str = "rr"):
+def get_placement_fn(policy: str = "rr") -> Callable:
+    """Wrap the placement functions. Return them by code.
+
+    Args:
+        policy (str, optional): chosen placement policy. Defaults to "rr".
+
+    Returns
+    -------
+        Callable: placement function.
+    """
     if policy == "rr":
         return round_robin_placement
     elif policy == "srr":
@@ -61,13 +62,29 @@ def get_placement_fn(policy: str = "rr"):
 def pollen_learning_based_placement(
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
-    return learning_based_placement(fns=[pollen_function, jacobian_pollen_function], **kwargs)
+    """Return the cliets' placements according to the Pollen's learning-based placement.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
+    return learning_based_placement(
+        fns=[_pollen_function, _jacobian_pollen_function], **kwargs
+    )
 
 
 def parrot_learning_based_placement(
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
-    return learning_based_placement(fns=[linear, jacobian_linear], **kwargs)
+    """Return the cliets' placements according to the Parrot's learning-based placement.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
+    return learning_based_placement(fns=[_linear, _jacobian_linear], **kwargs)
 
 
 def learning_based_placement(
@@ -81,6 +98,25 @@ def learning_based_placement(
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    """Implement generic learning-based placement strategy.
+
+    Args:
+        fns (List[Callable]): fit functions and its jacobian.
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        batch_size (int): batch size of ALL clients.
+        cids (Union[Dict[str, int], Dict[int, int]]): mapping between cids and
+        number of samples.
+        clients_stats (pa.Table, optional): collected clients' stats. Defaults to None.
+        gpu_stats (pa.Table, optional):  collected GPUs' stats. Defaults to None.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     if clients_stats is None:  #  or gpu_stats is None:
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
@@ -144,18 +180,23 @@ def learning_based_placement(
             DEBUG,
             f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
         )
+        t_0 = time.time()
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
         trained_models = dict(
             sorted(
                 trained_models.items(),
-                key=lambda item: predict_single_client(
+                key=lambda item: _predict_single_client(
                     model=item[1],
                     fn=fns[0],
                     n_samples=sampled_virtual_cids[0][1],
                     batch_size=batch_size,
                 ),
             )
+        )
+        log(
+            DEBUG,
+            f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
         )
 
         # Init the device assignment and the return value
@@ -183,7 +224,7 @@ def learning_based_placement(
             # Assign client to the least loaded device
             devices_assignment[0][1].append(virtual_cid)
             # Get device load
-            load = predict_single_client(
+            load = _predict_single_client(
                 model=devices_assignment[0][0],
                 fn=fns[0],
                 n_samples=num_samples,
@@ -205,7 +246,7 @@ def learning_based_placement(
         node_assignments = []
         for _, (client_proxy, node) in nodes_dict.items():
             devices_assignment_node = {
-                dev_name: convert_list_of_int_to_string(list_of_cids)
+                dev_name: _convert_list_of_int_to_string(list_of_cids)
                 for _, list_of_cids, _, node_dev_name, dev_name in devices_assignment
                 if node_dev_name == node.name
             }
@@ -233,6 +274,19 @@ def round_robin_placement(
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    """Implement Round-Robin placement strategy.
+
+    Args:
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     # Extract cids
     sampled_virtual_cids: NDArray[np.int16] = np.array(
         [x[0] for x in sampled_virtual_cids]
@@ -270,7 +324,10 @@ def round_robin_placement(
     node_assignments = [
         (
             c_p,
-            {k: convert_list_of_int_to_string(v) for k, v in device_assignment.items()},
+            {
+                k: _convert_list_of_int_to_string(v)
+                for k, v in device_assignment.items()
+            },
         )
         for c_p, device_assignment in node_assignments
     ]
@@ -289,6 +346,19 @@ def sorted_round_robin_placement(
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
+    """Implement Sorted Round-Robin placement strategy.
+
+    Args:
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
@@ -334,6 +404,19 @@ def samples_placement(
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
+    """Implement placement strategy based on the number of samples.
+
+    Args:
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
@@ -365,6 +448,19 @@ def batches_placement(
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
+    """Implement placement strategy based on the number of batches.
+
+    Args:
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
@@ -398,6 +494,19 @@ def log_batches_placement(
     verbose: bool = False,
     **kwargs,
 ) -> Dict[str, List[int]]:
+    """Implement placement strategy based on the log of the number of batches.
+
+    Args:
+        sampled_virtual_cids (List[Tuple[int, int]]): sampled virtual cids.
+        nodes_dict (Dict[str, Tuple[ClientProxy, Node]]): dictionary of nodes'
+        resources.
+        verbose (bool, optional): flag for logger. Defaults to False.
+
+    Returns
+    -------
+        List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
+        (client_proxy, device_assignment).
+    """
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
@@ -426,54 +535,33 @@ def log_batches_placement(
     return lists_cids
 
 
-def get_train_data(
-    path_save_stats: Path,
-    cid_samples_dict: Dict[int, int],
-    worker_ids: List[int],
-    reset: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
-    dfs = []
-    file_list = [path_save_stats.parent / f"stats_worker{i}" for i in worker_ids]
-    for file in file_list:
-        df = get_ctt_dataframe_from_pickle(file)
-        dfs.append(df)
-    df = pd.concat(dfs)
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    df.dropna(inplace=True)
-    _, x_train, y_train = merge_ctt_size(
-        ctt_df=df, clients_df=get_clients_dataframe_from_dict(cid_samples_dict)
-    )
-    # if reset:
-    #     [os.remove(file) in file_list]
-    return x_train, y_train
-
-
-def pollen_function(x, A, B):
+def _pollen_function(x, A, B):
     y = A + B * np.log(x)
     return y
 
 
-def linear(x, A, B):
+def _linear(x, A, B):
     y = A + B * x
     return y
 
-def jacobian_pollen_function(x, A, B):
+
+def _jacobian_pollen_function(x, A, B):
     dA = np.ones_like(x)
     dB = np.log(x)
-    return np.hstack((dA.reshape(-1,1), dB.reshape(-1,1)))
+    return np.hstack((dA.reshape(-1, 1), dB.reshape(-1, 1)))
 
 
-def jacobian_linear(x, A, B):
+def _jacobian_linear(x, A, B):
     dA = np.ones_like(x)
-    return np.hstack((dA.reshape(-1,1), x.reshape(-1,1)))
+    return np.hstack((dA.reshape(-1, 1), x.reshape(-1, 1)))
 
 
-def predict_single_client(model, fn: Callable, n_samples: int, batch_size: int):
+def _predict_single_client(model, fn: Callable, n_samples: int, batch_size: int):
     parameters, covariance = model
     return fn(n_samples // batch_size, *parameters)
 
 
-def convert_list_of_int_to_string(list_of_int: List[int]) -> str:
+def _convert_list_of_int_to_string(list_of_int: List[int]) -> str:
     return ",".join([str(i) for i in list_of_int])
 
 
@@ -482,6 +570,7 @@ def add_n_batches_column_to_clients_stats_table(
     batch_size: int,
     cids: Union[Dict[str, int], Dict[int, int]],
 ) -> pa.Table:
+    """Add a `num_batches` column to the given Table."""
     return input.add_column(
         0,
         "n_batches",
@@ -527,6 +616,7 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
 def parallel_train_models(
     fns: List[Callable], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, Any]:
+    """Train the models in parallel."""
     # Set up the parallelisation
     n_jobs = 100
     try:
@@ -539,45 +629,51 @@ def parallel_train_models(
     pool = Pool(n_jobs)
     # Execute the pool
     pool_outputs = pool.starmap(
-        train_model, [[fns, k, v] for k, v in clients_stats.items()]
+        _train_model, [[fns, k, v] for k, v in clients_stats.items()]
     )
     pool.close()
     pool.join()
     # Return the results from the pool
     return {k: v for result in pool_outputs for k, v in result.items()}
 
+
 def sequential_train_models(
     fns: List[Callable], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, Any]:
+    """Train the models sequentially."""
     # Init return dict
-    ret = dict()
+    ret = {}
     # Loop over model names
     for k, v in clients_stats.items():
-        ret.update(train_model(fns, k, v))
+        ret.update(_train_model(fns, k, v))
     return ret
 
 
-def train_model(fns: List[Callable], model_name: str, data: pa.Table) -> Dict[str, Any]:
+def _train_model(
+    fns: List[Callable], model_name: str, data: pa.Table
+) -> Dict[str, Any]:
     x = data.column("n_batches").to_numpy()
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
-    # return {model_name: curve_fit(fn, x, delta, [delta.min(), 0.0])}
-    return {model_name: curve_fit(
-        f=fns[0],
-        xdata=x,
-        ydata=delta,
-        p0=[0.0, 0.0],
-        jac=fns[1],
-        ftol=1e-3,
-        xtol=1e-3,
-        gtol=1e-3,
-    )}
+    return {
+        model_name: curve_fit(
+            f=fns[0],
+            xdata=x,
+            ydata=delta,
+            p0=[0.0, 0.0],
+            jac=fns[1],
+            ftol=1e-3,
+            xtol=1e-3,
+            gtol=1e-3,
+        )
+    }
 
 
 def parallel_get_models_scores(
     fn: Callable, models: Dict[str, Any], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, float]:
+    """Return the scores of the model computed in parallel."""
     # Set up the parallelisation
     n_jobs = 100
     try:
@@ -590,7 +686,7 @@ def parallel_get_models_scores(
     pool = Pool(n_jobs)
     # Execute the pool
     pool_outputs = pool.starmap(
-        get_model_score, [[fn, k, models[k], clients_stats[k]] for k in models.keys()]
+        _get_model_score, [[fn, k, models[k], clients_stats[k]] for k in models.keys()]
     )
     pool.close()
     pool.join()
@@ -601,15 +697,16 @@ def parallel_get_models_scores(
 def sequential_get_models_scores(
     fn: Callable, models: Dict[str, Any], clients_stats: Dict[str, pa.Table]
 ) -> Dict[str, float]:
+    """Return the scores of the model computed sequentially."""
     # Init return dict
-    ret = dict()
+    ret = {}
     # Loop over model names
     for k in models.keys():
-        ret.update(get_model_score(fn, k, models[k], clients_stats[k]))
+        ret.update(_get_model_score(fn, k, models[k], clients_stats[k]))
     return ret
 
 
-def get_model_score(
+def _get_model_score(
     fn: Callable, model_name: str, model: Any, data: pa.Table
 ) -> Dict[str, float]:
     parameters, _ = model
