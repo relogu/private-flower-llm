@@ -1,3 +1,9 @@
+"""Utility functions for Pollen.
+
+It contains both task-independent utility functions and task-specific ones for the
+Pollen paper.
+"""
+# TODO: split the codebase into task-specific and task-independent units.
 from argparse import ArgumentTypeError
 from functools import reduce
 from logging import DEBUG, INFO

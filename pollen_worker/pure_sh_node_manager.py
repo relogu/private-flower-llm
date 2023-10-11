@@ -1,3 +1,24 @@
+"""A highly efficient node-manager for Pollen.
+
+The role of the node manager is to manage multiple workers on a node.
+The workers are distributed over the available hardware devices
+in an N:M mapping with N>=M.
+The number of workers depends on:
+- how many resources each client needs
+- the resources availabe for a given device
+- the parallelism supported by the system.
+
+In order to minimize data movement and unnecessary allocations+copies
+the node-manager uses a statically-assigned shared memory
+to host the memory of the workers and clients.
+
+In a singlenode setting, the node-manager
+is the only process that runs on the node and
+is only conceptually separate from the server.
+In a multinode setting, each node hosts
+a node-manager which communicates
+to the simulation server.
+"""
 import gc
 import os
 import pickle
@@ -583,7 +604,7 @@ class NodeManager(fl.client.NumPyClient):
 
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    # Start NodeManager
+    """Start a node manager directly with hydra."""
     warm_up_config = call(cfg.gen_on_fit_config_fn)(0)
     node_manager = NodeManager(
         client_fn=call(cfg.gen_client_fn),

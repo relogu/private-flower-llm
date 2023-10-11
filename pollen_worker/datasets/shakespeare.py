@@ -1,3 +1,11 @@
+"""The SHAKESPEARE dataset and afferent functions.
+
+Based on the implementation of FedScale: Benchmarking Model and System Performance of
+Federated Learning at Scale. ICML 2022: 11814-11827 with repo:
+https://github.com/SymbioticLab/FedScale . Originially from: LEAF: A Benchmark for
+Federated Settings. CoRR abs/1812.01097 (2018).
+"""
+
 import csv
 import os
 import pickle

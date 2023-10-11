@@ -1,3 +1,4 @@
+"""The ResNet model at different sizes."""
 import math
 
 from torch import nn

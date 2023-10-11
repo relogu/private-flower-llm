@@ -1,3 +1,8 @@
+"""Run a Ray-based Flower simulation.
+
+Serves as a baseline for the Pollen paper. It supports using wandb for logging and hydra
+for exeperiment configuration.
+"""
 import json
 import os
 import warnings
@@ -9,7 +14,6 @@ import hydra
 import nvsmi
 import torch
 import transformers
-import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -21,6 +25,8 @@ from utils import RayContextManager, wandb_init, weighted_average
 from virtual_client import VirtualClient
 from wandb_history import WandbHistory
 from wandb_server import WandbServer
+
+import wandb
 
 transformers.logging.set_verbosity_error()
 

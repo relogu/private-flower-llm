@@ -1,3 +1,7 @@
+"""An LSTM model for Shakespeare dataset.
+
+Originially from: LEAF: A Benchmark for Federated Settings. CoRR abs/1812.01097 (2018).
+"""
 from torch import nn
 
 LEAF_CHARACTERS = (
