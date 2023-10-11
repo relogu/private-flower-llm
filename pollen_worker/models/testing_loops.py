@@ -1,10 +1,13 @@
-"""Functions related to testing loops for out tasks of interest."""
+"""The testing loops for the tasks in the Pollen paper.
+
+The main function is hydra-specific and allows for a centralised evluation of a model
+from the hydra output directory using the concatenated test sets of all clients.
+"""
 from typing import List, Tuple
 
 import hydra
 import torch
 import transformers
-import wandb
 import yaml
 from datasets.nlp_util import mask_tokens
 from omegaconf import DictConfig
@@ -14,6 +17,8 @@ from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 from utils import wandb_init
+
+import wandb
 
 transformers.logging.set_verbosity_error()
 

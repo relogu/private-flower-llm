@@ -1,4 +1,10 @@
-"""Virtual client for Flower Framework."""
+"""Lightweight Flower Client for Pollen.
+
+Clients are trained by workers which are managed by node managers. This type of client
+avoids any memory or processing intensive operations in the _init_ function. As such,
+virtual clients can be used to simulate a large number of clients on a single machine
+even if many are spawned at once.
+"""
 from collections import OrderedDict
 from logging import INFO
 from typing import Callable, Dict, Optional, Union

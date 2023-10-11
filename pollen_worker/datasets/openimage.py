@@ -1,4 +1,9 @@
-"""Open Image dataset."""
+"""The openimages dataset and afferent functions.
+
+Based on the implementation of FedScale: Benchmarking Model and System Performance of
+Federated Learning at Scale. ICML 2022: 11814-11827 with repo:
+https://github.com/SymbioticLab/FedScale
+"""
 from __future__ import print_function
 
 import os

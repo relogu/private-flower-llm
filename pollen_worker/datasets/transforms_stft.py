@@ -143,7 +143,7 @@ class DeleteSTFT(object):
     """
 
     def __call__(self, data):
-        """Implement the execution function."""
+        """Remove the stft from the data."""
         del data["stft"]
         return data
 

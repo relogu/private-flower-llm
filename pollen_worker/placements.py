@@ -1,4 +1,10 @@
-"""The corrent module contains our placement strategies."""
+"""The placement policies used in the Pollen paper.
+
+A placement policy asssigns clients to devices according to a certain strategy. The
+official strategy representing Pollen is the learning-based placement. However, we also
+provide other strategies as baselines. Round-robin should be considered the default
+baseline.
+"""
 import sys
 import time
 from collections import defaultdict

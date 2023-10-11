@@ -13,7 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Fine-tuning the library models for language modeling on a text file.
+"""The Reddit dataset for the Pollen paper with afferent functionality.
+
+Fine-tuning the library models for language modeling on a text file.
 
 Models like GPT, GPT-2, BERT or RoBERTa can be used.
 

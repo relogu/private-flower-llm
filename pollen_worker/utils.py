@@ -1,4 +1,7 @@
-"""Generic utility functions."""
+"""Utility functions for FL and experiment management.
+
+They assure compatibility with the Flower and wandb APIs.
+"""
 import shutil
 from collections import OrderedDict, defaultdict
 from pathlib import Path
@@ -6,9 +9,10 @@ from typing import Callable, Dict, List, Tuple
 
 import ray
 import torch
-import wandb
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+
+import wandb
 
 
 #### Server ####

@@ -1,4 +1,8 @@
-"""Script to launch the Pollen server."""
+"""Flower simulation using a pollen server.
+
+Starts a Flower server which awaits connections from Pollen node managers. It supports
+using wandb for logging and hydra for exeperiment configuration.
+"""
 import json
 from logging import DEBUG, INFO
 from pathlib import Path
@@ -6,7 +10,6 @@ from pathlib import Path
 import flwr as fl
 import hydra
 import transformers
-import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -19,13 +22,15 @@ from utils import wandb_init, weighted_average
 from virtual_client import VirtualClient
 from wandb_history import WandbHistory
 
+import wandb
+
 transformers.logging.set_verbosity_error()
 
 
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
-    """Implement main function to lauch a Pollen's Server."""
+    """Implement main function to launch a Pollen's Server."""
     log(
         INFO,
         "Task is: %s with fake=%s with run unique id=%s and policy=%s",

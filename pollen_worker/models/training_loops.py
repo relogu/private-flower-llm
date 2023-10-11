@@ -1,4 +1,4 @@
-"""Functions related to training loops for out tasks of interest."""
+"""Training loops for the different tasks of the Pollen paper."""
 from typing import Dict, Tuple
 
 import torch

@@ -1,4 +1,7 @@
-"""Utility functions related to resource management."""
+"""Resources manager for the Pollen worker.
+
+Handles both metric collection and GPU/CPU resources allocation to workers.
+"""
 from __future__ import annotations
 
 import io
