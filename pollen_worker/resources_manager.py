@@ -226,13 +226,13 @@ class ResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_id: int,
-        list_pids: List[int] = [],
+        list_pids: List[int] = None,
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
         self.frequency = frequency
         self.gpu_id = gpu_id
-        self.list_pids = list_pids
+        self.list_pids = list_pids if list_pids is not None else []
         self.vram_total_memory = 0.0
         self.vram_maximum_allocated_memory = 0.0
         self.cpu_ram_total = 0.0

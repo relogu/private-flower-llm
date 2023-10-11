@@ -36,7 +36,7 @@ test_transform = transforms.Compose(
 )
 
 
-def chunks_idx(list, n_chunks):
+def _chunks_idx(list, n_chunks):
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
@@ -44,6 +44,8 @@ def chunks_idx(list, n_chunks):
 
 
 class OpenImage(Dataset):
+    """Open Image dataset object."""
+
     classes = []
 
     def __init__(
@@ -62,22 +64,15 @@ class OpenImage(Dataset):
         self.data_file = dataset  # 'train', 'test', 'val'
 
         if not self._check_exists():
-            raise RuntimeError("Dataset not found." + " You have to download it")
+            raise RuntimeError("Dataset not found. You have to download it")
 
-        self.path = os.path.join(self.processed_folder, self.data_file)
+        self.path = os.path.join(self.root, self.data_file)
         # load data and targets
-        self.data, self.targets = self.load_file()
+        self.data, self.targets = self._load_file()
         self.imgview = imgview
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index.
-
-        Returns
-        -------
-            tuple: (image, target) where target is index of the target class.
-        """
+        """Return the sample at current `index`."""
         imgName, target = self.data[index], int(self.targets[index])
 
         # doing this so that it is consistent with all other datasets
@@ -97,20 +92,13 @@ class OpenImage(Dataset):
         return img, target
 
     def __len__(self):
+        """Return the length of the dataset."""
         return len(self.data)
 
-    @property
-    def raw_folder(self):
-        return self.root
-
-    @property
-    def processed_folder(self):
-        return self.root
-
     def _check_exists(self):
-        return os.path.exists(os.path.join(self.processed_folder, self.data_file))
+        return os.path.exists(os.path.join(self.root, self.data_file))
 
-    def load_meta_data(self, path):
+    def _load_meta_data(self, path):
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -121,20 +109,20 @@ class OpenImage(Dataset):
 
         return dataframe["sample_path"].tolist(), dataframe["label_id"].tolist()
 
-    def load_file(self):
+    def _load_file(self):
         path = Path(
-            self.processed_folder
+            self.root
             / "client_data_mapping"
             / self.data_file
             / f"{self.client_id}.parquet"
         )
         # Load meta file to get samples path and labels
-        datas, labels = self.load_meta_data(path)
+        datas, labels = self._load_meta_data(path)
 
         return datas, labels
 
 
-def dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx, client_ids, dataset):
     clients = []
     time.time()
     for _i, client_id in enumerate(client_ids):
@@ -147,7 +135,7 @@ def dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -163,10 +151,12 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
     cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for begin, end in _chunks_idx(
+        range(len(pd.unique(dataframe["client_id"]))), n_jobs
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
         cnt += 1
-    pool_outputs = pool.starmap(dump_info, pool_inputs)
+    pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
     log(INFO, f"Pool outputs length: {len(pool_outputs)}")
@@ -192,7 +182,7 @@ def create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
 
 
-def create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train"):
     dataframe = pd.read_csv(
         Path(f"/datasets/FedScale/openImg/client_data_mapping/{dataset}.csv"),
         engine="pyarrow",
@@ -236,8 +226,8 @@ if __name__ == "__main__":
     dataset = "train"
 
     for dataset in ["train", "test", "val"]:
-        create_parquet_client_samples_map(dataset=dataset)
+        _create_parquet_client_samples_map(dataset=dataset)
         if not Path(
             f"/datasets/FedScale/openImg/clients_data_mapping/{dataset}_clients_dict.parquet"
         ).exists():
-            create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
+            _create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
