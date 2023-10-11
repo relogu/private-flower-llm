@@ -8,8 +8,9 @@ from copy import deepcopy
 from pathlib import Path
 
 import hydra
-from models.testing_loops import main as test_main
 from omegaconf import DictConfig
+
+from pollen_worker.models.testing_loops import main as test_main
 
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)

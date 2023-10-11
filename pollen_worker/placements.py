@@ -21,8 +21,9 @@ import pyarrow.compute as pc
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
-from resources_manager import Node
 from scipy.optimize import curve_fit
+
+from pollen_worker.resources_manager import Node
 
 INVALID_ARGUMENTS_GET_PLACEMENT_FN = """
 The `policy` passed to `get_placement_fn` is unknown.

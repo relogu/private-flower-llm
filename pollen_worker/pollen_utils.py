@@ -15,10 +15,6 @@ import pandas as pd
 import psutil
 import pyarrow as pa
 import torch
-from datasets.google_speech import SPEECH
-from datasets.nlp_util import TextDataset
-from datasets.openimage import OpenImage
-from datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays
 from flwr.server.strategy.aggregate import aggregate
@@ -27,6 +23,11 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import AlbertTokenizer
+
+from pollen_worker.datasets.google_speech import SPEECH
+from pollen_worker.datasets.nlp_util import TextDataset
+from pollen_worker.datasets.openimage import OpenImage
+from pollen_worker.datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
 
 
 def get_device() -> device_type:
@@ -141,11 +142,11 @@ def get_model(name: str) -> Module:
     """Return the model given the task's name."""
     # NOTE: we may want to load this once and then deepcopying it when needed
     if name == "shakespeare":
-        from models.shakespeare_leaf_model import ShakespeareLeafNet
+        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "shakespeare_memory":
-        from models.shakespeare_leaf_model import ShakespeareLeafNet
+        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "reddit":
@@ -153,7 +154,7 @@ def get_model(name: str) -> Module:
 
         return AlbertForMaskedLM.from_pretrained("albert-base-v2")  # type: ignore
     if name == "google_speech":
-        from models.resnet_util import resnet34
+        from pollen_worker.models.resnet_util import resnet34
 
         return resnet34(num_classes=35, in_channels=1)
     if name == "openimage":

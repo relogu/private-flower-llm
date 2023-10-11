@@ -18,10 +18,10 @@ poetry shell
 CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=openimage task.n_clients_per_round=10 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=127.0.0.1:1044"
 
 # Launch the server.
-poetry run python pollen_worker/server_with+pollen.py $CUSTOM_HYDRA_ARGS &
+poetry run python -m pollen_worker.server_with+pollen $CUSTOM_HYDRA_ARGS &
 
 # Launch the node manager.
-poetry run python pollen_worker/pure_sh_node_manager.py $CUSTOM_HYDRA_ARGS
+poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode.sh

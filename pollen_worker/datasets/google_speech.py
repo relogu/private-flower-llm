@@ -10,7 +10,10 @@ from pathlib import Path
 import librosa
 import numpy as np
 import pandas as pd
-from datasets.transforms_stft import (
+from torch.utils.data import Dataset
+from torchvision import transforms
+
+from pollen_worker.datasets.transforms_stft import (
     AddBackgroundNoiseOnSTFT,
     DeleteSTFT,
     FixSTFTDimension,
@@ -19,7 +22,7 @@ from datasets.transforms_stft import (
     ToMelSpectrogramFromSTFT,
     ToSTFT,
 )
-from datasets.transforms_wav import (
+from pollen_worker.datasets.transforms_wav import (
     ChangeAmplitude,
     ChangeSpeedAndPitchAudio,
     FixAudioLength,
@@ -27,8 +30,6 @@ from datasets.transforms_wav import (
     ToMelSpectrogram,
     ToTensor,
 )
-from torch.utils.data import Dataset
-from torchvision import transforms
 
 CLASSES = [
     "up",

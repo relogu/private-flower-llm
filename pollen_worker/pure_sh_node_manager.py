@@ -50,11 +50,12 @@ from hydra.utils import call
 from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig
-from pollen_utils import get_pyarrow_buffer_from_table
-from resources_manager import get_cpu_prop  # , DaemonResourcesMonitor
-from resources_manager import Node, get_cuda_prop
-from utils import get_parameters, partially_aggregate_with_metrics
-from virtual_client import VirtualClient
+
+from pollen_worker.pollen_utils import get_pyarrow_buffer_from_table
+from pollen_worker.resources_manager import get_cpu_prop  # , DaemonResourcesMonitor
+from pollen_worker.resources_manager import Node, get_cuda_prop
+from pollen_worker.utils import get_parameters, partially_aggregate_with_metrics
+from pollen_worker.virtual_client import VirtualClient
 
 pickle.Pickler = cloudpickle.Pickler
 transformers.logging.set_verbosity_error()

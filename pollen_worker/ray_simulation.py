@@ -20,13 +20,13 @@ from flwr.common.logger import log
 from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-from pollen_utils import get_clients_population_dict
-from utils import RayContextManager, wandb_init, weighted_average
-from virtual_client import VirtualClient
-from wandb_history import WandbHistory
-from wandb_server import WandbServer
 
 import wandb
+from pollen_worker.pollen_utils import get_clients_population_dict
+from pollen_worker.utils import RayContextManager, wandb_init, weighted_average
+from pollen_worker.virtual_client import VirtualClient
+from pollen_worker.wandb_history import WandbHistory
+from pollen_worker.wandb_server import WandbServer
 
 transformers.logging.set_verbosity_error()
 

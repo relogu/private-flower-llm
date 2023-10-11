@@ -12,16 +12,22 @@ from typing import Callable, Dict, Optional, Union
 import flwr as fl
 import torch
 import transformers
-from datasets.nlp_util import get_collate_fn
 from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
-from models.training_loops import get_input_shapes, get_training_loop
-from pollen_utils import get_client_ds, get_device, get_model, get_optimizer
 from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+from pollen_worker.datasets.nlp_util import get_collate_fn
+from pollen_worker.models.training_loops import get_input_shapes, get_training_loop
+from pollen_worker.pollen_utils import (
+    get_client_ds,
+    get_device,
+    get_model,
+    get_optimizer,
+)
 
 
 class VirtualClient(fl.client.NumPyClient):

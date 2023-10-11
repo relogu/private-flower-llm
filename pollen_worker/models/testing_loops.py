@@ -9,16 +9,16 @@ import hydra
 import torch
 import transformers
 import yaml
-from datasets.nlp_util import mask_tokens
 from omegaconf import DictConfig
 from torch.nn import Module
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
-from utils import wandb_init
 
 import wandb
+from pollen_worker.datasets.nlp_util import mask_tokens
+from pollen_worker.utils import wandb_init
 
 transformers.logging.set_verbosity_error()
 
@@ -209,8 +209,13 @@ def main(cfg: DictConfig) -> None:
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
     from flwr.common.typing import Parameters
-    from pollen_utils import get_centralised_eval_set, get_device, get_model
-    from utils import set_parameters
+
+    from pollen_worker.pollen_utils import (
+        get_centralised_eval_set,
+        get_device,
+        get_model,
+    )
+    from pollen_worker.utils import set_parameters
 
     device = get_device()
 

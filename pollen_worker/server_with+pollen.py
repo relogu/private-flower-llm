@@ -15,14 +15,14 @@ from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
-from pollen_client_manager import PollenClientManager
-from pollen_server import PollenServer
-from pollen_utils import get_clients_population_dict
-from utils import wandb_init, weighted_average
-from virtual_client import VirtualClient
-from wandb_history import WandbHistory
 
 import wandb
+from pollen_worker.pollen_client_manager import PollenClientManager
+from pollen_worker.pollen_server import PollenServer
+from pollen_worker.pollen_utils import get_clients_population_dict
+from pollen_worker.utils import wandb_init, weighted_average
+from pollen_worker.virtual_client import VirtualClient
+from pollen_worker.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
 
