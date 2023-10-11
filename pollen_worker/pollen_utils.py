@@ -9,7 +9,18 @@ from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
 import pandas as pd
 import psutil
@@ -308,7 +319,8 @@ def _get_dataset_root(name: str) -> Path:
     raise ValueError("No dataset for the requested dataset name")
 
 
-def _chunks_idx(list, n_chunks):
+def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any, None]:
+    """Split a list in n_chunks of equal length."""
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
@@ -366,7 +378,7 @@ def get_centralised_eval_set(
         raise ValueError("n_clients must be either an int or a float")
 
     # Split the clients in chunks
-    for begin, end in _chunks_idx(range(len(client_ids)), n_jobs):
+    for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
         pool_inputs.append([name, client_ids[begin:end], "test"])
     pool_outputs = pool.starmap(_get_list_of_clients_ds, pool_inputs)
     pool.close()
