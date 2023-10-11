@@ -39,7 +39,7 @@ def get_n_worker_gpu_type(name: str = "openimage"):
     if name == "shakespeare" or name == "shakespeare_memory":
         return {
             "NVIDIA A40": 36,
-            "NVIDIA GeForce RTX 2080 Ti": 11,
+            "NVIDIA GeForce RTX 2080 Ti": 10,
         }
     if name == "google_speech":
         return {
@@ -82,9 +82,8 @@ def main(cfg: DictConfig) -> None:
 
     client_resources = {
         "num_gpus": num_available_gpus / n_workers,
-        # FIXME: How can we set this up?
-        # "num_cpus": 1,
-        "num_cpus": max(1, len(os.sched_getaffinity(0)) / n_workers),
+        # NOTE: Ray supports fractional CPU resources
+        "num_cpus": len(os.sched_getaffinity(0)) / n_workers,
     }
     log(INFO, "Client resources are: %s", client_resources)
 
@@ -126,19 +125,16 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
 
-    # (Otional) Specify Ray configuration
+    # (Optional) Specify Ray configuration
     log(INFO, f"This simulation has affinity: {os.sched_getaffinity(0)}")
     ray_init_args = {
         "address": cfg.ray_address,
         "_redis_password": cfg.ray_redis_password,
         "_node_ip_address": cfg.ray_node_ip_address,
-        # "include_dashboard": False,
-        # # FIXME: Do we need to set this up?
-        # "num_cpus": len(os.sched_getaffinity(0)),
     }
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-    # start simulation
+    # Start simulation
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,
