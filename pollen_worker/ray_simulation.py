@@ -33,7 +33,7 @@ transformers.logging.set_verbosity_error()
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def get_n_worker_gpu_type(name: str = "openimage"):
+def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     """Return the mapping between GPU resources and number of Ray clients."""
     # NOTE: These numbers are compatible with the last version of Pollen
     if name == "reddit":

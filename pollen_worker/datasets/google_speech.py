@@ -30,7 +30,7 @@ from pollen_worker.datasets.transforms_wav import (
     ToMelSpectrogram,
     ToTensor,
 )
-from pollen_worker.pollen_utils import chunks_idx
+from pollen_worker.utils import chunks_idx
 
 CLASSES = [
     "up",

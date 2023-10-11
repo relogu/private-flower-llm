@@ -43,7 +43,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
-from pollen_worker.pollen_utils import chunks_idx
+from pollen_worker.utils import chunks_idx
 
 REDDIT_DTYPES = {
     "client_id": np.int64,

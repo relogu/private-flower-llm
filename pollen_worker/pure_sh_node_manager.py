@@ -29,7 +29,7 @@ from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
-from typing import Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import cloudpickle
 import flwr as fl
@@ -138,7 +138,7 @@ class Worker(mp.Process):
         result_queue: QueueType,
         run_uuid: str,
         concurrency: int,
-    ):
+    ) -> None:
         super(Worker, self).__init__()
         self.worker_id = worker_id
         self.device = device
@@ -167,7 +167,7 @@ class Worker(mp.Process):
         ) = (None, None, None, None, None)
         self.test_params = None
 
-    def process_task(self, client_id: int):
+    def process_task(self, client_id: int) -> None:
         """Process the received task."""
         # Take the timestamp before training a single client
         start_time = time.time_ns()
@@ -261,7 +261,7 @@ class Worker(mp.Process):
                         torch.cuda.empty_cache()
                         gc.collect()
 
-    def run(self):
+    def run(self) -> None:
         """Start the process."""
         # Allocate shared memories.
         # NOTE: This goes here because it needs to be done in the child process!
@@ -442,12 +442,12 @@ class NodeManager(fl.client.NumPyClient):
         """Implement how to get properties."""
         return self.properties
 
-    def get_parameters(self, config):
+    def get_parameters(self, config) -> NDArrays:
         """Implement how to get parameters."""
         tmp_client = self.client_fn(client_id=0)
         return get_parameters(tmp_client.net)
 
-    def _start_workers(self, config):
+    def _start_workers(self, config) -> None:
         for _, worker_list in self.workers.items():
             for worker in worker_list:
                 if not worker.is_alive():
@@ -458,7 +458,7 @@ class NodeManager(fl.client.NumPyClient):
         #     self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
         #     self.monitor.start()
 
-    def fit(self, parameters, config):
+    def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
         # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
@@ -567,11 +567,11 @@ class NodeManager(fl.client.NumPyClient):
             },
         )
 
-    def evaluate(self, parameters, config):
+    def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
         """Implement the evaluation step."""
         return 0.0, 1, {}
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Implement the closing on the NodeManager."""
         log(DEBUG, "Closing stuff")
         # # Close monitor

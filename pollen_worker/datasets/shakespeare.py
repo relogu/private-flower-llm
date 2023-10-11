@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 
-from pollen_worker.pollen_utils import chunks_idx
+from pollen_worker.utils import chunks_idx
 
 LEAF_CHARACTERS = (
     "\n !\"&'(),-.0123456789:;>?ABCDEFGHIJKLMNOPQRSTUVWXYZ[]abcdefghijklmnopqrstuvwxyz}"

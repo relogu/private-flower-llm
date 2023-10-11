@@ -232,7 +232,7 @@ def get_client_ds_fn(
 ) -> Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]:
     """Return the function that returns the dataset given the task's name."""
 
-    def get_ds_fn(client_id: int):
+    def get_ds_fn(client_id: int) -> Tuple[Dataset[Any], Optional[AlbertTokenizer]]:
         return get_client_ds(
             cid=client_id,
             dataset_root=dataset_root,
@@ -319,15 +319,11 @@ def _get_dataset_root(name: str) -> Path:
     raise ValueError("No dataset for the requested dataset name")
 
 
-def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any, None]:
-    """Split a list in n_chunks of equal length."""
-    d, r = divmod(len(list), n_chunks)
-    for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-        yield si, si + (d + 1 if i < r else d)
 
 
-def _get_list_of_clients_ds(name: str, cids: List[int], dataset: str):
+def _get_list_of_clients_ds(
+    name: str, cids: List[int], dataset: str
+) -> tuple[list[Any], Union[AlbertTokenizer, None]]:
     clients_test_sets = []
     tokenizer = None
     for cid in cids:

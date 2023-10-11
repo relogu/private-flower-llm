@@ -17,7 +17,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from pollen_worker.pollen_utils import chunks_idx
+from pollen_worker.utils import chunks_idx
 
 OPENIMAGE_DTYPES = {
     "client_id": np.int64,
