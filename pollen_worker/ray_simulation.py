@@ -14,6 +14,7 @@ import hydra
 import nvsmi
 import torch
 import transformers
+import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
@@ -21,7 +22,6 @@ from flwr.server.client_manager import SimpleClientManager
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
-import wandb
 from pollen_worker.pollen_utils import get_clients_population_dict
 from pollen_worker.utils import RayContextManager, wandb_init, weighted_average
 from pollen_worker.virtual_client import VirtualClient
@@ -47,7 +47,7 @@ def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     if name == "shakespeare" or name == "shakespeare_memory":
         return {
             "NVIDIA A40": 36,
-            "NVIDIA GeForce RTX 2080 Ti": 11,
+            "NVIDIA GeForce RTX 2080 Ti": 10,
         }
     if name == "google_speech":
         return {
@@ -90,9 +90,8 @@ def main(cfg: DictConfig) -> None:
 
     client_resources = {
         "num_gpus": num_available_gpus / n_workers,
-        # FIXME: How can we set this up?
-        # "num_cpus": 1,
-        "num_cpus": max(1, len(os.sched_getaffinity(0)) / n_workers),
+        # NOTE: Ray supports fractional CPU resources
+        "num_cpus": len(os.sched_getaffinity(0)) / n_workers,
     }
     log(INFO, "Client resources are: %s", client_resources)
 
@@ -106,11 +105,11 @@ def main(cfg: DictConfig) -> None:
     n_clients_per_round = cfg.task.n_clients_per_round
 
     def get_client_fn(
-        cid: int,
+        cid: str,
     ) -> ClientLike:
         return VirtualClient(
             name=cfg.task.name,
-            cid=cid,
+            cid=int(cid),
         )
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
@@ -134,19 +133,16 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
 
-    # (Otional) Specify Ray configuration
+    # (Optional) Specify Ray configuration
     log(INFO, f"This simulation has affinity: {os.sched_getaffinity(0)}")
     ray_init_args = {
         "address": cfg.ray_address,
         "_redis_password": cfg.ray_redis_password,
         "_node_ip_address": cfg.ray_node_ip_address,
-        # "include_dashboard": False,
-        # # FIXME: Do we need to set this up?
-        # "num_cpus": len(os.sched_getaffinity(0)),
     }
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-    # start simulation
+    # Start simulation
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,

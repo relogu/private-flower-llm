@@ -32,8 +32,6 @@ SHAKESPEARE_DTYPES = {
 class SHAKESPEARE(Dataset):
     """Shakespeare dataset object."""
 
-    classes = []
-
     def __init__(
         self,
         root: Path,
@@ -125,8 +123,6 @@ class SHAKESPEARE(Dataset):
 
 class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
     """Shakespeare dataset object stored in the RAM."""
-
-    classes = []
 
     def __init__(
         self,
@@ -261,7 +257,8 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool.join()
     log(INFO, f"Pool outputs length: {len(pool_outputs)}")
     clients = []
-    [clients.extend(out) for out in pool_outputs]
+    for out in pool_outputs:
+        clients.extend(out)
     log(INFO, f"Pool outputs concat length: {len(clients)}")
 
     df = pd.DataFrame(clients, columns=["client_id", "samples"])

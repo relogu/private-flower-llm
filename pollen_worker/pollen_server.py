@@ -24,6 +24,7 @@ from pollen_worker.placements import get_placement_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
+from pollen_worker.virtual_client import VirtualClient
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -51,7 +52,7 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Union[Dict[str, int], Dict[int, int]],
+        cids: Dict[int, int],
         client_fn: Callable[[int], ClientLike],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
@@ -118,7 +119,8 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            i: self.client_fn(k) for i, (k, _) in enumerate(self.cids.items())
+            str(i): VirtualClient(name="", cid=str(k))
+            for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
@@ -162,8 +164,10 @@ class PollenServer(Server):
         for current_round in range(1, num_rounds + 1):
             # Check for changes in connected NodeManagers
             dropped, new = _check_connected_node_managers(
-                old_connected_node_managers_cid=self.nodes_dict.keys(),
-                new_connected_node_managers_cid=self._client_manager.node_managers.keys(),
+                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
+                new_connected_node_managers_cid=[
+                    k for k, _ in self._client_manager.node_managers.items()
+                ],
             )
             if len(dropped) > 0:
                 # Handle dropped NodeManagers
@@ -322,7 +326,7 @@ class PollenServer(Server):
         # Translate `client_instruction` to `node_instructions`
         node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
-                (int(client.cid), self.cids[client.cid])
+                (int(client.cid), self.cids[int(client.cid)])
                 for client, _ in client_instructions
             ],
             nodes_dict=self.nodes_dict,
@@ -458,7 +462,7 @@ def get_properties_client(
 ) -> Tuple[ClientProxy, Node]:
     """Get properties froma a Node."""
     ins = GetPropertiesIns(config={})
-    node_properties_res: Node = client.get_properties(ins=ins, timeout=timeout)
+    node_properties_res = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties
     log(
         DEBUG,
@@ -512,6 +516,7 @@ def _check_strategy_for_pollen(
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
+    return True
 
 
 def _check_connected_node_managers(

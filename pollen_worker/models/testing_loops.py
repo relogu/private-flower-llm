@@ -8,6 +8,7 @@ from typing import List, Tuple
 import hydra
 import torch
 import transformers
+import wandb
 import yaml
 from omegaconf import DictConfig
 from torch.nn import Module
@@ -16,7 +17,6 @@ from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
-import wandb
 from pollen_worker.datasets.nlp_util import mask_tokens
 from pollen_worker.utils import wandb_init
 
@@ -93,8 +93,8 @@ def google_speech_testing_loop(
     **kwargs,
 ):
     """Implement Google Speech task's test loop."""
-    test_loss = 0
-    test_len = 0
+    test_loss = 0.0
+    test_len = 0.0
     num_correct = 0
 
     net.eval()
@@ -140,8 +140,8 @@ def general_testing_loop(
     **kwargs,
 ):
     """Implement Shakespeare and Open Image task's test loop."""
-    test_loss = 0
-    test_len = 0
+    test_loss = 0.0
+    test_len = 0.0
     num_correct = 0
 
     net.eval()

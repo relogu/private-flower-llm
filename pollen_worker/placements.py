@@ -306,7 +306,7 @@ def round_robin_placement(
     # (the remainder is assigned to the last worker)
     n_total_workers = np.sum(
         [
-            [device.concurrency for _, device in node.device_info.items()]
+            np.sum([device.concurrency for _, device in node.device_info.items()])
             for _, (_, node) in nodes_dict.items()
         ]
     )
@@ -331,7 +331,7 @@ def round_robin_placement(
                     if len(current_split) > 0:
                         [device_assignment[device_id].append(c) for c in current_split]
     # Covert list of int to string
-    node_assignments = [
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
         (
             c_p,
             {
@@ -385,7 +385,7 @@ def sorted_round_robin_placement(
         sampled_virtual_cids[np.arange(i, len(sampled_virtual_cids), len(nodes_dict))]
         for i in range(len(nodes_dict))
     ]
-    node_assignments = []
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = []
     for _, (client_proxy, node) in nodes_dict.items():
         device_assignment: Dict[str, str] = {}
         for device_id, device in node.device_info.items():
@@ -613,7 +613,7 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
     }
     # NOTE: This might be unnecessary with the defaults in the `filter` function
     # Remove None values
-    output = {k: v for k, v in output.items() if v is not None}
+    output = {k: v for k, v in output.items() if v.num_rows != 0}
     # log(
     #     DEBUG,
     #     "split_clients_training_table after checking for Nones :: output %s",

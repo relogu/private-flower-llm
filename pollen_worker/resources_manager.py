@@ -19,6 +19,7 @@ from typing import Dict, List, Tuple
 
 import nvsmi
 import psutil
+import pyarrow as pa
 import pynvml
 import torch
 from flwr.client import NumPyClient
@@ -115,7 +116,7 @@ def get_cpu_prop(
     future: Future = p.submit(client.fit, parameters=params, config=config)
     future.result()
     p.shutdown(wait=False)
-    current_concurrency = monitor.cpu_ram_available // sum(monitor.pid_ram_used)
+    current_concurrency = int(monitor.cpu_ram_available // sum(monitor.pid_ram_used))
     cpu_prop = {
         f"{cpu_type}:0": Device(
             id=0,
@@ -171,12 +172,12 @@ class Device:
         """Create a Device object from a string (built with str(Device))."""
         d = json.loads(d)
         return Device(
-            id=d["id"],
+            id=int(d["id"]),
             name=d["name"],
             type=d["type"],
-            total_memory=d["total_memory"],
-            allocated_memory=d["allocated_memory"],
-            concurrency=d["concurrency"],
+            total_memory=float(d["total_memory"]),
+            allocated_memory=float(d["allocated_memory"]),
+            concurrency=int(d["concurrency"]),
         )
 
 
@@ -214,12 +215,12 @@ class Node:
         d = json.loads(d)
         return Node(
             name=d["name"],
-            cpu_num=d["cpu_num"],
-            cpu_ram_total=d["cpu_ram_total"],
-            cpu_ram_available=d["cpu_ram_available"],
+            cpu_num=int(d["cpu_num"]),
+            cpu_ram_total=int(d["cpu_ram_total"]),
+            cpu_ram_available=int(d["cpu_ram_available"]),
             device_info={
-                k: Device.from_str(str(v).replace("'", '"'))
-                for k, v in d["device_info"].items()
+                str(k): Device.from_str(str(v).replace("'", '"'))
+                for k, v in dict(d["device_info"]).items()
             },
         )
 
@@ -242,7 +243,7 @@ class ResourcesMonitor(Thread):
         self.cpu_ram_total = 0.0
         self.cpu_ram_available = 0.0
         self.do_run = True
-        self.pid_ram_used = []
+        self.pid_ram_used: List[int] = []
         self.dead = False
 
     def _get_gpu_memory(self) -> Tuple[float, float]:
@@ -298,7 +299,7 @@ class ResourcesMonitor(Thread):
         `self.vram_maximum_allocated_memory`.
         """
         while self.do_run:
-            mem = 0.0
+            mem = (0.0, 0.0)
             if self.gpu_id >= 0:
                 mem = self._get_gpu_memory()
                 self.vram_total_memory = max(self.vram_total_memory, mem[0])
@@ -347,13 +348,16 @@ class DaemonResourcesMonitor(Thread):
         self.frequency = frequency
         self.gpu_ids = gpu_ids
         self.do_run = True
-        self.gpu_stats = []
+        self.gpu_stats: List[pa.Table] = []
 
     def _get_gpu_stats(self) -> None:
         def output_to_list(x) -> bytes:
             return bytes(x)
 
-        command = NVIDIA_SMI_GET_GPUS_STATS + f" -i {','.join(self.gpu_ids)}"
+        command = (
+            NVIDIA_SMI_GET_GPUS_STATS
+            + f" -i {','.join([str(i) for i in self.gpu_ids])}"
+        )
         try:
             current_gpu_stats = output_to_list(
                 sp.check_output(shlex.split(command), timeout=3)
@@ -397,6 +401,6 @@ if __name__ == "__main__":
         device_info={},
     )
     log(INFO, f"NodeManager's properties are: {node}")
-    node = Node.from_str(str(node["node"]))
+    node = Node.from_str(str(node))
     log(INFO, f"Converted to Node object {node}")
     log(INFO, f"Node {node.name} has {len(node.device_info)} acceleration devices.")

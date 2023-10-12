@@ -368,7 +368,9 @@ def get_centralised_eval_set(
     pool.close()
     pool.join()
     # Retrieve the results fro the pool
-    [[clients_test_sets.append(a) for a in x[0]] for x in pool_outputs]
+    for x in pool_outputs:
+        for a in x[0]:
+            clients_test_sets.append(a)
     tokenizer = pool_outputs[0][1]
     # Concatenate the clients test sets
     testset = ConcatDataset(clients_test_sets)

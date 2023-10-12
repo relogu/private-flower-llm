@@ -52,10 +52,13 @@ from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_worker.pollen_utils import get_pyarrow_buffer_from_table
-from pollen_worker.resources_manager import get_cpu_prop  # , DaemonResourcesMonitor
-from pollen_worker.resources_manager import Node, get_cuda_prop
-from pollen_worker.utils import get_parameters, partially_aggregate_with_metrics
-from pollen_worker.virtual_client import VirtualClient
+from pollen_worker.resources_manager import (  # , DaemonResourcesMonitor
+    Device,
+    Node,
+    get_cpu_prop,
+    get_cuda_prop,
+)
+from pollen_worker.utils import partially_aggregate_with_metrics
 
 pickle.Pickler = cloudpickle.Pickler
 transformers.logging.set_verbosity_error()
@@ -86,20 +89,20 @@ def allocate_shm(
         shm.buf[:] = b"\0" * shm.size
     else:
         shm = SharedMemory(name=name)
-    params_sh = [
+    params_sh: NDArrays = [
         np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
         for x, y in zip(parameters, array_bounds)
     ]
     # Create shared memory for num_samples, train loss, and train accuracy
-    num_samples_sh = np.ndarray(
+    num_samples_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
         (1,),
         dtype=np.int64,
         buffer=shm.buf[-int(nbytes_int + 2 * nbytes_float) : -int(2 * nbytes_float)],
     )
-    train_loss_sh = np.ndarray(
+    train_loss_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
         (1,), dtype=np.float64, buffer=shm.buf[-int(2 * nbytes_float) : -nbytes_float]
     )
-    train_accuracy_sh = np.ndarray(
+    train_accuracy_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
         (1,), dtype=np.float64, buffer=shm.buf[-nbytes_float:]
     )
     return params_sh, num_samples_sh, train_loss_sh, train_accuracy_sh, shm
@@ -149,23 +152,23 @@ class Worker(mp.Process):
         self.current_round: int = 0
         self.concurrency = concurrency
 
-        # Instatiate shared memories variables
-        self.config_shm = None
-        (
-            self.round_params,
-            self.round_num_samples,
-            self.round_shm,
-            self.round_train_loss,
-            self.round_train_acc,
-        ) = (None, None, None, None, None)
-        (
-            self.worker_params,
-            self.worker_num_samples,
-            self.worker_shm,
-            self.worker_train_loss,
-            self.worker_train_acc,
-        ) = (None, None, None, None, None)
-        self.test_params = None
+        # # Instatiate shared memories variables
+        # self.config_shm = None
+        # (
+        #     self.round_params,
+        #     self.round_num_samples,
+        #     self.round_shm,
+        #     self.round_train_loss,
+        #     self.round_train_acc,
+        # ) = (None, None, None, None, None)
+        # (
+        #     self.worker_params,
+        #     self.worker_num_samples,
+        #     self.worker_shm,
+        #     self.worker_train_loss,
+        #     self.worker_train_acc,
+        # ) = (None, None, None, None, None)
+        # self.test_params = None
 
     def process_task(self, client_id: int) -> None:
         """Process the received task."""
@@ -176,7 +179,7 @@ class Worker(mp.Process):
         config["device"] = self.device
 
         # Load client
-        tmp_client = self.client_fn(client_id=client_id)
+        tmp_client = self.client_fn(client_id)
 
         done = False
         while not done:
@@ -206,8 +209,8 @@ class Worker(mp.Process):
                 self.worker_train_acc,
                 fit_trained_weights,
                 fit_num_samples,
-                train_metrics["train_loss"],
-                train_metrics["accuracy"],
+                float(train_metrics["train_loss"]),
+                float(train_metrics["accuracy"]),
             )
         # Partially aggregating fit results
         else:
@@ -226,8 +229,8 @@ class Worker(mp.Process):
                 (
                     fit_trained_weights,
                     fit_num_samples,
-                    train_metrics["train_loss"],
-                    train_metrics["accuracy"],
+                    float(train_metrics["train_loss"]),
+                    float(train_metrics["accuracy"]),
                 ),
             )
             write_to_fit_result_shm(
@@ -299,7 +302,7 @@ class Worker(mp.Process):
         pynvml.nvmlInit()
         # Task loop
         for task in iter(self.task_queue.get, None):
-            self.process_task(task)
+            self.process_task(int(task))
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0])
         # Un-register shared memories
@@ -341,7 +344,7 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Allocate shared memory for round parameters
         self.client_fn = client_fn
-        tmp_client: VirtualClient = client_fn(client_id=0)
+        tmp_client: NumPyClient = client_fn(0)
         (
             self.round_parameters,
             self.round_num_samples,
@@ -397,9 +400,9 @@ class NodeManager(fl.client.NumPyClient):
         self._start_workers({})
 
     def _get_node_properties(self) -> Dict[str, Scalar]:
-        device_info = {}
+        device_info: Dict[str, Device] = {}
         # Get hardware accelerator properties
-        tmp_client: VirtualClient = self.client_fn(client_id=0)
+        tmp_client: NumPyClient = self.client_fn(0)
         tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
             # log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
@@ -420,7 +423,10 @@ class NodeManager(fl.client.NumPyClient):
             #     " Assessing CPU execution.",
             #     self.name
             # )
-            device_info = get_cpu_prop("cpu")
+            device_info = dict(
+                get_cpu_prop("cpu", tmp_client, tmp_params, config=self.warm_up_config),
+                **device_info,
+            )
         try:
             cpus = len(psutil.Process().cpu_affinity())
         except AttributeError:
@@ -440,12 +446,14 @@ class NodeManager(fl.client.NumPyClient):
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
         """Implement how to get properties."""
-        return self.properties
+        return self.properties if self.properties else {}
 
     def get_parameters(self, config) -> NDArrays:
         """Implement how to get parameters."""
-        tmp_client = self.client_fn(client_id=0)
-        return get_parameters(tmp_client.net)
+        # tmp_client = self.client_fn(client_id=0)
+        # return get_parameters(tmp_client.net)
+        tmp_client: NumPyClient = self.client_fn(0)
+        return tmp_client.get_parameters(config=config)
 
     def _start_workers(self, config) -> None:
         for _, worker_list in self.workers.items():
@@ -582,10 +590,9 @@ class NodeManager(fl.client.NumPyClient):
         # log(DEBUG, "Monitor closed")
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():
-                [
+                for _ in range(len(list_of_workers)):
+                    # Put a None for a worker to terminate it
                     self.task_queues[device].put(None)
-                    for _ in range(len(list_of_workers))
-                ]
         # Wait for workers to finish
         a = 0
         while a < len(self.workers[device]):
