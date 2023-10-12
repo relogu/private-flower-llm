@@ -52,7 +52,7 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Union[Dict[str, int], Dict[int, int]],
+        cids: Dict[int, int],
         client_fn: Callable[[int], ClientLike],
         strategy: Optional[Strategy] = None,
         placement_policy: str = "rr",
@@ -326,7 +326,7 @@ class PollenServer(Server):
         # Translate `client_instruction` to `node_instructions`
         node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
-                (int(client.cid), self.cids[str(client.cid)])
+                (int(client.cid), self.cids[int(client.cid)])
                 for client, _ in client_instructions
             ],
             nodes_dict=self.nodes_dict,

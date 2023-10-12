@@ -313,7 +313,7 @@ def round_robin_placement(
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
     # Init the device assignment and the return value
-    device_assignment = defaultdict(list(int))
+    device_assignment = defaultdict(list)
     node_assignments = [
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
