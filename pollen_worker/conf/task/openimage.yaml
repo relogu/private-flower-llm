@@ -7,6 +7,7 @@ n_clients_per_round: 100
 batch_size: 20
 momentum: 0.9
 weight_decay: 5e-4
+n_workers: 1
 
 strategy:
   _target_: pollen_worker.rs_fedyogi.FedYogiRSModel

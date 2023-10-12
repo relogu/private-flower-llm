@@ -7,7 +7,7 @@ even if many are spawned at once.
 """
 from collections import OrderedDict
 from logging import INFO
-from typing import Generator, Any, Callable, Dict, Literal, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import flwr as fl
 import torch
@@ -166,13 +166,6 @@ class VirtualClient(fl.client.NumPyClient):
                 collate_fn=get_collate_fn(tokenizer=tokenizer)
                 if tokenizer is not None
                 else None,
-                # NOTE: This parameter is handled differently by different
-                # versions of PyTorch!
-                # # number of batches loaded in advance by each worker
-                # # if True, the data loader will not shutdown the worker processes
-                # # after a dataset has been consumed once.
-                # # This allows to maintain the workers
-                # prefetch_factor=2 if config["n_workers"] > 0 else None,
                 # NOTE: Default arguments
                 # how to draw sample from the dataset
                 sampler=None,
@@ -183,6 +176,8 @@ class VirtualClient(fl.client.NumPyClient):
                 # init function for worker processes
                 worker_init_fn=None,
                 multiprocessing_context=None,
+                # This allows to maintain the workers
+                prefetch_factor=2,
                 # PRNG to use for random sampling
                 generator=None,
                 persistent_workers=False,
@@ -227,7 +222,7 @@ class VirtualClient(fl.client.NumPyClient):
         self,
         parameters: NDArrays,
         config: Dict[str, Scalar],
-    ) -> tuple[float, int, dict[str, float]]:
+    ) -> tuple[float, int, Dict[str, Scalar]]:
         """Implement the evaluation step."""
         return 0.0, 0, {"local_accuracy": 0.0}
 

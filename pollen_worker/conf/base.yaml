@@ -36,6 +36,7 @@ gen_on_fit_config_fn:
   momentum: ${task.momentum}
   weight_decay: ${task.weight_decay}
   is_fake: ${task.is_fake}
+  n_workers: ${task.n_workers}
 
 use_wandb: false
 

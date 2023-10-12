@@ -19,10 +19,9 @@ from typing import (
 
 import ray
 import torch
+import wandb
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
-
-import wandb
 
 
 #### Server ####
@@ -118,12 +117,13 @@ def invert_one_to_many_dictionary(
 
 
 def gen_on_fit_config_fn(
-    batch_size,
-    local_epochs,
-    learning_rate,
-    momentum,
-    weight_decay,
-    is_fake,
+    batch_size: int = 10,
+    local_epochs: int = 1,
+    learning_rate: float = 0.1,
+    momentum: float = 0.0,
+    weight_decay: float = 0.0,
+    is_fake: bool = False,
+    n_workers: int = 0,
 ) -> Callable[[int], Dict[str, Scalar]]:
     """Return generic `on_fit_config_fn` for Flower Client."""
 
@@ -138,7 +138,7 @@ def gen_on_fit_config_fn(
             "server_round": server_round,
             "is_fake": is_fake,
             # TODO: Brainstorm how to set this hyperparameter
-            "n_workers": 0,
+            "n_workers": n_workers,
         }
 
     return on_fit_config_fn

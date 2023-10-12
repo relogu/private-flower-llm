@@ -10,6 +10,7 @@ weight_decay: 1e-2
 block_size: 64
 model: albert-base-v2
 tokenizer: albert-base-v2
+n_workers: 0
 
 strategy:
   _target_: pollen_worker.rs_fedavg.FedAvgRSModel
