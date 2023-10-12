@@ -24,6 +24,7 @@ from pollen_worker.placements import get_placement_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
+from pollen_worker.virtual_client import VirtualClient
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -118,7 +119,8 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            str(i): ClientProxy(str(k)) for i, (k, _) in enumerate(self.cids.items())
+            str(i): VirtualClient(name="", cid=str(k))
+            for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
