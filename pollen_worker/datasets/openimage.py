@@ -47,8 +47,6 @@ test_transform = transforms.Compose(
 class OpenImage(Dataset):
     """Open Image dataset object."""
 
-    classes = []
-
     def __init__(
         self,
         root,
@@ -160,7 +158,8 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool.join()
     log(INFO, f"Pool outputs length: {len(pool_outputs)}")
     clients = []
-    [clients.extend(out) for out in pool_outputs]
+    for out in pool_outputs:
+        clients.extend(out)
     log(INFO, f"Pool outputs concat length: {len(clients)}")
 
     df = pd.DataFrame(clients, columns=["client_id", "samples"])

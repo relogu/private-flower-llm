@@ -376,7 +376,8 @@ def _create_parquet_clients_dict(
         pool.join()
         log(INFO, f"Pool outputs length: {len(pool_outputs)}")
         clients = []
-        [clients.extend(out) for out in pool_outputs]
+        for out in pool_outputs:
+            clients.extend(out)
         log(INFO, f"Pool outputs concat length: {len(clients)}")
 
         df = pd.DataFrame(clients, columns=["client_id", "samples"])
