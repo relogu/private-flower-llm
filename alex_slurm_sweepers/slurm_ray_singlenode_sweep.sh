@@ -1,18 +1,9 @@
-#!/bin/bash
-#SBATCH -c 8
-#SBATCH -w ngongotaha
-#SBATCH --gres=gpu:1
-#SBATCH --job-name=ray_singlenode
-#SBATCH --partition=normal
-#SBATCH --tasks-per-node=1
-#SBATCH --mem=100G
+
 
 # Get the timestamp and the unique run id
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-cd /nfs-share/aai30/projects/pollen_worker
-poetry shell
 
 # Set up the redis password
 redis_password=$(uuidgen)
@@ -63,10 +54,7 @@ poetry run ray status
 
 sleep 5
 
-# Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
+CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
-# How to use this script? Use what follows for a interactive job
-# srun -w ngongotaha -c 8 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
-# Use what follows for a batch job
-# sbatch lorenzo_slurm/slurm_ray_singlenode.sh
+# Launch the server, uncomment the end of the line if you what separed output logs.
+poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS $@

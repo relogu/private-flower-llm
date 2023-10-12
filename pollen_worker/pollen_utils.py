@@ -9,18 +9,7 @@ from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import pandas as pd
 import psutil
@@ -39,6 +28,7 @@ from pollen_worker.datasets.google_speech import SPEECH
 from pollen_worker.datasets.nlp_util import TextDataset
 from pollen_worker.datasets.openimage import OpenImage
 from pollen_worker.datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
+from pollen_worker.utils import chunks_idx
 
 
 def get_device() -> device_type:
@@ -317,8 +307,6 @@ def _get_dataset_root(name: str) -> Path:
         return Path("/datasets/FedScale/openImg")
 
     raise ValueError("No dataset for the requested dataset name")
-
-
 
 
 def _get_list_of_clients_ds(

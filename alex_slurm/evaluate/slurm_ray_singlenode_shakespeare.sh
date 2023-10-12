@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -c 8
 #SBATCH -w ngongotaha
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --job-name=ray_worker_bench
 #SBATCH --tasks-per-node=1
 
@@ -12,15 +12,10 @@ run_uuid=$(uuidgen)
 cd /nfs-share/aai30/projects/pollen_worker
 poetry shell
 
-
-# Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="-m run_uuid=$run_uuid task=google_speech task.num_rounds=100 local_epochs=1,2,3 task.learning_rate=0.001,0.005,0.01,0.05,0.1 flwr_address=127.0.0.1:1046"
-
-
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
+poetry run python -m pollen_worker.models.multirun_testing_loops 
 
 # How to use this script? Use what follows for a interactive job
-# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
+# srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode_google_speech.sh
 # Use what follows for a batch job
-# sbatch slurm_ray_singlenode.sh
+# sbatch evaluate/slurm_ray_singlenode.sh

@@ -7,7 +7,7 @@ even if many are spawned at once.
 """
 from collections import OrderedDict
 from logging import INFO
-from typing import Generator, Any, Callable, Dict, Literal, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import flwr as fl
 import torch

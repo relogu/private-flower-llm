@@ -80,7 +80,7 @@ def reddit_testing_loop(
         test_loss = round(test_loss, 4)
         # Accuracy averages over number of masked tokens
         accuracy = round(num_correct / num_masked, 4)
-        test_metrics = {"accuracy": accuracy}
+        test_metrics = {"test_accuracy": accuracy}
 
     return test_loss, test_len, test_metrics
 
@@ -126,7 +126,7 @@ def google_speech_testing_loop(
         accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "accuracy": accuracy,
+            "test_accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -171,7 +171,7 @@ def general_testing_loop(
         accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "accuracy": accuracy,
+            "test_accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -205,11 +205,11 @@ def main(cfg: DictConfig) -> None:
     from pathlib import Path
 
     import psutil
-    from datasets.nlp_util import get_collate_fn
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
     from flwr.common.typing import Parameters
 
+    from pollen_worker.datasets.nlp_util import get_collate_fn
     from pollen_worker.pollen_utils import (
         get_centralised_eval_set,
         get_device,
@@ -228,6 +228,17 @@ def main(cfg: DictConfig) -> None:
     s_t = time.time()
     # Set the root directory
     root_dir = Path(cfg.output_dir)
+    results_file = root_dir / "offline_eval_results.csv"
+    if results_file.exists():
+        print("Already evaluated this model. Exiting...")
+        return
+
+    try:
+        next(root_dir.glob("parameters_aggregated_*"))
+    except StopIteration:
+        print("No parameters_aggregated_*. file found. Exiting...")
+        return
+
     # Get test_loop fn
     test_loop = get_testing_loop(name=cfg.task.name)
     # Get number of available cpu cores
@@ -264,9 +275,10 @@ def main(cfg: DictConfig) -> None:
 
     log(INFO, f"Time to get the eval dataloader: {time.time() - s_t}")
     # Create results .csv file
-    results_file = root_dir / "offline_eval_results.csv"
+
     net = None
     # Get the models' performance
+
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,

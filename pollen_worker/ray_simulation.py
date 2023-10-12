@@ -32,6 +32,9 @@ transformers.logging.set_verbosity_error()
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+os.environ["RAY_USAGE_STATS"] = "0"
+os.environ["RAY_USAGE_STATS_ENABLED"] = "0"
+
 
 def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     """Return the mapping between GPU resources and number of Ray clients."""
