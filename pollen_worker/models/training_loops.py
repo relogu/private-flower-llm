@@ -44,27 +44,31 @@ def reddit_training_loop(
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
     """Implement Reddit task's train loop."""
+    current_loss = 0.0
+    accuracy = 0.0
     for _ in range(epochs):
         current_loss = 0.0
         num_masked = 0
         num_correct = 0
-        for data in trainloader:
+        for _data in trainloader:
             # TODO: handle steps instead of epochs ?
 
             # ========= Pre-processing + placement ===========
-            data: torch.Tensor = data.to(device=device)
+            data: torch.Tensor = _data.to(device=device)
             data, target, masked_indices = mask_tokens(
                 # TODO: Read the `mlm_probability` from the config
                 data,
                 tokenizer,
                 mlm_probability=0.15,
-                device=device,
+                device=str(device),
             )
             target = target.to(device=device)
             num_masked += len(target[masked_indices])
 
             # ========= Define the forward pass ==============
             output: MaskedLMOutput = net(input_ids=data, labels=target)
+            if output.loss is None:
+                raise ValueError("Loss is None")
             current_loss += output.loss.item()
             predictions = output.logits.max(2)[1]
             # Only computing accuracy on the masked tokens
@@ -97,6 +101,8 @@ def google_speech_training_loop(
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
     """Implement Google Speech task's train loop."""
+    current_loss = 0.0
+    accuracy = 0.0
     for _ in range(epochs):
         current_loss = 0.0
         num_samples = 0
@@ -140,6 +146,8 @@ def general_training_loop(
     **kwargs,
 ) -> Tuple[Module, Dict[str, Scalar]]:
     """Implement Shakespeare and Open Image task's train loop."""
+    current_loss = 0.0
+    accuracy = 0.0
     for _ in range(epochs):
         current_loss = 0.0
         num_samples = 0

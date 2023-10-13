@@ -298,7 +298,9 @@ def mask_tokens(
     indices_replaced = (torch.bernoulli(torch.full(labels.shape, 0.8)) == 1).to(
         device=device
     ) & masked_indices
-    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(  # type: ignore
+        tokenizer.mask_token,
+    )
 
     # 10% of the time, we replace masked input tokens with random word
     indices_random = (

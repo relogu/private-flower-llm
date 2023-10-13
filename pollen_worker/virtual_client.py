@@ -7,7 +7,7 @@ even if many are spawned at once.
 """
 from collections import OrderedDict
 from logging import INFO
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, cast
 
 import flwr as fl
 import torch
@@ -37,8 +37,8 @@ class VirtualClient(fl.client.NumPyClient):
         self,
         *,
         name: str,
-        cid: int,
-    ):
+        cid: Union[int, str],
+    ) -> None:
         self.name = name
         self.cid = cid
         transformers.logging.set_verbosity_error()
@@ -143,7 +143,7 @@ class VirtualClient(fl.client.NumPyClient):
             config["device"] = get_device()
         # Load client's dataset
         ds, tokenizer = (
-            get_client_ds(name=self.name, cid=self.cid)
+            get_client_ds(name=self.name, cid=cast(int, self.cid))
             if not config["is_fake"]
             else (None, None)
         )
@@ -196,11 +196,11 @@ class VirtualClient(fl.client.NumPyClient):
         net.to(device=config["device"])
         net.train()
         # Train the model
-        self._train_loop = (
+        self._train_loop = (  # type: ignore[assignment]
             get_training_loop(name=self.name)
             if not config["is_fake"]
             else self._train_loop
-        )  # type: ignore
+        )  # type: ignore[assignment]
         optimizer = get_optimizer(name=self.name, model=net)
         criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(
             device=config["device"]

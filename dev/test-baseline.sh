@@ -22,7 +22,7 @@ poetry run python -m ruff check pollen_worker/
 echo "- ruff: done"
 
 echo "- mypy: start"
-poetry run python -m mypy --incremental pollen_worker/
+poetry run python -m mypy --incremental --show-traceback pollen_worker/
 echo "- mypy: done"
 
 

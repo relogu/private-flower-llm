@@ -12,7 +12,7 @@ from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import psutil
@@ -101,8 +101,7 @@ def get_pollen_models(
     batch_size: int = 1,
     clients_stats: Optional[pa.Table] = None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Train models for the given placement policy using the provided clients' statistics.
+    """Train models for the given placement policy using the provided clients' stats.
 
     Args:
         placement_policy (str): The placement policy to use for training the models.
@@ -116,10 +115,8 @@ def get_pollen_models(
         Optional[Dict[str, Any]]: A dictionary containing the trained models.
     """
     if (
-        ( placement_policy == "lb"
-        or placement_policy == "llb" )
-        and clients_stats is not None
-    ):
+        placement_policy == "lb" or placement_policy == "llb"
+    ) and clients_stats is not None:
         # Set up the functions to use for training the models
         fns = (
             [_pollen_function, _jacobian_pollen_function]
@@ -238,10 +235,7 @@ def learning_based_placement(
         #     f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
         # )
         # Getting nodes a simpler node dict
-        simple_node_dict = {
-            node.name: node
-            for k,(c_p, node) in nodes_dict.items()
-        }
+        simple_node_dict = {node.name: node for k, (c_p, node) in nodes_dict.items()}
 
         # Init the device assignment and the return value
         # t_0 = time.time()
@@ -252,7 +246,9 @@ def learning_based_placement(
                 0.0,  # Device load
                 k.split("_")[0],  # Node name
                 k.split("_")[1],  # Device name
-                simple_node_dict[k.split("_")[0]].device_info[k.split("_")[1]].concurrency,  # Device concurrency
+                simple_node_dict[k.split("_")[0]]
+                .device_info[k.split("_")[1]]
+                .concurrency,  # Device concurrency
             ]
             for k, v in pollen_models.items()
         ]

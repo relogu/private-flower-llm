@@ -215,7 +215,7 @@ if __name__ == "__main__":
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
