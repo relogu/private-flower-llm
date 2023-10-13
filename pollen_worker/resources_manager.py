@@ -170,14 +170,14 @@ class Device:
     @staticmethod
     def from_str(d: str) -> Device:
         """Create a Device object from a string (built with str(Device))."""
-        d = json.loads(d)
+        device_dict: Dict = json.loads(d)
         return Device(
-            id=int(d["id"]),
-            name=d["name"],
-            type=d["type"],
-            total_memory=float(d["total_memory"]),
-            allocated_memory=float(d["allocated_memory"]),
-            concurrency=int(d["concurrency"]),
+            id=int(device_dict["id"]),
+            name=device_dict["name"],
+            type=device_dict["type"],
+            total_memory=float(device_dict["total_memory"]),
+            allocated_memory=float(device_dict["allocated_memory"]),
+            concurrency=int(device_dict["concurrency"]),
         )
 
 

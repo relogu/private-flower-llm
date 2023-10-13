@@ -5,9 +5,10 @@ costs. Metric collection only happens if wandb is turned on.
 """
 from typing import Dict
 
-import wandb
 from flwr.common.typing import Scalar
 from flwr.server.history import History
+
+import wandb
 
 
 class WandbHistory(History):

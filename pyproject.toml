@@ -121,10 +121,14 @@ module = "torch.*"
 follow_imports = "skip"
 follow_imports_for_stubs = true
 
+[[tool.mypy.overrides]]
+module = "ray.*"
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
 [tool.docformatter]
 wrap-summaries = 88
 wrap-descriptions = 88
-
 
 [tool.yamlfix]
 allow_duplicate_keys = false
