@@ -1,6 +1,6 @@
 ---
 project: pollen
-program: ray_simulation.py
+program: ./alex_slurm_sweepers/slurm_ray_singlenode_sweep.sh
 method: bayes
 
 metric:
@@ -26,9 +26,10 @@ early_terminate:
   eta: 2
 
 command:
-  - python
   - ${program}
   - use_wandb=True
   - task=openimage
   - task.num_rounds=100
+  - ray_address=auto
+  - ray_node_ip_address=128.232.115.66
   - ${args_no_hyphens}

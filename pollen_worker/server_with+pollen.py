@@ -6,17 +6,18 @@ using wandb for logging and hydra for exeperiment configuration.
 import json
 from logging import DEBUG, INFO
 from pathlib import Path
+from typing import Dict, Union
 
 import flwr as fl
 import hydra
 import transformers
-import wandb
 from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
+import wandb
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.pollen_utils import get_clients_population_dict
@@ -44,6 +45,7 @@ def main(cfg: DictConfig) -> None:
     import time
 
     s_t = time.time()
+    cid_samples_dict: Dict[Union[str, int], int]
     try:
         cid_samples_dict = get_clients_population_dict(
             name=cfg.task.name,
@@ -70,7 +72,7 @@ def main(cfg: DictConfig) -> None:
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
     strategy = instantiate(
         cfg.task.strategy,
-        saving_path=Path(hydra_cfg["runtime"]["output_dir"]),
+        saving_path=Path(hydra_cfg["runtime"]["output_dir"]),  # type: ignore[index]
         min_fit_clients=2,
         fraction_evaluate=0.0,
         fraction_fit=n_clients_per_round / n_total_clients,
@@ -93,7 +95,7 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
-        saving_path = Path(hydra_cfg["runtime"]["output_dir"])
+        saving_path = Path(hydra_cfg["runtime"]["output_dir"])  # type: ignore[index]
         # Start Flower server
         hist = fl.server.start_server(
             server_address=cfg.flwr_address,

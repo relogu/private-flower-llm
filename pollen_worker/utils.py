@@ -19,9 +19,10 @@ from typing import (
 
 import ray
 import torch
-import wandb
 from flwr.common import Metrics, NDArrays, Scalar
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+
+import wandb
 
 
 #### Server ####

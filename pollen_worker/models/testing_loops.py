@@ -3,12 +3,11 @@
 The main function is hydra-specific and allows for a centralised evluation of a model
 from the hydra output directory using the concatenated test sets of all clients.
 """
-from typing import List, Tuple
+from typing import List, Tuple, cast
 
 import hydra
 import torch
 import transformers
-import wandb
 import yaml
 from omegaconf import DictConfig
 from torch.nn import Module
@@ -17,6 +16,7 @@ from tqdm import tqdm
 from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
+import wandb
 from pollen_worker.datasets.nlp_util import mask_tokens
 from pollen_worker.utils import wandb_init
 
@@ -48,16 +48,19 @@ def reddit_testing_loop(
 
     net.eval()
     with torch.no_grad():
-        for data in tqdm(testloader):
+        for __data in tqdm(testloader):
             try:
-                data: torch.Tensor = data.to(device=device)
+                _data: torch.Tensor = __data.to(device=device)
                 data, target, masked_indices = mask_tokens(
-                    data, tokenizer, mlm_probability=0.15, device=device
+                    _data, tokenizer, mlm_probability=0.15, device=str(device)
                 )
                 target = target.to(device=device)
                 num_masked += len(target[masked_indices])
 
                 output: MaskedLMOutput = net(input_ids=data, labels=target)
+                if output.loss is None:
+                    raise Exception("Loss is None")
+
                 test_loss += output.loss.item()
                 predictions = output.logits.max(2)[1]
                 # Only computing accuracy on the masked tokens
@@ -80,7 +83,7 @@ def reddit_testing_loop(
         test_loss = round(test_loss, 4)
         # Accuracy averages over number of masked tokens
         accuracy = round(num_correct / num_masked, 4)
-        test_metrics = {"accuracy": accuracy}
+        test_metrics = {"test_accuracy": accuracy}
 
     return test_loss, test_len, test_metrics
 
@@ -99,11 +102,11 @@ def google_speech_testing_loop(
 
     net.eval()
     with torch.no_grad():
-        for data, target in tqdm(testloader):
+        for _data, _target in tqdm(testloader):
             try:
-                data: torch.Tensor = data.to(device=device)
-                data = torch.unsqueeze(data, 1)
-                target: torch.Tensor = target.to(device=device)
+                data: torch.Tensor = torch.unsqueeze(_data.to(device=device), 1)
+
+                target: torch.Tensor = _target.to(device=device)
                 test_len += len(target)
 
                 output: torch.Tensor = net(data)
@@ -126,7 +129,7 @@ def google_speech_testing_loop(
         accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "accuracy": accuracy,
+            "test_accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -146,10 +149,10 @@ def general_testing_loop(
 
     net.eval()
     with torch.no_grad():
-        for data, target in tqdm(testloader):
+        for _data, _target in tqdm(testloader):
             try:
-                data: torch.Tensor = data.to(device=device)
-                target: torch.Tensor = target.to(device=device)
+                data: torch.Tensor = _data.to(device=device)
+                target: torch.Tensor = _target.to(device=device)
                 test_len += len(target)
 
                 output: torch.Tensor = net(data)
@@ -171,7 +174,7 @@ def general_testing_loop(
         accuracy = round(num_correct / test_len, 4)
 
         test_metrics = {
-            "accuracy": accuracy,
+            "test_accuracy": accuracy,
         }
 
     return test_loss, test_len, test_metrics
@@ -184,8 +187,8 @@ def accuracy(
     with torch.no_grad():
         maxk = max(topk)
 
-        _, pred = output.topk(maxk, 1, True, True)
-        pred: torch.Tensor = pred.t()
+        _, _pred = output.topk(maxk, 1, True, True)
+        pred: torch.Tensor = _pred.t()
         correct = pred.eq(target.reshape(1, -1).expand_as(pred))
 
         res = []
@@ -205,11 +208,11 @@ def main(cfg: DictConfig) -> None:
     from pathlib import Path
 
     import psutil
-    from datasets.nlp_util import get_collate_fn
     from flwr.common import parameters_to_ndarrays
     from flwr.common.logger import log
     from flwr.common.typing import Parameters
 
+    from pollen_worker.datasets.nlp_util import get_collate_fn
     from pollen_worker.pollen_utils import (
         get_centralised_eval_set,
         get_device,
@@ -228,11 +231,22 @@ def main(cfg: DictConfig) -> None:
     s_t = time.time()
     # Set the root directory
     root_dir = Path(cfg.output_dir)
+    results_file = root_dir / "offline_eval_results.csv"
+    if results_file.exists():
+        print("Already evaluated this model. Exiting...")
+        return
+
+    try:
+        next(root_dir.glob("parameters_aggregated_*"))
+    except StopIteration:
+        print("No parameters_aggregated_*. file found. Exiting...")
+        return
+
     # Get test_loop fn
     test_loop = get_testing_loop(name=cfg.task.name)
     # Get number of available cpu cores
     try:
-        n_cpus = len(psutil.Process().cpu_affinity())
+        n_cpus = len(psutil.Process().cpu_affinity())  # type: ignore
     except AttributeError:
         n_cpus = psutil.cpu_count()
     # Get the test set
@@ -241,7 +255,7 @@ def main(cfg: DictConfig) -> None:
     testset, tokenizer = get_centralised_eval_set(
         name=cfg.task.name, n_clients=cfg.task.n_clients, seed=cfg.seed
     )
-    log(INFO, f"Test set size: {len(testset)}")
+    log(INFO, f"Test set size: {len(testset)}")  # type: ignore
     # Instantiate the test loader
     batch_sizes = {
         "reddit": 375,  # Fills up the VRAM
@@ -264,16 +278,17 @@ def main(cfg: DictConfig) -> None:
 
     log(INFO, f"Time to get the eval dataloader: {time.time() - s_t}")
     # Create results .csv file
-    results_file = root_dir / "offline_eval_results.csv"
+
     net = None
     # Get the models' performance
+
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,
         settings=wandb.Settings(start_method="thread"),
         config=wandb_config,  # type: ignore
     ):
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.benchmark = True  # type: ignore
         for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
             round = int(parameters_file.name.split("_")[-1])
             with open(parameters_file, "rb") as f:
@@ -281,7 +296,7 @@ def main(cfg: DictConfig) -> None:
             if isinstance(parameters, Parameters):
                 parameters = parameters_to_ndarrays(parameters)
             net = get_model(name=cfg.task.name)
-            set_parameters(parameters=parameters, net=net, device=device)
+            set_parameters(parameters=parameters, net=net, device=str(device))
             net.to(device=device)
             net.eval()
             criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
@@ -289,7 +304,7 @@ def main(cfg: DictConfig) -> None:
                 testloader=testloader,
                 device=device,
                 net=net,
-                tokenizer=tokenizer,
+                tokenizer=cast(AlbertTokenizer, tokenizer),
                 criterion=criterion,
             )
             if i == 0:

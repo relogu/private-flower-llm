@@ -41,7 +41,10 @@ def get_device() -> device_type:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    elif (
+        torch.backends.mps.is_available()  # type: ignore
+        and torch.backends.mps.is_built()  # type: ignore
+    ):
         device = "mps"
     return cast(device_type, device)
 
@@ -278,7 +281,7 @@ def get_clients_population_dict(
     seed: int,
     dataset: str = "train",
     batch_size: int = 20,
-) -> Dict[str, int]:
+) -> Dict[Union[str, int], int]:
     """Return the client-samples mapping given the task's name."""
     dataframe = pd.read_parquet(
         _get_dataset_root(name)
