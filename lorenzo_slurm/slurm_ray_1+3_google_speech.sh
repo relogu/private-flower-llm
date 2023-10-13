@@ -1,10 +1,12 @@
 #!/bin/bash
 #! Slurm requests
-#SBATCH --job-name=ray_multinode
+#SBATCH --job-name=RG13
 #SBATCH --nodelist=ngongotaha,mauao
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:3
+#SBATCH --cpus-per-task=24
+#SBATCH --output=%x-%j.out
+#SBATCH --dependency=afterany:77858,77834
 
 # Load modules or your own conda environment here
 cd /nfs-share/ls985/pollen_worker
@@ -47,27 +49,19 @@ echo "SLURM_CPUS_PER_TASK: $SLURM_CPUS_PER_TASK"
 this_hostname=$(hostname)
 echo "STARTING HEAD at $this_hostname"
 srun --nodes=1 --ntasks=1 -w "$this_hostname" \
-  poetry run ray start --head --node-ip-address=$ip --num-gpus=${NUM_GPUS} --num-cpus=${SLURM_CPUS_PER_TASK} \
+  poetry run ray start --head --node-ip-address=$ip --num-gpus=1 --num-cpus=${SLURM_CPUS_PER_TASK} \
       --port=$main_port \
+      --node-manager-port=$port1 \
+      --object-manager-port=$port2 \
+      --ray-client-server-port=$port3 \
+      --redis-shard-ports=$port4 \
+      --min-worker-port=$port5 \
+      --max-worker-port=$port6 \
       --redis-password="$redis_password" \
       --verbose \
       --include-dashboard=False \
       --log-style="record" \
       --block &
-# srun --nodes=1 --ntasks=1 -w "$this_hostname" \
-#   poetry run ray start --head --node-ip-address=$ip --num-gpus=${NUM_GPUS} --num-cpus=${SLURM_CPUS_PER_TASK} \
-#       --port=$main_port \
-#       --node-manager-port=$port1 \
-#       --object-manager-port=$port2 \
-#       --ray-client-server-port=$port3 \
-#       --redis-shard-ports=$port4 \
-#       --min-worker-port=$port5 \
-#       --max-worker-port=$port6 \
-#       --redis-password="$redis_password" \
-#       --verbose \
-#       --include-dashboard=False \
-#       --log-style="record" \
-#       --block &
 
 sleep 30
 
@@ -82,7 +76,7 @@ for ((i = 0; i <= num_nodes; i++)); do
     if [ "$node_i" != "$this_hostname" ]; then
         echo "Starting WORKER $i at $node_i"
         srun --nodes=1 --ntasks=1 -w "$node_i" \
-            poetry run ray start --address "$ip_head" --redis-password="$redis_password" --num-gpus=1 --num-cpus=${SLURM_CPUS_PER_TASK} --log-style="record" --block &
+            poetry run ray start --address "$ip_head" --redis-password="$redis_password" --num-gpus=${NUM_GPUS} --num-cpus=${SLURM_CPUS_PER_TASK} --log-style="record" --block &
     fi
 done
 
@@ -92,7 +86,7 @@ poetry run ray status
 
 # ===== Call your code below =====
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 echo "LAUNCHING SIMULATION at $this_hostname"
 

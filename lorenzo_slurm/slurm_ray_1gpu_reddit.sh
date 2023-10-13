@@ -2,10 +2,10 @@
 #SBATCH -c 11
 #SBATCH -w mauao
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=shake_ray
+#SBATCH --job-name=RR1
 #SBATCH --partition=normal
 #SBATCH --tasks-per-node=1
-#SBATCH --mem=100G
+#SBATCH --output=%x-%j.out
 #SBATCH --dependency=afterany:77800
 
 # Get the timestamp and the unique run id
@@ -19,14 +19,13 @@ poetry shell
 redis_password=$(uuidgen)
 export redis_password
 # Set up the head node IP address
-ip="localhost"
-main_port=8379
-port1=8700
-port2=8701
-port3=10001
-port4=8702
-port5=10002
-port6=19999
+main_port=8381
+port1=8706
+port2=8707
+port3=10005
+port4=8708
+port5=10006
+port6=20001
 
 export NUM_GPUS=`echo $CUDA_VISIBLE_DEVICES | awk 'BEGIN{FS=","};{print NF}'`
 
@@ -65,7 +64,7 @@ poetry run ray status
 sleep 5
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
+CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=reddit task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
 poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 

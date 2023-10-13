@@ -2,11 +2,11 @@
 #SBATCH -c 11
 #SBATCH -w mauao
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=shake_ray
+#SBATCH --job-name=RG1
 #SBATCH --partition=normal
 #SBATCH --tasks-per-node=1
-#SBATCH --mem=100G
-#SBATCH --dependency=afterany:77800
+#SBATCH --output=%x-%j.out
+#SBATCH --dependency=afterany:77841
 
 # Get the timestamp and the unique run id
 timestamp=$(date +%Y-%m-%d_%H%M%S)
@@ -65,7 +65,7 @@ poetry run ray status
 sleep 5
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=200 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
+CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
 poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
