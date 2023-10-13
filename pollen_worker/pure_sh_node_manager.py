@@ -52,12 +52,7 @@ from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_worker.pollen_utils import get_pyarrow_buffer_from_table
-from pollen_worker.resources_manager import (  # , DaemonResourcesMonitor
-    Device,
-    Node,
-    get_cpu_prop,
-    get_cuda_prop,
-)
+from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
 from pollen_worker.utils import partially_aggregate_with_metrics
 
 pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
@@ -151,24 +146,6 @@ class Worker(mp.Process):  # type: ignore
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.concurrency = concurrency
-
-        # # Instatiate shared memories variables
-        # self.config_shm = None
-        # (
-        #     self.round_params,
-        #     self.round_num_samples,
-        #     self.round_shm,
-        #     self.round_train_loss,
-        #     self.round_train_acc,
-        # ) = (None, None, None, None, None)
-        # (
-        #     self.worker_params,
-        #     self.worker_num_samples,
-        #     self.worker_shm,
-        #     self.worker_train_loss,
-        #     self.worker_train_acc,
-        # ) = (None, None, None, None, None)
-        # self.test_params = None
 
     def process_task(self, client_id: int) -> None:
         """Process the received task."""
@@ -348,7 +325,6 @@ class NodeManager(fl.client.NumPyClient):
         self.warm_up_config: Dict[str, Scalar] = warm_up_config
         self.properties = None
         self.all_gpus: List[GPU] = list(nvsmi.get_gpus())
-        self.monitor = None
         self.run_uuid = run_uuid
 
         # One task_queue per GPU make this ctypes array
@@ -379,8 +355,6 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
-        # max_proc_device = [('cuda:0', 1)]
-        # log(DEBUG, f"Node {self.name} has max_proc_device {max_proc_device}")
 
         # Allocate shared memory for partial aggregation
         # and create workers
@@ -433,7 +407,6 @@ class NodeManager(fl.client.NumPyClient):
         tmp_client: NumPyClient = self.client_fn(0)
         tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
-            # log(INFO, f"Node {getfqdn()}, CUDA acceleration available.")
             device_info = dict(
                 get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
@@ -442,18 +415,11 @@ class NodeManager(fl.client.NumPyClient):
             torch._C._is_mps_available()  # type: ignore[attr-defined]
             and torch._C.has_mps  # type: ignore[attr-defined]
         ):
-            # log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
             )
         if not device_info:
-            # log(
-            #     INFO,
-            #     "Node %s, No hardware accelerator available."
-            #     " Assessing CPU execution.",
-            #     self.name
-            # )
             device_info = dict(
                 get_cpu_prop("cpu", tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
@@ -471,7 +437,6 @@ class NodeManager(fl.client.NumPyClient):
             - psutil.virtual_memory().used,
             device_info=device_info,
         )
-        # log(DEBUG, f"Node {getfqdn()} has complete properties {self.node}")
 
         return {"node": str(self.node)}
 
@@ -481,8 +446,6 @@ class NodeManager(fl.client.NumPyClient):
 
     def get_parameters(self, config) -> NDArrays:
         """Implement how to get parameters."""
-        # tmp_client = self.client_fn(client_id=0)
-        # return get_parameters(tmp_client.net)
         tmp_client: NumPyClient = self.client_fn(0)
         return tmp_client.get_parameters(config=config)
 
@@ -491,11 +454,6 @@ class NodeManager(fl.client.NumPyClient):
             for worker in worker_list:
                 if not worker.is_alive():
                     worker.start()
-        # # Launch monitor
-        # if self.monitor is None:
-        #     gpu_ids = [gpu.id for _, gpu in self.node.device_info.items()]
-        #     self.monitor = DaemonResourcesMonitor(gpu_ids=gpu_ids)
-        #     self.monitor.start()
 
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
@@ -515,7 +473,6 @@ class NodeManager(fl.client.NumPyClient):
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
-        # self.monitor.gpu_stats = []
         for device in self.workers.keys():
             list_ids_for_this_gpu = cast(str, config[device]).split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
@@ -565,7 +522,6 @@ class NodeManager(fl.client.NumPyClient):
                 stats["end_time"].append(current_stats[2])
             num_processed_virtual_clients += 1
         # Collect statistics to pyarrow.Table
-        # gpu_stats = pa.concat_tables(self.monitor.gpu_stats)
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
         clients_training_stats = clients_training_stats.add_column(
@@ -583,8 +539,17 @@ class NodeManager(fl.client.NumPyClient):
             "node",
             cast(pa.Array, pa.array([self.name] * len(clients_training_stats["cid"]))),
         )
+        clients_training_stats = clients_training_stats.add_column(
+            0,
+            "server_round",
+            cast(
+                pa.Array,
+                pa.array(
+                    [int(config["server_round"])] * len(clients_training_stats["cid"])
+                ),
+            ),
+        )
         # Prepare statistics to be sent to the server
-        # gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         ## Node aggregation
         node_trained_params = aggregate(
@@ -607,7 +572,6 @@ class NodeManager(fl.client.NumPyClient):
                 "train_loss": node_train_loss,
                 "accuracy": node_accuracy,
                 "stats": clients_training_buf.to_pybytes(),
-                # "gpu_stats": gpu_buf.to_pybytes(),
             },
         )
 
@@ -617,13 +581,7 @@ class NodeManager(fl.client.NumPyClient):
 
     def __del__(self) -> None:
         """Implement the closing on the NodeManager."""
-        log(DEBUG, "Closing stuff")
-        # # Close monitor
-        # while self.monitor.is_alive():
-        #     self.monitor.do_run = False
-        #     time.sleep(0.1)
-        # del self.monitor
-        # log(DEBUG, "Monitor closed")
+        log(DEBUG, "Closing NodeManager...")
         device: str = ""
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():

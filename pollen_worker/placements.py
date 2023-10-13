@@ -12,7 +12,7 @@ from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import psutil
@@ -96,7 +96,7 @@ def parrot_learning_based_placement(
 
 
 def get_pollen_models(
-    cids: Dict[int, int],
+    cids: Dict[Union[str, int], int],
     placement_policy: str = "rr",
     batch_size: int = 1,
     clients_stats: Optional[pa.Table] = None,
@@ -135,14 +135,18 @@ def get_pollen_models(
         # )
         # Split clients_stats table into a list of tables, one per client
         # t_0 = time.time()
-        clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
+        splitted_clients_stats: Dict[str, pa.Table] = split_clients_training_table(
+            clients_stats
+        )
         # log(
         #     DEBUG,
         #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
         # )
         # Train models
         # t_0 = time.time()
-        pollen_models: Dict[str, Any] = sequential_train_models(fns, clients_stats)
+        pollen_models: Dict[str, Any] = sequential_train_models(
+            fns, splitted_clients_stats
+        )
         # log(
         #     DEBUG,
         #     f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
@@ -168,7 +172,7 @@ def get_pollen_models(
         # Get models' scores
         # t_0 = time.time()
         current_scores: Dict[str, float] = sequential_get_models_scores(
-            fns[0], pollen_models, clients_stats
+            fns[0], pollen_models, splitted_clients_stats
         )
         # log(
         #     DEBUG,
@@ -330,9 +334,7 @@ def round_robin_placement(
         (client_proxy, device_assignment).
     """
     # Extract cids
-    sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in sampled_virtual_cids]
-    )
+    cids: NDArray[np.int16] = np.array([x[0] for x in sampled_virtual_cids])
     # Creates equal clients splits amongst workers
     # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
@@ -343,10 +345,10 @@ def round_robin_placement(
         ]
     )
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
-    splits = np.array_split(sampled_virtual_cids, n_total_workers)
+    splits = np.array_split(cids, n_total_workers)
     # Init the device assignment and the return value
-    device_assignment = defaultdict(list)
-    node_assignments = [
+    device_assignment: Dict[str, List[int]] = defaultdict(list)
+    tmp_node_assignments = [
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
@@ -354,14 +356,15 @@ def round_robin_placement(
     while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
-            node_assignments, nodes_dict.items()
+            tmp_node_assignments, nodes_dict.items()
         ):
             # Loop over devices in the current node
             for device_id, device in node.device_info.items():
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        [device_assignment[device_id].append(c) for c in current_split]
+                        for c in current_split:
+                            device_assignment[device_id].append(c)
     # Covert list of int to string
     node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
         (
@@ -371,7 +374,7 @@ def round_robin_placement(
                 for k, v in device_assignment.items()
             },
         )
-        for c_p, device_assignment in node_assignments
+        for c_p, device_assignment in tmp_node_assignments
     ]
     if verbose:
         log(
@@ -402,35 +405,55 @@ def sorted_round_robin_placement(
         (client_proxy, device_assignment).
     """
     # Sorting by size (decreasing order)
-    sampled_virtual_cids = sorted(
+    sorted_sampled_virtual_cids = sorted(
         sampled_virtual_cids,
         key=lambda x: x[1],
         reverse=True,
     )
     # Extract cids
-    sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in sampled_virtual_cids]
-    )
+    cids: NDArray[np.int16] = np.array([x[0] for x in sorted_sampled_virtual_cids])
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     splits = [
-        sampled_virtual_cids[np.arange(i, len(sampled_virtual_cids), len(nodes_dict))]
-        for i in range(len(nodes_dict))
+        cids[np.arange(i, len(cids), n_total_workers)] for i in range(n_total_workers)
     ]
-    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = []
-    for _, (client_proxy, node) in nodes_dict.items():
-        device_assignment: Dict[str, str] = {}
-        for device_id, device in node.device_info.items():
-            current_split = splits.pop(0)
-            log(DEBUG, f"current_split {current_split}")
-            if len(current_split) > 0:
-                device_assignment[device_id] = ",".join(
-                    [
-                        ",".join([str(cid) for cid in current_split])
-                        for _ in range(device.concurrency)
-                    ]
-                )
-        node_assignments.append((client_proxy, device_assignment))
+    log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
+    # Init the device assignment and the return value
+    device_assignment: Dict[str, List[int]] = defaultdict(list)
+    tmp_node_assignments = [
+        (client_proxy, copy(device_assignment))
+        for _, (client_proxy, _) in nodes_dict.items()
+    ]
+    # Loop over the splits created
+    while len(splits) > 0:
+        # Loop over nodes
+        for (_c_p, device_assignment), (_, (_, node)) in zip(
+            tmp_node_assignments, nodes_dict.items()
+        ):
+            # Loop over devices in the current node
+            for device_id, device in node.device_info.items():
+                for _ in range(device.concurrency):
+                    current_split = splits.pop(0)
+                    if len(current_split) > 0:
+                        for c in current_split:
+                            device_assignment[device_id].append(c)
+    # Covert list of int to string
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
+        (
+            c_p,
+            {
+                k: _convert_list_of_int_to_string(v)
+                for k, v in device_assignment.items()
+            },
+        )
+        for c_p, device_assignment in tmp_node_assignments
+    ]
     if verbose:
         log(
             DEBUG,
@@ -442,10 +465,10 @@ def sorted_round_robin_placement(
 
 def samples_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     """Implement placement strategy based on the number of samples.
 
     Args:
@@ -460,36 +483,72 @@ def samples_placement(
         (client_proxy, device_assignment).
     """
     # Sorting by size (decreasing order)
-    sampled_virtual_cids = sorted(
+    sorted_sampled_virtual_cids = sorted(
         sampled_virtual_cids,
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
-        sums = [sum([x[1] for x in list_cids]) for list_cids in splits]
+    # Get the total number of workers
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
+    # Assing the first `n_total_workers` clients to the workers
+    tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
+    # Assign the remaining clients iteratively to the least loaded worker
+    for virtual_cid, num_samples in sorted_sampled_virtual_cids[n_total_workers:]:
+        sums = [sum([x[1] for x in list_cids]) for list_cids in tmp_splits]
         min_worker = np.argmin(sums)
-        splits[min_worker].append((virtual_cid, num_samples))
-    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
-    lists_cids = defaultdict(list)
-    for worker_dict, split in zip(nodes_dict.items(), splits):
-        lists_cids[worker_dict[0]] = split
-    if verbose:
-        placement = [(k, v) for k, v in lists_cids.items()]
-        log(
-            DEBUG, f"Number of samples placement :: dict(worker_id, [cids]) {placement}"
+        tmp_splits[min_worker].append((virtual_cid, num_samples))
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in tmp_splits]
+    # Init the device assignment and the return value
+    device_assignment: Dict[str, List[int]] = defaultdict(list)
+    tmp_node_assignments = [
+        (client_proxy, copy(device_assignment))
+        for _, (client_proxy, _) in nodes_dict.items()
+    ]
+    # Loop over the splits created
+    while len(splits) > 0:
+        # Loop over nodes
+        for (_c_p, device_assignment), (_, (_, node)) in zip(
+            tmp_node_assignments, nodes_dict.items()
+        ):
+            # Loop over devices in the current node
+            for device_id, device in node.device_info.items():
+                for _ in range(device.concurrency):
+                    current_split = splits.pop(0)
+                    if len(current_split) > 0:
+                        for c in current_split:
+                            device_assignment[device_id].append(c)
+    # Covert list of int to string
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
+        (
+            c_p,
+            {
+                k: _convert_list_of_int_to_string(v)
+                for k, v in device_assignment.items()
+            },
         )
-    return lists_cids
+        for c_p, device_assignment in tmp_node_assignments
+    ]
+    if verbose:
+        log(
+            DEBUG,
+            "Number of samples placement :: dict(node, node_assignments) %s",
+            node_assignments,
+        )
+    return node_assignments
 
 
 def batches_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     """Implement placement strategy based on the number of batches.
 
     Args:
@@ -509,33 +568,69 @@ def batches_placement(
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
+    # Get the total number of workers
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
+    # Assing the first `n_total_workers` clients to the workers
+    tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
+    for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
-            sum([floor(x[1] / batch_size) for x in list_cids]) for list_cids in splits
+            sum([floor(x[1] / batch_size) for x in list_cids])
+            for list_cids in tmp_splits
         ]
         min_worker = np.argmin(sums)
-        splits[min_worker].append((virtual_cid, num_samples))
-    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
-    lists_cids = defaultdict(list)
-    for worker_dict, split in zip(nodes_dict.items(), splits):
-        lists_cids[worker_dict[0]] = split
-    if verbose:
-        placement = [(k, v) for k, v in lists_cids.items()]
-        log(
-            DEBUG, f"Number of batches placement :: dict(worker_id, [cids]) {placement}"
+        tmp_splits[min_worker].append((virtual_cid, num_samples))
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in tmp_splits]
+    # Init the device assignment and the return value
+    device_assignment: Dict[str, List[int]] = defaultdict(list)
+    tmp_node_assignments = [
+        (client_proxy, copy(device_assignment))
+        for _, (client_proxy, _) in nodes_dict.items()
+    ]
+    # Loop over the splits created
+    while len(splits) > 0:
+        # Loop over nodes
+        for (_c_p, device_assignment), (_, (_, node)) in zip(
+            tmp_node_assignments, nodes_dict.items()
+        ):
+            # Loop over devices in the current node
+            for device_id, device in node.device_info.items():
+                for _ in range(device.concurrency):
+                    current_split = splits.pop(0)
+                    if len(current_split) > 0:
+                        for c in current_split:
+                            device_assignment[device_id].append(c)
+    # Covert list of int to string
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
+        (
+            c_p,
+            {
+                k: _convert_list_of_int_to_string(v)
+                for k, v in device_assignment.items()
+            },
         )
-    return lists_cids
+        for c_p, device_assignment in tmp_node_assignments
+    ]
+    if verbose:
+        log(
+            DEBUG,
+            "Number of batches placement :: dict(node, node_assignments) %s",
+            node_assignments,
+        )
+    return node_assignments
 
 
 def log_batches_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
-    nodes_dict: Dict[str, Node],
+    nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[int]]:
+) -> List[Tuple[ClientProxy, Dict[str, str]]]:
     """Implement placement strategy based on the log of the number of batches.
 
     Args:
@@ -555,26 +650,60 @@ def log_batches_placement(
         key=lambda x: x[1],
         reverse=True,
     )
-    # Assing the first `len(nodes_dict)` clients to the workers
-    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
-    for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
+    # Get the total number of workers
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
+    # Assing the first `n_total_workers` clients to the workers
+    tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
+    for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
             sum([log10(floor(x[1] / batch_size)) for x in list_cids])
-            for list_cids in splits
+            for list_cids in tmp_splits
         ]
         min_worker = np.argmin(sums)
-        splits[min_worker].append((virtual_cid, num_samples))
-    lists_cids = defaultdict(list)
-    for worker_dict, split in zip(nodes_dict.items(), splits):
-        lists_cids[worker_dict[0]] = split
+        tmp_splits[min_worker].append((virtual_cid, num_samples))
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in tmp_splits]
+    # Init the device assignment and the return value
+    device_assignment: Dict[str, List[int]] = defaultdict(list)
+    tmp_node_assignments = [
+        (client_proxy, copy(device_assignment))
+        for _, (client_proxy, _) in nodes_dict.items()
+    ]
+    # Loop over the splits created
+    while len(splits) > 0:
+        # Loop over nodes
+        for (_c_p, device_assignment), (_, (_, node)) in zip(
+            tmp_node_assignments, nodes_dict.items()
+        ):
+            # Loop over devices in the current node
+            for device_id, device in node.device_info.items():
+                for _ in range(device.concurrency):
+                    current_split = splits.pop(0)
+                    if len(current_split) > 0:
+                        for c in current_split:
+                            device_assignment[device_id].append(c)
+    # Covert list of int to string
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
+        (
+            c_p,
+            {
+                k: _convert_list_of_int_to_string(v)
+                for k, v in device_assignment.items()
+            },
+        )
+        for c_p, device_assignment in tmp_node_assignments
+    ]
     if verbose:
-        placement = [(k, v) for k, v in lists_cids.items()]
         log(
             DEBUG,
-            "Logarithm of number of batches placement :: dict(worker_id, [cids]) %s",
-            placement,
+            "Logarithm of num of batches placement :: dict(node, node_assignments) %s",
+            node_assignments,
         )
-    return lists_cids
+    return node_assignments
 
 
 def _pollen_function(x, A, B):
@@ -610,7 +739,7 @@ def _convert_list_of_int_to_string(list_of_int: List[int]) -> str:
 def add_n_batches_column_to_clients_stats_table(
     input: pa.Table,
     batch_size: int,
-    cids: Dict[int, int],
+    cids: Dict[Union[str, int], int],
 ) -> pa.Table:
     """Add a `num_batches` column to the given Table."""
     return input.add_column(
@@ -643,7 +772,6 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
         )
         for a, b in iterator
     }
-    # NOTE: This might be unnecessary with the defaults in the `filter` function
     # Remove None values
     output = {k: v for k, v in output.items() if v.num_rows != 0}
     # log(

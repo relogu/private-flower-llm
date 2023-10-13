@@ -85,11 +85,10 @@ class PollenServer(Server):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
-        # self.gpu_stats = None
         self.clients_training_stats: Optional[pa.Table] = None
         self.history = history
         self.num_nodes = num_nodes
-        self.pollen_models: Dict[str, Any] = None
+        self.pollen_models: Optional[Dict[str, Any]] = None
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -245,8 +244,6 @@ class PollenServer(Server):
                     )
 
         # Save the statistics to a parquet file
-        # if self.gpu_stats is not None:
-        #     pq.write_table(self.gpu_stats, self.saving_path / "gpu_stats.parquet")
         if self.clients_training_stats is not None:
             pq.write_table(
                 self.clients_training_stats,
@@ -344,7 +341,6 @@ class PollenServer(Server):
             cids=self.cids,
             pollen_models=self.pollen_models,
             clients_stats=self.clients_training_stats,
-            # gpu_stats=self.gpu_stats,
             verbose=False,
         )
         # log(
@@ -358,15 +354,13 @@ class PollenServer(Server):
             # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
 
-            # # NOTE: This key is used only when the training policy of workers
-            # # is not `sequential`, and for setting the `num_workers` parameter
-            # # in the `DataLoader`
-            # if "server_round" not in node_fit_config:
-            #     node_fit_config["server_round"] = server_round
-            # if "n_workers" not in node_fit_config:
-            #     node_fit_config["n_workers"] = 1
-            # # TODO/FIXME: Set the level of concurrency
-            # node_fit_config["concurrency"] = 1
+            # NOTE: This key is used only when the training policy of workers
+            # is not `sequential`, and for setting the `num_workers` parameter
+            # in the `DataLoader`
+            if "server_round" not in node_fit_config:
+                node_fit_config["server_round"] = server_round
+            if "n_workers" not in node_fit_config:
+                node_fit_config["n_workers"] = 1
 
             # Assign `cids` to NodeManagers' devices
             node_fit_config.update(device_assignment)
@@ -410,11 +404,8 @@ class PollenServer(Server):
 
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
-        # received_gpu_stats = []
         for _client, fit_res in results:
             tmp_clients_training_stats = fit_res.metrics.pop("stats")
-            # tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
-            # received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
             received_clients_training_stats.append(
                 get_table_from_pyarrow_buffer(
                     cast(pa.Buffer, tmp_clients_training_stats)
@@ -422,10 +413,6 @@ class PollenServer(Server):
             )
 
         # Collect the new statistics and append to the global statistics
-        # if self.gpu_stats is None:
-        #     self.gpu_stats = pa.concat_tables(received_gpu_stats)
-        # else:
-        #     self.gpu_stats = pa.concat_tables([self.gpu_stats] + received_gpu_stats)
         if self.clients_training_stats is None:
             self.clients_training_stats = pa.concat_tables(
                 received_clients_training_stats
@@ -452,11 +439,11 @@ def pollen_fit_clients(
     client_instructions: List[Tuple[ClientProxy, FitIns]],
     max_workers: Optional[int],
     timeout: Optional[float],
+    cids: Dict[Union[str, int], int],
     clients_stats: Optional[pa.Table] = None,
     batch_size: int = 1,
-    cids: Optional[Dict[int, int]] = None,
     placement_policy: str = "rr",
-) -> Tuple[FitResultsAndFailures, Dict[str, Any]]:
+) -> Tuple[FitResultsAndFailures, Optional[Dict[str, Any]]]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
