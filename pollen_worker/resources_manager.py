@@ -15,7 +15,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import nvsmi
 import psutil
@@ -212,15 +212,15 @@ class Node:
     @staticmethod
     def from_str(d: str) -> "Node":
         """Create a Node from a string (built with str(Node))."""
-        d = json.loads(d)
+        dict_json: Dict[str, Any] = json.loads(d)
         return Node(
-            name=d["name"],
-            cpu_num=int(d["cpu_num"]),
-            cpu_ram_total=int(d["cpu_ram_total"]),
-            cpu_ram_available=int(d["cpu_ram_available"]),
+            name=dict_json["name"],
+            cpu_num=int(dict_json["cpu_num"]),
+            cpu_ram_total=int(dict_json["cpu_ram_total"]),
+            cpu_ram_available=int(dict_json["cpu_ram_available"]),
             device_info={
                 str(k): Device.from_str(str(v).replace("'", '"'))
-                for k, v in dict(d["device_info"]).items()
+                for k, v in cast(Dict[str, str], dict(dict_json["device_info"])).items()
             },
         )
 
@@ -231,7 +231,7 @@ class ResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_id: int,
-        list_pids: List[int] = None,
+        list_pids: Optional[List[int]] = None,
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
@@ -333,7 +333,8 @@ class ResourcesMonitor(Thread):
         finally:
             # Avoid a refcycle if the thread is running a function with
             # an argument that has a member that points to the thread.
-            del self._target, self._args, self._kwargs
+
+            del self._target, self._args, self._kwargs  # type: ignore[attr-defined]
 
 
 class DaemonResourcesMonitor(Thread):
@@ -389,7 +390,7 @@ class DaemonResourcesMonitor(Thread):
                 "DaemonResourcesMonitor.run: dying",
             )
         finally:
-            del self._target, self._args, self._kwargs
+            del self._target, self._args, self._kwargs  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

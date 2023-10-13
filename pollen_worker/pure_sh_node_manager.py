@@ -25,11 +25,11 @@ import pickle
 import time
 from collections import defaultdict
 from logging import DEBUG, ERROR
-from multiprocessing import resource_tracker
+from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import cloudpickle
 import flwr as fl
@@ -47,7 +47,7 @@ from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from hydra.utils import call
-from multiprocess import Queue, set_start_method
+from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig
 
@@ -60,7 +60,7 @@ from pollen_worker.resources_manager import (  # , DaemonResourcesMonitor
 )
 from pollen_worker.utils import partially_aggregate_with_metrics
 
-pickle.Pickler = cloudpickle.Pickler
+pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
 transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)
 
@@ -129,7 +129,7 @@ def write_to_fit_result_shm(
     buffer_backed_train_accuracy[0] = new_train_accuracy
 
 
-class Worker(mp.Process):
+class Worker(mp.Process):  # type: ignore
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -182,6 +182,9 @@ class Worker(mp.Process):
         tmp_client = self.client_fn(client_id)
 
         done = False
+        fit_trained_weights: Optional[NDArrays] = None
+        fit_num_samples: Optional[int] = None
+        train_metrics: Optional[Dict[str, Scalar]] = None
         while not done:
             try:
                 # Call fit on shared parameters
@@ -198,7 +201,15 @@ class Worker(mp.Process):
                     client_id,
                     e,
                 )
-
+        if (
+            fit_trained_weights is None
+            or fit_num_samples is None
+            or train_metrics is None
+        ):
+            raise ValueError(
+                f"Worker {self.worker_id} failed in training client {client_id}."
+                " fit_trained_weights, fit_num_samples, or train_metrics is None."
+            )
         # If new round, then copy result to shared memory directly
         if config["server_round"] > self.current_round:
             self.current_round = config["server_round"]
@@ -301,16 +312,24 @@ class Worker(mp.Process):
         # NOTE: This is for controlling the GPU memory allocation
         pynvml.nvmlInit()
         # Task loop
+        task: int
         for task in iter(self.task_queue.get, None):
             self.process_task(int(task))
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0])
         # Un-register shared memories
         # NOTE: Bug https://bugs.python.org/issue39959#msg364351
-        resource_tracker.unregister(self.config_shm._name, "shared_memory")
-        resource_tracker.unregister(self.round_shm._name, "shared_memory")
         resource_tracker.unregister(
-            SharedMemory(name=self.worker_id)._name, "shared_memory"
+            self.config_shm._name,  # type: ignore[attr-defined]
+            "shared_memory",
+        )
+        resource_tracker.unregister(
+            self.round_shm._name,  # type: ignore[attr-defined]
+            "shared_memory",
+        )
+        resource_tracker.unregister(
+            SharedMemory(name=self.worker_id)._name,  # type: ignore[attr-defined]
+            "shared_memory",
         )
 
 
@@ -328,7 +347,7 @@ class NodeManager(fl.client.NumPyClient):
         self.name: str = getfqdn()
         self.warm_up_config: Dict[str, Scalar] = warm_up_config
         self.properties = None
-        self.all_gpus: List[GPU] = nvsmi.get_gpus()
+        self.all_gpus: List[GPU] = list(nvsmi.get_gpus())
         self.monitor = None
         self.run_uuid = run_uuid
 
@@ -367,7 +386,16 @@ class NodeManager(fl.client.NumPyClient):
         # and create workers
         worker_cnt = 0
         self.workers: Dict[str, List[Worker]] = defaultdict(list)
-        self.shared_local_agg: Dict[str, List[NDArrays, int, SharedMemory]] = {}
+        self.shared_local_agg: Dict[
+            str,
+            Tuple[
+                NDArrays,
+                np.ndarray[Any, np.dtype[Any]],
+                np.ndarray[Any, np.dtype[Any]],
+                np.ndarray[Any, np.dtype[Any]],
+                SharedMemory,
+            ],
+        ] = {}
         for device, num_proc in max_proc_device:
             for _ in range(num_proc):
                 worker_id = self.run_uuid + POLLEN_WORKER_SHM + f"{worker_cnt}"
@@ -377,13 +405,13 @@ class NodeManager(fl.client.NumPyClient):
                     name=worker_id,
                 )
                 num_samples[0] = 0
-                self.shared_local_agg[worker_id] = [
+                self.shared_local_agg[worker_id] = (
                     params,
                     num_samples,
                     train_loss,
                     train_acc,
                     shm,
-                ]
+                )
                 self.workers[device].append(
                     Worker(
                         client_fn=client_fn,
@@ -410,7 +438,10 @@ class NodeManager(fl.client.NumPyClient):
                 get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
             )
-        if torch._C._is_mps_available() and torch._C.has_mps():
+        if (
+            torch._C._is_mps_available()  # type: ignore[attr-defined]
+            and torch._C.has_mps  # type: ignore[attr-defined]
+        ):
             # log(INFO, f"Node {getfqdn()}, MPS acceleration available.")
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
@@ -428,7 +459,7 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         try:
-            cpus = len(psutil.Process().cpu_affinity())
+            cpus = len(psutil.Process().cpu_affinity())  # type: ignore
         except AttributeError:
             cpus = psutil.cpu_count()
         # Get general node properties
@@ -486,7 +517,7 @@ class NodeManager(fl.client.NumPyClient):
         num_total_virtual_clients = 0
         # self.monitor.gpu_stats = []
         for device in self.workers.keys():
-            list_ids_for_this_gpu = config[device].split(",")
+            list_ids_for_this_gpu = cast(str, config[device]).split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
             # Close useless workers, one by one
@@ -516,7 +547,7 @@ class NodeManager(fl.client.NumPyClient):
         # Create cid->GPU mapping
         cid_gpu_mapping = {}
         for device in self.workers.keys():
-            list_ids_for_this_gpu = config[device].split(",")
+            list_ids_for_this_gpu = cast(str, config[device]).split(",")
             cid_gpu_mapping.update({cid: device for cid in list_ids_for_this_gpu})
 
         # Check if all clients have been processed
@@ -540,12 +571,17 @@ class NodeManager(fl.client.NumPyClient):
         clients_training_stats = clients_training_stats.add_column(
             0,
             "gpu",
-            pa.array(
-                [cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]]
+            cast(
+                pa.Array,
+                pa.array(
+                    [cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]]
+                ),
             ),
         )
         clients_training_stats = clients_training_stats.add_column(
-            0, "node", pa.array([self.name] * len(clients_training_stats["cid"]))
+            0,
+            "node",
+            cast(pa.Array, pa.array([self.name] * len(clients_training_stats["cid"]))),
         )
         # Prepare statistics to be sent to the server
         # gpu_buf = get_pyarrow_buffer_from_table(gpu_stats)
@@ -588,6 +624,7 @@ class NodeManager(fl.client.NumPyClient):
         #     time.sleep(0.1)
         # del self.monitor
         # log(DEBUG, "Monitor closed")
+        device: str = ""
         if self.workers is not None:
             for device, list_of_workers in self.workers.items():
                 for _ in range(len(list_of_workers)):

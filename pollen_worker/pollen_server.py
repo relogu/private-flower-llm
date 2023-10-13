@@ -6,7 +6,7 @@ import sys
 import timeit
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -18,7 +18,7 @@ from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import evaluate_clients, fit_clients
-from flwr.server.strategy import FedAvg, Strategy
+from flwr.server.strategy import FedAvg
 
 from pollen_worker.placements import get_placement_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
@@ -52,9 +52,9 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Dict[int, int],
+        cids: Dict[Union[str, int], int],
         client_fn: Callable[[int], ClientLike],
-        strategy: Optional[Strategy] = None,
+        strategy: Optional[FedAvg] = None,
         placement_policy: str = "rr",
         saving_path: Optional[Path] = None,
         history: Optional[History] = None,
@@ -69,18 +69,20 @@ class PollenServer(Server):
         self.parameters: Parameters = Parameters(
             tensors=[], tensor_type="numpy.ndarray"
         )
-        self.strategy: Strategy = strategy if strategy is not None else FedAvg()
+        self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
         _check_strategy_for_pollen(self.strategy)
-        self.on_fit_config: Callable[
-            [int], Dict[str, Scalar]
-        ] = self.strategy.on_fit_config_fn
+        self.on_fit_config: Callable[[int], Dict[str, Scalar]] = (
+            conf_fn
+            if (conf_fn := self.strategy.on_fit_config_fn) is not None
+            else lambda _: {}
+        )
         self.max_workers: Optional[int] = None
         self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
         # self.gpu_stats = None
-        self.clients_training_stats = None
+        self.clients_training_stats: Optional[pa.Table] = None
         self.history = history
         self.num_nodes = num_nodes
 
@@ -88,7 +90,10 @@ class PollenServer(Server):
         """Set the max_workers used by ThreadPoolExecutor."""
         self.max_workers = max_workers
 
-    def set_strategy(self, strategy: Strategy) -> None:
+    def set_strategy(  # type: ignore[override]
+        self,
+        strategy: FedAvg,
+    ) -> None:
         """Replace server strategy."""
         self.strategy = strategy
 
@@ -119,7 +124,7 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            str(i): VirtualClient(name="", cid=str(k))
+            str(i): cast(ClientProxy, VirtualClient(name="", cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
@@ -240,7 +245,7 @@ class PollenServer(Server):
         if self.clients_training_stats is not None:
             pq.write_table(
                 self.clients_training_stats,
-                self.saving_path / "clients_training_stats.parquet",
+                str(self.saving_path / "clients_training_stats.parquet"),
             )
 
         # Bookkeeping
@@ -401,7 +406,9 @@ class PollenServer(Server):
             # tmp_gpu_stats = fit_res.metrics.pop("gpu_stats")
             # received_gpu_stats.append(get_table_from_pyarrow_buffer(tmp_gpu_stats))
             received_clients_training_stats.append(
-                get_table_from_pyarrow_buffer(tmp_clients_training_stats)
+                get_table_from_pyarrow_buffer(
+                    cast(pa.Buffer, tmp_clients_training_stats)
+                )
             )
 
         # Append the statistics to the global statistics
@@ -491,7 +498,7 @@ def _handle_finished_future_after_get_properties(
 
 
 def _check_strategy_for_pollen(
-    strategy: Strategy,
+    strategy: FedAvg,
 ) -> bool:
     if strategy.on_fit_config_fn is None:
         log(

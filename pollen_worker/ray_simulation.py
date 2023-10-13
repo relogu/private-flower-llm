@@ -8,6 +8,7 @@ import os
 import warnings
 from logging import INFO
 from pathlib import Path
+from typing import Iterable, cast
 
 import flwr as fl
 import hydra
@@ -116,7 +117,7 @@ def main(cfg: DictConfig) -> None:
 
     # Configure the strategy
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
-    saving_path = Path(hydra_cfg["runtime"]["output_dir"])
+    saving_path = Path(hydra_cfg["runtime"]["output_dir"])  # type: ignore[index]
     strategy = instantiate(
         cfg.task.strategy,
         saving_path=saving_path,
@@ -158,7 +159,7 @@ def main(cfg: DictConfig) -> None:
         with RayContextManager() as _:
             hist = fl.simulation.start_simulation(
                 client_fn=get_client_fn,
-                clients_ids=list(cid_samples_dict.keys()),
+                clients_ids=list(cast(Iterable, cid_samples_dict.keys())),
                 client_resources=client_resources,
                 server=server,
                 config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
