@@ -12,7 +12,7 @@ from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
 import psutil
@@ -100,9 +100,9 @@ def learning_based_placement(
     sampled_virtual_cids: List[Tuple[int, int]],
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
-    cids: Dict[Union[str, int], int],
-    client_state_table: Optional[pa.Table] = None,
-    gpu_stats: Optional[pa.Table] = None,
+    cids: Union[Dict[str, int], Dict[int, int]],
+    clients_stats: pa.Table = None,
+    gpu_stats: pa.Table = None,
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
@@ -116,7 +116,7 @@ def learning_based_placement(
         batch_size (int): batch size of ALL clients.
         cids (Union[Dict[str, int], Dict[int, int]]): mapping between cids and
         number of samples.
-        client_state_table (pa.Table, optional): clients' stats. Defaults to None.
+        clients_stats (pa.Table, optional): collected clients' stats. Defaults to None.
         gpu_stats (pa.Table, optional):  collected GPUs' stats. Defaults to None.
         verbose (bool, optional): flag for logger. Defaults to False.
 
@@ -125,15 +125,15 @@ def learning_based_placement(
         List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
         (client_proxy, device_assignment).
     """
-    if client_state_table is None:  #  or gpu_stats is None:
+    if clients_stats is None:  #  or gpu_stats is None:
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         start_time = time.time()
         ## Prepare data
         # Add n_batches column to clients_stats table
         # t_0 = time.time()
-        stats_table_with_batches = add_n_batches_column_to_clients_stats_table(
-            client_state_table, batch_size, cids
+        clients_stats = add_n_batches_column_to_clients_stats_table(
+            clients_stats, batch_size, cids
         )
         # log(
         #     DEBUG,
@@ -144,9 +144,7 @@ def learning_based_placement(
         # TODO: Deal with dropped NodeManagers
         # Split clients_stats table into a list of tables, one per client
         # t_0 = time.time()
-        clients_stats: Dict[str, pa.Table] = split_clients_training_table(
-            stats_table_with_batches
-        )
+        clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
         # log(
         #     DEBUG,
         #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
@@ -281,7 +279,7 @@ def learning_based_placement(
 
 
 def round_robin_placement(
-    in_sampled_virtual_cids: List[Tuple[int, int]],
+    sampled_virtual_cids: List[Tuple[int, int]],
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     verbose: bool = False,
     **kwargs,
@@ -301,7 +299,7 @@ def round_robin_placement(
     """
     # Extract cids
     sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in in_sampled_virtual_cids]
+        [x[0] for x in sampled_virtual_cids]
     )
     # Creates equal clients splits amongst workers
     # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
@@ -315,10 +313,8 @@ def round_robin_placement(
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(sampled_virtual_cids, n_total_workers)
     # Init the device assignment and the return value
-    device_assignment: Dict[str, List[int]] = cast(
-        Dict[str, List[int]], defaultdict(list)
-    )
-    node_assignments: List[Tuple[ClientProxy, Dict[str, List[int]]]] = [
+    device_assignment = defaultdict(list)
+    node_assignments = [
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
@@ -333,10 +329,9 @@ def round_robin_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        map(device_assignment[device_id].append, current_split)
-
+                        [device_assignment[device_id].append(c) for c in current_split]
     # Covert list of int to string
-    node_assignments_str: List[Tuple[ClientProxy, Dict[str, str]]] = [
+    node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = [
         (
             c_p,
             {
@@ -350,13 +345,13 @@ def round_robin_placement(
         log(
             DEBUG,
             "Round Robin (RR) placement :: tuple(node, device assignements) %s",
-            node_assignments_str,
+            node_assignments,
         )
-    return node_assignments_str
+    return node_assignments
 
 
 def sorted_round_robin_placement(
-    sampled_virtual_cids_list: List[Tuple[int, int]],
+    sampled_virtual_cids: List[Tuple[int, int]],
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     verbose: bool = False,
     **kwargs,
@@ -375,14 +370,14 @@ def sorted_round_robin_placement(
         (client_proxy, device_assignment).
     """
     # Sorting by size (decreasing order)
-    sampled_virtual_cids_list = sorted(
-        sampled_virtual_cids_list,
+    sampled_virtual_cids = sorted(
+        sampled_virtual_cids,
         key=lambda x: x[1],
         reverse=True,
     )
     # Extract cids
     sampled_virtual_cids: NDArray[np.int16] = np.array(
-        [x[0] for x in sampled_virtual_cids_list]
+        [x[0] for x in sampled_virtual_cids]
     )
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
@@ -418,7 +413,7 @@ def samples_placement(
     nodes_dict: Dict[str, Node],
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, NDArray]:
+) -> Dict[str, List[int]]:
     """Implement placement strategy based on the number of samples.
 
     Args:
@@ -439,16 +434,13 @@ def samples_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits_list: list[list[Tuple[int, int]]] = [
-        [c] for c in sampled_virtual_cids[: len(nodes_dict)]
-    ]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
     for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
-        sums = [sum([x[1] for x in list_cids]) for list_cids in splits_list]
+        sums = [sum([x[1] for x in list_cids]) for list_cids in splits]
         min_worker = np.argmin(sums)
-        splits_list[min_worker].append((virtual_cid, num_samples))
-
-    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits_list]
-    lists_cids: Dict[str, NDArray] = cast(Dict[str, NDArray], defaultdict(list))
+        splits[min_worker].append((virtual_cid, num_samples))
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
+    lists_cids = defaultdict(list)
     for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
@@ -465,7 +457,7 @@ def batches_placement(
     batch_size: int,
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, NDArray]:
+) -> Dict[str, List[int]]:
     """Implement placement strategy based on the number of batches.
 
     Args:
@@ -486,16 +478,15 @@ def batches_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits_list = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
     for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
         sums = [
-            sum([floor(x[1] / batch_size) for x in list_cids])
-            for list_cids in splits_list
+            sum([floor(x[1] / batch_size) for x in list_cids]) for list_cids in splits
         ]
         min_worker = np.argmin(sums)
-        splits_list[min_worker].append((virtual_cid, num_samples))
-    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits_list]
-    lists_cids: Dict[str, NDArray] = cast(Dict[str, NDArray], defaultdict(list))
+        splits[min_worker].append((virtual_cid, num_samples))
+    splits = [np.array([x[0] for x in list_cids]) for list_cids in splits]
+    lists_cids = defaultdict(list)
     for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
@@ -512,7 +503,7 @@ def log_batches_placement(
     batch_size: int,
     verbose: bool = False,
     **kwargs,
-) -> Dict[str, List[Tuple[int, int]]]:
+) -> Dict[str, List[int]]:
     """Implement placement strategy based on the log of the number of batches.
 
     Args:
@@ -533,16 +524,16 @@ def log_batches_placement(
         reverse=True,
     )
     # Assing the first `len(nodes_dict)` clients to the workers
-    splits_list = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
+    splits = [[c] for c in sampled_virtual_cids[: len(nodes_dict)]]
     for virtual_cid, num_samples in sampled_virtual_cids[len(nodes_dict) :]:
         sums = [
             sum([log10(floor(x[1] / batch_size)) for x in list_cids])
-            for list_cids in splits_list
+            for list_cids in splits
         ]
         min_worker = np.argmin(sums)
-        splits_list[min_worker].append((virtual_cid, num_samples))
-    lists_cids: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
-    for worker_dict, split in zip(nodes_dict.items(), splits_list):
+        splits[min_worker].append((virtual_cid, num_samples))
+    lists_cids = defaultdict(list)
+    for worker_dict, split in zip(nodes_dict.items(), splits):
         lists_cids[worker_dict[0]] = split
     if verbose:
         placement = [(k, v) for k, v in lists_cids.items()]
@@ -587,21 +578,13 @@ def _convert_list_of_int_to_string(list_of_int: List[int]) -> str:
 def add_n_batches_column_to_clients_stats_table(
     input: pa.Table,
     batch_size: int,
-    cids: Dict[Union[str, int], int],
+    cids: Union[Dict[str, int], Dict[int, int]],
 ) -> pa.Table:
     """Add a `num_batches` column to the given Table."""
-    return cast(
-        pa.Table,
-        input.add_column(
-            0,
-            "n_batches",
-            cast(
-                pa.Array,
-                pa.array(
-                    [cids[int(cid.as_py())] // batch_size for cid in input["cid"]]
-                ),
-            ),
-        ),
+    return input.add_column(
+        0,
+        "n_batches",
+        pa.array([cids[int(cid.as_py())] // batch_size for cid in input["cid"]]),
     )
 
 

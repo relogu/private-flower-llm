@@ -314,7 +314,7 @@ class Worker(mp.Process):  # type: ignore
         # Task loop
         task: int
         for task in iter(self.task_queue.get, None):
-            self.process_task(int(task))
+            self.process_task(task)
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0])
         # Un-register shared memories
