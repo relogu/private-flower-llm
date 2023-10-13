@@ -12,7 +12,7 @@ from copy import copy
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import psutil
@@ -95,14 +95,101 @@ def parrot_learning_based_placement(
     return learning_based_placement(fns=[_linear, _jacobian_linear], **kwargs)
 
 
+def get_pollen_models(
+    cids: Dict[int, int],
+    placement_policy: str = "rr",
+    batch_size: int = 1,
+    clients_stats: Optional[pa.Table] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Train models for the given placement policy using the provided clients' statistics.
+
+    Args:
+        placement_policy (str): The placement policy to use for training the models.
+        clients_stats (Optional[pa.Table]): The clients' statistics to use for training
+            the models.
+        batch_size (int): The batch size to use for training the models.
+        cids (Optional[Dict[int, int]]): The client IDs to use for training the models.
+
+    Returns
+    -------
+        Optional[Dict[str, Any]]: A dictionary containing the trained models.
+    """
+    if (
+        ( placement_policy == "lb"
+        or placement_policy == "llb" )
+        and clients_stats is not None
+    ):
+        # Set up the functions to use for training the models
+        fns = (
+            [_pollen_function, _jacobian_pollen_function]
+            if placement_policy == "lb"
+            else [_linear, _jacobian_linear]
+        )
+        # Add n_batches column to clients_stats table
+        # t_0 = time.time()
+        clients_stats = add_n_batches_column_to_clients_stats_table(
+            clients_stats, batch_size, cids
+        )
+        # log(
+        #     DEBUG,
+        #     "Pollen-MLStrategy :: add batches to table took %s seconds",
+        #     time.time()-t_0
+        # )
+        # Split clients_stats table into a list of tables, one per client
+        # t_0 = time.time()
+        clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
+        # )
+        # Train models
+        # t_0 = time.time()
+        pollen_models: Dict[str, Any] = sequential_train_models(fns, clients_stats)
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
+        # )
+        # t_0 = time.time()
+        # Order models from the fastest to the slowest according to the prediction
+        # This is a dictionary {'model_name': (trained_model)}
+        pollen_models = dict(
+            sorted(
+                pollen_models.items(),
+                key=lambda item: _predict_single_client(
+                    model=item[1],
+                    fn=fns[0],
+                    n_samples=batch_size**2,
+                    batch_size=batch_size,
+                ),
+            )
+        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
+        # )
+        # Get models' scores
+        # t_0 = time.time()
+        current_scores: Dict[str, float] = sequential_get_models_scores(
+            fns[0], pollen_models, clients_stats
+        )
+        # log(
+        #     DEBUG,
+        #     f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
+        # )
+        # Log scores and return trained models
+        log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
+        return pollen_models
+    else:
+        return None
+
+
 def learning_based_placement(
     fns: List[Callable],
     sampled_virtual_cids: List[Tuple[int, int]],
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
-    cids: Union[Dict[str, int], Dict[int, int]],
-    clients_stats: pa.Table = None,
-    gpu_stats: pa.Table = None,
+    pollen_models: Optional[Dict[str, Any]] = None,
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
@@ -125,58 +212,19 @@ def learning_based_placement(
         List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
         (client_proxy, device_assignment).
     """
-    if clients_stats is None:  #  or gpu_stats is None:
+    if pollen_models is None:  #  or gpu_stats is None:
+        log(
+            DEBUG,
+            "Pollen-MLStrategy :: no models have been provided, using RR placement",
+        )
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         start_time = time.time()
-        ## Prepare data
-        # Add n_batches column to clients_stats table
-        # t_0 = time.time()
-        clients_stats = add_n_batches_column_to_clients_stats_table(
-            clients_stats, batch_size, cids
-        )
         # log(
         #     DEBUG,
-        #     "Pollen-MLStrategy :: add batches to table took %s seconds",
-        #     time.time()-t_0
+        #     "Pollen-MLStrategy :: models have been provided: %s",
+        #     pollen_models,
         # )
-        # TODO: Come up with a procedure when a new NodeManager appears after round 1
-        # TODO: Deal with dropped NodeManagers
-        # Split clients_stats table into a list of tables, one per client
-        # t_0 = time.time()
-        clients_stats: Dict[str, pa.Table] = split_clients_training_table(clients_stats)
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
-        # )
-        # Train models
-        # t_0 = time.time()
-        # trained_models: Dict[str, Any] = parallel_train_models(fns, clients_stats)
-        trained_models: Dict[str, Any] = sequential_train_models(fns, clients_stats)
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
-        # )
-        # Get models' scores
-        # t_0 = time.time()
-        # current_scores: Dict[str, float] = parallel_get_models_scores(
-        #     fns, trained_models, clients_stats
-        # )
-        current_scores: Dict[str, float] = sequential_get_models_scores(
-            fns[0], trained_models, clients_stats
-        )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
-        # )
-        # Check scores
-        log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
-
-        # TODO: Estimate the threshold to fall back to RR
-        # if max([abs(score) for score in current_scores]) > 10e-1:
-        #     return round_robin_placement(sampled_virtual_cids, nodes_dict)
-        # TODO: Adaptive discard of the old data
-
         # Sorting by batch size (decreasing order)
         # This is a list of tuples (cid, list of samples)
         # t_0 = time.time()
@@ -189,24 +237,11 @@ def learning_based_placement(
         #     DEBUG,
         #     f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
         # )
-        # t_0 = time.time()
-        # Order models from the fastest to the slowest according to the prediction
-        # This is a dictionary {'model_name': (trained_model)}
-        trained_models = dict(
-            sorted(
-                trained_models.items(),
-                key=lambda item: _predict_single_client(
-                    model=item[1],
-                    fn=fns[0],
-                    n_samples=sampled_virtual_cids[0][1],
-                    batch_size=batch_size,
-                ),
-            )
-        )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
-        # )
+        # Getting nodes a simpler node dict
+        simple_node_dict = {
+            node.name: node
+            for k,(c_p, node) in nodes_dict.items()
+        }
 
         # Init the device assignment and the return value
         # t_0 = time.time()
@@ -217,8 +252,9 @@ def learning_based_placement(
                 0.0,  # Device load
                 k.split("_")[0],  # Node name
                 k.split("_")[1],  # Device name
+                simple_node_dict[k.split("_")[0]].device_info[k.split("_")[1]].concurrency,  # Device concurrency
             ]
-            for k, v in trained_models.items()
+            for k, v in pollen_models.items()
         ]
         # log(
         #     DEBUG,
@@ -239,7 +275,7 @@ def learning_based_placement(
                 n_samples=num_samples,
                 batch_size=batch_size,
             )
-            devices_assignment[0][2] += load
+            devices_assignment[0][2] += load / devices_assignment[0][5]
             # Sort devices by load (increasing order)
             devices_assignment = sorted(
                 devices_assignment,
@@ -256,7 +292,7 @@ def learning_based_placement(
         for _, (client_proxy, node) in nodes_dict.items():
             devices_assignment_node = {
                 dev_name: _convert_list_of_int_to_string(list_of_cids)
-                for _, list_of_cids, _, node_dev_name, dev_name in devices_assignment
+                for _, list_of_cids, _, node_dev_name, dev_name, _ in devices_assignment
                 if node_dev_name == node.name
             }
             node_assignments.append((client_proxy, devices_assignment_node))
@@ -578,7 +614,7 @@ def _convert_list_of_int_to_string(list_of_int: List[int]) -> str:
 def add_n_batches_column_to_clients_stats_table(
     input: pa.Table,
     batch_size: int,
-    cids: Union[Dict[str, int], Dict[int, int]],
+    cids: Dict[int, int],
 ) -> pa.Table:
     """Add a `num_batches` column to the given Table."""
     return input.add_column(
@@ -724,4 +760,4 @@ def _get_model_score(
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
-    return {model_name: np.sum((delta - fn(x, *parameters)))}
+    return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}

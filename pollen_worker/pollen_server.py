@@ -6,7 +6,7 @@ import sys
 import timeit
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -17,10 +17,14 @@ from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
-from flwr.server.server import evaluate_clients, fit_clients
+from flwr.server.server import (
+    evaluate_clients,
+    fit_client,
+    _handle_finished_future_after_fit,
+)
 from flwr.server.strategy import FedAvg, Strategy
 
-from pollen_worker.placements import get_placement_fn
+from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
@@ -83,6 +87,7 @@ class PollenServer(Server):
         self.clients_training_stats = None
         self.history = history
         self.num_nodes = num_nodes
+        self.pollen_models: Dict[str, Any] = None
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -332,6 +337,7 @@ class PollenServer(Server):
             nodes_dict=self.nodes_dict,
             batch_size=self.on_fit_config(server_round)["batch_size"],
             cids=self.cids,
+            pollen_models=self.pollen_models,
             clients_stats=self.clients_training_stats,
             # gpu_stats=self.gpu_stats,
             verbose=False,
@@ -380,10 +386,14 @@ class PollenServer(Server):
         )
 
         # Collect `fit` results from all NodeManagers participating in this round
-        results, failures = fit_clients(
+        (results, failures), self.pollen_models = pollen_fit_clients(
             client_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
+            clients_stats=self.clients_training_stats,
+            batch_size=self.on_fit_config(server_round)["batch_size"],
+            cids=self.cids,
+            placement_policy=self.placement_policy,
         )
         log(
             DEBUG,
@@ -404,7 +414,7 @@ class PollenServer(Server):
                 get_table_from_pyarrow_buffer(tmp_clients_training_stats)
             )
 
-        # Append the statistics to the global statistics
+        # Collect the new statistics and append to the global statistics
         # if self.gpu_stats is None:
         #     self.gpu_stats = pa.concat_tables(received_gpu_stats)
         # else:
@@ -429,6 +439,42 @@ class PollenServer(Server):
 
 
 ####################### NEW FUNCTIONS #######################
+
+
+def pollen_fit_clients(
+    client_instructions: List[Tuple[ClientProxy, FitIns]],
+    max_workers: Optional[int],
+    timeout: Optional[float],
+    clients_stats: Optional[pa.Table] = None,
+    batch_size: int = 1,
+    cids: Optional[Dict[int, int]] = None,
+    placement_policy: str = "rr",
+) -> Tuple[FitResultsAndFailures, Dict[str, Any]]:
+    """Refine parameters concurrently on all selected clients."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        submitted_fs = {
+            executor.submit(fit_client, client_proxy, ins, timeout)
+            for client_proxy, ins in client_instructions
+        }
+        pollen_models = get_pollen_models(
+            placement_policy=placement_policy,
+            clients_stats=clients_stats,
+            batch_size=batch_size,
+            cids=cids,
+        )
+        finished_fs, _ = concurrent.futures.wait(
+            fs=submitted_fs,
+            timeout=None,  # Handled in the respective communication stack
+        )
+
+    # Gather results
+    results: List[Tuple[ClientProxy, FitRes]] = []
+    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
+    for future in finished_fs:
+        _handle_finished_future_after_fit(
+            future=future, results=results, failures=failures
+        )
+    return (results, failures), pollen_models
 
 
 def get_nodes_properties(
