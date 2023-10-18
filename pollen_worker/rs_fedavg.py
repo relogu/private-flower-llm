@@ -126,7 +126,7 @@ class FedAvgReproducibleSampling(FedAvg):
         if self.fraction_fit > 1.0:
             log(
                 WARNING,
-                "fraction_fit > 1.0, to satisfy this condition, we will clients with replacement",
+                "fraction_fit > 1.0, to satisfy this condition, we will sample clients with replacement",
             )
 
             # Setting seed for reproducibility of client selection
