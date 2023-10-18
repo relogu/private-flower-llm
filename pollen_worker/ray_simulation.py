@@ -53,7 +53,7 @@ def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     if name == "google_speech":
         return {
             "NVIDIA A40": 22,
-            "NVIDIA GeForce RTX 2080 Ti": 7,
+            "NVIDIA GeForce RTX 2080 Ti": 6,
         }
     if name == "openimage":
         return {
@@ -89,10 +89,16 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, "This Ray-based simulation will use %s workers", n_workers)
 
+    # NOTE: We can specify fractional `num_cpus` iff the number is lower than 1
+    num_cpus = (
+        len(os.sched_getaffinity(0)) // n_workers
+        if len(os.sched_getaffinity(0)) >= n_workers
+        else len(os.sched_getaffinity(0)) / n_workers
+    )
     client_resources = {
         "num_gpus": num_available_gpus / n_workers,
         # NOTE: Ray supports fractional CPU resources
-        "num_cpus": len(os.sched_getaffinity(0)) / n_workers,
+        "num_cpus": num_cpus,
     }
     log(INFO, "Client resources are: %s", client_resources)
 
@@ -121,9 +127,9 @@ def main(cfg: DictConfig) -> None:
     strategy = instantiate(
         cfg.task.strategy,
         saving_path=saving_path,
-        min_fit_clients=2,
+        min_fit_clients=n_clients_per_round,
         fraction_evaluate=0.0,
-        fraction_fit=n_clients_per_round / n_total_clients,
+        fraction_fit=(1.0 / n_total_clients),
         on_fit_config_fn=on_fit_config_fn,
         initial_parameters=ndarrays_to_parameters(
             get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
