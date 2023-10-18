@@ -457,6 +457,11 @@ class NodeManager(fl.client.NumPyClient):
 
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
+        # TODO: Make this dropouts-ready
+        # Extract assignments from config
+        assignment_config: Dict[str, str] = {}
+        for device in self.workers.keys():
+            assignment_config[device] = config.pop(device)
         # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
@@ -474,7 +479,7 @@ class NodeManager(fl.client.NumPyClient):
         # Send parameters to shared memory
         num_total_virtual_clients = 0
         for device in self.workers.keys():
-            list_ids_for_this_gpu = cast(str, config[device]).split(",")
+            list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
             # Close useless workers, one by one
@@ -504,7 +509,7 @@ class NodeManager(fl.client.NumPyClient):
         # Create cid->GPU mapping
         cid_gpu_mapping = {}
         for device in self.workers.keys():
-            list_ids_for_this_gpu = cast(str, config[device]).split(",")
+            list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
             cid_gpu_mapping.update({cid: device for cid in list_ids_for_this_gpu})
 
         # Check if all clients have been processed
