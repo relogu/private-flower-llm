@@ -1,31 +1,18 @@
 """Flower server accounting for using Weights&Biases."""
 import timeit
 from logging import INFO
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
-from flwr.common import DisconnectRes, EvaluateRes, FitRes, Parameters
+from flwr.common import Parameters
 from flwr.common.logger import log
-from flwr.server import Server
 from flwr.server.client_manager import ClientManager
-from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.strategy import FedAvg, Strategy
 
-FitResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, FitRes]],
-    List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-]
-EvaluateResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, EvaluateRes]],
-    List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
-]
-ReconnectResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, DisconnectRes]],
-    List[Union[Tuple[ClientProxy, DisconnectRes], BaseException]],
-]
+from pollen_worker.large_scale_flwr_server import LargeScaleServer
 
 
-class WandbServer(Server):
+class WandbServer(LargeScaleServer):
     """Flower server."""
 
     def __init__(
