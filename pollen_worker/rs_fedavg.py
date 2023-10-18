@@ -106,7 +106,8 @@ class FedAvgReproducibleSampling(FedAvg):
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
         )
         self.seed = seed
-
+    
+    
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
@@ -122,14 +123,26 @@ class FedAvgReproducibleSampling(FedAvg):
             client_manager.num_available()
         )
 
-        # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)  # type: ignore
+        if self.fraction_fit > 1.0:
+            log(
+                WARNING,
+                "fraction_fit > 1.0, to satisfy this condition, we will clients with replacement",
+            )
 
-        # Setting seed for reproducibility of client selection
-        random.seed(self.seed + server_round)
+            # Setting seed for reproducibility of client selection
+            random.seed(self.seed + server_round)
 
-        # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
+            # Generate random selection of virtual clients (number of virtual clients per round)
+            sampled_virtual_cids = random.choices(list(client_manager.clients), k=sample_size)  # type: ignore
+        else:
+            # Wait for the minimum number of clients to be available
+            client_manager.wait_for(sample_size)  # type: ignore
+
+            # Setting seed for reproducibility of client selection
+            random.seed(self.seed + server_round)
+
+            # Generate random selection of virtual clients (number of virtual clients per round)
+            sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
 
         # Get the actual clients from the client manager
         clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
