@@ -9,10 +9,11 @@ import sys
 import time
 from collections import defaultdict
 from copy import copy
+from inspect import signature
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import psutil
@@ -118,7 +119,9 @@ def get_pollen_models(
         placement_policy == "lb" or placement_policy == "llb"
     ) and clients_stats is not None:
         # Set up the functions to use for training the models
-        fns = (
+        fns: List[
+            Union[Callable[[Any, Any, Any], Any], Callable[[Any, Any, Any, Any], Any]]
+        ] = (
             [_pollen_function, _jacobian_pollen_function]
             if placement_policy == "lb"
             else [_linear, _jacobian_linear]
@@ -706,8 +709,13 @@ def log_batches_placement(
     return node_assignments
 
 
-def _pollen_function(x, A, B):
+def _logarithm(x, A, B):
     y = A + B * np.log(x)
+    return y
+
+
+def _pollen_function(x, A, B, C):
+    y = A + B * np.log(x) + C * x
     return y
 
 
@@ -716,10 +724,16 @@ def _linear(x, A, B):
     return y
 
 
-def _jacobian_pollen_function(x, A, B):
+def _jacobian_logarithm(x, A, B):
     dA = np.ones_like(x)
     dB = np.log(x)
     return np.hstack((dA.reshape(-1, 1), dB.reshape(-1, 1)))
+
+
+def _jacobian_pollen_function(x, A, B, C):
+    dA = np.ones_like(x)
+    dB = np.log(x)
+    return np.hstack((dA.reshape(-1, 1), dB.reshape(-1, 1), x.reshape(-1, 1)))
 
 
 def _jacobian_linear(x, A, B):
@@ -745,7 +759,10 @@ def add_n_batches_column_to_clients_stats_table(
     return input.add_column(
         0,
         "n_batches",
-        pa.array([cids[int(cid.as_py())] // batch_size for cid in input["cid"]]),
+        cast(
+            pa.Array,
+            pa.array([cids[int(cid.as_py())] // batch_size for cid in input["cid"]]),
+        ),
     )
 
 
@@ -826,16 +843,20 @@ def _train_model(
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
+    p0 = [0.0] * (len(signature(fns[0]).parameters) - 1)
+    bounds = (0.0, np.inf)
     return {
         model_name: curve_fit(
             f=fns[0],
             xdata=x,
             ydata=delta,
-            p0=[0.0, 0.0],
+            p0=p0,
+            bounds=bounds,
             jac=fns[1],
             ftol=1e-3,
             xtol=1e-3,
             gtol=1e-3,
+            loss="arctan",
         )
     }
 
