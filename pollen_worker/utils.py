@@ -2,8 +2,10 @@
 
 They assure compatibility with the Flower and wandb APIs.
 """
+
 import shutil
 from collections import OrderedDict, defaultdict
+from functools import reduce
 from pathlib import Path
 from typing import (
     Any,
@@ -17,10 +19,12 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import ray
 import torch
 import wandb
-from flwr.common import Metrics, NDArrays, Scalar
+from flwr.common import FitRes, Metrics, NDArrays, Scalar, parameters_to_ndarrays
+from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
 
@@ -192,3 +196,30 @@ def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any,
     for i in range(n_chunks):
         si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
+
+
+def aggregate_inplace(
+    results: List[Tuple[ClientProxy, FitRes]]
+) -> Tuple[NDArrays, int]:
+    """Compute in-place weighted average."""
+    # Count total examples
+    num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
+
+    # Compute scaling factors for each result
+    scaling_factors = [
+        fit_res.num_examples / num_examples_total for _, fit_res in results
+    ]
+
+    # Let's do in-place aggregation
+    # get first result, then add up each other
+    params = [
+        scaling_factors[0] * x for x in parameters_to_ndarrays(results[0][1].parameters)
+    ]
+    for i, (_, fit_res) in enumerate(results[1:]):
+        res = (
+            scaling_factors[i + 1] * x
+            for x in parameters_to_ndarrays(fit_res.parameters)
+        )
+        params = [reduce(np.add, layer_updates) for layer_updates in zip(params, res)]
+
+    return params, num_examples_total

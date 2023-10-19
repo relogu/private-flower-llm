@@ -7,7 +7,7 @@ from flwr.common import Parameters
 from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
 from flwr.server.history import History
-from flwr.server.strategy import FedAvg, Strategy
+from flwr.server.strategy import FedAvg
 
 from pollen_worker.large_scale_flwr_server import LargeScaleServer
 
@@ -19,14 +19,14 @@ class WandbServer(LargeScaleServer):
         self,
         *,
         client_manager: ClientManager,
-        strategy: Optional[Strategy] = None,
+        strategy: Optional[FedAvg] = None,
         history: Optional[History] = None,
     ) -> None:
         self._client_manager: ClientManager = client_manager
         self.parameters: Parameters = Parameters(
             tensors=[], tensor_type="numpy.ndarray"
         )
-        self.strategy: Strategy = strategy if strategy is not None else FedAvg()
+        self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
         self.max_workers: Optional[int] = None
         self.history: Optional[History] = history
 
