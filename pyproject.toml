@@ -63,6 +63,11 @@ flwr = {extras = ["simulation"], version = "^1.5.0"}
 nvidia-ml-py = "11.495.46"
 sentencepiece = "^0.1.99"
 pyarrow-stubs = "^10.0.1.6"
+ipykernel = "^6.25.2"
+matplotlib = "^3.8.0"
+seaborn = "^0.13.0"
+jupyter-server = "^2.7.3"
+ipywidgets = "^8.1.1"
 
 
 [tool.poetry.dev-dependencies]
