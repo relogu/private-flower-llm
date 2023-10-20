@@ -319,6 +319,7 @@ class NodeManager(fl.client.NumPyClient):
         client_fn: Callable[[int], NumPyClient],
         warm_up_config: Dict[str, Scalar],
         run_uuid: str,
+        placement_policy: str,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
@@ -354,7 +355,11 @@ class NodeManager(fl.client.NumPyClient):
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
-        max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
+        if placement_policy == "llb":
+            # NOTE: Parrot uses one process per GPU
+            max_proc_device = [(k, 1) for k, v in self.node.device_info.items()]
+        else:
+            max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
 
         # Allocate shared memory for partial aggregation
         # and create workers
@@ -618,6 +623,7 @@ def main(cfg: DictConfig) -> None:
         client_fn=call(cfg.gen_client_fn),
         warm_up_config=warm_up_config,
         run_uuid=cfg.run_uuid,
+        placement_policy=cfg.placement_policy,
     )
 
     # Start Flower client
