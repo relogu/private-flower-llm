@@ -360,6 +360,7 @@ class NodeManager(fl.client.NumPyClient):
             max_proc_device = [(k, 1) for k, v in self.node.device_info.items()]
         else:
             max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
+        log(DEBUG, "Max processes per device: %s", max_proc_device)
 
         # Allocate shared memory for partial aggregation
         # and create workers
