@@ -2,11 +2,11 @@
 #SBATCH -c 11
 #SBATCH -w mauao
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=RS1
+#SBATCH --job-name=RS1-scale
 #SBATCH --partition=normal
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --dependency=afterany:77958
+#!SBATCH --dependency=afterany:77953
 
 # Get the timestamp and the unique run id
 timestamp=$(date +%Y-%m-%d_%H%M%S)
@@ -44,32 +44,38 @@ if [[ "$ip" == *" "* ]]; then
   echo "IPV6 address detected. We split the IPV4 address as $ip"
 fi
 
-# Start Ray session
-poetry run ray start --head --node-ip-address=$ip --num-gpus=${NUM_GPUS} --num-cpus=${SLURM_CPUS_PER_TASK} \
-    --port=$main_port \
-    --node-manager-port=$port1 \
-    --object-manager-port=$port2 \
-    --ray-client-server-port=$port3 \
-    --redis-shard-ports=$port4 \
-    --min-worker-port=$port5 \
-    --max-worker-port=$port6 \
-    --redis-password="$redis_password" \
-    --verbose \
-    --include-dashboard=False \
-    --block &
+# for n_clients_per_round in "100" "1000" "10000"; do
+for n_clients_per_round in "10000"; do
+  # Start Ray session
+  poetry run ray start --head --node-ip-address=$ip --num-gpus=${NUM_GPUS} --num-cpus=${SLURM_CPUS_PER_TASK} \
+      --port=$main_port \
+      --node-manager-port=$port1 \
+      --object-manager-port=$port2 \
+      --ray-client-server-port=$port3 \
+      --redis-shard-ports=$port4 \
+      --min-worker-port=$port5 \
+      --max-worker-port=$port6 \
+      --redis-password="$redis_password" \
+      --verbose \
+      --include-dashboard=False \
+      --block &
 
-sleep 30
+  sleep 30
 
-poetry run ray status
+  poetry run ray status
 
-sleep 5
+  sleep 5
 
-# Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
+  # Set the custom hydra arguments that will be passed to the server and the node manager
+  CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=$n_clients_per_round task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
-# Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
+  # Launch the server, uncomment the end of the line if you what separed output logs.
+  poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
 
+  # Stop Ray session
+  poetry run ray stop
+
+done
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_ray_singlenode.sh
 # Use what follows for a batch job

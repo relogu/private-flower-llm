@@ -1,12 +1,13 @@
 #!/bin/bash
 #! Slurm requests
-#SBATCH --job-name=RS13
+#SBATCH --job-name=RS13-scale10k
 #SBATCH --nodelist=ngongotaha,mauao
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:3
 #SBATCH --cpus-per-task=24
 #SBATCH --output=%x-%j.out
-#!SBATCH --dependency=afterany:77959
+#SBATCH --time=04:00:00
+#SBATCH --dependency=afterany:78077
 
 # Load modules or your own conda environment here
 cd /nfs-share/ls985/pollen_worker
@@ -97,7 +98,7 @@ poetry run ray status
 
 # ===== Call your code below =====
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=10000 task.num_rounds=10 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 echo "LAUNCHING SIMULATION at $this_hostname"
 

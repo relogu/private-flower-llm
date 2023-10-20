@@ -1,12 +1,13 @@
 #!/bin/bash
 #! Slurm requests
-#SBATCH --job-name=RS13
+#SBATCH --job-name=RG13-scale1k
 #SBATCH --nodelist=ngongotaha,mauao
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:3
 #SBATCH --cpus-per-task=24
 #SBATCH --output=%x-%j.out
-#!SBATCH --dependency=afterany:77959
+#SBATCH --time=04:00:00
+#SBATCH --dependency=afterany:78053,78060
 
 # Load modules or your own conda environment here
 cd /nfs-share/ls985/pollen_worker
@@ -23,17 +24,6 @@ port3=10001
 port4=8702
 port5=10002
 port6=19999
-# # Find a free port
-# main_port=$(./freeport)
-# port1=$(./freeport)
-# port2=$(./freeport)
-# port3=$(./freeport)
-# port4=$(./freeport)
-# port5=$(./freeport)
-# port6=$((port5 + 1))
-# while ! nc -z localhost $port6; do
-#   ((port6++))
-# done
 #! Get the IP address of the head node
 ip=$(hostname --ip-address)
 #! If we detect a space character in the head node IP, we'll
@@ -97,10 +87,11 @@ poetry run ray status
 
 # ===== Call your code below =====
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=1000 task.num_rounds=10 local_epochs=1 ray_address="auto" ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
 echo "LAUNCHING SIMULATION at $this_hostname"
 
+echo "LAUNCHING SIMULATION at this_hostname"
 poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS 
 
 # How to use this script? Use what follows for a interactive job

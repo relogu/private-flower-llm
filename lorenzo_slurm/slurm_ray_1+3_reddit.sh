@@ -6,6 +6,7 @@
 #SBATCH --gres=gpu:3
 #SBATCH --output=%x-%j.out
 #SBATCH --cpus-per-task=24
+#SBATCH --dependency=afterany:77877
 
 # Load modules or your own conda environment here
 cd /nfs-share/ls985/pollen_worker
