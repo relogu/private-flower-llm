@@ -173,9 +173,13 @@ wandb
 
 # Slurm logs
 slurm-*.out
+*.out
 
 # NVIDIA Nsight Systems output
 *_nvidia_nsight.nsys-rep
 
 # Images
 *.pdf
+
+# Experiments results
+results/*
