@@ -122,10 +122,10 @@ class FedAvgReproducibleSampling(FedAvg):
             client_manager.num_available()
         )
 
-        if self.fraction_fit > 1.0:
+        if sample_size > len(client_manager.clients):
             log(
                 WARNING,
-                "fraction_fit > 1.0, to satisfy this condition, we will sample clients with replacement",
+                "sample_size > len(client_manager.clients), to satisfy this condition, we will sample clients with replacement",
             )
 
             # Setting seed for reproducibility of client selection
