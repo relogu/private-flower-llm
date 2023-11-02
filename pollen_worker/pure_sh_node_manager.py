@@ -233,7 +233,7 @@ class Worker(mp.Process):  # type: ignore
             )
         # Take the timestamp after the task is done
         end_time = time.time_ns()
-        self.result_queue.put([int(client_id), start_time, end_time])
+        self.result_queue.put([int(client_id), start_time, end_time, self.device])
         # NOTE: PyTorch's memory management works bad with multiprocessing. In our case,
         # it might happen that each process eagerly allocates more MBs of memory on the
         # same VRAM at the same w/o cleaning the cache because each of them thinks that
@@ -293,7 +293,7 @@ class Worker(mp.Process):  # type: ignore
         for task in iter(self.task_queue.get, None):
             self.process_task(task)
         # Put the closing task's results in the result queue
-        self.result_queue.put([-1, 0, 0])
+        self.result_queue.put([-1, 0, 0, ""])
         # Un-register shared memories
         # NOTE: Bug https://bugs.python.org/issue39959#msg364351
         resource_tracker.unregister(
@@ -359,7 +359,9 @@ class NodeManager(fl.client.NumPyClient):
             # NOTE: Parrot uses one process per GPU
             max_proc_device = [(k, 1) for k, v in self.node.device_info.items()]
         else:
-            max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
+            max_proc_device = [
+                (k, v.concurrency) for k, v in self.node.device_info.items()
+            ]
         log(DEBUG, "Max processes per device: %s", max_proc_device)
 
         # Allocate shared memory for partial aggregation
@@ -484,12 +486,12 @@ class NodeManager(fl.client.NumPyClient):
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
-        for device in self.workers.keys():
+        for device, workers in self.workers.items():
             list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
             # Close useless workers, one by one
-            while len(list_ids_for_this_gpu) < len(self.workers[device]):
+            while len(list_ids_for_this_gpu) < len(workers):
                 # Put a None for a worker to terminate it
                 self.task_queues[device].put(None)
                 #  Wait for the results of the termination task
@@ -497,7 +499,7 @@ class NodeManager(fl.client.NumPyClient):
                 # Handle which worker has died
                 flag = True
                 while flag:
-                    for i, worker in enumerate(self.workers[device]):
+                    for i, worker in enumerate(workers):
                         if not worker.is_alive():
                             # Close and unlink the shared memory
                             self.shared_local_agg[worker.worker_id][4].close()
@@ -505,8 +507,9 @@ class NodeManager(fl.client.NumPyClient):
                             # Remove the shared memory from the dict
                             del self.shared_local_agg[worker.worker_id]
                             # Remove the worker from the list
-                            self.workers[device].pop(i)
+                            workers.pop(i)
                             flag = False
+                            log(DEBUG, "Worker %s closed", worker.worker_id)
                             break
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
@@ -531,20 +534,12 @@ class NodeManager(fl.client.NumPyClient):
                 stats["cid"].append(current_stats[0])
                 stats["start_time"].append(current_stats[1])
                 stats["end_time"].append(current_stats[2])
+                stats["gpu"].append(current_stats[3])
             num_processed_virtual_clients += 1
+        start_time = time.time()
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
-        clients_training_stats = clients_training_stats.add_column(
-            0,
-            "gpu",
-            cast(
-                pa.Array,
-                pa.array(
-                    [cid_gpu_mapping[str(cid)] for cid in clients_training_stats["cid"]]
-                ),
-            ),
-        )
         clients_training_stats = clients_training_stats.add_column(
             0,
             "node",
@@ -576,6 +571,13 @@ class NodeManager(fl.client.NumPyClient):
         # Reset shared memories
         for val in self.shared_local_agg.values():
             val[4].buf[:] = b"\0" * val[4].size
+        log(
+            DEBUG,
+            "NodeManager %s: elaborate %s clients in %s seconds",
+            self.name,
+            len(clients_training_stats["cid"]),
+            time.time() - start_time,
+        )
         return (
             node_trained_params,
             int(node_n_samples),
