@@ -21,7 +21,7 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.server.client_manager import ClientManager
+from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
@@ -107,8 +107,11 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.seed = seed
 
-    def configure_fit(
-        self, server_round: int, parameters: Parameters, client_manager: ClientManager
+    def configure_fit(  # type: ignore[override]
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: SimpleClientManager,
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}
