@@ -93,7 +93,9 @@ def parrot_learning_based_placement(
         List[Tuple[ClientProxy, Dict[str, str]]]: a list of tuples
         (client_proxy, device_assignment).
     """
-    return learning_based_placement(fns=[_linear, _jacobian_linear], **kwargs)
+    return learning_based_placement(
+        fns=[_linear, _jacobian_linear], is_parrot=True, **kwargs
+    )
 
 
 def get_pollen_models(
@@ -101,7 +103,8 @@ def get_pollen_models(
     placement_policy: str = "rr",
     batch_size: int = 1,
     clients_stats: Optional[pa.Table] = None,
-) -> Optional[Dict[str, Any]]:
+    server_round: int = 1,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, pa.Table]]]:
     """Train models for the given placement policy using the provided clients' stats.
 
     Args:
@@ -127,34 +130,35 @@ def get_pollen_models(
             else [_linear, _jacobian_linear]
         )
         # Add n_batches column to clients_stats table
-        # t_0 = time.time()
         clients_stats = add_n_batches_column_to_clients_stats_table(
             clients_stats, batch_size, cids
         )
-        # log(
-        #     DEBUG,
-        #     "Pollen-MLStrategy :: add batches to table took %s seconds",
-        #     time.time()-t_0
-        # )
         # Split clients_stats table into a list of tables, one per client
-        # t_0 = time.time()
         splitted_clients_stats: Dict[str, pa.Table] = split_clients_training_table(
             clients_stats
         )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: splitting tables took {time.time()-t_0} seconds",
-        # )
+        # Create correction tables
+        correction_tables: Dict[str, pa.Table] = {}
+        for client_id, _client_stats in splitted_clients_stats.items():
+            filtered_client_stats = _client_stats.filter(
+                pc.field("server_round") == pc.scalar(server_round - 1),
+                null_selection_behavior="emit_null",
+            )
+            y1 = np.array(filtered_client_stats.column("end_time").flatten())
+            y0 = np.array(filtered_client_stats.column("start_time").flatten())
+            ctt = (y1 - y0) * 1e-9
+            filtered_client_stats = filtered_client_stats.add_column(
+                0,
+                "ctt",
+                cast(pa.Array, pa.array(np.array(ctt).flatten())),
+            )
+            correction_tables[client_id] = filtered_client_stats.group_by(
+                ["n_batches"]
+            ).aggregate([("ctt", "mean")])
         # Train models
-        # t_0 = time.time()
         pollen_models: Dict[str, Any] = sequential_train_models(
             fns, splitted_clients_stats
         )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: training models took {time.time()-t_0} seconds",
-        # )
-        # t_0 = time.time()
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
         pollen_models = dict(
@@ -163,29 +167,21 @@ def get_pollen_models(
                 key=lambda item: _predict_single_client(
                     model=item[1],
                     fn=fns[0],
-                    n_samples=batch_size**2,
+                    # n_samples=batch_size**2,
+                    n_samples=3 * batch_size,
                     batch_size=batch_size,
                 ),
             )
         )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: sorting devices took {time.time()-t_0} seconds",
-        # )
         # Get models' scores
-        # t_0 = time.time()
         current_scores: Dict[str, float] = sequential_get_models_scores(
             fns[0], pollen_models, splitted_clients_stats
         )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: getting scores took {time.time()-t_0} seconds",
-        # )
         # Log scores and return trained models
         log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
-        return pollen_models
+        return pollen_models, correction_tables
     else:
-        return None
+        return None, None
 
 
 def learning_based_placement(
@@ -194,6 +190,8 @@ def learning_based_placement(
     nodes_dict: Dict[str, Tuple[ClientProxy, Node]],
     batch_size: int,
     pollen_models: Optional[Dict[str, Any]] = None,
+    correction_tables: Optional[Dict[str, pa.Table]] = None,
+    is_parrot: bool = False,
     verbose: bool = False,
     **kwargs,
 ) -> List[Tuple[ClientProxy, Dict[str, str]]]:
@@ -209,6 +207,7 @@ def learning_based_placement(
         number of samples.
         clients_stats (pa.Table, optional): collected clients' stats. Defaults to None.
         gpu_stats (pa.Table, optional):  collected GPUs' stats. Defaults to None.
+        is_parrot (bool, optional): flag for parrot. Defaults to False.
         verbose (bool, optional): flag for logger. Defaults to False.
 
     Returns
@@ -224,86 +223,122 @@ def learning_based_placement(
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         start_time = time.time()
-        # log(
-        #     DEBUG,
-        #     "Pollen-MLStrategy :: models have been provided: %s",
-        #     pollen_models,
-        # )
         # Sorting by batch size (decreasing order)
         # This is a list of tuples (cid, list of samples)
-        # t_0 = time.time()
         sampled_virtual_cids = sorted(
             sampled_virtual_cids,
             key=lambda x: x[1] // batch_size,
             reverse=True,
         )
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: sorting clients took {time.time()-t_0} seconds",
-        # )
         # Getting nodes a simpler node dict
         simple_node_dict = {node.name: node for k, (c_p, node) in nodes_dict.items()}
 
         # Init the device assignment and the return value
-        # t_0 = time.time()
-        devices_assignment = [
-            [
-                v,  # Model parameters
-                [],  # List of cids
-                0.0,  # Device load
-                k.split("_")[0],  # Node name
-                k.split("_")[1],  # Device name
-                simple_node_dict[k.split("_")[0]]
-                .device_info[k.split("_")[1]]
-                .concurrency,  # Device concurrency
-            ]
-            for k, v in pollen_models.items()
-        ]
-        # log(
-        #     DEBUG,
-        #     f"Pollen-MLStrategy :: init assignments took {time.time()-t_0} seconds",
-        # )
-
-        # Assignment
-        # t_0 = time.time()
-        while len(sampled_virtual_cids) > 0:
+        workers_assignments = []
+        for model_name, model_params in pollen_models.items():
+            if is_parrot:
+                # Parrot uses one worker per device
+                workers_assignments.append(
+                    [
+                        model_params,  # Model parameters
+                        [],  # List of cids
+                        0.0,  # Device load
+                        model_name.split("_")[0],  # Node name
+                        model_name.split("_")[1],  # Device name
+                    ]
+                )
+            else:
+                concurrency = (
+                    simple_node_dict[model_name.split("_")[0]]
+                    .device_info[model_name.split("_")[1]]
+                    .concurrency
+                )
+                for _ in range(concurrency):
+                    # Pollen uses `concurrency` workers per device
+                    workers_assignments.append(
+                        [
+                            model_params,  # Model parameters
+                            [],  # List of cids
+                            0.0,  # Device load
+                            model_name.split("_")[0],  # Node name
+                            model_name.split("_")[1],  # Device name
+                        ]
+                    )
+        ## Assignment
+        # Assign initially at least one client per worker
+        for worker in workers_assignments:
             # Extract the first element of the list
             virtual_cid, num_samples = sampled_virtual_cids.pop(0)
-            # Assign client to the least loaded device
-            devices_assignment[0][1].append(virtual_cid)
+            # Assign client to the current worker
+            worker[1].append(virtual_cid)
             # Get device load
             load = _predict_single_client(
-                model=devices_assignment[0][0],
+                model=worker[0],
                 fn=fns[0],
                 n_samples=num_samples,
                 batch_size=batch_size,
             )
-            devices_assignment[0][2] += load / devices_assignment[0][5]
+            if correction_tables is not None:
+                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
+                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
+                )
+                if correction.num_rows > 0:
+                    correction = correction.column("ctt_mean").to_numpy()[0]
+                    # load = (load + correction) / 2
+                    load = load
+            worker[2] += load
+        # Assing all the rest
+        while len(sampled_virtual_cids) > 0:
             # Sort devices by load (increasing order)
-            devices_assignment = sorted(
-                devices_assignment,
+            workers_assignments = sorted(
+                workers_assignments,
                 key=lambda x: x[2],
             )
+            # Extract the first element of the list
+            virtual_cid, num_samples = sampled_virtual_cids.pop(0)
+            # Assign client to the least loaded device
+            workers_assignments[0][1].append(virtual_cid)
+            # Get device load
+            load = _predict_single_client(
+                model=workers_assignments[0][0],
+                fn=fns[0],
+                n_samples=num_samples,
+                batch_size=batch_size,
+            )
+            if correction_tables is not None:
+                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
+                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
+                )
+                if correction.num_rows > 0:
+                    correction = correction.column("ctt_mean").to_numpy()[0]
+                    load = (load + correction) / 2
+                    # load = correction
+            workers_assignments[0][2] += load
         # log(
         #     DEBUG,
-        #     f"Pollen-MLStrategy :: assignment took {time.time()-t_0} seconds",
+        #     "Pollen-MLStrategy :: estimated loads %s",
+        #     [w[2] for w in workers_assignments],
         # )
-
+        # Merge workers assignments
+        devices_assignment: Dict[str, List[int]] = defaultdict(list)
+        for worker in workers_assignments:
+            # log(
+            #     DEBUG,
+            #     f"Pollen-MLStrategy :: worker assignments {worker}",
+            # )
+            _, list_of_cids, _, node_name, gpu_name = worker
+            devices_assignment[f"{node_name}_{gpu_name}"].extend(list_of_cids)
         # Build node assignments
-        # t_0 = time.time()
         node_assignments = []
         for _, (client_proxy, node) in nodes_dict.items():
             devices_assignment_node = {
-                dev_name: _convert_list_of_int_to_string(list_of_cids)
-                for _, list_of_cids, _, node_dev_name, dev_name, _ in devices_assignment
-                if node_dev_name == node.name
+                node_dev_name.split("_")[1]: _convert_list_of_int_to_string(
+                    list_of_cids
+                )
+                for node_dev_name, list_of_cids in devices_assignment.items()
+                if node_dev_name.split("_")[0] == node.name
             }
             node_assignments.append((client_proxy, devices_assignment_node))
-        # log(
-        #     DEBUG,
-        #     "Pollen-MLStrategy :: building node assignments %s seconds",
-        #     time.time()-t_0,
-        # )
         log(
             DEBUG,
             f"Pollen-MLStrategy :: placement took {time.time()-start_time} seconds",
@@ -791,11 +826,6 @@ def split_clients_training_table(input: pa.Table) -> Dict[str, pa.Table]:
     }
     # Remove None values
     output = {k: v for k, v in output.items() if v.num_rows != 0}
-    # log(
-    #     DEBUG,
-    #     "split_clients_training_table after checking for Nones :: output %s",
-    #     output,
-    # )
     # Return the cleaned list of tables
     return output
 
