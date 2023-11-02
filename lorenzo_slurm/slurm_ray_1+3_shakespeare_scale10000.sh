@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=24
 #SBATCH --output=%x-%j.out
 #SBATCH --time=04:00:00
-#SBATCH --dependency=afterany:78077
+#SBATCH --dependency=afterany:78304
 
 # Load modules or your own conda environment here
 cd /nfs-share/ls985/pollen_worker

@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --nodelist=mauao,ngongotaha
-#SBATCH --gres=gpu:3
-#SBATCH --job-name=PG13-lb
-#SBATCH --cpus-per-task 24
+#SBATCH --gres=gpu:1
+#SBATCH --job-name=PS11-rr-scale10k
+#SBATCH --cpus-per-task 8
 #SBATCH --ntasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --dependency=afterany:78334
+#SBATCH --time=04:00:00
+#SBATCH --dependency=afterany:78188
 
 #! Need to force the nodes. Otherwise, the nodes might be allocated randomly.
 #! Head node is `mauao`, 128.232.115.0
@@ -22,15 +23,15 @@ poetry shell
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-policy="lb"
+policy="rr"
 echo "Using policy $policy"
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=$ip:6381"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=10000 task.num_rounds=10 local_epochs=1 placement_policy=$policy flwr_address=$ip:6379"
 
 echo "STARTING POLLEN SERVER at $node_1"
 poetry run python -m pollen_worker.server_with+pollen $CUSTOM_HYDRA_ARGS &
 
 echo "STARTING POLLEN NODE MANAGER at $node_1"
-srun --nodes=1 --ntasks=1 -w "$node_1" --gres=gpu:1 -c 24 \
+srun --nodes=1 --ntasks=1 -w "$node_1" --gres=gpu:1 -c 8 \
     poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS &
 
 echo "STARTING POLLEN NODE MANAGER at $node_2"

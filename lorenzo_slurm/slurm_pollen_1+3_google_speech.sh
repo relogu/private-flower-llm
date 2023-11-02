@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task 24
 #SBATCH --ntasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --dependency=afterany:77930,77924
+#!SBATCH --dependency=afterany:77930,77924
 
 #! Need to force the nodes. Otherwise, the nodes might be allocated randomly.
 #! Head node is `mauao`, 128.232.115.0

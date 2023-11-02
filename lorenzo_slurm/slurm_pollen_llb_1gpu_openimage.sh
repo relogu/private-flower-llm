@@ -5,7 +5,7 @@
 #SBATCH --job-name=PO1-llb
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --dependency=afterany:78074,78073
+#!SBATCH --dependency=afterany:78146
 
 # Get the timestamp and the unique run id
 timestamp=$(date +%Y-%m-%d_%H%M%S)
