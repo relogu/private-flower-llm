@@ -183,3 +183,6 @@ slurm-*.out
 
 # Experiments results
 results/*
+
+# Simulations' results
+*.pickle
