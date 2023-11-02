@@ -466,7 +466,7 @@ def pollen_fit_clients(
             clients_stats=clients_stats,
             batch_size=batch_size,
             cids=cids,
-            server_round=client_instructions[0][1].config["server_round"],
+            server_round=int(client_instructions[0][1].config["server_round"]),
         )
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
