@@ -89,6 +89,7 @@ class PollenServer(Server):
         self.history = history
         self.num_nodes = num_nodes
         self.pollen_models: Optional[Dict[str, Any]] = None
+        self.correction_tables: Optional[Dict[str, pa.Table]] = None
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -341,6 +342,7 @@ class PollenServer(Server):
             cids=self.cids,
             pollen_models=self.pollen_models,
             clients_stats=self.clients_training_stats,
+            correction_tables=self.correction_tables,
             verbose=False,
         )
         # log(
@@ -385,7 +387,11 @@ class PollenServer(Server):
         )
 
         # Collect `fit` results from all NodeManagers participating in this round
-        (results, failures), self.pollen_models = pollen_fit_clients(
+        (
+            (results, failures),
+            self.pollen_models,
+            self.correction_tables,
+        ) = pollen_fit_clients(
             client_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
@@ -421,6 +427,9 @@ class PollenServer(Server):
             self.clients_training_stats = pa.concat_tables(
                 [self.clients_training_stats] + received_clients_training_stats
             )
+            # self.clients_training_stats = pa.concat_tables(
+            #     received_clients_training_stats
+            # )
 
         # Aggregate training results
         aggregated_result: Tuple[
@@ -443,18 +452,21 @@ def pollen_fit_clients(
     clients_stats: Optional[pa.Table] = None,
     batch_size: int = 1,
     placement_policy: str = "rr",
-) -> Tuple[FitResultsAndFailures, Optional[Dict[str, Any]]]:
+) -> Tuple[
+    FitResultsAndFailures, Optional[Dict[str, Any]], Optional[Dict[str, pa.Table]]
+]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
             executor.submit(fit_client, client_proxy, ins, timeout)
             for client_proxy, ins in client_instructions
         }
-        pollen_models = get_pollen_models(
+        pollen_models, correction_tables = get_pollen_models(
             placement_policy=placement_policy,
             clients_stats=clients_stats,
             batch_size=batch_size,
             cids=cids,
+            server_round=client_instructions[0][1].config["server_round"],
         )
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
@@ -468,7 +480,7 @@ def pollen_fit_clients(
         _handle_finished_future_after_fit(
             future=future, results=results, failures=failures
         )
-    return (results, failures), pollen_models
+    return (results, failures), pollen_models, correction_tables
 
 
 def get_nodes_properties(
