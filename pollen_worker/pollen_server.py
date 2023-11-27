@@ -201,6 +201,20 @@ class PollenServer(Server):
                     for client_proxy, node in results
                 }
                 self.nodes_dict.update(new_nodes_dict)
+            results, failures = get_nodes_properties(
+                node_managers=self._client_manager.node_managers,
+                max_workers=self.max_workers,
+            )
+            log(
+                INFO,
+                "Get nodes properties: there are %s results and %s failures",
+                len(results),
+                len(failures),
+            )
+            # This is a dictionary of the form {"node_id": Node}
+            self.nodes_dict = {
+                client_proxy.cid: (client_proxy, node) for client_proxy, node in results
+            }
 
             # Train model and replace previous global model
             res_fit = self.fit_round(

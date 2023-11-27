@@ -146,6 +146,7 @@ class Worker(mp.Process):  # type: ignore
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.concurrency = concurrency
+        self.auto_terminate = False
 
     def process_task(self, client_id: int) -> None:
         """Process the received task."""
@@ -172,68 +173,73 @@ class Worker(mp.Process):  # type: ignore
             except Exception as e:
                 log(
                     ERROR,
-                    "Worker %s failed in training client %s with exception %s."
-                    " Retrying...",
+                    "Worker %s failed in training client %s with exception %s.",
                     self.worker_id,
                     client_id,
                     e,
                 )
+                self.task_queue.put(client_id)
+                self.auto_terminate = True
+                done = True
         if (
             fit_trained_weights is None
             or fit_num_samples is None
             or train_metrics is None
         ):
-            raise ValueError(
-                f"Worker {self.worker_id} failed in training client {client_id}."
-                " fit_trained_weights, fit_num_samples, or train_metrics is None."
+            log(
+                ERROR,
+                f"Worker {self.worker_id} failed in training client {client_id}. "
+                "`fit_trained_weights`, `fit_num_samples`, or `train_metrics` is None. "
+                "Closing the worker...",
             )
-        # If new round, then copy result to shared memory directly
-        if config["server_round"] > self.current_round:
-            self.current_round = config["server_round"]
-            write_to_fit_result_shm(
-                self.worker_params,
-                self.worker_num_samples,
-                self.worker_train_loss,
-                self.worker_train_acc,
-                fit_trained_weights,
-                fit_num_samples,
-                float(train_metrics["train_loss"]),
-                float(train_metrics["accuracy"]),
-            )
-        # Partially aggregating fit results
         else:
-            (
-                tmp_part_agg_params,
-                tmp_part_agg_num_samples,
-                tmp_part_agg_loss,
-                tmp_part_agg_acc,
-            ) = partially_aggregate_with_metrics(
-                (
+            # If new round, then copy result to shared memory directly
+            if config["server_round"] > self.current_round:
+                self.current_round = config["server_round"]
+                write_to_fit_result_shm(
                     self.worker_params,
-                    self.worker_num_samples[0],
-                    self.worker_train_loss[0],
-                    self.worker_train_acc[0],
-                ),
-                (
+                    self.worker_num_samples,
+                    self.worker_train_loss,
+                    self.worker_train_acc,
                     fit_trained_weights,
                     fit_num_samples,
                     float(train_metrics["train_loss"]),
                     float(train_metrics["accuracy"]),
-                ),
-            )
-            write_to_fit_result_shm(
-                self.worker_params,
-                self.worker_num_samples,
-                self.worker_train_loss,
-                self.worker_train_acc,
-                tmp_part_agg_params,
-                tmp_part_agg_num_samples,
-                tmp_part_agg_loss,
-                tmp_part_agg_acc,
-            )
-        # Take the timestamp after the task is done
-        end_time = time.time_ns()
-        self.result_queue.put([int(client_id), start_time, end_time, self.device])
+                )
+            # Partially aggregating fit results
+            else:
+                (
+                    tmp_part_agg_params,
+                    tmp_part_agg_num_samples,
+                    tmp_part_agg_loss,
+                    tmp_part_agg_acc,
+                ) = partially_aggregate_with_metrics(
+                    (
+                        self.worker_params,
+                        self.worker_num_samples[0],
+                        self.worker_train_loss[0],
+                        self.worker_train_acc[0],
+                    ),
+                    (
+                        fit_trained_weights,
+                        fit_num_samples,
+                        float(train_metrics["train_loss"]),
+                        float(train_metrics["accuracy"]),
+                    ),
+                )
+                write_to_fit_result_shm(
+                    self.worker_params,
+                    self.worker_num_samples,
+                    self.worker_train_loss,
+                    self.worker_train_acc,
+                    tmp_part_agg_params,
+                    tmp_part_agg_num_samples,
+                    tmp_part_agg_loss,
+                    tmp_part_agg_acc,
+                )
+            # Take the timestamp after the task is done
+            end_time = time.time_ns()
+            self.result_queue.put([int(client_id), start_time, end_time, self.device])
         # NOTE: PyTorch's memory management works bad with multiprocessing. In our case,
         # it might happen that each process eagerly allocates more MBs of memory on the
         # same VRAM at the same w/o cleaning the cache because each of them thinks that
@@ -292,8 +298,8 @@ class Worker(mp.Process):  # type: ignore
         task: int
         for task in iter(self.task_queue.get, None):
             self.process_task(task)
-        # Put the closing task's results in the result queue
-        self.result_queue.put([-1, 0, 0, ""])
+            if self.auto_terminate:
+                break
         # Un-register shared memories
         # NOTE: Bug https://bugs.python.org/issue39959#msg364351
         resource_tracker.unregister(
@@ -308,6 +314,8 @@ class Worker(mp.Process):  # type: ignore
             SharedMemory(name=self.worker_id)._name,  # type: ignore[attr-defined]
             "shared_memory",
         )
+        # Put the closing task's results in the result queue
+        self.result_queue.put([-1, 0, 0, ""])
 
 
 # Define Flower client
@@ -420,8 +428,8 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         if (
-            torch._C._is_mps_available()  # type: ignore[attr-defined]
-            and torch._C.has_mps  # type: ignore[attr-defined]
+            torch._C._mps_is_available()  # type: ignore[attr-defined]
+            and torch._C._has_mps  # type: ignore[attr-defined]
         ):
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
@@ -463,8 +471,28 @@ class NodeManager(fl.client.NumPyClient):
                 if not worker.is_alive():
                     worker.start()
 
+    def _check_healthy_workers(self, device: Optional[str] = None) -> None:
+        for _device, workers in self.workers.items():
+            if (device is not None and _device == device) or device is None:
+                for i, worker in enumerate(workers):
+                    if not worker.is_alive():
+                        # Close and unlink the shared memory
+                        self.shared_local_agg[worker.worker_id][4].close()
+                        self.shared_local_agg[worker.worker_id][4].unlink()
+                        # Remove the shared memory from the dict
+                        del self.shared_local_agg[worker.worker_id]
+                        # Remove the worker from the list
+                        workers.pop(i)
+                        log(DEBUG, "Worker %s died.", worker.worker_id)
+                for worker in workers:
+                    worker.concurrency = len(workers)
+                # Modify the number of workers per device (concurrency) accordingly
+                self.node.device_info[_device].concurrency = len(workers)
+                self.properties["node"] = str(self.node)
+
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
+        start_time = time.time()
         # TODO: Make this dropouts-ready
         # Extract assignments from config
         assignment_config: Dict[str, str] = {}
@@ -483,6 +511,8 @@ class NodeManager(fl.client.NumPyClient):
             0.0,
             0.0,
         )
+        # # Check if all workers are alive
+        # self._check_healthy_workers()
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
@@ -496,21 +526,8 @@ class NodeManager(fl.client.NumPyClient):
                 self.task_queues[device].put(None)
                 #  Wait for the results of the termination task
                 self.result_queue.get()
-                # Handle which worker has died
-                flag = True
-                while flag:
-                    for i, worker in enumerate(workers):
-                        if not worker.is_alive():
-                            # Close and unlink the shared memory
-                            self.shared_local_agg[worker.worker_id][4].close()
-                            self.shared_local_agg[worker.worker_id][4].unlink()
-                            # Remove the shared memory from the dict
-                            del self.shared_local_agg[worker.worker_id]
-                            # Remove the worker from the list
-                            workers.pop(i)
-                            flag = False
-                            log(DEBUG, "Worker %s closed", worker.worker_id)
-                            break
+            # Handle which workers has died
+            self._check_healthy_workers(device=device)
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
@@ -520,7 +537,14 @@ class NodeManager(fl.client.NumPyClient):
         for device in self.workers.keys():
             list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
             cid_gpu_mapping.update({cid: device for cid in list_ids_for_this_gpu})
+        log(
+            DEBUG,
+            "NodeManager %s: time spent before collecting results is %s seconds",
+            self.name,
+            time.time() - start_time,
+        )
 
+        start_time = time.time()
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
         stats = defaultdict(list)
@@ -536,6 +560,12 @@ class NodeManager(fl.client.NumPyClient):
                 stats["end_time"].append(current_stats[2])
                 stats["gpu"].append(current_stats[3])
             num_processed_virtual_clients += 1
+        log(
+            DEBUG,
+            "NodeManager %s: time spent collecting the results is %s seconds",
+            self.name,
+            time.time() - start_time,
+        )
         start_time = time.time()
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
@@ -573,11 +603,13 @@ class NodeManager(fl.client.NumPyClient):
             val[4].buf[:] = b"\0" * val[4].size
         log(
             DEBUG,
-            "NodeManager %s: elaborate %s clients in %s seconds",
+            "NodeManager %s: elaborated %s clients in %s seconds",
             self.name,
             len(clients_training_stats["cid"]),
             time.time() - start_time,
         )
+        # Check if all workers are alive
+        self._check_healthy_workers()
         return (
             node_trained_params,
             int(node_n_samples),
