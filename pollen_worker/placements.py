@@ -935,4 +935,5 @@ def _get_model_score(
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
-    return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}
+    # return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}
+    return {model_name: (np.square(delta - fn(x, *parameters))).mean()}
