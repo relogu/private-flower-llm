@@ -56,6 +56,8 @@ poetry run ray start --head --node-ip-address=$ip --num-gpus=${NUM_GPUS} --num-c
     --redis-password="$redis_password" \
     --verbose \
     --include-dashboard=False \
+    --log-style="record" \
+    --disable-usage-stats \
     --block &
 
 sleep 30
