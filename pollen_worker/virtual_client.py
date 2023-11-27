@@ -176,8 +176,9 @@ class VirtualClient(fl.client.NumPyClient):
                 # init function for worker processes
                 worker_init_fn=None,
                 multiprocessing_context=None,
+                # NOTE: Changed for compatibility with the PyTroch-2.1
                 # This allows to maintain the workers
-                prefetch_factor=2,
+                prefetch_factor=2 if config["n_workers"] > 0 else None,
                 # PRNG to use for random sampling
                 generator=None,
                 persistent_workers=False,
