@@ -17,11 +17,14 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast
 )
 
 import numpy as np
 import ray
+import pyarrow as pa
 import torch
+from torch import device as device_type
 import wandb
 from flwr.common import FitRes, Metrics, NDArrays, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
@@ -223,3 +226,37 @@ def aggregate_inplace(
         params = [reduce(np.add, layer_updates) for layer_updates in zip(params, res)]
 
     return params, num_examples_total
+
+
+def get_device() -> device_type:
+    """Determine which device to use for PyTorch.
+
+    Returns
+    -------
+        str: device for PyTorch
+    """
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif (
+        torch.backends.mps.is_available()  # type: ignore
+        and torch.backends.mps.is_built()  # type: ignore
+    ):
+        device = "mps"
+    return cast(device_type, device)
+
+
+def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
+    """Cast a PyArrow Table into a Buffer."""
+    buffer = pa.BufferOutputStream()
+    with pa.ipc.new_file(buffer, table.schema) as writer:
+        writer.write_table(table)
+    return buffer.getvalue()
+
+
+def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
+    """Cast a Buffer into a PyArrow Table ."""
+    ret_table = None
+    with pa.ipc.open_file(buffer) as reader:
+        ret_table = reader.read_all()
+    return ret_table

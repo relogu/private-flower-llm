@@ -186,3 +186,10 @@ results/*
 
 # Simulations' results
 *.pickle
+
+# MosaicML's llmfoundry package
+llmfoundry
+llm-foundry-scripts
+
+# Checkpoints
+*.pt

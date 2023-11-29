@@ -24,11 +24,11 @@ from flwr.server.server import (
 )
 from flwr.server.strategy import FedAvg
 
+from pollen_worker.clients.virtual_client import VirtualClient
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
-from pollen_worker.pollen_utils import get_table_from_pyarrow_buffer
+from pollen_worker.utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
-from pollen_worker.virtual_client import VirtualClient
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],

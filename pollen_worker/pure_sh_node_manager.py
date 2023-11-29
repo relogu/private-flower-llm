@@ -51,9 +51,8 @@ from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-from pollen_worker.pollen_utils import get_pyarrow_buffer_from_table
 from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
-from pollen_worker.utils import partially_aggregate_with_metrics
+from pollen_worker.utils import partially_aggregate_with_metrics, get_pyarrow_buffer_from_table
 
 pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
 transformers.logging.set_verbosity_error()
