@@ -17,18 +17,19 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    cast
+    cast,
 )
 
 import numpy as np
-import ray
 import pyarrow as pa
+import ray
 import torch
-from torch import device as device_type
-import wandb
 from flwr.common import FitRes, Metrics, NDArrays, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+from torch import device as device_type
+
+import wandb
 
 
 #### Server ####

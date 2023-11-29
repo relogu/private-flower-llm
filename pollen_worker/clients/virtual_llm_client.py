@@ -1,0 +1,178 @@
+"""Lightweight Flower Client for Pollen, capable of sustaining LLm training.
+
+Clients are trained by workers which are managed by node managers. This type of client
+avoids any memory or processing intensive operations in the _init_ function. As such,
+virtual clients can be used to simulate a large number of clients on a single machine
+even if many are spawned at once.
+"""
+import copy
+import sys
+from logging import INFO
+from typing import Any, Callable, Dict, Optional, Union
+
+import flwr as fl
+import transformers
+from composer import Trainer
+from flwr.client import NumPyClient
+from flwr.common.logger import log
+from flwr.common.typing import Config, NDArrays, Scalar
+from omegaconf import DictConfig, OmegaConf
+
+from pollen_worker.clients.llm_client_functions import (
+    _get_trainer_object,
+    get_parameters,
+    llm_eval,
+    llm_fit,
+)
+
+
+class VirtualLLMClient(fl.client.NumPyClient):
+    """Implement the most lightweight Flower Client."""
+
+    def __init__(
+        self,
+        *,
+        cid: Union[int, str],
+        cfg: Optional[DictConfig] = None,
+        trainer: Optional[Trainer] = None,
+    ) -> None:
+        self.cid = cid
+        self.cfg = cfg
+        self.trainer = trainer
+        transformers.logging.set_verbosity_error()
+        # log(INFO, f'VirtualLLMClient.__init__ :: cid {self.cid}')
+
+    def __repr__(self) -> str:
+        """Implement the string representation."""
+        return f"VirtualLLMClient(cid={self.cid})"
+
+    def get_properties(self, config: Config) -> Dict[str, Scalar]:
+        """Implement how to get properties."""
+        return {}
+
+    def get_parameters(
+        self,
+        config: Config,
+    ) -> NDArrays:
+        """Return the current local model parameters.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration parameters requested by the server.
+            This can be used to tell the client which parameters
+            are needed along with some Scalar attributes.
+
+        Returns
+        -------
+        parameters : NDArrays
+            The local model parameters as a list of NumPy ndarrays.
+        """
+        # TODO: Decide what to do here.
+        # Get the `cfg` object if it exists, raise error otherwise
+        # cfg: DictConfig = config.get("cfg", None)
+        cfg: Optional[DictConfig] = copy.deepcopy(self.cfg)
+        if cfg is None:
+            raise ValueError(
+                "The `cfg` object is missing from the config/object. "
+                "Please ensure that the `cfg` object is passed to the client."
+            )
+        return get_parameters(config, cfg, self.trainer)
+
+    def fit(
+        self, parameters: NDArrays, config: Dict
+    ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
+        """Implement the fit step."""
+        # log(INFO, f'VirtualLLMClient.fit :: {config}')
+        # TODO: Decide what to do here.
+        # Get the `cfg` object if it exists, raise error otherwise
+        # cfg: DictConfig = config.get("cfg", None)
+        cfg: Optional[DictConfig] = copy.deepcopy(self.cfg)
+        if cfg is None:
+            raise ValueError(
+                "The `cfg` object is missing from the config/object. "
+                "Please ensure that the `cfg` object is passed to the client."
+            )
+        return llm_fit(parameters, config, cfg, self.trainer)
+
+    def evaluate(
+        self,
+        parameters: NDArrays,
+        config: Dict[str, Scalar],
+    ) -> tuple[float, int, Dict[str, Scalar]]:
+        """Implement the evaluation step."""
+        # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
+        # TODO: Decide what to do here.
+        # Get the `cfg` object if it exists, raise error otherwise
+        # cfg: DictConfig = config.get("cfg", None)
+        cfg: Optional[DictConfig] = copy.deepcopy(self.cfg)
+        if cfg is None:
+            raise ValueError(
+                "The `cfg` object is missing from the config/object. "
+                "Please ensure that the `cfg` object is passed to the client."
+            )
+        return llm_eval(parameters, config, cfg, self.trainer)
+
+
+def gen_client_fn(
+    cfg: Optional[DictConfig] = None,
+    trainer: Optional[Trainer] = None,
+    **kwargs,
+) -> Callable[[int], NumPyClient]:
+    """Return generic `client_fn` for Flower Framework."""
+
+    def client_fn(client_id: int) -> NumPyClient:
+        client = VirtualLLMClient(
+            cid=client_id,
+            cfg=cfg,
+            trainer=trainer,
+        )
+        return client
+
+    return client_fn
+
+
+def main(cfg: DictConfig) -> None:
+    """Test the VirtualLLMClient."""
+    log(INFO, f"VirtualLLMClient.main :: {cfg}")
+    # Extract configs to build the trainer
+    trainer, _, _ = _get_trainer_object(
+        _cfg=copy.deepcopy(cfg),
+    )
+    # Create a virtual client
+    virtual_llm_client = VirtualLLMClient(
+        cid=0,
+        cfg=copy.deepcopy(cfg),
+        trainer=trainer,
+    )
+    # Test virtual client's get_properties function
+    properties = virtual_llm_client.get_properties(config={})
+    log(INFO, f"VirtualLLMClient.get_properties :: {properties}")
+    # Test virtual client's get_parameters function
+    parameters = virtual_llm_client.get_parameters(config={})
+    log(INFO, f"VirtualLLMClient.get_parameters :: {len(parameters)}")
+    # Test virtual client's fit function
+    parameters, num_examples, metrics = virtual_llm_client.fit(
+        parameters=parameters, config={}
+    )
+    log(INFO, f"VirtualLLMClient.fit :: {len(parameters)}")
+    log(INFO, f"VirtualLLMClient.fit :: {num_examples}")
+    log(INFO, f"VirtualLLMClient.fit :: {metrics}")
+    # Test virtual client's evaluate function
+    loss, num_examples, metrics = virtual_llm_client.evaluate(
+        parameters=parameters, config={}
+    )
+    log(INFO, f"VirtualLLMClient.evaluate :: {loss}")
+    log(INFO, f"VirtualLLMClient.evaluate :: {num_examples}")
+    log(INFO, f"VirtualLLMClient.evaluate :: {metrics}")
+
+
+if __name__ == "__main__":
+    yaml_path, args_list = sys.argv[1], sys.argv[2:]
+    with open(yaml_path) as f:
+        yaml_cfg = OmegaConf.load(f)
+    cli_cfg = OmegaConf.from_cli(args_list)
+    cfg = OmegaConf.merge(yaml_cfg, cli_cfg)
+    OmegaConf.resolve(cfg)
+    assert isinstance(cfg, DictConfig)
+    main(cfg)

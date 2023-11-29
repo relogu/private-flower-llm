@@ -4,25 +4,21 @@ Starts a Flower server which awaits connections from Pollen node managers. It su
 using wandb for logging and hydra for exeperiment configuration.
 """
 import json
-from logging import DEBUG, INFO
+import sys
 from pathlib import Path
 from typing import Dict, Union
 
 import flwr as fl
 import hydra
 import transformers
-import wandb
-from flwr.client import ClientLike
-from flwr.common import ndarrays_to_parameters
-from flwr.common.logger import log
-from hydra.utils import call, instantiate
 from omegaconf import DictConfig, OmegaConf
 
+import wandb
+from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
-from pollen_worker.pollen_utils import get_clients_population_dict
-from pollen_worker.utils import wandb_init, weighted_average
-from pollen_worker.virtual_client import VirtualClient
+from pollen_worker.rs_fedavg import FedAvgReproducibleSampling
+from pollen_worker.utils import wandb_init
 from pollen_worker.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
@@ -32,62 +28,27 @@ transformers.logging.set_verbosity_error()
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
-    log(
-        INFO,
-        "Task is: %s with fake=%s with run unique id=%s and policy=%s",
-        cfg.task.name,
-        cfg.task.is_fake,
-        cfg.run_uuid,
-        cfg.placement_policy,
-    )
-
-    # Get the list of cids
-    import time
-
-    s_t = time.time()
-    cid_samples_dict: Dict[Union[str, int], int]
-    try:
-        cid_samples_dict = get_clients_population_dict(
-            name=cfg.task.name,
-            batch_size=cfg.task.batch_size,
-            seed=cfg.seed,
-        )
-    except Exception as e:
-        log(DEBUG, f"Exception while getting the clients' dictionary: {e}")
-        cid_samples_dict = {str(k): 1 for k in range(int(cfg.task.n_clients_per_round))}
-    log(INFO, f"Time to get the clients' dictionary: {time.time() - s_t}")
-    n_total_clients = len(cid_samples_dict)
-    n_clients_per_round = cfg.task.n_clients_per_round
-
-    def get_client_fn(
-        cid: int,
-    ) -> ClientLike:
-        return VirtualClient(
-            name=cfg.task.name,
-            cid=cid,
-        )
-
-    on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
-    # Storing the parameters to the hydra output directory
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
-    strategy = instantiate(
-        cfg.task.strategy,
-        saving_path=Path(hydra_cfg["runtime"]["output_dir"]),  # type: ignore[index]
-        min_fit_clients=n_clients_per_round,
-        fraction_evaluate=0.0,
-        fraction_fit=(1.0 / n_total_clients),
-        on_fit_config_fn=on_fit_config_fn,
-        initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
-        ),
-        fit_metrics_aggregation_fn=weighted_average,
-        freq=cfg.save_freq,
+    # TODO: Get the list of cids
+    cid_samples_dict: Dict[Union[str, int], int] = {
+        str(k): 1 for k in range(cfg.fl.n_total_clients)
+    }
+    # TODO: Instantiate the strategy
+    strategy = FedAvgReproducibleSampling(
+        fraction_fit=sys.float_info.min,
+        fraction_evaluate=sys.float_info.min,
+        min_fit_clients=cfg.fl.n_clients_per_round,
+        min_available_clients=cfg.fl.n_clients_per_round,
+        min_evaluate_clients=cfg.fl.n_clients_per_round,
+        evaluate_fn=None,
+        on_fit_config_fn=None,
+        on_evaluate_config_fn=None,
+        accept_failures=False,
+        initial_parameters=None,
+        evaluate_metrics_aggregation_fn=None,
         seed=cfg.seed,
     )
-    log(INFO, f"Fraction fit is: {strategy.fraction_fit}")
-
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-    # start simulation
+    # Wrap with wandb context manager
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,
@@ -95,23 +56,22 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
-        saving_path = Path(hydra_cfg["runtime"]["output_dir"])  # type: ignore[index]
         # Start Flower server
         hist = fl.server.start_server(
             server_address=cfg.flwr_address,
             server=PollenServer(
                 cids=cid_samples_dict,
-                client_fn=get_client_fn,
+                client_fn=gen_client_fn(),
                 strategy=strategy,
                 client_manager=PollenClientManager(),
-                placement_policy=cfg.placement_policy,
-                saving_path=saving_path,
+                placement_policy=cfg.pollen.placement_policy,
+                saving_path=Path(cfg.pollen.saving_path),
                 history=wandb_history,
-                num_nodes=cfg.num_nodes,
+                num_nodes=cfg.pollen.num_nodes,
             ),
-            config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
+            config=fl.server.ServerConfig(num_rounds=cfg.fl.num_rounds),
         )
-        with open(saving_path / "history.json", "w") as f:
+        with open(Path(cfg.pollen.saving_path) / "history.json", "w") as f:
             json.dump(hist.__dict__, f)
 
 

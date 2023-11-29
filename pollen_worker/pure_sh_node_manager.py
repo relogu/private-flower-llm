@@ -24,7 +24,7 @@ import os
 import pickle
 import time
 from collections import defaultdict
-from logging import DEBUG, ERROR
+from logging import DEBUG, ERROR, INFO
 from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
@@ -46,13 +46,15 @@ from flwr.client import NumPyClient
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
-from hydra.utils import call
 from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
-from pollen_worker.utils import partially_aggregate_with_metrics, get_pyarrow_buffer_from_table
+from pollen_worker.utils import (
+    get_pyarrow_buffer_from_table,
+    partially_aggregate_with_metrics,
+)
 
 pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
 transformers.logging.set_verbosity_error()
@@ -324,14 +326,14 @@ class NodeManager(fl.client.NumPyClient):
     def __init__(
         self,
         client_fn: Callable[[int], NumPyClient],
-        warm_up_config: Dict[str, Scalar],
+        fl_instructions_config: Dict[str, Scalar],
         run_uuid: str,
         placement_policy: str,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
-        self.warm_up_config: Dict[str, Scalar] = warm_up_config
-        self.properties = None
+        self.fl_instructions_config: Dict[str, Scalar] = fl_instructions_config
+        self.properties: Dict[str, Scalar] = {}
         self.all_gpus: List[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
 
@@ -423,7 +425,9 @@ class NodeManager(fl.client.NumPyClient):
         tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
             device_info = dict(
-                get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
+                get_cuda_prop(
+                    tmp_client, tmp_params, config=self.fl_instructions_config
+                ),
                 **device_info,
             )
         if (
@@ -431,12 +435,16 @@ class NodeManager(fl.client.NumPyClient):
             and torch._C._has_mps  # type: ignore[attr-defined]
         ):
             device_info = dict(
-                get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
+                get_cpu_prop(
+                    "mps", tmp_client, tmp_params, config=self.fl_instructions_config
+                ),
                 **device_info,
             )
         if not device_info:
             device_info = dict(
-                get_cpu_prop("cpu", tmp_client, tmp_params, config=self.warm_up_config),
+                get_cpu_prop(
+                    "cpu", tmp_client, tmp_params, config=self.fl_instructions_config
+                ),
                 **device_info,
             )
         try:
@@ -457,7 +465,7 @@ class NodeManager(fl.client.NumPyClient):
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
         """Implement how to get properties."""
-        return self.properties if self.properties else {}
+        return self.properties
 
     def get_parameters(self, config) -> NDArrays:
         """Implement how to get parameters."""
@@ -487,14 +495,14 @@ class NodeManager(fl.client.NumPyClient):
                     worker.concurrency = len(workers)
                 # Modify the number of workers per device (concurrency) accordingly
                 self.node.device_info[_device].concurrency = len(workers)
-                self.properties["node"] = str(self.node)
+                self.properties.update({"node": str(self.node)})
 
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
         start_time = time.time()
         # TODO: Make this dropouts-ready
         # Extract assignments from config
-        assignment_config: Dict[str, str] = {}
+        assignment_config: Dict[str, Scalar] = {}
         for device in self.workers.keys():
             assignment_config[device] = config.pop(device)
         # Update shared memories objects
@@ -652,19 +660,25 @@ class NodeManager(fl.client.NumPyClient):
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Start a node manager directly with hydra."""
-    warm_up_config = call(cfg.gen_on_fit_config_fn)(0)
-    node_manager = NodeManager(
-        client_fn=call(cfg.gen_client_fn),
-        warm_up_config=warm_up_config,
-        run_uuid=cfg.run_uuid,
-        placement_policy=cfg.placement_policy,
+    log(
+        INFO,
+        "NodeManager received the following config:\n%s",
+        OmegaConf.to_yaml(cfg, resolve=True),
     )
+    # # TODO: Get and propagate the LLM task configs
+    # client_fn = gen_client_fn()
+    # node_manager = NodeManager(
+    #     client_fn=client_fn,
+    #     fl_instructions_config=fl_instructions_config,
+    #     run_uuid=run_uuid,
+    #     placement_policy=placement_policy,
+    # )
 
-    # Start Flower client
-    fl.client.start_numpy_client(
-        server_address=cfg.flwr_address,
-        client=node_manager,
-    )
+    # # Start Flower client
+    # fl.client.start_numpy_client(
+    #     server_address=flwr_address,
+    #     client=node_manager,
+    # )
 
 
 if __name__ == "__main__":

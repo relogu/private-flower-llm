@@ -10,7 +10,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from flwr.client import ClientLike
+from flwr.client import Client
+from flwr.client.numpy_client import NumPyClient
 from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
@@ -27,8 +28,8 @@ from flwr.server.strategy import FedAvg
 from pollen_worker.clients.virtual_client import VirtualClient
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
-from pollen_worker.utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
+from pollen_worker.utils import get_table_from_pyarrow_buffer
 
 FitResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, FitRes]],
@@ -47,6 +48,8 @@ GetPropResultsAndFailures = Tuple[
     List[Tuple[ClientProxy, Node]],
     List[Union[Tuple[ClientProxy, Node], BaseException]],
 ]
+
+ClientLike = Union[Client, NumPyClient]
 
 
 class PollenServer(Server):

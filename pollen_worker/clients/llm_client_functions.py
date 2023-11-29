@@ -148,7 +148,7 @@ def validate_config(cfg: DictConfig):
             "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
             "`torch._dynamo.config.suppress_errors = True` and falling back to eager.",
         )
-        torch._dynamo.config.suppress_errors = True  # type: ignore (third-party)
+        torch._dynamo.config.suppress_errors = True
 
     if cfg.model.get("load_in_8bit", False):
         raise ValueError(
@@ -433,8 +433,9 @@ def _get_trainer_object(
     for key in _cfg:
         log(
             WARN,
-            f"Unused parameter {key} found in cfg. Please check your yaml to ensure"
+            "Unused parameter %s found in cfg. Please check your yaml to ensure"
             "this parameter is necessary.",
+            key,
         )
 
     # Warn if fsdp is enabled but user only has 1 GPU
@@ -516,7 +517,7 @@ def _get_trainer_object(
         )
         if profiler_trace_cfg:
             profiler_trace_handlers.append(JSONTraceHandler(**profiler_trace_cfg))
-        profiler = Profiler(
+        profiler = Profiler(  # type: ignore[misc]
             **profiler_cfg,
             trace_handlers=profiler_trace_handlers,
             schedule=profiler_schedule,
@@ -565,7 +566,9 @@ def _get_trainer_object(
                 eval_config, tokenizer, device_eval_batch_size
             )
             eval_loader = Evaluator(
-                label=f"eval/{eval_config.label}" if is_multi_eval else "eval",
+                label=f"eval/{eval_config.label}"  # type: ignore[union-attr]
+                if is_multi_eval
+                else "eval",
                 dataloader=eval_dataloader,
                 metric_names=[],  # we will add these after model is created
             )
