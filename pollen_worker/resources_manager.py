@@ -43,6 +43,40 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
 )
 
 
+def get_gpu_prop() -> Dict[str, Device]:
+    """Return the properties of the GPU in the node w/o assessing anything."""
+    # Init return value
+    gpus_prop: Dict[str, Device] = {}
+    # NOTE: This is for controlling the GPU memory allocation
+    pynvml.nvmlInit()
+    # Loop over GPU devices
+    for dev_id in range(pynvml.nvmlDeviceGetCount()):
+        # Get the current device's handle
+        handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
+        # Get memory info
+        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        gpus_prop[f"cuda:{dev_id}"] = Device(
+            id=dev_id,
+            name=pynvml.nvmlDeviceGetName(handle),
+            type="cuda",
+            total_memory=mem.total,
+            allocated_memory=mem.used,
+            # TODO: Discuss what to do with one worker over multiple GPUs
+            # NOTE: Forcing cuncurrency to one
+            concurrency=1,
+        )
+        # Loop over all running process on the current device
+        for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+            log(
+                INFO,
+                "GPU %s is running process %s that allocates %s bytes.",
+                dev_id, proc.pid, proc.usedGpuMemory,
+            )
+    # Shutdown pynvml
+    pynvml.nvmlShutdown()
+    return gpus_prop
+
+
 def get_cuda_prop(
     client: NumPyClient, params: NDArrays, config: Dict[str, Scalar]
 ) -> Dict[str, Device]:
