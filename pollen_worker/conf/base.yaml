@@ -1,6 +1,7 @@
 ---
 run_uuid: 0
 seed: 1337
+is_test: false
 
 # Pollen specific settings
 pollen:
