@@ -28,13 +28,13 @@ from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
+import cloudpickle
 import flwr as fl
 import hydra
 import numpy as np
 import nvsmi
 import psutil
 import pyarrow as pa
-import cloudpickle
 import torch
 import transformers
 from flwr.client import NumPyClient
@@ -54,7 +54,7 @@ from pollen_worker.node_manager.utils import (
     write_to_fit_result_shm,
 )
 from pollen_worker.node_manager.worker import Worker
-from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop, get_gpu_prop
+from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import get_pyarrow_buffer_from_table
 
 transformers.logging.set_verbosity_error()
@@ -107,9 +107,7 @@ class NodeManager(fl.client.NumPyClient):
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
-        max_proc_device = [
-            (k, v.concurrency) for k, v in self.node.device_info.items()
-        ]
+        max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
         log(DEBUG, "Max processes per device: %s", max_proc_device)
 
         # Allocate shared memory for partial aggregation
@@ -162,7 +160,7 @@ class NodeManager(fl.client.NumPyClient):
         # Get hardware accelerator properties
         if torch.cuda.is_available():
             device_info = dict(
-                get_gpu_prop()
+                get_gpu_prop(),
                 **device_info,
             )
         try:

@@ -70,7 +70,9 @@ def get_gpu_prop() -> Dict[str, Device]:
             log(
                 INFO,
                 "GPU %s is running process %s that allocates %s bytes.",
-                dev_id, proc.pid, proc.usedGpuMemory,
+                dev_id,
+                proc.pid,
+                proc.usedGpuMemory,
             )
     # Shutdown pynvml
     pynvml.nvmlShutdown()

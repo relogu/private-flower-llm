@@ -25,7 +25,6 @@ from pollen_worker.node_manager.utils import (
 from pollen_worker.utils import partially_aggregate_with_metrics
 
 
-
 class Worker(mp.Process):  # type: ignore
     """Worker Process child of the NodeManager."""
 
