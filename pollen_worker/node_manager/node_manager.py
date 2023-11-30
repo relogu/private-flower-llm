@@ -19,27 +19,22 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
-import gc
-import os
 import pickle
 import time
 from collections import defaultdict
-from logging import DEBUG, ERROR, INFO
-from multiprocessing import resource_tracker  # type: ignore[attr-defined]
+from logging import DEBUG, INFO
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
-import cloudpickle
 import flwr as fl
 import hydra
-import multiprocess as mp
 import numpy as np
 import nvsmi
 import psutil
 import pyarrow as pa
-import pynvml
+import cloudpickle
 import torch
 import transformers
 from flwr.client import NumPyClient
@@ -50,276 +45,23 @@ from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 
-from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
-from pollen_worker.utils import (
-    get_pyarrow_buffer_from_table,
-    partially_aggregate_with_metrics,
+from pollen_worker.clients.virtual_llm_client import gen_client_fn
+from pollen_worker.node_manager.utils import (
+    POLLEN_CONFIG_SHM,
+    POLLEN_PARAMETERS_SHM,
+    POLLEN_WORKER_SHM,
+    allocate_shm,
+    write_to_fit_result_shm,
 )
+from pollen_worker.node_manager.worker import Worker
+from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop, get_gpu_prop
+from pollen_worker.utils import get_pyarrow_buffer_from_table
 
-pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
 transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)
-
-POLLEN_CONFIG_SHM = "pollen_config_shm"
-POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
-POLLEN_WORKER_SHM = "pollen_worker_"
+pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
 
 
-def allocate_shm(
-    parameters: NDArrays,
-    create: bool = False,
-    name: str = POLLEN_PARAMETERS_SHM,
-) -> Tuple[NDArrays, np.ndarray, np.ndarray, np.ndarray, SharedMemory]:
-    """Allocate a Shared Memory object and backed arrays."""
-    # Allocate memory for parameters and num_samples
-    nbytes_params = [val.nbytes for val in parameters]
-    nbytes_int = np.dtype(np.int64).itemsize
-    nbytes_float = np.dtype(np.float64).itemsize
-    array_bounds = [
-        (sum(nbytes_params[:i]), sum(nbytes_params[: i + 1]))
-        for i in range(len(nbytes_params))
-    ]
-    if create:
-        total_num_bytes = sum(nbytes_params) + nbytes_int + 2 * nbytes_float
-        shm = SharedMemory(create=True, size=total_num_bytes, name=name)
-        shm.buf[:] = b"\0" * shm.size
-    else:
-        shm = SharedMemory(name=name)
-    params_sh: NDArrays = [
-        np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
-        for x, y in zip(parameters, array_bounds)
-    ]
-    # Create shared memory for num_samples, train loss, and train accuracy
-    num_samples_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
-        (1,),
-        dtype=np.int64,
-        buffer=shm.buf[-int(nbytes_int + 2 * nbytes_float) : -int(2 * nbytes_float)],
-    )
-    train_loss_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
-        (1,), dtype=np.float64, buffer=shm.buf[-int(2 * nbytes_float) : -nbytes_float]
-    )
-    train_accuracy_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
-        (1,), dtype=np.float64, buffer=shm.buf[-nbytes_float:]
-    )
-    return params_sh, num_samples_sh, train_loss_sh, train_accuracy_sh, shm
-
-
-def write_to_fit_result_shm(
-    buffer_backed_ndarrays: NDArrays,
-    buffer_backed_num_samples: np.ndarray,
-    buffer_backed_train_loss: np.ndarray,
-    buffer_backed_train_accuracy: np.ndarray,
-    new_ndarrays: NDArrays,
-    new_num_samples: int,
-    new_train_loss: float,
-    new_train_accuracy: float,
-) -> None:
-    """Write to Shared Memory through backed arrays."""
-    for i in range(len(new_ndarrays)):
-        if len(new_ndarrays[i].shape) == 0:
-            buffer_backed_ndarrays[i] = new_ndarrays[i]
-        else:
-            buffer_backed_ndarrays[i][:] = new_ndarrays[i][:]
-    buffer_backed_num_samples[0] = new_num_samples
-    buffer_backed_train_loss[0] = new_train_loss
-    buffer_backed_train_accuracy[0] = new_train_accuracy
-
-
-class Worker(mp.Process):  # type: ignore
-    """Worker Process child of the NodeManager."""
-
-    def __init__(
-        self,
-        client_fn: Callable[[int], NumPyClient],
-        device: str,
-        worker_id: str,
-        task_queue: QueueType,
-        result_queue: QueueType,
-        run_uuid: str,
-        concurrency: int,
-    ) -> None:
-        super(Worker, self).__init__()
-        self.worker_id = worker_id
-        self.device = device
-        self.client_fn: Callable[[int], NumPyClient] = client_fn
-        self.task_queue = task_queue
-        self.result_queue = result_queue
-        self.run_uuid = run_uuid
-        self.current_round: int = 0
-        self.concurrency = concurrency
-        self.auto_terminate = False
-
-    def process_task(self, client_id: int) -> None:
-        """Process the received task."""
-        # Take the timestamp before training a single client
-        start_time = time.time_ns()
-        # Loads a dict from the shared memory buffer
-        config = pickle.loads(self.config_shm.buf)
-        config["device"] = self.device
-
-        # Load client
-        tmp_client = self.client_fn(client_id)
-
-        done = False
-        fit_trained_weights: Optional[NDArrays] = None
-        fit_num_samples: Optional[int] = None
-        train_metrics: Optional[Dict[str, Scalar]] = None
-        while not done:
-            try:
-                # Call fit on shared parameters
-                fit_trained_weights, fit_num_samples, train_metrics = tmp_client.fit(
-                    self.round_params, config
-                )
-                done = True
-            except Exception as e:
-                log(
-                    ERROR,
-                    "Worker %s failed in training client %s with exception %s.",
-                    self.worker_id,
-                    client_id,
-                    e,
-                )
-                self.task_queue.put(client_id)
-                self.auto_terminate = True
-                done = True
-        if (
-            fit_trained_weights is None
-            or fit_num_samples is None
-            or train_metrics is None
-        ):
-            log(
-                ERROR,
-                f"Worker {self.worker_id} failed in training client {client_id}. "
-                "`fit_trained_weights`, `fit_num_samples`, or `train_metrics` is None. "
-                "Closing the worker...",
-            )
-        else:
-            # If new round, then copy result to shared memory directly
-            if config["server_round"] > self.current_round:
-                self.current_round = config["server_round"]
-                write_to_fit_result_shm(
-                    self.worker_params,
-                    self.worker_num_samples,
-                    self.worker_train_loss,
-                    self.worker_train_acc,
-                    fit_trained_weights,
-                    fit_num_samples,
-                    float(train_metrics["train_loss"]),
-                    float(train_metrics["accuracy"]),
-                )
-            # Partially aggregating fit results
-            else:
-                (
-                    tmp_part_agg_params,
-                    tmp_part_agg_num_samples,
-                    tmp_part_agg_loss,
-                    tmp_part_agg_acc,
-                ) = partially_aggregate_with_metrics(
-                    (
-                        self.worker_params,
-                        self.worker_num_samples[0],
-                        self.worker_train_loss[0],
-                        self.worker_train_acc[0],
-                    ),
-                    (
-                        fit_trained_weights,
-                        fit_num_samples,
-                        float(train_metrics["train_loss"]),
-                        float(train_metrics["accuracy"]),
-                    ),
-                )
-                write_to_fit_result_shm(
-                    self.worker_params,
-                    self.worker_num_samples,
-                    self.worker_train_loss,
-                    self.worker_train_acc,
-                    tmp_part_agg_params,
-                    tmp_part_agg_num_samples,
-                    tmp_part_agg_loss,
-                    tmp_part_agg_acc,
-                )
-            # Take the timestamp after the task is done
-            end_time = time.time_ns()
-            self.result_queue.put([int(client_id), start_time, end_time, self.device])
-        # NOTE: PyTorch's memory management works bad with multiprocessing. In our case,
-        # it might happen that each process eagerly allocates more MBs of memory on the
-        # same VRAM at the same w/o cleaning the cache because each of them thinks that
-        # it is the only one using the GPU. We need to clean the cache manually to
-        # prevent this, i.e. call `torch.cuda.empty_cache()`. When to call it is a
-        # trade-off between performance and memory usage because cleaning the cache
-        # is time expensive (for Reddit it costs ~15 seconds, quick took ~333s slow
-        # took ~348s in 10 rounds, 100 clients/round, 1 A40). We call it after each
-        # client, but it might be better to call it after each round.
-        for dev_id in range(pynvml.nvmlDeviceGetCount()):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
-            for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-                if os.getpid() == proc.pid:
-                    mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                    if proc.usedGpuMemory > mem.total / self.concurrency:
-                        torch.cuda.empty_cache()
-                        gc.collect()
-
-    def run(self) -> None:
-        """Start the process."""
-        # Allocate shared memories.
-        # NOTE: This goes here because it needs to be done in the child process!
-        # This is the first piece of code of the worker that live in the child
-        # process, the `__init__()` function does not.
-        # NOTE: This is the NodeManager's shared memory for the fit config
-        # dictionary. Workers should only read this. NodeManager should only
-        # write this.
-        self.config_shm = SharedMemory(name=self.run_uuid + POLLEN_CONFIG_SHM)
-        # NOTE: This is the NodeManager's shared memory for the fit results.
-        # Workers should only read this. NodeManager should only write this.
-        (
-            self.round_params,
-            self.round_num_samples,
-            self.round_train_loss,
-            self.round_train_acc,
-            self.round_shm,
-        ) = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),
-            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
-        )
-        # NOTE: This is the Worker's shared memory for the fit results.
-        # NodeManager should only read this. Worker should only write this.
-        (
-            self.worker_params,
-            self.worker_num_samples,
-            self.worker_train_loss,
-            self.worker_train_acc,
-            self.worker_shm,
-        ) = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),
-            name=self.worker_id,
-        )
-        # NOTE: This is for controlling the GPU memory allocation
-        pynvml.nvmlInit()
-        # Task loop
-        task: int
-        for task in iter(self.task_queue.get, None):
-            self.process_task(task)
-            if self.auto_terminate:
-                break
-        # Un-register shared memories
-        # NOTE: Bug https://bugs.python.org/issue39959#msg364351
-        resource_tracker.unregister(
-            self.config_shm._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
-        resource_tracker.unregister(
-            self.round_shm._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
-        resource_tracker.unregister(
-            SharedMemory(name=self.worker_id)._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
-        # Put the closing task's results in the result queue
-        self.result_queue.put([-1, 0, 0, ""])
-
-
-# Define Flower client
 class NodeManager(fl.client.NumPyClient):
     """NodeManager of Pollen."""
 
@@ -359,18 +101,15 @@ class NodeManager(fl.client.NumPyClient):
         ) = allocate_shm(
             tmp_client.get_parameters({}),
             create=True,
-            name=self.run_uuid + POLLEN_PARAMETERS_SHM,
+            name=self.run_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
         )
+        # TODO: I think we should hardcode here
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
-        if placement_policy == "llb":
-            # NOTE: Parrot uses one process per GPU
-            max_proc_device = [(k, 1) for k, v in self.node.device_info.items()]
-        else:
-            max_proc_device = [
-                (k, v.concurrency) for k, v in self.node.device_info.items()
-            ]
+        max_proc_device = [
+            (k, v.concurrency) for k, v in self.node.device_info.items()
+        ]
         log(DEBUG, "Max processes per device: %s", max_proc_device)
 
         # Allocate shared memory for partial aggregation
@@ -421,30 +160,9 @@ class NodeManager(fl.client.NumPyClient):
     def _get_node_properties(self) -> Dict[str, Scalar]:
         device_info: Dict[str, Device] = {}
         # Get hardware accelerator properties
-        tmp_client: NumPyClient = self.client_fn(0)
-        tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
             device_info = dict(
-                get_cuda_prop(
-                    tmp_client, tmp_params, config=self.fl_instructions_config
-                ),
-                **device_info,
-            )
-        if (
-            torch._C._mps_is_available()  # type: ignore[attr-defined]
-            and torch._C._has_mps  # type: ignore[attr-defined]
-        ):
-            device_info = dict(
-                get_cpu_prop(
-                    "mps", tmp_client, tmp_params, config=self.fl_instructions_config
-                ),
-                **device_info,
-            )
-        if not device_info:
-            device_info = dict(
-                get_cpu_prop(
-                    "cpu", tmp_client, tmp_params, config=self.fl_instructions_config
-                ),
+                get_gpu_prop()
                 **device_info,
             )
         try:
@@ -479,9 +197,13 @@ class NodeManager(fl.client.NumPyClient):
                     worker.start()
 
     def _check_healthy_workers(self, device: Optional[str] = None) -> None:
+        # Loop over the devices and their list of workers
         for _device, workers in self.workers.items():
+            # Check if the device is the one we are interested in
             if (device is not None and _device == device) or device is None:
+                # Loop over the workers in the current device
                 for i, worker in enumerate(workers):
+                    # Take action if the current worker is not alive
                     if not worker.is_alive():
                         # Close and unlink the shared memory
                         self.shared_local_agg[worker.worker_id][4].close()
@@ -491,9 +213,10 @@ class NodeManager(fl.client.NumPyClient):
                         # Remove the worker from the list
                         workers.pop(i)
                         log(DEBUG, "Worker %s died.", worker.worker_id)
+                # Update the concurrency accordingly
                 for worker in workers:
                     worker.concurrency = len(workers)
-                # Modify the number of workers per device (concurrency) accordingly
+                # Modify the node info accordingly
                 self.node.device_info[_device].concurrency = len(workers)
                 self.properties.update({"node": str(self.node)})
 
@@ -520,7 +243,6 @@ class NodeManager(fl.client.NumPyClient):
         )
         # # Check if all workers are alive
         # self._check_healthy_workers()
-
         # Send parameters to shared memory
         num_total_virtual_clients = 0
         for device, workers in self.workers.items():
@@ -550,7 +272,6 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
-
         start_time = time.time()
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
@@ -665,20 +386,28 @@ def main(cfg: DictConfig) -> None:
         "NodeManager received the following config:\n%s",
         OmegaConf.to_yaml(cfg, resolve=True),
     )
-    # # TODO: Get and propagate the LLM task configs
-    # client_fn = gen_client_fn()
-    # node_manager = NodeManager(
-    #     client_fn=client_fn,
-    #     fl_instructions_config=fl_instructions_config,
-    #     run_uuid=run_uuid,
-    #     placement_policy=placement_policy,
-    # )
-
-    # # Start Flower client
-    # fl.client.start_numpy_client(
-    #     server_address=flwr_address,
-    #     client=node_manager,
-    # )
+    # Get the client generator function
+    client_fn = gen_client_fn(
+        cfg=cfg.llm_config,
+    )
+    # TODO: Get the FL config dictionary
+    fl_instructions_config: Dict[str, Scalar] = {}
+    node_manager = NodeManager(
+        client_fn=client_fn,
+        fl_instructions_config=fl_instructions_config,
+        run_uuid=cfg.run_uuid,
+        placement_policy=cfg.pollen.placement_policy,
+    )
+    # Choose the type of execution
+    if cfg.is_test:
+        # TODO: Test the NodeManager
+        pass
+    else:
+        # Start NodeManager as a Flower client
+        fl.client.start_numpy_client(
+            server_address=cfg.pollen.server_address,
+            client=node_manager,
+        )
 
 
 if __name__ == "__main__":
