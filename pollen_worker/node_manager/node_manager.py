@@ -46,6 +46,7 @@ from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_clien
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
+    POLLEN_TRAIN_METRICS_SHM,
     close_all_shms,
     get_config_shm,
     get_parameters_shm,
@@ -143,6 +144,9 @@ class NodeManager(fl.client.NumPyClient):
         """Implement how to get parameters."""
         return self.round_parameters
 
+    def _launch_worker_task(self, client_id: int) -> None:
+        """Launch a worker task."""
+
     def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
         start_time = time.time()
@@ -166,11 +170,9 @@ class NodeManager(fl.client.NumPyClient):
                 worker,
                 worker_uuid,
                 w_parameters,
-                w_parameters_shm,
-                w_train_metrics,
-                w_train_metrics_shm,
+                w_parameters_shm,  # NOTE: We need this here (Seg Fault otherwise)
                 w_num_samples,
-                w_num_samples_shm,
+                w_num_samples_shm,  # NOTE: We need this here (Seg Fault otherwise)
             ) = create_new_worker(
                 client_fn=self.client_fn,
                 task_queue=self.task_queues["cuda"],
@@ -199,6 +201,9 @@ class NodeManager(fl.client.NumPyClient):
                     partially_aggregated_params,
                     (w_parameters, w_num_samples[0]),
                 )
+                w_train_metrics, _ = get_config_shm(
+                    name=worker_uuid + POLLEN_TRAIN_METRICS_SHM
+                )
                 clients_train_metrics.append((w_num_samples[0], w_train_metrics))
                 num_processed_virtual_clients += 1
                 log(
@@ -207,7 +212,6 @@ class NodeManager(fl.client.NumPyClient):
                     self.name,
                     worker_uuid,
                 )
-                time.sleep(5)
             # Close and unlink the shared memory
             close_all_shms(worker_uuid)
             log(
@@ -279,7 +283,8 @@ def main(cfg: DictConfig) -> None:
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
     # TODO: Get train metrics
-    train_metrics: Dict[str, Scalar] = {}
+    # NOTE: Need to know in advance the size of the guy here
+    train_metrics: Dict[str, Scalar] = {"buciodiculo": 0.0, "buciodiculo2": 0.0}
     node_manager = NodeManager(
         client_fn=client_fn,
         fl_instructions_config=fl_instructions_config,

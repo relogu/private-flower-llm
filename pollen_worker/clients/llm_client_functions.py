@@ -833,10 +833,19 @@ def llm_fit(
         # TODO: Check if there is space for optimisation here
         trainer.state.model = set_parameters_to_state(parameters, cfg, trainer)
     log(INFO, "Starting training...")
+    # NOTE: Prevent to run eval at the end of the training
+    trainer.state.evaluators = None
+    # TODO: Assess whether we need to set some params here to respect FL setting
     trainer.fit()
-    # TODO: Retrieve training metrics
+    # Retrieve number of samples trained
+    n_samples_trained = trainer.state.timestamp.sample.value
+    # Retrieve training metrics
+    train_metrics = {
+        k: v.cpu().item()  # type: ignore[attr-defined]
+        for k, v in trainer.state.train_metric_values.items()
+    }
     log(INFO, "Done.")
-    return get_parameters_from_state({}, cfg, trainer), 0, {}
+    return get_parameters_from_state({}, cfg, trainer), n_samples_trained, train_metrics
 
 
 def llm_eval(
@@ -861,6 +870,13 @@ def llm_eval(
     gc.collect()
     log(INFO, "Starting evaluation...")
     trainer.eval()
-    # TODO: Retrieve evaluation metrics
+    # Retrieve number of samples evaluated
+    num_samples = trainer.state.eval_timestamp._sample.value
+    # Retrieve evaluation metrics
+    eval_metrics = {
+        k: v.cpu().item()  # type: ignore[attr-defined]
+        for k, v in trainer.state.eval_metric_values.items()
+    }
     log(INFO, "Done.")
-    return 0.0, 0, {}
+    # TODO: What do we do with the first argument?
+    return 0.0, num_samples, eval_metrics

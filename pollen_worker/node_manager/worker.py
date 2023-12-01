@@ -12,7 +12,7 @@ from typing import Callable, Dict, Optional, Tuple
 import multiprocess as mp
 import numpy as np
 import torch
-from flwr.common import Config, NDArrays, Scalar
+from flwr.common import NDArrays, Scalar
 from flwr.common.logger import log
 
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
@@ -24,7 +24,6 @@ from pollen_worker.node_manager.utils import (
     get_config_shm,
     get_num_samples_shm,
     get_parameters_shm,
-    set_config_shm,
     set_num_samples_shm,
     set_parameters_shm,
 )
@@ -45,7 +44,6 @@ class Worker(mp.Process):  # type: ignore
     ) -> None:
         super(Worker, self).__init__()
         self.worker_uuid = worker_uuid
-        # self.device = device
         self.client_fn: Callable[[int], VirtualLLMClient] = client_fn
         self.task_queue = task_queue
         self.result_queue = result_queue
@@ -71,6 +69,9 @@ class Worker(mp.Process):  # type: ignore
             + "_r"
             + str(fl_instructions_config["server_round"])
         )
+        # NOTE: This is necessary to prevent erros when executing a
+        # config with the same `cfg.save_folder`
+        tmp_client.cfg.save_overwrite = True  # type: ignore[union-attr]
         # Try to train the client
         done = False
         fit_trained_weights: Optional[NDArrays] = None
@@ -82,10 +83,28 @@ class Worker(mp.Process):  # type: ignore
                 fit_trained_weights, fit_num_samples, train_metrics = tmp_client.fit(
                     self.round_parameters, fl_instructions_config
                 )
+                log(
+                    INFO,
+                    "Worker %s successfully obtained the training results from"
+                    " client %s: (%s, %s, %s).",
+                    self.worker_uuid,
+                    client_id,
+                    len(fit_trained_weights),
+                    fit_num_samples,
+                    len(train_metrics),
+                )
                 set_num_samples_shm(self.worker_num_samples, fit_num_samples)
                 set_parameters_shm(self.worker_parameters, fit_trained_weights)
-                set_config_shm(train_metrics, self.worker_train_metrics_sh)
-                time.sleep(10)
+                # NOTE: Now we know the structure and we can create the train metrics
+                # shared memory
+                (
+                    self.worker_train_metrics,
+                    self.worker_train_metrics_sh,
+                ) = get_config_shm(
+                    config=train_metrics,
+                    create=True,
+                    name=self.worker_uuid + POLLEN_TRAIN_METRICS_SHM,  # noqa: F821
+                )
                 # Take the timestamp after the task is done
                 end_time = time.time_ns()
                 self.result_queue.put(
@@ -159,10 +178,6 @@ class Worker(mp.Process):  # type: ignore
             parameters=self.parameters,
             name=self.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
         )
-        # Train metrics shared memory
-        self.worker_train_metrics, self.worker_train_metrics_sh = get_config_shm(
-            name=self.worker_uuid + POLLEN_TRAIN_METRICS_SHM,  # noqa: F821
-        )
         # Number of samples shared memory
         self.worker_num_samples, self.worker_num_samples_sh = get_num_samples_shm(
             name=self.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
@@ -196,16 +211,7 @@ def create_new_worker(
     node_manager_uuid: str,
     parameters: NDArrays,
     train_metrics: Dict[str, Scalar],
-) -> Tuple[
-    Worker,
-    str,
-    NDArrays,
-    SharedMemory,
-    Config,
-    SharedMemory,
-    np.ndarray,
-    SharedMemory,
-]:
+) -> Tuple[Worker, str, NDArrays, SharedMemory, np.ndarray, SharedMemory,]:
     """Create a new Worker."""
     # Generate the Worker's UUID
     worker_uuid = node_manager_uuid + str(uuid.uuid4())
@@ -214,12 +220,6 @@ def create_new_worker(
         create=True,
         parameters=parameters,
         name=worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
-    )
-    # Train metrics shared memory
-    w_train_metrics, w_train_metrics_shm = get_config_shm(
-        create=True,
-        config=train_metrics,
-        name=worker_uuid + POLLEN_TRAIN_METRICS_SHM,  # noqa: F821
     )
     # Number of samples shared memory
     w_num_samples, w_num_samples_shm = get_num_samples_shm(
@@ -242,8 +242,6 @@ def create_new_worker(
         worker_uuid,
         w_parameters,
         w_parameters_shm,
-        w_train_metrics,
-        w_train_metrics_shm,
         w_num_samples,
         w_num_samples_shm,
     )

@@ -124,7 +124,7 @@ def gen_client_fn(
     def client_fn(client_id: int) -> VirtualLLMClient:
         client = VirtualLLMClient(
             cid=client_id,
-            cfg=cfg,
+            cfg=copy.deepcopy(cfg),
             trainer=trainer,
         )
         return client

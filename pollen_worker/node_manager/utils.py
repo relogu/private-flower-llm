@@ -40,6 +40,7 @@ def get_config_shm(
         raise ValueError("Cannot create config without config object.")
     if create:
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+        # TODO: Evaluate if we need to set up some margin here
         shm = SharedMemory(create=True, size=len(config_bytes), name=name)
         shm.buf[:] = config_bytes
     else:
@@ -124,9 +125,12 @@ def close_all_shms(process_uuid: str) -> None:
             shm.close()
             shm.unlink()
         except Exception as e:
-            log(
-                ERROR,
-                "Removing Shared Memory %s failed because of %s",
-                shm_name,
-                e,
-            )
+            if "[Errno 2] No such file or directory" in str(e):
+                continue
+            else:
+                log(
+                    ERROR,
+                    "Removing Shared Memory %s failed because of %s",
+                    shm_name,
+                    e,
+                )
