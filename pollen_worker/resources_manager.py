@@ -57,7 +57,7 @@ def get_gpu_prop() -> Dict[str, Device]:
         mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
         gpus_prop[f"cuda:{dev_id}"] = Device(
             id=dev_id,
-            name=pynvml.nvmlDeviceGetName(handle),
+            name=pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
             type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,

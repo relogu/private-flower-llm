@@ -13,7 +13,6 @@ from typing import Any, Callable, Dict, Optional, Union
 import flwr as fl
 import transformers
 from composer import Trainer
-from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
@@ -21,6 +20,7 @@ from omegaconf import DictConfig, OmegaConf
 from pollen_worker.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters,
+    get_raw_model_parameters,
     llm_eval,
     llm_fit,
 )
@@ -118,10 +118,10 @@ def gen_client_fn(
     cfg: Optional[DictConfig] = None,
     trainer: Optional[Trainer] = None,
     **kwargs,
-) -> Callable[[int], NumPyClient]:
+) -> Callable[[int], VirtualLLMClient]:
     """Return generic `client_fn` for Flower Framework."""
 
-    def client_fn(client_id: int) -> NumPyClient:
+    def client_fn(client_id: int) -> VirtualLLMClient:
         client = VirtualLLMClient(
             cid=client_id,
             cfg=cfg,
@@ -135,6 +135,10 @@ def gen_client_fn(
 def main(cfg: DictConfig) -> None:
     """Test the VirtualLLMClient."""
     log(INFO, f"VirtualLLMClient.main :: {cfg}")
+    # Trying to get raw parameters w/o fucking up
+    parameters = get_raw_model_parameters(copy.deepcopy(cfg))
+    # log(INFO, f"get_raw_model_parameters :: {parameters}")
+    log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=copy.deepcopy(cfg),
@@ -147,24 +151,30 @@ def main(cfg: DictConfig) -> None:
     )
     # Test virtual client's get_properties function
     properties = virtual_llm_client.get_properties(config={})
-    log(INFO, f"VirtualLLMClient.get_properties :: {properties}")
+    log(INFO, f"VirtualLLMClient.get_properties :: properties={properties}")
     # Test virtual client's get_parameters function
     parameters = virtual_llm_client.get_parameters(config={})
-    log(INFO, f"VirtualLLMClient.get_parameters :: {len(parameters)}")
+    log(
+        INFO,
+        f"VirtualLLMClient.get_parameters :: parameters' length is {len(parameters)}",
+    )
     # Test virtual client's fit function
     parameters, num_examples, metrics = virtual_llm_client.fit(
         parameters=parameters, config={}
     )
-    log(INFO, f"VirtualLLMClient.fit :: {len(parameters)}")
-    log(INFO, f"VirtualLLMClient.fit :: {num_examples}")
-    log(INFO, f"VirtualLLMClient.fit :: {metrics}")
+    log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
+    log(INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}")
+    log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
     # Test virtual client's evaluate function
     loss, num_examples, metrics = virtual_llm_client.evaluate(
         parameters=parameters, config={}
     )
-    log(INFO, f"VirtualLLMClient.evaluate :: {loss}")
-    log(INFO, f"VirtualLLMClient.evaluate :: {num_examples}")
-    log(INFO, f"VirtualLLMClient.evaluate :: {metrics}")
+    log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
+    log(
+        INFO,
+        f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
+    )
+    log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
 
 
 if __name__ == "__main__":

@@ -6,11 +6,12 @@ import os
 import time
 import warnings
 from collections import OrderedDict
+from contextlib import _GeneratorContextManager
 from logging import INFO, WARN
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from composer import Callback, Evaluator, Trainer
+from composer import Callback, ComposerModel, Evaluator, Trainer
 from composer.loggers import MosaicMLLogger
 from composer.loggers.mosaicml_logger import (
     MOSAICML_ACCESS_TOKEN_ENV_VAR,
@@ -214,6 +215,69 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         f"trainable params: {trainable_params} || all params: {all_param} ||"
         f"trainable%:{100 * trainable_params / all_param}",
     )
+
+
+def _get_model_for_trainer(
+    init_context: _GeneratorContextManager,
+    tokenizer: PreTrainedTokenizerBase,
+    model_config: DictConfig,
+    lora_config: Optional[Dict[str, Any]],
+) -> ComposerModel:
+    # Build Model
+    log(INFO, "Initializing model...")
+    with init_context:
+        if lora_config is not None:  # frozen model + trainable lora modules
+            model: ComposerHFCausalLM = build_composer_peft_model(
+                model_config.pretrained_model_name_or_path,
+                lora_config["args"],
+                tokenizer,
+            )
+            print_trainable_parameters(model)  # should not be 100%
+        else:  # standard model
+            model = build_composer_model(model_config, tokenizer)
+
+        if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
+            model = model.to(dtype=torch.bfloat16)
+        elif model_config.get("master_weights_dtype") in ("f16", "float16"):
+            model = model.to(dtype=torch.float16)
+    return model
+
+
+def get_raw_model_parameters(
+    _cfg: DictConfig,
+) -> NDArrays:
+    """Get the raw model parameters."""
+    # Filter deprecation warning from torch internal usage
+    warnings.filterwarnings(
+        action="ignore",
+        category=UserWarning,
+        message="torch.distributed.*_base is a private function"
+        "and will be deprecated.*",
+    )
+    # Check for incompatibilities between the model and data loaders
+    validate_config(_cfg)
+    # Resolve all interpolation variables as early as possible
+    OmegaConf.resolve(_cfg)
+    # Get model config
+    model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
+    # Get tokenizer config
+    tokenizer_config: Dict[str, Any] = pop_config(
+        _cfg, "tokenizer", must_exist=True, convert=True
+    )
+    tokenizer_name = tokenizer_config["name"]
+    tokenizer_kwargs = tokenizer_config.get("kwargs", {})
+    # Get LoRa config
+    lora_config: Optional[Dict[str, Any]] = pop_config(
+        _cfg, "lora", must_exist=False, default_value=None, convert=True
+    )
+    # Get model
+    model = _get_model_for_trainer(
+        init_context=process_init_device(model_config, None),
+        tokenizer=build_tokenizer(tokenizer_name, tokenizer_kwargs),
+        model_config=model_config,
+        lora_config=lora_config,
+    )
+    return [val.detach().to("cpu").numpy() for _, val in model.state_dict().items()]
 
 
 def _get_trainer_object(
@@ -434,7 +498,7 @@ def _get_trainer_object(
         log(
             WARN,
             "Unused parameter %s found in cfg. Please check your yaml to ensure"
-            "this parameter is necessary.",
+            " this parameter is necessary.",
             key,
         )
 
@@ -590,23 +654,30 @@ def _get_trainer_object(
     if eval_gauntlet_callback is not None:
         callbacks.append(eval_gauntlet_callback)
 
-    # Build Model
-    log(INFO, "Initializing model...")
-    with init_context:
-        if lora_config is not None:  # frozen model + trainable lora modules
-            model: ComposerHFCausalLM = build_composer_peft_model(
-                model_config.pretrained_model_name_or_path,
-                lora_config["args"],
-                tokenizer,
-            )
-            print_trainable_parameters(model)  # should not be 100%
-        else:  # standard model
-            model = build_composer_model(model_config, tokenizer)
+    # # Build Model
+    # log(INFO, "Initializing model...")
+    # with init_context:
+    #     if lora_config is not None:  # frozen model + trainable lora modules
+    #         model: ComposerHFCausalLM = build_composer_peft_model(
+    #             model_config.pretrained_model_name_or_path,
+    #             lora_config["args"],
+    #             tokenizer,
+    #         )
+    #         print_trainable_parameters(model)  # should not be 100%
+    #     else:  # standard model
+    #         model = build_composer_model(model_config, tokenizer)
 
-        if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
-            model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in ("f16", "float16"):
-            model = model.to(dtype=torch.float16)
+    #     if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
+    #         model = model.to(dtype=torch.bfloat16)
+    #     elif model_config.get("master_weights_dtype") in ("f16", "float16"):
+    #         model = model.to(dtype=torch.float16)
+
+    model = _get_model_for_trainer(
+        init_context,
+        tokenizer,
+        model_config,
+        lora_config,
+    )
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())

@@ -24,7 +24,7 @@ import numpy as np
 import pyarrow as pa
 import ray
 import torch
-from flwr.common import FitRes, Metrics, NDArrays, Scalar, parameters_to_ndarrays
+from flwr.common import FitRes, NDArrays, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from torch import device as device_type
@@ -33,14 +33,30 @@ import wandb
 
 
 #### Server ####
-def weighted_average(metrics: List[Tuple[int, Dict]]) -> Metrics:
-    """Implement weighted average."""
-    # Multiply accuracy of each client by number of examples used
-    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
+def weighted_average(
+    metrics: list[tuple[int, dict]],
+) -> dict:
+    """Compute a weighted average over pre-defined metrics.
 
-    # Aggregate and return custom metric (weighted average)
-    return {"accuracy": sum(accuracies) / sum(examples)}
+    Parameters
+    ----------
+    metrics : List[Tuple[int, Dict]]
+        The metrics to aggregate.
+
+    Returns
+    -------
+    Dict
+        The weighted average over pre-defined metrics.
+    """
+    total_num_examples = sum(
+        [num_examples for num_examples, _ in metrics],
+    )
+    weighted_metrics: dict = defaultdict(float)
+    for num_examples, metric in metrics:
+        for key, value in metric.items():
+            weighted_metrics[key] += num_examples * value
+
+    return {key: value / total_num_examples for key, value in weighted_metrics.items()}
 
 
 def partially_aggregate(
