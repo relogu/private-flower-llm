@@ -11,7 +11,8 @@ from flwr.common.logger import log
 POLLEN_CONFIG_SHM = "pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
 POLLEN_N_SAMPLES_SHM = "pollen_n_samples_shm"
-POLLEN_TRAIN_METRICS_SHM = "pollen_train_metrics_shm"
+POLLEN_EVAL_LOSS_SHM = "pollen_eval_loss_shm"
+POLLEN_METRICS_SHM = "pollen_metrics_shm"
 
 
 def get_ndarrays_size_and_bounds(
@@ -111,13 +112,36 @@ def set_num_samples_shm(
     old_num_samples_sh[0] = new_num_samples
 
 
+def get_eval_loss_shm(
+    create: bool = False,
+    name: str = POLLEN_N_SAMPLES_SHM,
+) -> Tuple[np.ndarray, SharedMemory]:
+    """Allocate a Shared Memory object and backed arrays."""
+    if create:
+        shm = SharedMemory(create=True, size=np.dtype(np.float64).itemsize, name=name)
+        shm.buf[:] = b"\0" * shm.size
+    else:
+        shm = SharedMemory(name=name)
+    eval_loss_sh: np.ndarray = np.ndarray((1,), dtype=np.float64, buffer=shm.buf)
+    return eval_loss_sh, shm
+
+
+def set_eval_loss_shm(
+    old_eval_loss_sh: np.ndarray,
+    new_eval_loss: float,
+) -> None:
+    """Set Shared Memory object and backed arrays."""
+    old_eval_loss_sh[0] = new_eval_loss
+
+
 def close_all_shms(process_uuid: str) -> None:
     """Close all Shared Memories of the process with the given UUID."""
     shms_names = [
         process_uuid + POLLEN_CONFIG_SHM,
         process_uuid + POLLEN_PARAMETERS_SHM,
         process_uuid + POLLEN_N_SAMPLES_SHM,
-        process_uuid + POLLEN_TRAIN_METRICS_SHM,
+        process_uuid + POLLEN_EVAL_LOSS_SHM,
+        process_uuid + POLLEN_METRICS_SHM,
     ]
     for shm_name in shms_names:
         try:
