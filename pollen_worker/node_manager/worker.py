@@ -147,7 +147,7 @@ class Worker(mp.Process):  # type: ignore
         # NOTE: This is necessary to prevent erros when executing a
         # config with the same `cfg.save_folder`
         tmp_client.cfg.save_overwrite = True  # type: ignore[union-attr]
-        # Try to train the client
+        # Try to execute the task of the client
         try:
             if action == "fit":
                 self._fit_action(tmp_client, fl_instructions_config)
@@ -242,7 +242,8 @@ class Worker(mp.Process):  # type: ignore
         ## Task loop
         task: int
         for task in iter(self.task_queue.get, None):
-            self.process_task(client_id=task)
+            cid, action = task  # type: ignore[misc]
+            self.process_task(cid, action)  # type: ignore[has-type]
             if self.auto_terminate:
                 break
         ## Un-register shared memories
