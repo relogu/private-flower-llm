@@ -263,6 +263,14 @@ def get_device() -> device_type:
     return cast(device_type, device)
 
 
+def get_n_cuda_devices() -> int:
+    """Get the number of CUDA devices available."""
+    if get_device() == "cuda":
+        return torch.cuda.device_count()
+    else:
+        return 0
+
+
 def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
     """Cast a PyArrow Table into a Buffer."""
     buffer = pa.BufferOutputStream()

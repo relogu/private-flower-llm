@@ -42,9 +42,8 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
     "=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
 )
 
-def merge_devices(
-    devices: List[Device]
-) -> Device:
+
+def merge_devices(devices: List[Device]) -> Device:
     """Merge multiple devices into a single one."""
     assert len(devices) > 0
     if len(devices) == 1:
