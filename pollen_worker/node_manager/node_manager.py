@@ -20,6 +20,7 @@ a node-manager which communicates
 to the simulation server.
 """
 import copy
+import gc
 import pickle
 import time
 import uuid
@@ -55,7 +56,6 @@ from pollen_worker.node_manager.utils import (
     get_eval_loss_shm,
     get_num_samples_shm,
     get_parameters_shm,
-    set_config_shm,
     set_parameters_shm,
 )
 from pollen_worker.node_manager.worker import create_new_worker
@@ -73,7 +73,6 @@ class NodeManager(fl.client.NumPyClient):
     def __init__(
         self,
         client_fn: Callable[[int], VirtualLLMClient],
-        fl_instructions_config: Config,
         run_uuid: str,
         parameters: NDArrays,
     ) -> None:
@@ -99,13 +98,7 @@ class NodeManager(fl.client.NumPyClient):
         # Set how many processes can be run on each GPU given the properties
         max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
         log(DEBUG, "Max processes per device: %s", max_proc_device)
-        ## Set up SharedMemories
-        # FL config shared memory
-        self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
-            config=fl_instructions_config,
-            create=True,
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
-        )
+        ## Set up round parameters SharedMemory
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=parameters,
@@ -149,19 +142,29 @@ class NodeManager(fl.client.NumPyClient):
 
     def _launch_worker_task(self, client_id: int) -> None:
         """Launch a worker task."""
+        pass
 
-    def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
+    def fit(
+        self, parameters: NDArrays, config: Config
+    ) -> tuple[NDArrays, int, Dict[str, Scalar]]:
         """Implement the fit step."""
+        log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # TODO: Make this dropouts-ready
         # TODO: Extract assignments from config
-        list_of_cids_to_train = [0, 1, 2, 3, 4, 5]
+        # list_of_cids_to_train = [0, 1, 2, 3, 4, 5]
+        list_of_cids_to_train = [0, 1]
         # Update shared memories objects
-        set_config_shm(config, self.fl_instructions_config_sh)
+        # FL config shared memory
+        self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
+            config=config,
+            create=True,
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+        )
         set_parameters_shm(self.round_parameters, parameters)
         # TODO: Put `cids` in the shared task queue
         for cid in list_of_cids_to_train:
-            self.task_queues["cuda"].put(cid)
+            self.task_queues["cuda"].put((cid, "fit"))
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
         partially_aggregated_params: Tuple[NDArrays, int] = ([], 0)
@@ -225,8 +228,8 @@ class NodeManager(fl.client.NumPyClient):
                     self.name,
                     worker_uuid,
                 )
-                # Close and unlink the shared memory
-                close_all_shms(worker_uuid)
+            # Close and unlink the shared memory
+            close_all_shms(worker_uuid)
             log(
                 DEBUG,
                 "NodeManager %s: worker %s shared memories have been closed.",
@@ -237,6 +240,9 @@ class NodeManager(fl.client.NumPyClient):
             while worker.is_alive():
                 time.sleep(0.1)
             log(DEBUG, "NodeManager %s: worker %s is dead.", self.name, worker_uuid)
+            del worker
+            gc.collect()
+            torch.cuda.empty_cache()
         # Aggregation of train metrics
         node_train_metrics = weighted_average(clients_train_metrics)
         log(
@@ -245,16 +251,22 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
+        log(
+            DEBUG,
+            "NodeManager %s: Results (%s, %s, %s).",
+            self.name,
+            len(partially_aggregated_params[0]),
+            partially_aggregated_params[1],
+            node_train_metrics,
+        )
+        # Close the config shared memory
+        self.fl_instructions_config_sh.close()
+        self.fl_instructions_config_sh.unlink()
         # Return results
         return (
             partially_aggregated_params[0],
-            partially_aggregated_params[1],
+            int(partially_aggregated_params[1]),
             node_train_metrics,
-            # {
-            #     "train_loss": node_train_loss,
-            #     "accuracy": node_accuracy,
-            #     "stats": clients_training_buf.to_pybytes(),
-            # },
         )
 
     def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
@@ -262,13 +274,17 @@ class NodeManager(fl.client.NumPyClient):
         start_time = time.time()
         # TODO: Make this dropouts-ready
         # TODO: Extract assignments from config
-        list_of_cids_to_eval = [0, 1, 2, 3, 4, 5]
+        list_of_cids_to_eval = [0]
         # Update shared memories objects
-        set_config_shm(config, self.fl_instructions_config_sh)
+        self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
+            config=config,
+            create=True,
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+        )
         set_parameters_shm(self.round_parameters, parameters)
         # TODO: Put `cids` in the shared task queue
         for cid in list_of_cids_to_eval:
-            self.task_queues["cuda"].put(cid)
+            self.task_queues["cuda"].put((cid, "evaluate"))
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
         clients_eval_losses: List[Tuple[int, float]] = []
@@ -350,16 +366,14 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
+        # Close the config shared memory
+        self.fl_instructions_config_sh.close()
+        self.fl_instructions_config_sh.unlink()
         # Return results
         return (
             node_eval_loss,
-            node_eval_samples,
+            int(node_eval_samples),
             node_eval_metrics,
-            # {
-            #     "train_loss": node_train_loss,
-            #     "accuracy": node_accuracy,
-            #     "stats": clients_training_buf.to_pybytes(),
-            # },
         )
 
     def __del__(self) -> None:
@@ -392,20 +406,18 @@ def main(cfg: DictConfig) -> None:
     client_fn = gen_client_fn(
         cfg=copy.deepcopy(_llm_config),
     )
-    # TODO: Get the FL config dictionary
-    fl_instructions_config: Config = {"server_round": 1}
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
-        fl_instructions_config=fl_instructions_config,
         run_uuid=cfg.run_uuid,
         parameters=parameters,
     )
     # Choose the type of execution
     if cfg.is_test:
         log(INFO, "NodeManager::test")
+        fl_instructions_config: Config = {"server_round": 1}
         parameters, n_samples, train_metrics = node_manager.fit(
             parameters, fl_instructions_config
         )
@@ -459,6 +471,7 @@ def main(cfg: DictConfig) -> None:
         fl.client.start_numpy_client(
             server_address=cfg.pollen.server_address,
             client=node_manager,
+            grpc_max_message_length=int(1_000_000_000),
         )
 
 
