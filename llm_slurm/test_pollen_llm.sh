@@ -22,10 +22,12 @@ DATETIME=$(date '+%Y%m%d_%H%M%S')
 SAVE_PATH="/nfs-share/ls985/projects/pollen_worker/checkpoints/$DATETIME"
 
 #! LLM-related options
-LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.loggers.wandb.project=llm llm_config.loggers.wandb.name='test_node_manager_mpt_125m' llm_config.train_loader.num_workers=12 llm_config.eval_loader.num_workers=12 llm_config.max_duration=10ba llm_config.autoresume=False" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
-LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.train_loader.num_workers=12 llm_config.eval_loader.num_workers=12 llm_config.max_duration=2ba llm_config.autoresume=False" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
+LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.loggers.wandb.project=llm llm_config.loggers.wandb.name='test_node_manager_mpt_125m' llm_config.train_loader.num_workers=12 llm_config.eval_loader.num_workers=12 llm_config.max_duration=10ba llm_config.autoresume=True" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
+LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.train_loader.num_workers=22 llm_config.eval_loader.num_workers=22 llm_config.max_duration=10ba llm_config.autoresume=True" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
+COMPOSER_OPTIONS="--world_size 2 --node_rank 0 --master_addr 127.0.0.1 --master_port 6378"
 
 #! Test NodeManager
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_OPTIONS pollen.saving_path=$SAVE_PATH &
 
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_OPTIONS pollen.saving_path=$SAVE_PATH 
+# HYDRA_FULL_ERROR=1 poetry run composer $COMPOSER_OPTIONS pollen_worker/node_manager/node_manager.py $LLM_OPTIONS pollen.saving_path=$SAVE_PATH 

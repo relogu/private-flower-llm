@@ -12,7 +12,7 @@ pollen:
 
 fl:
   n_total_clients: 100
-  n_clients_per_round: 1
+  n_clients_per_round: 2
   n_rounds: 5
 
 # Defaults
