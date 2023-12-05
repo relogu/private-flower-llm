@@ -111,7 +111,7 @@ class NodeManager(fl.client.NumPyClient):
         # Get hardware accelerator properties
         if torch.cuda.is_available():
             device_info = dict(
-                get_gpu_prop(),
+                get_gpu_prop(merge=True),
                 **device_info,
             )
         try:

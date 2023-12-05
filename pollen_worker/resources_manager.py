@@ -42,8 +42,25 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
     "=memory.total,memory.used,memory.free --format=csv,noheader,nounits"
 )
 
+def merge_devices(
+    devices: List[Device]
+) -> Device:
+    """Merge multiple devices into a single one."""
+    assert len(devices) > 0
+    if len(devices) == 1:
+        return devices[0]
+    else:
+        return Device(
+            id=0,
+            name="merged",
+            type="merged",
+            total_memory=sum([d.total_memory for d in devices]),
+            allocated_memory=sum([d.allocated_memory for d in devices]),
+            concurrency=1,
+        )
 
-def get_gpu_prop() -> Dict[str, Device]:
+
+def get_gpu_prop(merge: bool = False) -> Dict[str, Device]:
     """Return the properties of the GPU in the node w/o assessing anything."""
     # Init return value
     gpus_prop: Dict[str, Device] = {}
@@ -76,6 +93,8 @@ def get_gpu_prop() -> Dict[str, Device]:
             )
     # Shutdown pynvml
     pynvml.nvmlShutdown()
+    if merge:
+        gpus_prop = {"merged": merge_devices(list(gpus_prop.values()))}
     return gpus_prop
 
 
