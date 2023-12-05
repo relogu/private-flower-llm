@@ -3,6 +3,7 @@
 import concurrent.futures
 import os
 import sys
+import time
 import timeit
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
@@ -12,20 +13,29 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
-from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
+from flwr.common import (
+    DisconnectRes,
+    EvaluateIns,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    Parameters,
+    Scalar,
+)
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import (
+    _handle_finished_future_after_evaluate,
     _handle_finished_future_after_fit,
-    evaluate_clients,
+    evaluate_client,
     fit_client,
 )
 from flwr.server.strategy import FedAvg
 
-from pollen_worker.clients.virtual_client import VirtualClient
+from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
@@ -83,6 +93,11 @@ class PollenServer(Server):
             if (conf_fn := self.strategy.on_fit_config_fn) is not None
             else lambda _: {}
         )
+        self.on_evaluate_config: Callable[[int], Dict[str, Scalar]] = (
+            conf_fn
+            if (conf_fn := self.strategy.on_evaluate_config_fn) is not None
+            else lambda _: {}
+        )
         self.max_workers: Optional[int] = None
         self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
         if saving_path is None:
@@ -132,7 +147,7 @@ class PollenServer(Server):
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
-            str(i): cast(ClientProxy, VirtualClient(name="", cid=str(k)))
+            str(i): cast(ClientProxy, EmptyVirtualClient(cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
         # Waiting for at least one node to connect
@@ -175,35 +190,44 @@ class PollenServer(Server):
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
-            # Check for changes in connected NodeManagers
-            dropped, new = _check_connected_node_managers(
-                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
-                new_connected_node_managers_cid=[
-                    k for k, _ in self._client_manager.node_managers.items()
-                ],
-            )
-            if len(dropped) > 0:
-                # Handle dropped NodeManagers
-                [self.nodes_dict.pop(k) for k in dropped]
-            if len(new) > 0:
-                # Handle newly added NodeManagers
-                results, failures = get_nodes_properties(
-                    node_managers={
-                        k: self._client_manager.node_managers[k] for k in new
-                    },
-                    max_workers=self.max_workers,
-                )
+            while self._client_manager.num_available_node_managers() < self.num_nodes:
                 log(
                     INFO,
-                    "Get nodes properties: there are %s results and %s failures",
-                    len(results),
-                    len(failures),
+                    "Waiting for %s nodes to connect",
+                    self.num_nodes - self._client_manager.num_available_node_managers(),
                 )
-                new_nodes_dict = {
-                    client_proxy.cid: (client_proxy, node)
-                    for client_proxy, node in results
-                }
-                self.nodes_dict.update(new_nodes_dict)
+                time.sleep(5)
+                # Check for changes in connected NodeManagers
+                dropped, new = _check_connected_node_managers(
+                    old_connected_node_managers_cid=[
+                        k for k, _ in self.nodes_dict.items()
+                    ],
+                    new_connected_node_managers_cid=[
+                        k for k, _ in self._client_manager.node_managers.items()
+                    ],
+                )
+                if len(dropped) > 0:
+                    # Handle dropped NodeManagers
+                    [self.nodes_dict.pop(k) for k in dropped]
+                if len(new) > 0:
+                    # Handle newly added NodeManagers
+                    results, failures = get_nodes_properties(
+                        node_managers={
+                            k: self._client_manager.node_managers[k] for k in new
+                        },
+                        max_workers=self.max_workers,
+                    )
+                    log(
+                        INFO,
+                        "Get nodes properties: there are %s results and %s failures",
+                        len(results),
+                        len(failures),
+                    )
+                    new_nodes_dict = {
+                        client_proxy.cid: (client_proxy, node)
+                        for client_proxy, node in results
+                    }
+                    self.nodes_dict.update(new_nodes_dict)
             results, failures = get_nodes_properties(
                 node_managers=self._client_manager.node_managers,
                 max_workers=self.max_workers,
@@ -299,12 +323,75 @@ class PollenServer(Server):
             self._client_manager.num_available(),
         )
 
+        # Translate `client_instruction` to `node_instructions`
+        node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
+            sampled_virtual_cids=[
+                (int(client.cid), self.cids[int(client.cid)])
+                for client, _ in client_instructions
+            ],
+            nodes_dict=self.nodes_dict,
+            batch_size=self.on_evaluate_config(server_round)["batch_size"],
+            cids=self.cids,
+            pollen_models=self.pollen_models,
+            clients_stats=self.clients_training_stats,
+            correction_tables=self.correction_tables,
+            verbose=False,
+        )
+        log(
+            DEBUG,
+            "Node assignments for evaluate_round %s: %s",
+            server_round,
+            node_assignments,
+        )
+        node_instructions = []
+        for client_proxy, device_assignment in node_assignments:
+            # Get the `fit_config` for the virtual clients
+            node_evaluate_config = self.on_evaluate_config(server_round)
+
+            # NOTE: This key is used only when the training policy of workers
+            # is not `sequential`, and for setting the `num_workers` parameter
+            # in the `DataLoader`
+            if "server_round" not in node_evaluate_config:
+                node_evaluate_config["server_round"] = server_round
+            if "n_workers" not in node_evaluate_config:
+                node_evaluate_config["n_workers"] = 1
+
+            # Assign `cids` to NodeManagers' devices
+            node_evaluate_config.update(device_assignment)
+
+            # Append instruction
+            node_instructions.append(
+                (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
+            )
+
+        log(
+            DEBUG,
+            "Node instructions for evaluate_round %s: %s",
+            server_round,
+            [(c_p, ins.config) for c_p, ins in node_instructions],
+        )
+
+        log(
+            DEBUG,
+            "evaluate_round %s: sending instructions to %s NodeManagers",
+            server_round,
+            len(node_instructions),
+        )
+
         # Collect `evaluate` results from all clients participating in this round
-        results, failures = evaluate_clients(
-            client_instructions,
+        results, failures = pollen_evaluate_clients(
+            node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
         )
+        if len(failures) > 0:
+            log(
+                ERROR,
+                "evaluate_round %s: there are %s failures: %s",
+                server_round,
+                len(failures),
+                failures,
+            )
         log(
             DEBUG,
             "evaluate_round %s received %s results and %s failures",
@@ -362,12 +449,12 @@ class PollenServer(Server):
             correction_tables=self.correction_tables,
             verbose=False,
         )
-        # log(
-        #     DEBUG,
-        #     "Node assignments for fit_round %s: %s",
-        #     server_round,
-        #     node_assignments,
-        # )
+        log(
+            DEBUG,
+            "Node assignments for fit_round %s: %s",
+            server_round,
+            node_assignments,
+        )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
@@ -389,12 +476,12 @@ class PollenServer(Server):
                 (client_proxy, FitIns(self.parameters, node_fit_config))
             )
 
-        # log(
-        #     DEBUG,
-        #     "Node instructions for fit_round %s: %s",
-        #     server_round,
-        #     node_instructions,
-        # )
+        log(
+            DEBUG,
+            "Node instructions for fit_round %s: %s",
+            server_round,
+            [(c_p, ins.config) for c_p, ins in node_instructions],
+        )
 
         log(
             DEBUG,
@@ -409,7 +496,7 @@ class PollenServer(Server):
             self.pollen_models,
             self.correction_tables,
         ) = pollen_fit_clients(
-            client_instructions=node_instructions,
+            node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
             clients_stats=self.clients_training_stats,
@@ -417,6 +504,14 @@ class PollenServer(Server):
             cids=self.cids,
             placement_policy=self.placement_policy,
         )
+        if len(failures) > 0:
+            log(
+                ERROR,
+                "fit_round %s: there are %s failures: %s",
+                server_round,
+                len(failures),
+                failures,
+            )
         log(
             DEBUG,
             "fit_round %s received %s results and %s failures",
@@ -428,25 +523,27 @@ class PollenServer(Server):
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
         for _client, fit_res in results:
-            tmp_clients_training_stats = fit_res.metrics.pop("stats")
-            received_clients_training_stats.append(
-                get_table_from_pyarrow_buffer(
-                    cast(pa.Buffer, tmp_clients_training_stats)
+            tmp_clients_training_stats = fit_res.metrics.pop("stats", None)
+            if tmp_clients_training_stats is not None:
+                received_clients_training_stats.append(
+                    get_table_from_pyarrow_buffer(
+                        cast(pa.Buffer, tmp_clients_training_stats)
+                    )
                 )
-            )
 
         # Collect the new statistics and append to the global statistics
-        if self.clients_training_stats is None:
-            self.clients_training_stats = pa.concat_tables(
-                received_clients_training_stats
-            )
-        else:
-            self.clients_training_stats = pa.concat_tables(
-                [self.clients_training_stats] + received_clients_training_stats
-            )
-            # self.clients_training_stats = pa.concat_tables(
-            #     received_clients_training_stats
-            # )
+        if len(received_clients_training_stats) > 0:
+            if self.clients_training_stats is None:
+                self.clients_training_stats = pa.concat_tables(
+                    received_clients_training_stats
+                )
+            else:
+                self.clients_training_stats = pa.concat_tables(
+                    [self.clients_training_stats] + received_clients_training_stats
+                )
+                # self.clients_training_stats = pa.concat_tables(
+                #     received_clients_training_stats
+                # )
 
         # Aggregate training results
         aggregated_result: Tuple[
@@ -461,8 +558,35 @@ class PollenServer(Server):
 ####################### NEW FUNCTIONS #######################
 
 
+def pollen_evaluate_clients(
+    node_instructions: List[Tuple[ClientProxy, EvaluateIns]],
+    max_workers: Optional[int],
+    timeout: Optional[float],
+) -> EvaluateResultsAndFailures:
+    """Evaluate parameters concurrently on all selected clients."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        submitted_fs = {
+            executor.submit(evaluate_client, client_proxy, ins, timeout)
+            for client_proxy, ins in node_instructions
+        }
+        # TODO: Handle Pollen's model for the eval assignment
+        finished_fs, _ = concurrent.futures.wait(
+            fs=submitted_fs,
+            timeout=None,  # Handled in the respective communication stack
+        )
+
+    # Gather results
+    results: List[Tuple[ClientProxy, EvaluateRes]] = []
+    failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]] = []
+    for future in finished_fs:
+        _handle_finished_future_after_evaluate(
+            future=future, results=results, failures=failures
+        )
+    return results, failures
+
+
 def pollen_fit_clients(
-    client_instructions: List[Tuple[ClientProxy, FitIns]],
+    node_instructions: List[Tuple[ClientProxy, FitIns]],
     max_workers: Optional[int],
     timeout: Optional[float],
     cids: Dict[Union[str, int], int],
@@ -476,14 +600,14 @@ def pollen_fit_clients(
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
             executor.submit(fit_client, client_proxy, ins, timeout)
-            for client_proxy, ins in client_instructions
+            for client_proxy, ins in node_instructions
         }
         pollen_models, correction_tables = get_pollen_models(
             placement_policy=placement_policy,
             clients_stats=clients_stats,
             batch_size=batch_size,
             cids=cids,
-            server_round=int(client_instructions[0][1].config["server_round"]),
+            server_round=int(node_instructions[0][1].config["server_round"]),
         )
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
@@ -583,6 +707,29 @@ def _check_strategy_for_pollen(
             " key with an `int` value. The call"
             " `strategy.on_fit_config_fn(0)` returned %s instead",
             strategy.on_fit_config_fn(0),
+        )
+        sys.exit(0)
+    if strategy.on_evaluate_config_fn is None:
+        log(
+            ERROR,
+            "The strategy, %s, passed to the `PollenServer` doesn't"
+            " have a proper `on_evaluate_config_fn` attribute. The user"
+            " must define such method as type `Callable[[int], Dict]`"
+            "Currently, `on_evaluate_config_fn` is %s.",
+            strategy,
+            strategy.on_evaluate_config_fn,
+        )
+        sys.exit(0)
+    if "batch_size" not in strategy.on_evaluate_config_fn(0) or not isinstance(
+        strategy.on_evaluate_config_fn(0)["batch_size"], int
+    ):
+        log(
+            ERROR,
+            "The `on_evaluate_config_fn` function of the strategy passed"
+            " to the `PollenServer` must have a proper `batch_size`"
+            " key with an `int` value. The call"
+            " `strategy.on_evaluate_config_fn(0)` returned %s instead",
+            strategy.on_evaluate_config_fn(0),
         )
         sys.exit(0)
     return True
