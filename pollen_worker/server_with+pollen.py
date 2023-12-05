@@ -3,6 +3,7 @@
 Starts a Flower server which awaits connections from Pollen node managers. It supports
 using wandb for logging and hydra for exeperiment configuration.
 """
+import copy
 import json
 import sys
 from pathlib import Path
@@ -11,9 +12,11 @@ from typing import Dict, Union
 import flwr as fl
 import hydra
 import transformers
+from flwr.common import ndarrays_to_parameters
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
+from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
@@ -30,8 +33,15 @@ def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
     # TODO: Get the list of cids
     cid_samples_dict: Dict[Union[str, int], int] = {
-        str(k): 1 for k in range(cfg.fl.n_total_clients)
+        k: 1 for k in range(cfg.fl.n_total_clients)
     }
+    # Get initial model parameters
+    _llm_config = cfg.llm_config
+    OmegaConf.resolve(_llm_config)
+    OmegaConf.set_struct(_llm_config, False)
+    initial_parameters = ndarrays_to_parameters(
+        get_raw_model_parameters(copy.deepcopy(_llm_config))
+    )
     # TODO: Instantiate the strategy
     strategy = FedAvgReproducibleSampling(
         fraction_fit=sys.float_info.min,
@@ -40,10 +50,10 @@ def main(cfg: DictConfig) -> None:
         min_available_clients=cfg.fl.n_clients_per_round,
         min_evaluate_clients=cfg.fl.n_clients_per_round,
         evaluate_fn=None,
-        on_fit_config_fn=None,
-        on_evaluate_config_fn=None,
+        on_fit_config_fn=lambda x: {"server_round": x, "batch_size": 32},
+        on_evaluate_config_fn=lambda x: {"server_round": x, "batch_size": 32},
         accept_failures=False,
-        initial_parameters=None,
+        initial_parameters=initial_parameters,
         evaluate_metrics_aggregation_fn=None,
         seed=cfg.seed,
     )
@@ -58,7 +68,7 @@ def main(cfg: DictConfig) -> None:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
         # Start Flower server
         hist = fl.server.start_server(
-            server_address=cfg.flwr_address,
+            server_address=cfg.pollen.server_address,
             server=PollenServer(
                 cids=cid_samples_dict,
                 client_fn=gen_client_fn(),
@@ -67,11 +77,13 @@ def main(cfg: DictConfig) -> None:
                 placement_policy=cfg.pollen.placement_policy,
                 saving_path=Path(cfg.pollen.saving_path),
                 history=wandb_history,
-                num_nodes=cfg.pollen.num_nodes,
+                num_nodes=cfg.pollen.n_nodes,
             ),
-            config=fl.server.ServerConfig(num_rounds=cfg.fl.num_rounds),
+            config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
+            grpc_max_message_length=int(1_000_000_000),
         )
-        with open(Path(cfg.pollen.saving_path) / "history.json", "w") as f:
+        Path(cfg.pollen.saving_path).mkdir(parents=True, exist_ok=True)
+        with open(Path(cfg.pollen.saving_path) / "history.json", "x") as f:
             json.dump(hist.__dict__, f)
 
 
