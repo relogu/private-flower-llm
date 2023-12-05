@@ -193,3 +193,6 @@ llm-foundry-scripts
 
 # Checkpoints
 *.pt
+
+# Flower history objects
+history.json
