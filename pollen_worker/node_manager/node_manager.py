@@ -190,6 +190,13 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             workers_dict[0].worker_uuid,
         )
+        # for _, worker in workers_dict.items():
+        #     worker.terminate()
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: sending termination command to workers.",
+        #     self.name,
+        # )
         # Wait until the worker is dead
         for _, worker in workers_dict.items():
             while worker.is_alive():
@@ -393,6 +400,7 @@ class NodeManager(fl.client.NumPyClient):
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Start a node manager directly with hydra."""
+    start_time = time.time()
     log(
         INFO,
         "NodeManager received the following config:\n%s",
@@ -422,7 +430,7 @@ def main(cfg: DictConfig) -> None:
     # Choose the type of execution
     if cfg.is_test:
         log(INFO, "NodeManager::test")
-        fl_instructions_config: Config = {"server_round": 1}
+        fl_instructions_config: Config = {"server_round": 1, "merged": "0"}
         loss, n_samples, train_metrics = node_manager.evaluate(
             parameters, fl_instructions_config
         )
@@ -441,36 +449,36 @@ def main(cfg: DictConfig) -> None:
             "NodeManager::test::evaluate : train_metrics=%s",
             train_metrics,
         )
-        parameters, n_samples, train_metrics = node_manager.fit(
-            parameters, fl_instructions_config
-        )
-        log(
-            INFO,
-            "NodeManager::test::fit : len(parameters)=%s",
-            len(parameters),
-        )
-        log(
-            INFO,
-            "NodeManager::test::fit : n_samples=%s",
-            n_samples,
-        )
-        log(
-            INFO,
-            "NodeManager::test::fit : train_metrics=%s",
-            train_metrics,
-        )
-        properties = node_manager.get_properties(fl_instructions_config)
-        log(
-            INFO,
-            "NodeManager::test::get_properties : properties=%s",
-            properties,
-        )
-        parameters = node_manager.get_parameters(fl_instructions_config)
-        log(
-            INFO,
-            "NodeManager::test::get_parameters : len(parameters)=%s",
-            len(parameters),
-        )
+        # parameters, n_samples, train_metrics = node_manager.fit(
+        #     parameters, fl_instructions_config
+        # )
+        # log(
+        #     INFO,
+        #     "NodeManager::test::fit : len(parameters)=%s",
+        #     len(parameters),
+        # )
+        # log(
+        #     INFO,
+        #     "NodeManager::test::fit : n_samples=%s",
+        #     n_samples,
+        # )
+        # log(
+        #     INFO,
+        #     "NodeManager::test::fit : train_metrics=%s",
+        #     train_metrics,
+        # )
+        # properties = node_manager.get_properties(fl_instructions_config)
+        # log(
+        #     INFO,
+        #     "NodeManager::test::get_properties : properties=%s",
+        #     properties,
+        # )
+        # parameters = node_manager.get_parameters(fl_instructions_config)
+        # log(
+        #     INFO,
+        #     "NodeManager::test::get_parameters : len(parameters)=%s",
+        #     len(parameters),
+        # )
     else:
         # Start NodeManager as a Flower client
         fl.client.start_numpy_client(
@@ -478,6 +486,11 @@ def main(cfg: DictConfig) -> None:
             client=node_manager,
             grpc_max_message_length=int(1_000_000_000),
         )
+    log(
+        INFO,
+        "NodeManager::Total time spent is %s seconds.",
+        time.time() - start_time,
+    )
 
 
 if __name__ == "__main__":
