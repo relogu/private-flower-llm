@@ -163,6 +163,12 @@ class Worker(mp.Process):  # type: ignore
         # NOTE: Prevent slave workers to log to the console
         if self.worker_rank > 0:
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
+        # NOTE: When using remote data, we need one tmp folder per worker
+        if tmp_client.cfg.data_remote is not None:  # type: ignore[union-attr]
+            tmp_local_path = str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
+            tmp_client.cfg.data_local = (  # type: ignore[union-attr]
+                tmp_local_path + "_worker_" + str(self.worker_rank)
+            )
         # Try to execute the task of the client
         try:
             if action == "fit":
@@ -189,6 +195,7 @@ class Worker(mp.Process):  # type: ignore
                 self.result_queue.put([-1, 0, 0, self.worker_uuid])
             # Take the timestamp after the task is done
             end_time = time.time_ns()
+        del tmp_client
         self.auto_terminate = True
         torch.cuda.empty_cache()
         gc.collect()
