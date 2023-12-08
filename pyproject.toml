@@ -83,6 +83,8 @@ boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
+llm-foundry = "^0.4.0"
+wheel = "^0.42.0"
 
 # ## For GPU flash attention
 # mosaicml-turbo = "0.0.4"
@@ -96,12 +98,10 @@ mosaicml-turbo = "0.0.4"
 # # PyPI does not support direct dependencies, so we remove this line before uploading from PyPI
 # xentropy-cuda-lib = { git = "https://github.com/HazyResearch/flash-attention.git", branch = "v2.3.2", subdirectory = "csrc/xentropy" } # This fucks up, need to install it later
 
-## For peft
-loralib = "0.1.1"
-bitsandbytes = "0.39.1"
-peft = "0.4.0"
-llm-foundry = "^0.4.0"
-wheel = "^0.42.0"
+# ## For peft
+# loralib = "0.1.1"
+# bitsandbytes = "0.39.1"
+# peft = "0.4.0"
 
 
 [tool.poetry.dev-dependencies]
