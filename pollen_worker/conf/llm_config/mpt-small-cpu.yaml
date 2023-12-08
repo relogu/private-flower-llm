@@ -79,7 +79,6 @@ eval_interval: 5ba
 eval_first: false
 eval_subset_num_batches: 5
 global_train_batch_size: 256
-autoresume: false
 
 # System
 seed: ${llm_config.global_seed}
