@@ -20,7 +20,7 @@ from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
-from pollen_worker.rs_fedavg import FedAvgReproducibleSampling
+from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
 from pollen_worker.utils import wandb_init
 from pollen_worker.wandb_history import WandbHistory
 

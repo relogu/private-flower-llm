@@ -1,13 +1,13 @@
 ---
 name: mpt-small-cpu
 data_local: ./my-copy-c4
-data_remote: null # If blank, files must be present in data_local
+data_remote: null  # If blank, files must be present in data_local
 max_seq_len: 128
 global_seed: 17
 autoresume: true
 
 # Run Name
-run_name: mpt_causal_lm_cpu # If left blank, will be read from env var $RUN_NAME
+run_name: mpt_causal_lm_cpu  # If left blank, will be read from env var $RUN_NAME
 
 # Model
 model:
@@ -63,9 +63,7 @@ scheduler:
 optimizer:
   name: decoupled_adamw
   lr: 6.0e-4
-  betas:
-  - 0.9
-  - 0.95
+  betas: [0.9, 0.95]
   eps: 1.0e-08
   weight_decay: 0.0
 
