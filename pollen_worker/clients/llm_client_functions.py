@@ -149,7 +149,7 @@ def validate_config(cfg: DictConfig):
             "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
             "`torch._dynamo.config.suppress_errors = True` and falling back to eager.",
         )
-        torch._dynamo.config.suppress_errors = True
+        torch._dynamo.config.suppress_errors = True # type: ignore
 
     if cfg.model.get("load_in_8bit", False):
         raise ValueError(

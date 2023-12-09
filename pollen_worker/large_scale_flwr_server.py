@@ -175,6 +175,8 @@ def fit_clients(
         failures.clear()
     # Aggregate partial aggregations
     parameters_aggregated: Optional[Parameters] = None
+
+    metrics_aggregated = {}
     if tmp_results:
         parameters_aggregated = ndarrays_to_parameters(aggregate(tmp_results))
     if strategy.fit_metrics_aggregation_fn:
