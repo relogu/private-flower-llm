@@ -33,7 +33,7 @@ from pollen_worker.utils import l1_norm
 
 # flake8: noqa: E501
 class FedNesterov(FedAvgReproducibleSampling):
-    """Configurable FedAvgRSModel strategy implementation."""
+    """Configurable FedNesterov strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
     def __init__(
@@ -64,7 +64,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         track_norms: bool = True,
         track_inplace_aggregation: bool = True,
     ) -> None:
-        """Federated Averaging strategy with with reproducible sampling and model
+        """Federated Averaging with Nestorov Momentum strategy with with reproducible sampling and model
         saving.
 
         Implementation based on https://arxiv.org/pdf/1909.06335.pdf
