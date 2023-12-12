@@ -1,13 +1,13 @@
 ---
 name: mpt-350m
 data_local: ./my-copy-c4
-data_remote: null # If blank, files must be present in data_local
+data_remote: null  # If blank, files must be present in data_local
 max_seq_len: 2048
 global_seed: 17
 autoresume: true
 
 # Run Name
-run_name: # If left blank, will be read from env var $RUN_NAME
+run_name: null  # If left blank, will be read from env var $RUN_NAME
 
 # Model
 model:
@@ -62,9 +62,7 @@ scheduler:
 optimizer:
   name: decoupled_adamw
   lr: 3.0e-4
-  betas:
-  - 0.9
-  - 0.95
+  betas: [0.9, 0.95]
   eps: 1.0e-08
   weight_decay: 0.0
 
@@ -73,7 +71,7 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-max_duration: 13400ba # ~ 7B tokens
+max_duration: 13400ba  # ~ 7B tokens
 eval_interval: 1000ba
 eval_first: false
 eval_subset_num_batches: -1
