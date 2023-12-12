@@ -20,7 +20,7 @@ from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
-from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
+from pollen_worker.strategy.rs_nesterov import FedNesterov
 from pollen_worker.utils import wandb_init
 from pollen_worker.wandb_history import WandbHistory
 
@@ -43,12 +43,13 @@ def main(cfg: DictConfig) -> None:
         get_raw_model_parameters(copy.deepcopy(_llm_config))
     )
     # TODO: Instantiate the strategy
-    strategy = FedAvgReproducibleSampling(
+    # No evaluation here, all lazy
+    strategy = FedNesterov(
         fraction_fit=sys.float_info.min,
-        fraction_evaluate=sys.float_info.min,
+        fraction_evaluate=0,
         min_fit_clients=cfg.fl.n_clients_per_round,
         min_available_clients=cfg.fl.n_clients_per_round,
-        min_evaluate_clients=cfg.fl.n_clients_per_round,
+        min_evaluate_clients=0,
         evaluate_fn=None,
         on_fit_config_fn=lambda x: {"server_round": x, "batch_size": 32},
         on_evaluate_config_fn=lambda x: {"server_round": x, "batch_size": 32},
@@ -59,6 +60,7 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
+
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,

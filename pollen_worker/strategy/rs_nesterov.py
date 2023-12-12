@@ -6,7 +6,7 @@ Paper: https://arxiv.org/abs/1602.05629
 import os
 import pickle
 import random
-from logging import WARNING
+from logging import INFO, WARNING
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -26,11 +26,13 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
 
+from pollen_worker.strategy.aggregation import aggregate_cumulative_average
 from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
+from pollen_worker.utils import l1_norm
 
 
 # flake8: noqa: E501
-class FedAvgRSModel(FedAvgReproducibleSampling):
+class FedNesterov(FedAvgReproducibleSampling):
     """Configurable FedAvgRSModel strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
@@ -59,6 +61,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         freq: int = 1,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
+        track_norms: bool = True,
+        track_inplace_aggregation: bool = True,
     ) -> None:
         """Federated Averaging strategy with with reproducible sampling and model
         saving.
@@ -132,7 +136,16 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             else None
         )
 
+        log(
+            INFO,
+            "Using Nesterov Momentum with server_learning_rate=%s and server_momentum=%s",
+            self.server_learning_rate,
+            self.server_momentum,
+        )
         self.momentum_vector: Optional[NDArrays] = None
+
+        self.track_norms = track_norms
+        self.track_inplace_aggregation = track_inplace_aggregation
 
     def aggregate_fit(
         self,
@@ -151,14 +164,10 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             self.ndarray_parameters is not None
         ), "When using server-side optimization, model needs to be initialized."
 
-        # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
+        fedavg_result = aggregate_cumulative_average(results)
 
         pseudo_gradient: NDArrays = [
-            x - y for x, y in zip(self.ndarray_parameters, weights_results)
+            x - y for x, y in zip(self.ndarray_parameters, fedavg_result)
         ]
 
         if server_round > 1:
@@ -173,8 +182,6 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
 
             # Initialize momentum vector
             self.momentum_vector = pseudo_gradient
-
-        # TODO: Optimize this into a single computation to avoid iterating pseudo_gradient twice
 
         # Applying Nesterov
         pseudo_gradient = [
@@ -192,12 +199,6 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
 
         parameters_aggregated = ndarrays_to_parameters(fedavgm_result)
 
-        if server_round % self.freq == 0:
-            # Save `parameters_aggregated`` to file
-            with open(
-                self.saving_path / f"parameters_aggregated_{server_round}", "wb"
-            ) as f:
-                pickle.dump(parameters_aggregated, f)
         # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
@@ -205,5 +206,32 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
+
+        if self.track_norms:
+            log(
+                INFO,
+                "Nesterov Momentum: l1_norm(pseudo_gradient)=%s, l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s, l1_norm(fedavg_result)=%s",
+                l1_norm(pseudo_gradient),
+                l1_norm(self.momentum_vector),
+                l1_norm(fedavgm_result),
+                l1_norm(fedavg_result),
+            )
+
+        if self.track_inplace_aggregation:
+            normal_result = aggregate(
+                [
+                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                    for _, fit_res in results
+                ]
+            )
+            layer_by_layer_diff = 0.0
+            for x, y in zip(normal_result, fedavg_result):
+                layer_by_layer_diff += l1_norm(x - y)
+
+            log(
+                INFO,
+                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s",
+                layer_by_layer_diff,
+            )
 
         return parameters_aggregated, metrics_aggregated

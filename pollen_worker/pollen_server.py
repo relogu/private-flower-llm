@@ -7,13 +7,14 @@ import time
 import timeit
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
 from flwr.common import (
+    Code,
     DisconnectRes,
     EvaluateIns,
     EvaluateRes,
@@ -21,6 +22,7 @@ from flwr.common import (
     FitRes,
     Parameters,
     Scalar,
+    Status,
 )
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
@@ -29,7 +31,6 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server import (
     _handle_finished_future_after_evaluate,
-    _handle_finished_future_after_fit,
     evaluate_client,
     fit_client,
 )
@@ -130,6 +131,10 @@ class PollenServer(Server):
         log(INFO, "Initializing Pollen simulation")
         history = self.history if self.history is not None else History()
 
+        # Waiting for at least one node to connect
+        log(INFO, "Waiting for at least one node to connect")
+        self._client_manager.wait_for_node_managers(self.num_nodes)
+
         # Initialize parameters
         log(INFO, "Initializing global parameters")
         self.parameters = self._get_initial_parameters(timeout=timeout)
@@ -150,9 +155,6 @@ class PollenServer(Server):
             str(i): cast(ClientProxy, EmptyVirtualClient(cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
-        # Waiting for at least one node to connect
-        log(INFO, "Waiting for at least one node to connect")
-        self._client_manager.wait_for_node_managers(self.num_nodes)
         # Collect nodes' properties
         # NOTE: Ideally, we want to get here the info about the concurrency
         # per hardware accelerator because everything from the server-side
@@ -414,7 +416,14 @@ class PollenServer(Server):
         server_round: int,
         timeout: Optional[float],
     ) -> Optional[
-        Tuple[Optional[Parameters], Dict[str, Scalar], FitResultsAndFailures]
+        Tuple[
+            Optional[Parameters],
+            Dict[str, Scalar],
+            Tuple[
+                List[Tuple[Dict[str, Scalar], Status, int]],
+                List[Tuple[ClientProxy, FitRes] | BaseException],
+            ],
+        ]
     ]:
         """Perform a single round of federated averaging."""
         # Get clients and their respective instructions from strategy
@@ -491,39 +500,39 @@ class PollenServer(Server):
         )
 
         # Collect `fit` results from all NodeManagers participating in this round
-        (
-            (results, failures),
-            self.pollen_models,
-            self.correction_tables,
-        ) = pollen_fit_clients(
-            node_instructions=node_instructions,
-            max_workers=self.max_workers,
-            timeout=timeout,
+        pollen_models, correction_tables = get_pollen_models(
+            placement_policy=self.placement_policy,
             clients_stats=self.clients_training_stats,
             batch_size=int(self.on_fit_config(server_round)["batch_size"]),
             cids=self.cids,
-            placement_policy=self.placement_policy,
+            server_round=int(node_instructions[0][1].config["server_round"]),
         )
-        if len(failures) > 0:
-            log(
-                ERROR,
-                "fit_round %s: there are %s failures: %s",
-                server_round,
-                len(failures),
-                failures,
-            )
-        log(
-            DEBUG,
-            "fit_round %s received %s results and %s failures",
-            server_round,
-            len(results),
-            len(failures),
+
+        # Using a generator limits us in failure/metrics accumulatiom
+        # The output params are not used in the aggregation
+        # They are merely populated by the processing of the generator
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
+        metrics_accumulator: List[Tuple[Dict[str, Scalar], Status, int]] = []
+        results = pollen_fit_clients(
+            node_instructions=node_instructions,
+            max_workers=self.max_workers,
+            timeout=timeout,
+            failures=failures,
+            metrics_accumulator=metrics_accumulator,
+        )
+
+        # Aggregate training results
+        aggregated_result: Tuple[
+            Optional[Parameters],
+            Dict[str, Scalar],
+        ] = self.strategy.aggregate_fit(
+            server_round, cast(List[Tuple[ClientProxy, FitRes]], results), failures
         )
 
         # Collect statistics that Pollen uses from the FitRes of the NodeManagers
         received_clients_training_stats = []
-        for _client, fit_res in results:
-            tmp_clients_training_stats = fit_res.metrics.pop("stats", None)
+        for metrics in metrics_accumulator:
+            tmp_clients_training_stats = metrics[0].pop("stats", None)
             if tmp_clients_training_stats is not None:
                 received_clients_training_stats.append(
                     get_table_from_pyarrow_buffer(
@@ -545,14 +554,30 @@ class PollenServer(Server):
                 #     received_clients_training_stats
                 # )
 
-        # Aggregate training results
-        aggregated_result: Tuple[
-            Optional[Parameters],
-            Dict[str, Scalar],
-        ] = self.strategy.aggregate_fit(server_round, results, failures)
+        if len(failures) > 0:
+            log(
+                ERROR,
+                "fit_round %s: there are %s failures: %s",
+                server_round,
+                len(failures),
+                failures,
+            )
+
+        log(
+            DEBUG,
+            """fit_round %s received %s results and %s
+            failures using async inplace aggregation""",
+            server_round,
+            len(metrics_accumulator),
+            len(failures),
+        )
 
         parameters_aggregated, metrics_aggregated = aggregated_result
-        return parameters_aggregated, metrics_aggregated, (results, failures)
+        return (
+            parameters_aggregated,
+            metrics_aggregated,
+            (metrics_accumulator, failures),
+        )
 
 
 ####################### NEW FUNCTIONS #######################
@@ -589,39 +614,45 @@ def pollen_fit_clients(
     node_instructions: List[Tuple[ClientProxy, FitIns]],
     max_workers: Optional[int],
     timeout: Optional[float],
-    cids: Dict[Union[str, int], int],
-    clients_stats: Optional[pa.Table] = None,
-    batch_size: int = 1,
-    placement_policy: str = "rr",
-) -> Tuple[
-    FitResultsAndFailures, Optional[Dict[str, Any]], Optional[Dict[str, pa.Table]]
-]:
+    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    metrics_accumulator: List[Tuple[Dict[str, Scalar], Status, int]],
+) -> Generator[Tuple[ClientProxy, FitRes], Any, None]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
             executor.submit(fit_client, client_proxy, ins, timeout)
             for client_proxy, ins in node_instructions
         }
-        pollen_models, correction_tables = get_pollen_models(
-            placement_policy=placement_policy,
-            clients_stats=clients_stats,
-            batch_size=batch_size,
-            cids=cids,
-            server_round=int(node_instructions[0][1].config["server_round"]),
-        )
-        finished_fs, _ = concurrent.futures.wait(
-            fs=submitted_fs,
-            timeout=None,  # Handled in the respective communication stack
-        )
 
-    # Gather results
-    results: List[Tuple[ClientProxy, FitRes]] = []
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
-    for future in finished_fs:
-        _handle_finished_future_after_fit(
-            future=future, results=results, failures=failures
-        )
-    return (results, failures), pollen_models, correction_tables
+        while submitted_fs:
+            finished_fs, _ = concurrent.futures.wait(
+                fs=submitted_fs,
+                timeout=None,  # Handled in the respective communication stack
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in finished_fs:
+                submitted_fs.remove(future)
+
+                # Check if there was an exception
+                failure = future.exception()
+                if failure is not None:
+                    failures.append(failure)
+                    continue
+
+                # Successfully received a result from a client
+                result: Tuple[ClientProxy, FitRes] = future.result()
+                _, res = result
+
+                if res.status.code == Code.OK:
+                    metrics_accumulator.append(
+                        (res.metrics, res.status, res.num_examples)
+                    )
+
+                    yield result
+                else:
+                    # Not successful,
+                    # client returned a result where the status code is not OK
+                    failures.append(result)
 
 
 def get_nodes_properties(

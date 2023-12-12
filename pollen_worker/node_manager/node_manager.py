@@ -431,54 +431,54 @@ def main(cfg: DictConfig) -> None:
     if cfg.is_test:
         log(INFO, "NodeManager::test")
         fl_instructions_config: Config = {"server_round": 1, "merged": "0"}
-        loss, n_samples, train_metrics = node_manager.evaluate(
-            parameters, fl_instructions_config
-        )
-        log(
-            INFO,
-            "NodeManager::test::evaluate : loss=%s",
-            loss,
-        )
-        log(
-            INFO,
-            "NodeManager::test::evaluate : n_samples=%s",
-            n_samples,
-        )
-        log(
-            INFO,
-            "NodeManager::test::evaluate : train_metrics=%s",
-            train_metrics,
-        )
-        # parameters, n_samples, train_metrics = node_manager.fit(
+        # loss, n_samples, train_metrics = node_manager.evaluate(
         #     parameters, fl_instructions_config
         # )
         # log(
         #     INFO,
-        #     "NodeManager::test::fit : len(parameters)=%s",
-        #     len(parameters),
+        #     "NodeManager::test::evaluate : loss=%s",
+        #     loss,
         # )
         # log(
         #     INFO,
-        #     "NodeManager::test::fit : n_samples=%s",
+        #     "NodeManager::test::evaluate : n_samples=%s",
         #     n_samples,
         # )
         # log(
         #     INFO,
-        #     "NodeManager::test::fit : train_metrics=%s",
+        #     "NodeManager::test::evaluate : train_metrics=%s",
         #     train_metrics,
         # )
-        # properties = node_manager.get_properties(fl_instructions_config)
-        # log(
-        #     INFO,
-        #     "NodeManager::test::get_properties : properties=%s",
-        #     properties,
-        # )
-        # parameters = node_manager.get_parameters(fl_instructions_config)
-        # log(
-        #     INFO,
-        #     "NodeManager::test::get_parameters : len(parameters)=%s",
-        #     len(parameters),
-        # )
+        parameters, n_samples, train_metrics = node_manager.fit(
+            parameters, fl_instructions_config
+        )
+        log(
+            INFO,
+            "NodeManager::test::fit : len(parameters)=%s",
+            len(parameters),
+        )
+        log(
+            INFO,
+            "NodeManager::test::fit : n_samples=%s",
+            n_samples,
+        )
+        log(
+            INFO,
+            "NodeManager::test::fit : train_metrics=%s",
+            train_metrics,
+        )
+        properties = node_manager.get_properties(fl_instructions_config)
+        log(
+            INFO,
+            "NodeManager::test::get_properties : properties=%s",
+            properties,
+        )
+        parameters = node_manager.get_parameters(fl_instructions_config)
+        log(
+            INFO,
+            "NodeManager::test::get_parameters : len(parameters)=%s",
+            len(parameters),
+        )
     else:
         # Start NodeManager as a Flower client
         fl.client.start_numpy_client(

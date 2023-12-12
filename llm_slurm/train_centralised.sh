@@ -2,9 +2,13 @@
 
 
 #! Moving to the project folder
-cd /nfs-share/ls985/projects/llm-foundry
+cd /nfs-share/$USER/projects/llm-foundry
 #! Activate Poetry environment
 poetry shell
+
+# Remove shared memories of the user if they exist
+find /dev/shm -name '*pollen*' -type f -delete 
+find /dev/shm -name '*_locals' -type f -delete
 #! Add the appropriate CUDA version to the path
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 #! Set data paths

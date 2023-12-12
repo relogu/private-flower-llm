@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #! Moving to the project folder
-cd /nfs-share/ls985/projects/pollen_worker
+cd /nfs-share/$USER/projects/pollen_worker
 #! Install Poetry environment
 poetry install
 #! Activate Poetry shell
