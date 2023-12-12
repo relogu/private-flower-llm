@@ -1,4 +1,4 @@
-"""Handle aggrgation in-place and potentially async."""
+"""Handle aggregation in-place and potentially async."""
 from typing import Iterable, Tuple
 
 import numpy as np
