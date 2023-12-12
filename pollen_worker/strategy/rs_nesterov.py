@@ -1,6 +1,6 @@
-"""Federated Averaging (FedAvg) [McMahan et al., 2016] strategy.
+"""Federated Averaging with Nestorov Momentum (FedAvgM) [Hsu et al., 2019] strategy.
 
-Paper: https://arxiv.org/abs/1602.05629
+Paper: https://arxiv.org/pdf/1909.06335.pdf
 """
 
 import os
@@ -67,7 +67,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         """Federated Averaging strategy with with reproducible sampling and model
         saving.
 
-        Implementation based on https://arxiv.org/abs/1602.05629
+        Implementation based on https://arxiv.org/pdf/1909.06335.pdf
 
         Parameters
         ----------
