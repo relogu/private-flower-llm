@@ -388,7 +388,7 @@ def main(args: Namespace) -> None:
             f'Constants for dataset "{args.dataset}" not found. Currently only'
             '"the_pile" and "c4" are supported.'
         ) from e
-    # Elaborate over whesther to concatenate tokens or not
+    # Elaborate over whether to concatenate tokens or not
     if args.concat_tokens is not None:
         mode = ConcatMode.CONCAT_TOKENS
         tokenizer = build_tokenizer(args.tokenizer, args.tokenizer_kwargs)
