@@ -6,21 +6,43 @@ Paper: https://arxiv.org/pdf/1909.06335.pdf
 import os
 import pickle
 import random
-from logging import INFO, WARNING
+from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+from flwr.client import Client
+from flwr.client.numpy_client import NumPyClient
 from flwr.common import (
+    Code,
+    DisconnectRes,
+    EvaluateIns,
+    EvaluateRes,
     FitIns,
     FitRes,
     MetricsAggregationFn,
     NDArrays,
     Parameters,
     Scalar,
+    Status,
     log,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
+from flwr.common.logger import log
 from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
@@ -63,10 +85,10 @@ class FedNesterov(FedAvgReproducibleSampling):
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
         track_norms: bool = True,
-        track_inplace_aggregation: bool = True,
+        track_inplace_aggregation: bool = False,
     ) -> None:
-        """Federated Averaging with Nestorov Momentum strategy with with reproducible sampling and model
-        saving.
+        """Federated Averaging with Nestorov Momentum strategy with with reproducible
+        sampling and model saving.
 
         Implementation based on https://arxiv.org/pdf/1909.06335.pdf
 
@@ -171,6 +193,12 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         results = (acc_metrics(result) for result in results)
 
+        results_cached: List[Tuple[ClientProxy, FitRes]] = []
+
+        if self.track_inplace_aggregation:
+            results_cached = list(results)
+            results = (val for val in results_cached)
+
         fedavg_result = aggregate_cumulative_average(results)
 
         if fedavg_result is None:
@@ -230,7 +258,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             normal_result = aggregate(
                 [
                     (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                    for _, fit_res in results
+                    for _, fit_res in results_cached
                 ]
             )
             layer_by_layer_diff = 0.0
@@ -239,8 +267,9 @@ class FedNesterov(FedAvgReproducibleSampling):
 
             log(
                 INFO,
-                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s",
+                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s, len_results: %s",
                 layer_by_layer_diff,
+                len(results_cached),
             )
 
         return parameters_aggregated, metrics_aggregated

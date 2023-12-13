@@ -1,8 +1,10 @@
 """Handle aggregation in-place and potentially async."""
+from logging import DEBUG
 from typing import Iterable, Tuple
 
 import numpy as np
 from flwr.common import FitRes, NDArrays, parameters_to_ndarrays
+from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 
 
@@ -17,7 +19,7 @@ def aggregate_cumulative_average(
 
     num_total_examples: int = 0  # total number of examples, aggregated over time
 
-    for _, fit_res in results:
+    for client_proxy, fit_res in results:
         # Compute the new total number of samples
         new_total_samples = num_total_examples + fit_res.num_examples
 
@@ -45,5 +47,11 @@ def aggregate_cumulative_average(
 
         # Update total number of examples
         num_total_examples = new_total_samples
+        log(
+            DEBUG,
+            f"""Aggregated cid: {client_proxy.cid}
+                                with samples: {fit_res.num_examples}
+                                total samples used: {num_total_examples}""",
+        )
 
     return params

@@ -26,15 +26,15 @@ IS_LOCAL=false
 # IS_LOCAL=true
 if [ "$DATA_VERSION" == "small" ]; then
     if [ "$IS_LOCAL" == true ]; then
-        DATA_CONFIG="llm_config.data_local=/local/scratch/small-c4 llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+        DATA_CONFIG="llm_config.data_local=/local/scratch/$USER/small-c4llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
     else
-        DATA_CONFIG="llm_config.data_local=/tmp/small-c4 llm_config.data_remote=s3://small-c4-dataset llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+        DATA_CONFIG="llm_config.data_local=/tmp/$USER/small-c4 llm_config.data_remote=s3://small-c4-dataset llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
     fi
 else
     if [ "$IS_LOCAL" == true ]; then
-        DATA_CONFIG="llm_config.data_local=/local/scratch/c4 llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
+        DATA_CONFIG="llm_config.data_local=/local/scratch/$USER/c4 llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
     else
-        DATA_CONFIG="llm_config.data_local=/tmp/c4 llm_config.data_remote=s3://c4-dataset llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
+        DATA_CONFIG="llm_config.data_local=/tmp/$USER/c4 llm_config.data_remote=s3://c4-dataset llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
     fi
 fi
 #! Get info about resources available

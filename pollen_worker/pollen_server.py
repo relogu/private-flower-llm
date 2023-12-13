@@ -525,7 +525,6 @@ class PollenServer(Server):
             len(node_instructions),
         )
 
-        
         # Using a generator limits us in failure/metrics accumulatiom
         # The output params are not used in the aggregation
         # They are merely populated by the processing of the generator
@@ -572,7 +571,7 @@ class PollenServer(Server):
             # Collect statistics that Pollen uses from the FitRes of the NodeManagers
             received_clients_training_stats = []
             for metrics in metrics_accumulator:
-                tmp_clients_training_stats = metrics[0].pop("stats", None)
+                tmp_clients_training_stats = metrics[1].pop("stats", None)
                 if tmp_clients_training_stats is not None:
                     received_clients_training_stats.append(
                         get_table_from_pyarrow_buffer(
@@ -596,7 +595,7 @@ class PollenServer(Server):
                 return None
             else:
                 raise e
-            
+
         # Collect `fit` results from all NodeManagers participating in this round
         pollen_models, correction_tables = get_pollen_models(
             placement_policy=self.placement_policy,
@@ -605,7 +604,6 @@ class PollenServer(Server):
             cids=self.cids,
             server_round=int(node_instructions[0][1].config["server_round"]),
         )
-
 
         # Collect the new statistics and append to the global statistics
         if len(received_clients_training_stats) > 0:
