@@ -1,6 +1,11 @@
-"""Federated Averaging with Nestorov Momentum (FedAvgM) [Hsu et al., 2019] strategy.
+"""Federated Averaging with Nestorov Momentum (FedAvgM) strategy.
 
-Paper: https://arxiv.org/pdf/1909.06335.pdf
+This aggregation mechanism is used and discussed in several papers:
+[Hsu et al., 2019], [Huo et al., 2020]
+
+Papers:
+- https://arxiv.org/pdf/1909.06335.pdf
+- https://arxiv.org/pdf/2002.02090.pdf
 """
 
 import os
@@ -55,7 +60,6 @@ class FedNesterov(FedAvgReproducibleSampling):
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         seed: int = 1337,
-        freq: int = 1,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
         track_norms: bool = True,
@@ -63,8 +67,6 @@ class FedNesterov(FedAvgReproducibleSampling):
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy with with reproducible
         sampling and model saving.
-
-        Implementation based on https://arxiv.org/pdf/1909.06335.pdf
 
         Parameters
         ----------
@@ -98,8 +100,14 @@ class FedNesterov(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
-        freq : int, optional
-            Frequency of model saving. Defaults to 1.
+        server_learning_rate : float, optional 
+            Learning rate used by the server-side optimizer. Defaults to 0.7.
+        server_momentum: float, optional
+            Momentum coefficient used by the server-side optimizer. Defaults to 0.9.
+        track_norms: bool, optional
+            Flag for tracking the norms of the aggregated updates. Defaults to True.
+        track_inplace_aggregation: bool, optional
+            Flag for tracking the difference between standard and in-place aggregation. Defaults to False.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -119,8 +127,6 @@ class FedNesterov(FedAvgReproducibleSampling):
         if saving_path is None:
             saving_path = Path(os.getcwd())
         self.saving_path = saving_path
-
-        self.freq = freq
 
         # Default to DiLoCo values
         self.server_learning_rate = server_learning_rate
