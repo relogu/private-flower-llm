@@ -2,7 +2,7 @@
 
 
 #! Moving to the project folder
-cd /nfs-share/ls985/projects/pollen_worker
+cd /nfs-share/$USER/projects/pollen_worker
 # #! Activate Poetry environment
 # poetry shell
 #! Add the appropriate CUDA version to the paths
@@ -14,13 +14,14 @@ export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Check the output of `nvcc -V`
 nvcc -V
 #! Set data paths
-# DATA_VERSION="small"
-DATA_VERSION="full"
-IS_LOCAL=false
-# IS_LOCAL=true
+DATA_VERSION="small"
+# DATA_VERSION="full"
+# IS_LOCAL=false
+IS_LOCAL=true
 if [ "$DATA_VERSION" == "small" ]; then
     if [ "$IS_LOCAL" == true ]; then
-        DATA_CONFIG="llm_config.data_local=/local/scratch/small-c4 llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+        # DATA_CONFIG="llm_config.data_local=/local/scratch/small-c4 llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+        DATA_CONFIG="llm_config.data_local=/local/scratch/fed_c4/c10 llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
     else
         DATA_CONFIG="llm_config.data_local=/tmp/small-c4 llm_config.data_remote=s3://small-c4-dataset llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
     fi
