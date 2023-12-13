@@ -58,6 +58,23 @@ COMPOSER_MODEL_REGISTRY = {
 }
 
 
+def set_all_data_paths(
+    cfg: Optional[DictConfig], new_path: str, is_local: bool = True
+) -> Optional[DictConfig]:
+    """Set the data paths for all dataloaders in the config."""
+    if cfg is None:
+        return cfg
+    if is_local:
+        cfg.data_local = new_path
+        cfg.train_loader.dataset.local = new_path
+        cfg.eval_loader.dataset.local = new_path
+    else:
+        cfg.data_remote = new_path
+        cfg.train_loader.dataset.remote = new_path
+        cfg.eval_loader.dataset.remote = new_path
+    return cfg
+
+
 def validate_config(cfg: DictConfig):
     """Validate compatible model and dataloader selection."""
     loaders = [cfg.train_loader]
