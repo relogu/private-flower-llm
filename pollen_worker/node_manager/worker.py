@@ -14,6 +14,7 @@ from composer.cli.launcher import _patch_env
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 
+from pollen_worker.clients.llm_client_functions import set_all_data_paths
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
@@ -165,10 +166,17 @@ class Worker(mp.Process):  # type: ignore
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
         # NOTE: When using remote data, we need one tmp folder per worker
         if tmp_client.cfg.data_remote is not None:  # type: ignore[union-attr]
-            tmp_local_path = str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
-            tmp_client.cfg.data_local = (  # type: ignore[union-attr]
-                tmp_local_path + "_worker_" + str(self.worker_rank)
+            # Set the appropriate path given the `client_id`
+            new_remote_path = (
+                str(tmp_client.cfg.data_remote)  # type: ignore[union-attr]
+                + f"/client_{client_id}"
             )
+            tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_remote_path, False)
+        new_local_path = (
+            str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
+            + f"/client_{client_id}"
+        )
+        tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_local_path)
         # Try to execute the task of the client
         try:
             if action == "fit":
