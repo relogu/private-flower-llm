@@ -4,48 +4,22 @@ Paper: https://arxiv.org/pdf/1909.06335.pdf
 """
 
 import os
-import pickle
-import random
 from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    Iterable,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-import pyarrow as pa
-import pyarrow.parquet as pq
-from flwr.client import Client
-from flwr.client.numpy_client import NumPyClient
 from flwr.common import (
-    Code,
-    DisconnectRes,
-    EvaluateIns,
-    EvaluateRes,
-    FitIns,
     FitRes,
     MetricsAggregationFn,
     NDArrays,
     Parameters,
     Scalar,
-    Status,
     log,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
 from flwr.common.logger import log
-from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
 from sympy import N
 
@@ -263,7 +237,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             )
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result):
-                layer_by_layer_diff += l1_norm(x - y)
+                layer_by_layer_diff += l1_norm([x - y])
 
             log(
                 INFO,

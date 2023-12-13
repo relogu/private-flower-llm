@@ -435,7 +435,7 @@ class PollenServer(Server):
         loss_aggregated, metrics_aggregated = aggregated_result
         return loss_aggregated, metrics_aggregated, (results, failures)
 
-    def fit_round(
+    def fit_round(  # type: ignore[override]
         self,
         server_round: int,
         timeout: Optional[float],
@@ -546,7 +546,7 @@ class PollenServer(Server):
             for future in results_futures
         )
 
-        handle_sucess_and_failure = get_handle_sucess_and_failure(
+        handle_success_and_failure = get_handle_success_and_failure(
             metrics_accumulator,
             failures,
             intentional_failures,
@@ -554,7 +554,7 @@ class PollenServer(Server):
         )
 
         results_and_failures = (
-            handle_sucess_and_failure(result) for result in results_and_failures
+            handle_success_and_failure(result) for result in results_and_failures
         )
 
         results = (result for success, result in results_and_failures if success)
@@ -760,7 +760,7 @@ def _handle_finished_future_after_fit_async(
     return (False, result)
 
 
-def get_handle_sucess_and_failure(
+def get_handle_success_and_failure(
     metrics_accumulator: List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]],
     failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     intentional_failures: List[BaseException],
@@ -773,7 +773,7 @@ def get_handle_sucess_and_failure(
     Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
     | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException],
 ]:
-    """Closure to generate a function which handles client sucess and failure.
+    """Closure to generate a function which handles client success and failure.
 
     The function distinguishes between intentional and unintentional failures.
     It enforces constraints on the number of unintentional failures.
@@ -792,7 +792,7 @@ def get_handle_sucess_and_failure(
 
     Returns
     -------
-    handle_sucess_and_failure : Callable[
+    handle_success_and_failure : Callable[
         [
             Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
             | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
@@ -800,21 +800,22 @@ def get_handle_sucess_and_failure(
         Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
         | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException],
     ]
-        The function which handles client sucess and failure while saving the outputs.
+        The function which handles client success and failure while saving the outputs.
     """
 
-    def handle_sucess_and_failure(
+    def handle_success_and_failure(
         result: Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
+        | Tuple[Literal[False], (Tuple[ClientProxy, FitRes] | BaseException)]
     ) -> (
         Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
+        | Tuple[Literal[False], (Tuple[ClientProxy, FitRes] | BaseException)]
     ):
         cnt_failures = 0
 
         match result:
             case (True, res):
-                client_proxy, fit_res = res
+                cast_res = cast(Tuple[ClientProxy, FitRes], res)
+                client_proxy, fit_res = cast_res
                 metrics_accumulator.append(
                     (
                         client_proxy,
@@ -823,11 +824,12 @@ def get_handle_sucess_and_failure(
                         fit_res.num_examples,
                     )
                 )
-                return (True, res)
+                return (True, cast_res)
             case (False, res) if isinstance(res, IntentionalClientDropout):
                 intentional_failures.append(res)
                 return (False, res)
             case (False, res):
+                cast_failure_res = cast(Tuple[ClientProxy, FitRes] | BaseException, res)
                 cnt_failures += 1
                 if (
                     accept_failures_cnt is not None
@@ -837,11 +839,11 @@ def get_handle_sucess_and_failure(
                         f"""Unintentional failures passed
                         the maximum: {accept_failures_cnt}"""
                     )
-                failures.append(res)
-                return (False, res)
+                failures.append(cast_failure_res)
+                return (False, cast_failure_res)
         return result
 
-    return handle_sucess_and_failure
+    return handle_success_and_failure
 
 
 def _handle_finished_future_after_get_properties(
