@@ -8,7 +8,7 @@ import pickle
 import random
 from logging import INFO, WARNING
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from flwr.common import (
     FitIns,
@@ -25,6 +25,7 @@ from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate
+from sympy import N
 
 from pollen_worker.strategy.aggregation import aggregate_cumulative_average
 from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
@@ -150,21 +151,30 @@ class FedNesterov(FedAvgReproducibleSampling):
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
-        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+        results: Iterable[Tuple[ClientProxy, FitRes]],
+        failures: Iterable[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
-            return None, {}
 
         assert (
             self.ndarray_parameters is not None
         ), "When using server-side optimization, model needs to be initialized."
 
+        fit_metrics: List[Tuple[int, Dict[str, Scalar]]] = []
+
+        def acc_metrics(
+            result: Tuple[ClientProxy, FitRes]
+        ) -> Tuple[ClientProxy, FitRes]:
+            _, fit_res = result
+            fit_metrics.append((fit_res.num_examples, fit_res.metrics))
+            return result
+
+        results = (acc_metrics(result) for result in results)
+
         fedavg_result = aggregate_cumulative_average(results)
+
+        if fedavg_result is None:
+            return None, {}
 
         pseudo_gradient: NDArrays = [
             x - y for x, y in zip(self.ndarray_parameters, fedavg_result)
@@ -202,7 +212,6 @@ class FedNesterov(FedAvgReproducibleSampling):
         # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")

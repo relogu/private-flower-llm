@@ -299,3 +299,7 @@ def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
     with pa.ipc.open_file(buffer) as reader:
         ret_table = reader.read_all()
     return ret_table
+
+
+class IntentionalClientDropout(Exception):
+    """Exception raised when a client is dropped out of the tree."""
