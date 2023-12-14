@@ -93,6 +93,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
+        from pollen_worker.utils import IntentionalClientDropout
+        raise IntentionalClientDropout("Whatever")
         return llm_fit(parameters, config, cfg, self.trainer)
 
     def evaluate(
