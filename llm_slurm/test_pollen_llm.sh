@@ -73,6 +73,6 @@ LLM_OPTIONS="llm_config.save_interval=$SAVE_INTERVAL llm_config.save_num_checkpo
 
 #! Test NodeManager
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $SAVE_PATH/server.log &
-sleep 30s
+
 
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log 

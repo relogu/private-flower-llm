@@ -1,5 +1,6 @@
 """Handle aggregation in-place and potentially async."""
 from logging import DEBUG
+import time
 from typing import Iterable, Tuple
 
 import numpy as np
@@ -20,6 +21,11 @@ def aggregate_cumulative_average(
     num_total_examples: int = 0  # total number of examples, aggregated over time
 
     for client_proxy, fit_res in results:
+        start_time = time.time()
+        log(
+            DEBUG,
+            f"Startet aggregating cid: {client_proxy.cid}",
+        )
         # Compute the new total number of samples
         new_total_samples = num_total_examples + fit_res.num_examples
 
@@ -51,7 +57,8 @@ def aggregate_cumulative_average(
             DEBUG,
             f"""Aggregated cid: {client_proxy.cid}
                                 with samples: {fit_res.num_examples}
-                                total samples used: {num_total_examples}""",
+                                total samples used: {num_total_examples}
+                                time: {time.time() - start_time} """,
         )
 
     return params
