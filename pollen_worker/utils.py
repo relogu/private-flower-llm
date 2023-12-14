@@ -218,9 +218,23 @@ def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any,
         yield si, si + (d + 1 if i < r else d)
 
 
-def aggregate_inplace(
-    results: List[Tuple[ClientProxy, FitRes]]
-) -> Tuple[NDArrays, int]:
+def l1_norm(arrays: NDArrays) -> float:
+    """Compute the L1 norm of a list of arrays.
+
+    Parameters
+    ----------
+    arrays : NDArrays
+        List of arrays to compute the L1 norm of.
+
+    Returns
+    -------
+    float
+        The L1 norm of the list of arrays.
+    """
+    return sum(np.sum(np.abs(arr)) for arr in arrays)
+
+
+def aggregate_inplace(results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
     num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
@@ -242,7 +256,7 @@ def aggregate_inplace(
         )
         params = [reduce(np.add, layer_updates) for layer_updates in zip(params, res)]
 
-    return params, num_examples_total
+    return params
 
 
 def get_device() -> device_type:
@@ -285,3 +299,7 @@ def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
     with pa.ipc.open_file(buffer) as reader:
         ret_table = reader.read_all()
     return ret_table
+
+
+class IntentionalClientDropout(Exception):
+    """Exception raised when a client is dropped out of the tree."""

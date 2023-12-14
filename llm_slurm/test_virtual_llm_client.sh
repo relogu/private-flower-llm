@@ -2,9 +2,13 @@
 
 
 #! Moving to the project folder
-cd /nfs-share/ls985/projects/pollen_worker
+cd /nfs-share/$USER/projects/pollen_worker
 #! Activate Poetry environment
 poetry shell
+
+# Remove shared memories of the user if they exist
+find /dev/shm -name '*pollen*' -type f -delete 
+find /dev/shm -name '*_locals' -type f -delete
 #! Add the appropriate CUDA version to the paths
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
@@ -20,7 +24,7 @@ CONFIG_MPT_125M=/nfs-share/ls985/projects/pollen_worker/llm-foundry-scripts/trai
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-SAVE_PATH="/nfs-share/ls985/projects/pollen_worker/checkpoints/$DATETIME"
+SAVE_PATH="/nfs-share/$USER/projects/pollen_worker/checkpoints/$DATETIME"
 
 #! Test client
 poetry run composer pollen_worker/clients/virtual_llm_client.py $CONFIG_MPT_125M train_loader.dataset.split=train_small eval_loader.dataset.split=val_small data_local=$DATA_ROOT_SMALL

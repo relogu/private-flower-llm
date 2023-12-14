@@ -131,7 +131,11 @@ def fit_clients(
                     )
                 # Partially aggregate parameters
                 if results:
-                    tmp_results.append(aggregate_inplace(results))
+                    tmp_results.append(
+                        aggregate_inplace(
+                            results,  # type: ignore[arg-type]
+                        )
+                    )
                 # Clear lists
                 finished_fs.clear()
                 results.clear()
@@ -168,13 +172,19 @@ def fit_clients(
             log(WARNING, "No fit_metrics_aggregation_fn provided")
         # Partially aggregate parameters
         if results:
-            tmp_results.append(aggregate_inplace(results))
+            tmp_results.append(
+                aggregate_inplace(
+                    results,  # type: ignore[arg-type]
+                )
+            )
         # Clear lists
         finished_fs.clear()
         results.clear()
         failures.clear()
     # Aggregate partial aggregations
     parameters_aggregated: Optional[Parameters] = None
+
+    metrics_aggregated = {}
     if tmp_results:
         parameters_aggregated = ndarrays_to_parameters(aggregate(tmp_results))
     if strategy.fit_metrics_aggregation_fn:

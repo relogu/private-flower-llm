@@ -5,6 +5,10 @@
 cd /nfs-share/$USER/projects/pollen_worker
 # #! Activate Poetry environment
 # poetry shell
+
+# Remove shared memories of the user if they exist
+find /dev/shm -name '*pollen*' -type f -delete 
+find /dev/shm -name '*_locals' -type f -delete
 #! Add the appropriate CUDA version to the paths
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
@@ -46,8 +50,8 @@ LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 l
 LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=15 llm_config.model.attn_config.attn_impl=torch"
 # LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"
 #! Set the run configuration
-LLM_CONFIG=$LLM_CONFIG_MPT_SMALL_CPU
-# LLM_CONFIG=$LLM_CONFIG_MPT_125M
+# LLM_CONFIG=$LLM_CONFIG_MPT_SMALL_CPU
+LLM_CONFIG=$LLM_CONFIG_MPT_125M
 # LLM_CONFIG=$LLM_CONFIG_MPT_350M
 # LLM_CONFIG=$LLM_CONFIG_MPT_760M
 # LLM_CONFIG=$LLM_CONFIG_MPT_1B
@@ -57,7 +61,7 @@ LLM_CONFIG=$LLM_CONFIG_MPT_SMALL_CPU
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-SAVE_PATH="/nfs-share/ls985/projects/pollen_worker/checkpoints/$DATETIME"
+SAVE_PATH="/nfs-share/$USER/projects/pollen_worker/checkpoints/$DATETIME"
 mkdir -p $SAVE_PATH
 
 #! LLM-related options
