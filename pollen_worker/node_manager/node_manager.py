@@ -431,24 +431,24 @@ def main(cfg: DictConfig) -> None:
     if cfg.is_test:
         log(INFO, "NodeManager::test")
         fl_instructions_config: Config = {"server_round": 1, "merged": "0"}
-        # loss, n_samples, train_metrics = node_manager.evaluate(
-        #     parameters, fl_instructions_config
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : loss=%s",
-        #     loss,
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : n_samples=%s",
-        #     n_samples,
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : train_metrics=%s",
-        #     train_metrics,
-        # )
+        loss, n_samples, train_metrics = node_manager.evaluate(
+            parameters, fl_instructions_config
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : loss=%s",
+            loss,
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : n_samples=%s",
+            n_samples,
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : train_metrics=%s",
+            train_metrics,
+        )
         parameters, n_samples, train_metrics = node_manager.fit(
             parameters, fl_instructions_config
         )
