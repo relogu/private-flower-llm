@@ -1,12 +1,17 @@
 #!/bin/bash
 #! Moving to the project folder
 cd $HOME/projects/pollen_worker
+#! Preparing environment
 if [[ $(hostname) == 'mauao' ]]; then
     echo "Assuming the script is executing in Mauao."
     export DATA_TMP_DIR="$HOME/tmp"
+    # # Remove shared memories of the user if they exist
+    # find /dev/shm -name '*_locals' -type f -delete
 elif [[ $(hostname) == *'fluidstack'* ]]; then
     echo "Assuming the script is executing in Fluidstack machines."
     export DATA_TMP_DIR="$HOME/tmp"
+    # # Remove shared memories of the user if they exist
+    # find /dev/shm -name '*_locals' -type f -delete
 else
     echo "Assuming the script is executing in the CSD3."
     #! Executing the environment preparation script
@@ -56,5 +61,5 @@ mkdir -p $SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
-#! Test NodeManager
+#! Test `text_data.py`
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.dataset.text_data $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/text_data.log 
