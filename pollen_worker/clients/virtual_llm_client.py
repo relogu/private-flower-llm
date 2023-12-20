@@ -96,7 +96,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
             )
         from pollen_worker.utils import IntentionalClientDropout
 
-        raise IntentionalClientDropout("Whatever")
+        # raise IntentionalClientDropout("Whatever")
         return llm_fit(parameters, config, cfg, self.trainer)
 
     def evaluate(
@@ -163,12 +163,12 @@ def main(cfg: DictConfig) -> None:
     log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
-        _cfg=copy.deepcopy(cfg),
+        _cfg=copy.deepcopy(_llm_config),
     )
     # Create a virtual client
     virtual_llm_client = VirtualLLMClient(
         cid=0,
-        cfg=copy.deepcopy(cfg),
+        cfg=copy.deepcopy(_llm_config),
         trainer=trainer,
     )
     # Test virtual client's get_properties function
@@ -180,6 +180,7 @@ def main(cfg: DictConfig) -> None:
         INFO,
         f"VirtualLLMClient.get_parameters :: parameters' length is {len(parameters)}",
     )
+
     # Test virtual client's fit function
     parameters, num_examples, metrics = virtual_llm_client.fit(
         parameters=parameters, config={}
@@ -187,16 +188,18 @@ def main(cfg: DictConfig) -> None:
     log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
     log(INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}")
     log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
-    # Test virtual client's evaluate function
-    loss, num_examples, metrics = virtual_llm_client.evaluate(
-        parameters=parameters, config={}
-    )
-    log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
-    log(
-        INFO,
-        f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
-    )
-    log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
+
+    # NOTE: Can't do both train and test in the same process currently
+    # # Test virtual client's evaluate function
+    # loss, num_examples, metrics = virtual_llm_client.evaluate(
+    #     parameters=parameters, config={}
+    # )
+    # log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
+    # log(
+    #     INFO,
+    #     f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
+    # )
+    # log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
 
 
 if __name__ == "__main__":

@@ -1,31 +1,68 @@
 #!/bin/bash
-
-
 #! Moving to the project folder
-cd /nfs-share/$USER/projects/pollen_worker
+cd $HOME/projects/pollen_worker
+#! Preparing environment
+if [[ $(hostname) == 'mauao' ]]; then
+    echo "Assuming the script is executing in Mauao."
+    export DATA_TMP_DIR="$HOME/tmp"
+    # Remove shared memories of the user if they exist
+    find /dev/shm -name '*_locals' -type f -delete
+elif [[ $(hostname) == *'fluidstack'* ]]; then
+    echo "Assuming the script is executing in Fluidstack machines."
+    export DATA_TMP_DIR="$HOME/tmp"
+    # # Remove shared memories of the user if they exist
+    # find /dev/shm -name '*_locals' -type f -delete
+else
+    echo "Assuming the script is executing in the CSD3."
+    #! Executing the environment preparation script
+    #! NOTE: Must use "." to execute, "sh" doesn't work
+    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+    export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
+fi
+mkdir -p $DATA_TMP_DIR
 #! Activate Poetry environment
-poetry shell
-
-# Remove shared memories of the user if they exist
-find /dev/shm -name '*pollen*' -type f -delete 
-find /dev/shm -name '*_locals' -type f -delete
-#! Add the appropriate CUDA version to the paths
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-#! Check the output of `nvcc -V`
-nvcc -V
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
+#! Export the endpoint of the S3 object store
+export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Set data paths
-DATA_ROOT=/home/ls985/c4
-DATA_ROOT_MDS=/home/ls985/mds-c4
-DATA_ROOT_SMALL=/home/ls985/my-copy-c4
-DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
-#! Set config paths
-CONFIG_MPT_125M=/nfs-share/ls985/projects/pollen_worker/llm-foundry-scripts/train/yamls/pretrain/mpt-125m.yaml
+# DATA_VERSION="small"
+DATA_VERSION="full"
+IS_LOCAL=false
+# IS_LOCAL=true
+if [[ "$DATA_VERSION" == "small" ]]; then
+    if [[ "$IS_LOCAL" == true ]]; then
+        DATA_CONFIG="llm_config.data_local=/local/scratch/small-c4 llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+    else
+        DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://small-c4-dataset llm_config.eval_loader.dataset.split=val_small llm_config.train_loader.dataset.split=train_small"
+    fi
+else
+    if [[ "$IS_LOCAL" == true ]]; then
+        DATA_CONFIG="llm_config.data_local=/local/scratch/c4 llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
+    else
+        DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://c4-dataset llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
+    fi
+fi
+#! Get info about CPU resources available
+if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
+    export NUM_CPUS=$(nproc --all)
+else
+    export NUM_CPUS=$SLURM_CPUS_PER_TASK
+fi
+if (( $NUM_CPUS > 32 )); then
+    export NUM_CPUS=32
+fi
+echo "Number of CPU cores available: $NUM_CPUS"
+#! Set `LLM_CONFIG` environment variable
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-SAVE_PATH="/nfs-share/$USER/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+mkdir -p $SAVE_PATH
 
-#! Test client
-poetry run composer pollen_worker/clients/virtual_llm_client.py $CONFIG_MPT_125M train_loader.dataset.split=train_small eval_loader.dataset.split=val_small data_local=$DATA_ROOT_SMALL
-poetry run python -m pollen_worker.clients.virtual_llm_client $CONFIG_MPT_125M train_loader.dataset.split=train_small eval_loader.dataset.split=val_small data_local=$DATA_ROOT_SMALL device_train_microbatch_size=20 save_interval=10ba save_num_checkpoints_to_keep=1 save_folder=$SAVE_PATH loggers.wandb='{project: 'llm', name: 'test-client-mpt-125m',}' train_loader.num_workers=12 eval_loader.num_workers=12 max_duration=1ba autoresume=True
+#! Set `LLM_OPTIONS` environment variable
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+
+#! Test VirtualLLMClient
+poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log 
