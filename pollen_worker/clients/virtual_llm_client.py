@@ -6,11 +6,12 @@ virtual clients can be used to simulate a large number of clients on a single ma
 even if many are spawned at once.
 """
 import copy
-import sys
+import time
 from logging import INFO
 from typing import Any, Callable, Dict, Optional, Union
 
 import flwr as fl
+import hydra
 import transformers
 from composer import Trainer
 from flwr.common.logger import log
@@ -94,6 +95,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "Please ensure that the `cfg` object is passed to the client."
             )
         from pollen_worker.utils import IntentionalClientDropout
+
         raise IntentionalClientDropout("Whatever")
         return llm_fit(parameters, config, cfg, self.trainer)
 
@@ -134,12 +136,30 @@ def gen_client_fn(
     return client_fn
 
 
+@hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Test the VirtualLLMClient."""
-    log(INFO, f"VirtualLLMClient.main :: {cfg}")
-    # Trying to get raw parameters w/o fucking up
-    parameters = get_raw_model_parameters(copy.deepcopy(cfg))
-    # log(INFO, f"get_raw_model_parameters :: {parameters}")
+    time.time()
+    log(
+        INFO,
+        "VirtualLLMClient received the following config:\n%s",
+        OmegaConf.to_yaml(cfg, resolve=True),
+    )
+    _llm_config = cfg.llm_config
+    OmegaConf.resolve(_llm_config)
+    OmegaConf.set_struct(_llm_config, False)
+    log(
+        INFO,
+        "NodeManager received the llm_config:\n%s",
+        OmegaConf.to_yaml(_llm_config, resolve=True),
+    )
+    assert isinstance(_llm_config, DictConfig)
+    # Get the client generator function
+    gen_client_fn(
+        cfg=copy.deepcopy(_llm_config),
+    )
+    # Get initial model parameters
+    parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
     log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
@@ -180,11 +200,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    yaml_path, args_list = sys.argv[1], sys.argv[2:]
-    with open(yaml_path) as f:
-        yaml_cfg = OmegaConf.load(f)
-    cli_cfg = OmegaConf.from_cli(args_list)
-    cfg = OmegaConf.merge(yaml_cfg, cli_cfg)
-    OmegaConf.resolve(cfg)
-    assert isinstance(cfg, DictConfig)
-    main(cfg)
+    main()
