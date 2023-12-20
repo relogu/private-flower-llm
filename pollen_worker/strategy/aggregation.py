@@ -1,6 +1,6 @@
 """Handle aggregation in-place and potentially async."""
-from logging import DEBUG
 import time
+from logging import DEBUG
 from typing import Iterable, Tuple
 
 import numpy as np

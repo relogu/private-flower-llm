@@ -100,7 +100,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             Metrics aggregation function, optional.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
-        server_learning_rate : float, optional 
+        server_learning_rate : float, optional
             Learning rate used by the server-side optimizer. Defaults to 0.7.
         server_momentum: float, optional
             Momentum coefficient used by the server-side optimizer. Defaults to 0.9.

@@ -24,12 +24,11 @@ import numpy as np
 import pyarrow as pa
 import ray
 import torch
+import wandb
 from flwr.common import FitRes, NDArrays, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from torch import device as device_type
-
-import wandb
 
 
 #### Server ####
