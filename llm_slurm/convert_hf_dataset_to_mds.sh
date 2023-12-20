@@ -1,7 +1,7 @@
 #!/bin/bash
 #! Moving to the project folder
 cd $HOME/projects/pollen_worker
-if $1; then
+if ! [[ $(hostname) == 'mauao' ]] && ! [[ $(hostname) == *'fluidstack'* ]]; then
     echo "Assuming the script is executing in the CSD3."
     #! Executing the environment preparation script
     #! NOTE: Must use "." to execute, "sh" doesn't work
@@ -32,11 +32,11 @@ fi
 DATA_ROOT="$MOSAICML_DATA_ROOT/fed_$DATASET/c$N_CLIENTS"
 echo "Creating the partition data root directory: $DATA_ROOT"
 mkdir -p $DATA_ROOT
-#! Get info about resources available
+#! Get info about CPU resources available
 if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
-    NUM_CPUS=$(nproc --all)
+    export NUM_CPUS=$(nproc --all)
 else
-    NUM_CPUS=$SLURM_CPUS_PER_TASK
+    export NUM_CPUS=$SLURM_CPUS_PER_TASK
 fi
 echo "Number of CPU cores available: $NUM_CPUS"
 
