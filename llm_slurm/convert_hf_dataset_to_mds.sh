@@ -1,25 +1,43 @@
 #!/bin/bash
-
-
 #! Moving to the project folder
-cd /nfs-share/$USER/projects/pollen_worker
-# #! Activate Poetry environment
-# poetry shell
-#! Add the appropriate CUDA version to the paths
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-#! Export the endpoint of the S3 object store
-# export S3_ENDPOINT_URL='http://127.0.0.1:9000'
-export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
-#! Check the output of `nvcc -V`
-nvcc -V
+cd $HOME/projects/pollen_worker
+if $1; then
+    echo "Assuming the script is executing in the CSD3."
+    #! Executing the environment preparation script
+    #! NOTE: Must use "." to execute, "sh" doesn't work
+    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+fi
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
+#! Set the variables
 DATASET="c4"
 DATASET_SUBSET="en" # Can also be "all"
 N_CLIENTS=10
-DATA_ROOT="/local/scratch/fed_$DATASET/c$N_CLIENTS"
+#! Check whether the MOSAICML_DATA_ROOT has been set or not
+if [ -z "${MOSAICML_DATA_ROOT}" ]; then
+    echo "MOSAICML_DATA_ROOT is not set. Exiting..."
+    exit 1
+else
+    echo "MOSAICML_DATA_ROOT is set to '${MOSAICML_DATA_ROOT}'"
+fi
+#! Check whether the MOSAICML_DATA_ROOT directory exists or not
+if [ -d "$MOSAICML_DATA_ROOT" ]; then
+    echo "MOSAICML_DATA_ROOT directory exists"
+else
+    echo "MOSAICML_DATA_ROOT directory does not exist. Creating..."
+    mkdir -p $MOSAICML_DATA_ROOT
+fi
+#! Set the data root
+DATA_ROOT="$MOSAICML_DATA_ROOT/fed_$DATASET/c$N_CLIENTS"
+echo "Creating the partition data root directory: $DATA_ROOT"
 mkdir -p $DATA_ROOT
 #! Get info about resources available
-NUM_CPUS=$SLURM_CPUS_PER_TASK
+if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
+    NUM_CPUS=$(nproc --all)
+else
+    NUM_CPUS=$SLURM_CPUS_PER_TASK
+fi
 echo "Number of CPU cores available: $NUM_CPUS"
 
 #! Execute the command
