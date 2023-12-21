@@ -1,23 +1,24 @@
 #!/bin/bash
+#! Check if there's an input argument
+if [[ $# -eq 0 ]]; then
+    echo "No input argument supplied."
+    exit 1
+fi
 #! Moving to the project folder
 cd $HOME/projects/pollen_worker
 #! Preparing environment
-if [[ $(hostname) == 'mauao' ]]; then
-    echo "Assuming the script is executing in Mauao."
-    export DATA_TMP_DIR="$HOME/tmp"
-    # Remove shared memories of the user if they exist
-    find /dev/shm -name '*_locals' -type f -delete
-elif [[ $(hostname) == *'fluidstack'* ]]; then
-    echo "Assuming the script is executing in Fluidstack machines."
-    export DATA_TMP_DIR="$HOME/tmp"
-    # # Remove shared memories of the user if they exist
-    # find /dev/shm -name '*_locals' -type f -delete
-else
+if [[ $(hostname) == *'gpu-q'* ]]; then
     echo "Assuming the script is executing in the CSD3."
     #! Executing the environment preparation script
     #! NOTE: Must use "." to execute, "sh" doesn't work
     . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
     export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
+else
+    echo "Assuming the script is executing not in the CSD3."
+    export DATA_TMP_DIR="$HOME/tmp"
+    # Remove shared memories of the user if they exist
+    find /dev/shm -name '*pollen*' -type f -delete 
+    find /dev/shm -name '*_locals' -type f -delete
 fi
 mkdir -p $DATA_TMP_DIR
 #! Activate Poetry environment
@@ -43,18 +44,9 @@ else
         DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://c4-dataset llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
     fi
 fi
-#! Get info about CPU resources available
-if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
-    export NUM_CPUS=$(nproc --all)
-else
-    export NUM_CPUS=$SLURM_CPUS_PER_TASK
-fi
-if (( $NUM_CPUS > 32 )); then
-    export NUM_CPUS=32
-fi
-echo "Number of CPU cores available: $NUM_CPUS"
+
 #! Set `LLM_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
