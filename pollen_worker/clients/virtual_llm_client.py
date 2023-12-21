@@ -24,6 +24,7 @@ from pollen_worker.clients.llm_client_functions import (
     get_raw_model_parameters,
     llm_eval,
     llm_fit,
+    set_n_workers_dataloaders,
 )
 
 
@@ -94,9 +95,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
-        from pollen_worker.utils import IntentionalClientDropout
 
-        # raise IntentionalClientDropout("Whatever")
         return llm_fit(parameters, config, cfg, self.trainer)
 
     def evaluate(
@@ -146,6 +145,8 @@ def main(cfg: DictConfig) -> None:
         OmegaConf.to_yaml(cfg, resolve=True),
     )
     _llm_config = cfg.llm_config
+    # Automatically setting the `n_workers` parameter based on CPU available
+    _llm_config = set_n_workers_dataloaders(_llm_config)
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
     log(

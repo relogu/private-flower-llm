@@ -46,6 +46,7 @@ from llmfoundry.utils.config_utils import (
     update_batch_size_info,
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from projects.pollen_worker.pollen_worker.utils import get_n_cpu_cores
 from transformers import PreTrainedTokenizerBase
 
 COMPOSER_MODEL_REGISTRY = {
@@ -72,6 +73,20 @@ def set_all_data_paths(
         cfg.data_remote = new_path
         cfg.train_loader.dataset.remote = new_path
         cfg.eval_loader.dataset.remote = new_path
+    return cfg
+
+
+def set_n_workers_dataloaders(
+    cfg: Optional[DictConfig],
+    n_workers: int = -1,
+) -> Optional[DictConfig]:
+    """Set the `n_workers` parameter for all dataloaders in the config."""
+    if cfg is None:
+        return cfg
+    if n_workers < 0:
+        n_workers = get_n_cpu_cores()
+    cfg.train_loader.num_workers = n_workers
+    cfg.eval_loader.num_workers = n_workers
     return cfg
 
 

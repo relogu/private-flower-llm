@@ -14,7 +14,10 @@ from composer.cli.launcher import _patch_env
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 
-from pollen_worker.clients.llm_client_functions import set_all_data_paths
+from pollen_worker.clients.llm_client_functions import (
+    set_all_data_paths,
+    set_n_workers_dataloaders,
+)
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
@@ -164,6 +167,10 @@ class Worker(mp.Process):  # type: ignore
         # NOTE: Prevent slave workers to log to the console
         if self.worker_rank > 0:
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
+        # Automatically setting the `n_workers` parameter based on CPU available
+        tmp_client.cfg = set_n_workers_dataloaders(
+            tmp_client.cfg  # type: ignore[union-attr]
+        )
         # NOTE: When using remote data, we need one tmp folder per worker
         if tmp_client.cfg.data_remote is not None:  # type: ignore[union-attr]
             # Set the appropriate path given the `client_id`

@@ -21,6 +21,7 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 import pyarrow as pa
 import ray
 import torch
@@ -282,6 +283,15 @@ def get_n_cuda_devices() -> int:
         return torch.cuda.device_count()
     else:
         return 0
+
+
+def get_n_cpu_cores() -> int:
+    """Get the number of CPU cores available."""
+    try:
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    return cpus
 
 
 def get_pyarrow_buffer_from_table(table: pa.Table) -> pa.Buffer:
