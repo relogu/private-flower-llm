@@ -57,4 +57,4 @@ mkdir -p $SAVE_PATH
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
 #! Test VirtualLLMClient
-poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log 
+poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/visrtual_llm_client.log 
