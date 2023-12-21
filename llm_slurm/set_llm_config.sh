@@ -1,8 +1,14 @@
 #!/bin/bash
+#! Check if there's an input argument
+if [[ $# -eq 0 ]]; then
+    echo "No input argument supplied."
+    exit 1
+fi
+#! Get info about GPU resources available
+GPU_TYPE=$(nvidia-smi -L)
 #! Set `llm_config` names
-if [[ $(hostname) == 'mauao' ]]; then
-    echo "Assuming we are running on the A40s of Mauao."
-    #! NOTE: The following settings have been tested to be compatible with and to maximise the throughput of the A40s on Mauao
+if [[ $GPU_TYPE == *'A40'* ]]; then
+    echo "Assuming we are running on A40s (Mauao)."
     LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=128" # The model is so small that the batch sizes really don't matter
     LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=50"
     LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=18 llm_config.device_eval_batch_size=40"
@@ -11,24 +17,50 @@ if [[ $(hostname) == 'mauao' ]]; then
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=torch"
     LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=15 llm_config.model.attn_config.attn_impl=torch"
     LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"
-else
-    echo "Assuming we are running on A100s-equipped machine."
-    #! NOTE: The following settings have been tested to be compatible with and to maximise the throughput of the A100s on the CSD3
-    LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=128" # The model is so small that the batch sizes really don't matter
+elif [[ $GPU_TYPE == *'A100-SXM4-80GB'* ]]; then
+    echo "Assuming we are running on A100-SXM4-80GB-equipped machines (CSD3)."
+    LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=512 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=256" # The model is so small that the batch sizes really don't matter
     LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=50"
-    LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=18 llm_config.device_eval_batch_size=40"
-    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=35"
-    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=35"
+    LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=40"
+    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=35"
+    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=35"
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30"
     LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=15"
     LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"
+elif [[ $GPU_TYPE == *'L40'* ]]; then
+    echo "Assuming we are running on L40s-equipped machines (Fluidstack)."
+    LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=128" # The model is so small that the batch sizes really don't matter
+    LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=50"
+    LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=40"
+    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch"
+    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch"
+    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=torch"
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=15 llm_config.model.attn_config.attn_impl=torch"
+    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"
+else
+    echo "Unknown GPU type: $GPU_TYPE. Using defaults..."
 fi
 #! Set the run configuration
-export LLM_CONFIG=$LLM_CONFIG_MPT_SMALL_CPU
-# export LLM_CONFIG=$LLM_CONFIG_MPT_125M
-# export LLM_CONFIG=$LLM_CONFIG_MPT_350M
-# export LLM_CONFIG=$LLM_CONFIG_MPT_760M
-# export LLM_CONFIG=$LLM_CONFIG_MPT_1B
-# export LLM_CONFIG=$LLM_CONFIG_MPT_3B
-# export LLM_CONFIG=$LLM_CONFIG_MPT_7B
-# export LLM_CONFIG=$LLM_CONFIG_MPT_70B
+if [[ "$1" == "small" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_SMALL_CPU
+elif [[ "$1" == "125M" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_125M
+elif [[ "$1" == "350M" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_350M
+elif [[ "$1" == "760M" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_760M
+elif [[ "$1" == "1B" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_1B
+elif [[ "$1" == "3B" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_3B
+elif [[ "$1" == "7B" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_7B
+elif [[ "$1" == "70B" ]]; then
+    export LLM_CONFIG=$LLM_CONFIG_MPT_70B
+else
+    echo "Invalid input argument: $1"
+    echo "Valid input arguments are: small, 125M, 350M, 760M, 1B, 3B, 7B, 70B"
+    exit 1
+fi
+
+echo "Selected LLM config: $1"
