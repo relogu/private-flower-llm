@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J pollen-llm
+#SBATCH -J pollen-llm-test-3B
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A LANE-SL3-GPU
 #! How many whole nodes should be allocated?
@@ -28,6 +28,7 @@
 #! Uncomment this to prevent the job from being requeued (e.g. if
 #! interrupted by node failure or system downtime):
 ##SBATCH --no-requeue
+#SBATCH --output=%x-%j.out
 
 #! Do not change:
 #SBATCH -p ampere
