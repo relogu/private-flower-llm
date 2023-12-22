@@ -1,8 +1,8 @@
 #!/bin/bash
-#! Check if there's an input argument
+#! Setting the helper
 if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
     echo "Usage: bash convert_hf_dataset_to_mds.sh <split> <n_clients> <dataset> <dataset_subset> <data_root>."
-    echo -e "\t<split>: 'small' or 'full'. Default: 'small'"
+    echo -e "\t<split>: 'small' or 'full'. Default: 'full'"
     echo -e "\t<n_clients>: integer. Default: 10"
     echo -e "\t<dataset>: 'c4' or 'pile'. Default: 'c4'"
     echo -e "\t<dataset_subset>: 'en' or 'all'. Default: 'en'"
@@ -10,14 +10,14 @@ if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
     echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 10 c4 en"
     exit 1
 fi
-#! Set the variables
-SPLIT="small"
+#! Set/get the variables
+SPLIT="full"
 N_CLIENTS=10
 DATASET="c4"
 DATASET_SUBSET="en"
 MOSAICML_DATA_ROOT="/local/scratch"
 if [[ $# -eq 0 ]]; then
-    echo "Using default values for all input arguments."
+    echo "convert_hf_dataset_to_mds.sh: Using default values for all input arguments."
 elif [[ $# -eq 1 ]]; then
     SPLIT=$1
 elif [[ $# -eq 2 ]]; then
