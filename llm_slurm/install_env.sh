@@ -3,10 +3,11 @@
 cd $HOME/projects/pollen_worker
 #! Install Poetry environment
 poetry install
-#! Activate Poetry shell
-poetry shell
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 #! Check if the appropriate cuda version is in then PATH
-if ! [[$PATH == *"cuda-12.1"*]] && ! [[$LD_LIBRARY_PATH == *"cuda-12.1"*]]; then
+if ! [[ $PATH == *"cuda-12.1"* ]] && ! [[ $LD_LIBRARY_PATH == *"cuda-12.1"* ]]; then
     echo "CUDA 12.1 not in PATH or LD_LIBRARY_PATH. Exiting..."
     echo "PATH=$PATH"
     echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
