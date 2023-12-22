@@ -17,7 +17,7 @@ if [[ $GPU_TYPE == *'A40'* ]]; then
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
     LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=15 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
     LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # CANNOT DO IT
-elif [[ $GPU_TYPE == *'A100-SXM4-80GB'* ]]; then
+elif [[ $GPU_TYPE == *'A100'* ]]; then
     echo "Assuming we are running on A100-SXM4-80GB-equipped machines (CSD3)."
     #! NOTE: We didn't investigate the performance at inference
     LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=512 llm_config.eval_subset_num_batches=-1" # The model is so small that the batch sizes really don't matter
@@ -26,7 +26,7 @@ elif [[ $GPU_TYPE == *'A100-SXM4-80GB'* ]]; then
     LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=20"
     LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=15"
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=5"
-    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.fsdp_config.activation_checkpointing=false llm_config.fsdp_config.mixed_precision=DEFAULT" # CANNOT DO IT
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
     LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
 elif [[ $GPU_TYPE == *'L40'* ]]; then
     echo "Assuming we are running on L40s-equipped machines (Fluidstack)."
