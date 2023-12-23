@@ -314,11 +314,11 @@ def _est_progress_denominator(
     mode: ConcatMode,
     max_length: int,
 ):
-    est_tokens_per_sample = chars_per_sample // chars_per_token
+    est_tokens_per_sample = chars_per_sample / chars_per_token
     if mode == ConcatMode.NO_CONCAT:
         return total_samples
     elif mode == ConcatMode.CONCAT_TOKENS:
-        return total_samples * est_tokens_per_sample // max_length
+        return (total_samples * est_tokens_per_sample) / max_length
 
 
 def build_dataloader(
@@ -432,23 +432,57 @@ def main(args: Namespace) -> None:
         )
         # Build a generator that yeilds samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
+        denominator = 0
+        for _ in tqdm(samples, desc=folder_split
+                      ):
+            denominator += 1
+        log(INFO, f"Number of samples in {folder_split} is {denominator}.")
+        # Build a batched dataloader for streming the HF dataset in batches
+        loader = build_dataloader(
+            dataset=dataset, batch_size=512, num_workers=args.num_workers
+        )
+        # Build a generator that yeilds samples from the batched dataloader
+        samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
+
         # Estimating the total number of samples
-        if expected_num_samples is not None:
-            denominator = (
-                truncate_num_samples
-                if truncate_num_samples is not None
-                else _est_progress_denominator(
-                    total_samples=expected_num_samples,
-                    chars_per_sample=dataset_constants.chars_per_sample,
-                    chars_per_token=dataset_constants.chars_per_token,
-                    mode=mode,
-                    max_length=args.concat_tokens,
+        if "small" in split_name:
+            if expected_num_samples is not None:
+                denominator = (
+                    truncate_num_samples
+                    if truncate_num_samples is not None
+                    else _est_progress_denominator(
+                        total_samples=expected_num_samples,
+                        chars_per_sample=dataset_constants.chars_per_sample,
+                        chars_per_token=dataset_constants.chars_per_token,
+                        mode=mode,
+                        max_length=args.concat_tokens,
+                    )
                 )
-            )
+            else:
+                raise ValueError(
+                    "Expected number of samples must be set for partitioning to work."
+                )
+            log(INFO, f"Estimated number of total samples is {denominator}.")
         else:
-            raise ValueError(
-                "Expected number of samples must be set for partitioning to work."
+            log(INFO, f"Counting the number of samples with the current settings for split {split_name}.")
+            denominator = 0
+            for _ in tqdm(samples, desc=folder_split):
+                denominator += 1
+            log(INFO, f"Counted number of total samples is {denominator}.")
+            # Re-build a batched dataloader for streming the HF dataset in batches
+            loader = build_dataloader(
+                dataset=dataset, batch_size=512, num_workers=args.num_workers
             )
+            # Re-build a generator that yeilds samples from the batched dataloader
+            samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
+        # Estimate the number of samples for the current client
+        # NOTE: The last client will get the remainder of the samples
+        expected_samples_per_client = (
+            denominator // args.num_clients
+        )
+        log(INFO, f"Expected samples per client {expected_samples_per_client}.")
+        remainder = int(denominator % args.num_clients)
+        log(INFO, f"Remainder is {remainder}.")
 
         # Write samples
         log(INFO, f"Converting {folder_split} to MDS format...")
@@ -459,14 +493,9 @@ def main(args: Namespace) -> None:
         )
         # Loop over the number of clients
         for i in range(args.num_clients):
-            # Estimate the number of samples for the current client
-            # NOTE: The last client will get the remainder of the samples
-            expected_samples_per_client = (
-                denominator // args.num_clients
-                if i < args.num_clients - 1
-                else denominator
-                - denominator // args.num_clients * (args.num_clients - 1)
-            )
+            # Add the remainder to the last client
+            if i == args.num_clients - 1:
+                expected_samples_per_client += remainder
             # Set the output path given the client id
             out_path = (
                 os.path.join(args.out_root, f"client_{i}", folder_split)
