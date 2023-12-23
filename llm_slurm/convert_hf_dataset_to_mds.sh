@@ -44,9 +44,9 @@ else
 fi
 mkdir -p $MOSAICML_DATA_ROOT
 if [[ $SPLIT == "small" ]]; then
-    SPLIT_NAME="train_small val_small"
+    SPLIT_NAME="val_small train_small"
 elif [[ $SPLIT == "full" ]]; then
-    SPLIT_NAME="train val"
+    SPLIT_NAME="val train"
 else
     echo "Invalid split. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
     exit 1
