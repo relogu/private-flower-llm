@@ -191,16 +191,16 @@ def main(cfg: DictConfig) -> None:
     log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
 
     # NOTE: Can't do both train and test in the same process currently
-    # # Test virtual client's evaluate function
-    # loss, num_examples, metrics = virtual_llm_client.evaluate(
-    #     parameters=parameters, config={}
-    # )
-    # log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
-    # log(
-    #     INFO,
-    #     f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
-    # )
-    # log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
+    # Test virtual client's evaluate function
+    loss, num_examples, metrics = virtual_llm_client.evaluate(
+        parameters=parameters, config={}
+    )
+    log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
+    log(
+        INFO,
+        f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
+    )
+    log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
 
 
 if __name__ == "__main__":
