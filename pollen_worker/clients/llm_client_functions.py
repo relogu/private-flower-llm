@@ -46,8 +46,9 @@ from llmfoundry.utils.config_utils import (
     update_batch_size_info,
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
-from pollen_worker.utils import get_n_cpu_cores
 from transformers import PreTrainedTokenizerBase
+
+from pollen_worker.utils import get_n_cpu_cores
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
