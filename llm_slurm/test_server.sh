@@ -1,34 +1,43 @@
 #!/bin/bash
-set -e
-cd "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"/
-
+#! Check if there's an input argument
+if [[ $# -eq 0 ]]; then
+    echo "No input argument supplied."
+    exit 1
+fi
 #! Moving to the project folder
-cd /nfs-share/$USER/projects/pollen_worker
-# #! Activate Poetry environment
-# poetry shell
+cd $HOME/projects/pollen_worker
+#! Preparing environment
+if [[ $(hostname) == *'gpu-q'* ]]; then
+    echo "Assuming the script is executing in the CSD3."
+    #! Executing the environment preparation script
+    #! NOTE: Must use "." to execute, "sh" doesn't work
+    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+    export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
+else
+    echo "Assuming the script is executing NOT in the CSD3."
+    export DATA_TMP_DIR="$HOME/tmp"
+    # Remove shared memories of the user if they exist
+    find /dev/shm -name '*pollen*' -type f -delete 
+    find /dev/shm -name '*_locals' -type f -delete
+fi
+mkdir -p $DATA_TMP_DIR
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 
+#! Set `LLM_CONFIG` environment variable
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
 
-# Remove shared memories of the user if they exist
-find /dev/shm -name '*pollen*' -type f -delete 
-find /dev/shm -name '*_locals' -type f -delete
-#! Add the appropriate CUDA version to the paths
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-#! Check the output of `nvcc -V`
-nvcc -V
-#! Set data paths
-DATA_ROOT=/home/ls985/c4
-DATA_ROOT_MDS=/home/ls985/mds-c4
-DATA_ROOT_SMALL=/home/ls985/my-copy-c4
-DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
+#! Set `DATA_CONFIG` environment variable
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-SAVE_PATH="/nfs-share/ls985/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+mkdir -p $SAVE_PATH
 
-#! LLM-related options
-LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.loggers.wandb.project=llm llm_config.loggers.wandb.name='test_node_manager_mpt_125m' llm_config.train_loader.num_workers=12 llm_config.eval_loader.num_workers=12 llm_config.max_duration=10ba llm_config.autoresume=False" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
-LLM_OPTIONS="llm_config.train_loader.dataset.split=train_small llm_config.eval_loader.dataset.split=val_small llm_config.data_local=$DATA_ROOT_SMALL llm_config.device_train_microbatch_size=20 llm_config.save_interval=10ba llm_config.save_num_checkpoints_to_keep=1 llm_config.save_folder=$SAVE_PATH llm_config.train_loader.num_workers=12 llm_config.eval_loader.num_workers=12 llm_config.max_duration=2ba llm_config.autoresume=False" # llm_config.load_path=$SAVE_PATH/ckpt-0.pt"
+#! Set `LLM_OPTIONS` environment variable
+. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
-#! Test NodeManager
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_OPTIONS
+#! Test ServerWithPollen
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/server.log 
