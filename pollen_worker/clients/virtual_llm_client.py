@@ -145,8 +145,6 @@ def main(cfg: DictConfig) -> None:
         OmegaConf.to_yaml(cfg, resolve=True),
     )
     _llm_config = cfg.llm_config
-    # Automatically setting the `n_workers` parameter based on CPU available
-    _llm_config = set_n_workers_dataloaders(_llm_config)
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
     log(
@@ -155,6 +153,8 @@ def main(cfg: DictConfig) -> None:
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
     assert isinstance(_llm_config, DictConfig)
+    # Automatically setting the `n_workers` parameter based on CPU available
+    _llm_config = set_n_workers_dataloaders(_llm_config)
     # Get the client generator function
     gen_client_fn(
         cfg=copy.deepcopy(_llm_config),
