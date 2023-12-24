@@ -22,6 +22,8 @@ from streaming import Stream, StreamingDataset
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
 
+from pollen_worker.clients.llm_client_functions import set_n_workers_dataloaders
+
 
 class StreamingTextDataset(StreamingDataset):
     """Generic text dataset using MosaicML's StreamingDataset.
@@ -399,6 +401,8 @@ def main(cfg: DictConfig) -> None:
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
+    # Automatically setting the `n_workers` parameter based on CPU available
+    _llm_config = set_n_workers_dataloaders(_llm_config)
     # Elaborating data path
     if _llm_config.data_remote is not None:
         log(
