@@ -8,7 +8,7 @@ fi
 if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
     echo "Usage: bash set_llm_data_config.sh <split> <is_local>."
     echo -e "\t<split>: 'small' or 'full'. Default: 'full'"
-    echo -e "\t<n_clients>: bool. Default: False"
+    echo -e "\t<is_local>: bool. Default: False"
     echo -e "\tExample: bash set_llm_data_config.sh full true"
     echo -e "\tNOTE: the external variable DATA_TMP_DIR must be set."
     exit 1
