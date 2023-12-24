@@ -11,7 +11,6 @@ from enum import Enum
 from logging import INFO
 from typing import Dict, Iterable, Optional, Union
 
-import datasets as hf_datasets
 import psutil
 from flwr.common.logger import log
 from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
@@ -20,6 +19,8 @@ from streaming import MDSWriter
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
+
+import datasets as hf_datasets
 
 
 class ConcatMode(Enum):
@@ -110,8 +111,7 @@ class DatasetConstants:
 
     chars_per_sample: int
     chars_per_token: int
-    # splits: Dict[str, DataSplitConstants] = {}
-    splits = {}
+    splits = {} # type: ignore[var-annotated]
 
     def __iter__(self):
         """Iterate over splits."""
@@ -433,8 +433,7 @@ def main(args: Namespace) -> None:
         # Build a generator that yeilds samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
         denominator = 0
-        for _ in tqdm(samples, desc=folder_split
-                      ):
+        for _ in tqdm(samples, desc=folder_split):
             denominator += 1
         log(INFO, f"Number of samples in {folder_split} is {denominator}.")
         # Build a batched dataloader for streming the HF dataset in batches
@@ -464,7 +463,11 @@ def main(args: Namespace) -> None:
                 )
             log(INFO, f"Estimated number of total samples is {denominator}.")
         else:
-            log(INFO, f"Counting the number of samples with the current settings for split {split_name}.")
+            log(
+                INFO,
+                "Counting the number of samples w/ the current settings for split %s.",
+                split_name,
+            )
             denominator = 0
             for _ in tqdm(samples, desc=folder_split):
                 denominator += 1
@@ -474,12 +477,12 @@ def main(args: Namespace) -> None:
                 dataset=dataset, batch_size=512, num_workers=args.num_workers
             )
             # Re-build a generator that yeilds samples from the batched dataloader
-            samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
+            samples = generate_samples(
+                loader, truncate_num_samples=truncate_num_samples
+            )
         # Estimate the number of samples for the current client
         # NOTE: The last client will get the remainder of the samples
-        expected_samples_per_client = (
-            denominator // args.num_clients
-        )
+        expected_samples_per_client = denominator // args.num_clients
         log(INFO, f"Expected samples per client {expected_samples_per_client}.")
         remainder = int(denominator % args.num_clients)
         log(INFO, f"Remainder is {remainder}.")
