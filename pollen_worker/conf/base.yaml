@@ -11,9 +11,9 @@ pollen:
   saving_path: /tmp/pollen
 
 fl:
-  n_total_clients: 100
-  n_clients_per_round: 2
-  n_rounds: 5
+  n_total_clients: 10
+  n_clients_per_round: 10
+  n_rounds: 100
 
 # Defaults
 defaults:
@@ -32,7 +32,7 @@ defaults:
 #   n_workers: ${task.n_workers}
 
 # Weights&Biases
-use_wandb: false
+use_wandb: true
 
 wandb:
   setup:
