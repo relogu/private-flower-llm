@@ -76,6 +76,7 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
+local_steps: 63900ba  # ~ 134B tokens
 max_duration: 10ba
 eval_interval: 5ba
 eval_first: false

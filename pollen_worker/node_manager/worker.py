@@ -1,11 +1,13 @@
 """TODO: Add description here."""
 import gc
 import pickle
+import shutil
 import time
 import uuid
 from logging import DEBUG, ERROR, INFO
 from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
+from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 import multiprocess as mp
@@ -158,8 +160,8 @@ class Worker(mp.Process):  # type: ignore
             tmp_client.cfg.save_folder  # type: ignore[union-attr]
             + "_c"
             + str(tmp_client.cid)
-            + "_r"
-            + str(fl_instructions_config["server_round"])
+            # + "_r"
+            # + str(fl_instructions_config["server_round"])
         )
         # # NOTE: This is necessary to prevent erros when executing a
         # # config with the same `cfg.save_folder`
@@ -181,9 +183,14 @@ class Worker(mp.Process):  # type: ignore
             tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_remote_path, False)
         new_local_path = (
             str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
-            + f"/client_{client_id}"
+            + f"/{self.node_manager_uuid}_client_{client_id}"
         )
         tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_local_path)
+        # Set `max_duration`
+        max_duration = int(fl_instructions_config["server_round"]) * int(
+            tmp_client.cfg.local_steps  # type: ignore[union-attr]
+        )
+        tmp_client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
         # Try to execute the task of the client
         try:
             if action == "fit":
@@ -210,6 +217,12 @@ class Worker(mp.Process):  # type: ignore
                 self.result_queue.put([-1, 0, 0, self.worker_uuid])
             # Take the timestamp after the task is done
             end_time = time.time_ns()
+        # Removing the tmp folder used for the dataset
+        if self.worker_rank == 0:
+            try:
+                shutil.rmtree(Path(new_local_path))
+            except FileNotFoundError:
+                pass
         del tmp_client
         self.auto_terminate = True
         torch.cuda.empty_cache()
