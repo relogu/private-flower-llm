@@ -38,6 +38,7 @@ train_loader:
     shuffle: true
     max_seq_len: ${llm_config.max_seq_len}
     shuffle_seed: ${llm_config.global_seed}
+    cache_limit: 10gb
   drop_last: true
   num_workers: 8
 
@@ -50,6 +51,7 @@ eval_loader:
     shuffle: false
     max_seq_len: ${llm_config.max_seq_len}
     shuffle_seed: ${llm_config.global_seed}
+    cache_limit: 10gb
   drop_last: false
   num_workers: 8
 
