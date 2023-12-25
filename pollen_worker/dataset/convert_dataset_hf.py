@@ -111,7 +111,7 @@ class DatasetConstants:
 
     chars_per_sample: int
     chars_per_token: int
-    splits = {} # type: ignore[var-annotated]
+    splits = {}  # type: ignore[var-annotated]
 
     def __iter__(self):
         """Iterate over splits."""
