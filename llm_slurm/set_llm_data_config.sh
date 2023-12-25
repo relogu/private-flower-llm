@@ -1,4 +1,14 @@
 #!/bin/bash
+#! Preparing environment
+if [[ $(hostname) == *'gpu-q'* ]]; then
+    echo "Assuming the script is executing in the CSD3."
+    export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
+else
+    echo "Assuming the script is executing NOT in the CSD3."
+    # export DATA_TMP_DIR="$HOME/tmp"
+    export DATA_TMP_DIR="/tmp"
+fi
+mkdir -p $DATA_TMP_DIR
 #! Check if the external var has been set
 if [[ -z "${DATA_TMP_DIR}" ]]; then
     echo "DATA_TMP_DIR is not set. Try 'bash set_llm_data_config.sh --help/-h' for more information."
@@ -6,10 +16,11 @@ if [[ -z "${DATA_TMP_DIR}" ]]; then
 fi
 #! Setting the helper
 if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
-    echo "Usage: bash set_llm_data_config.sh <split> <is_local> <is_federated>."
+    echo "Usage: bash set_llm_data_config.sh <split> <is_local> <is_federated> <n_clients>."
     echo -e "\t<split>: 'full' or 'small'. Default: 'full'"
     echo -e "\t<is_local>: bool. Default: true"
     echo -e "\t<is_federated>: bool. Default: true"
+    echo -e "\t<n_clients>: integer. Default: 10"
     echo -e "\tExample: bash set_llm_data_config.sh full true"
     echo -e "\tNOTE: the external variable DATA_TMP_DIR must be set."
     exit 1
@@ -18,6 +29,7 @@ fi
 SPLIT="full"
 IS_LOCAL=false
 IS_FEDERATED=true
+N_CLIENTS=10
 if [[ $# -eq 0 ]]; then
     echo "set_llm_data_config.sh: Using default values for all input arguments."
 elif [[ $# -eq 1 ]]; then
@@ -29,21 +41,30 @@ elif [[ $# -eq 3 ]]; then
     SPLIT=$1
     IS_LOCAL=$2
     IS_FEDERATED=$3
+elif [[ $# -eq 4 ]]; then
+    SPLIT=$1
+    IS_LOCAL=$2
+    IS_FEDERATED=$3
+    N_CLIENTS=$4
 else
     echo "Invalid number of input arguments. Try 'bash set_llm_data_config.sh --help/-h' for more information."
     exit 1
 fi
 #! Checking input arguments
 if [[ "$SPLIT" != "full" ]] && [[ "$SPLIT" != "small" ]]; then
-    echo "Invalid input argument for <split>. Try 'bash set_llm_data_config.sh --help/-h' for more information."
+    echo "Invalid input argument for <split>, got $SPLIT. Try 'bash set_llm_data_config.sh --help/-h' for more information."
     exit 1
 fi
 if [[ "$IS_LOCAL" != true ]] && [[ "$IS_LOCAL" != false ]]; then
-    echo "Invalid input argument for <is_local>. Try 'bash set_llm_data_config.sh --help/-h' for more information."
+    echo "Invalid input argument for <is_local>, got $IS_LOCAL. Try 'bash set_llm_data_config.sh --help/-h' for more information."
     exit 1
 fi
 if [[ "$IS_FEDERATED" != true ]] && [[ "$IS_FEDERATED" != false ]]; then
-    echo "Invalid input argument for <is_federated>. Try 'bash set_llm_data_config.sh --help/-h' for more information."
+    echo "Invalid input argument for <is_federated>, got $IS_FEDERATED. Try 'bash set_llm_data_config.sh --help/-h' for more information."
+    exit 1
+fi
+if [[ "$N_CLIENTS" -lt 1 ]]; then
+    echo "Invalid input argument for <n_clients>, got $N_CLIENTS. Try 'bash set_llm_data_config.sh --help/-h' for more information."
     exit 1
 fi
 #! Get the splits settings
@@ -57,9 +78,9 @@ export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Set data configuration
 if $IS_FEDERATED ; then
     if $IS_LOCAL ; then
-        export DATA_CONFIG="llm_config.data_local=/local/scratch/fed-c4 $SPLIT_CONFIG"
+        export DATA_CONFIG="llm_config.data_local=/local/scratch/fed-c4/c$N_CLIENTS $SPLIT_CONFIG"
     else
-        export DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://fed-c4 $SPLIT_CONFIG"
+        export DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://fed-c4/c$N_CLIENTS $SPLIT_CONFIG"
     fi
 else
     if $IS_LOCAL ; then
