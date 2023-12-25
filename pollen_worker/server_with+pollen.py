@@ -21,7 +21,7 @@ from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import wandb_init
+from pollen_worker.utils import wandb_init, weighted_average
 from pollen_worker.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
@@ -55,7 +55,8 @@ def main(cfg: DictConfig) -> None:
         on_evaluate_config_fn=lambda x: {"server_round": x, "batch_size": 32},
         accept_failures=False,
         initial_parameters=initial_parameters,
-        evaluate_metrics_aggregation_fn=None,
+        evaluate_metrics_aggregation_fn=weighted_average,
+        fit_metrics_aggregation_fn=weighted_average,
         seed=cfg.seed,
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
