@@ -7,12 +7,9 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
     #! Executing the environment preparation script
     #! NOTE: Must use "." to execute, "sh" doesn't work
     . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
-    export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
 else
     echo "Assuming the script is executing NOT in the CSD3."
-    export DATA_TMP_DIR="$HOME/tmp"
 fi
-mkdir -p $DATA_TMP_DIR
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
