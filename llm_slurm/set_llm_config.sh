@@ -11,7 +11,7 @@ if [[ $GPU_TYPE == *'A40'* ]]; then
     echo "Assuming we are running on A40s (Mauao)."
     LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=128" # The model is so small that the batch sizes really don't matter
     LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=50"
-    LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=18 llm_config.device_eval_batch_size=40"
+    LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=40"
     LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
     LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
