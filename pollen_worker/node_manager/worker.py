@@ -220,7 +220,7 @@ class Worker(mp.Process):  # type: ignore
         # Removing the tmp folder used for the dataset
         if self.worker_rank == 0:
             try:
-                shutil.rmtree(Path(new_local_path))
+                shutil.rmtree(Path(new_local_path), ignore_errors=True)
             except FileNotFoundError:
                 pass
         del tmp_client
