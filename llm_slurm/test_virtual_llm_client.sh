@@ -43,7 +43,7 @@ mkdir -p $SAVE_PATH
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
 #! Additional settings specific for the current testing
-TESTING_OPTIONS="llm_config.max_duration=10ba"
+TESTING_OPTIONS="llm_config.max_duration=100ba"
 
 #! Test VirtualLLMClient
 poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/virtual_llm_client.log 
