@@ -6,6 +6,7 @@ virtual clients can be used to simulate a large number of clients on a single ma
 even if many are spawned at once.
 """
 import copy
+import shutil
 import time
 from logging import INFO
 from typing import Any, Callable, Dict, Optional, Union
@@ -13,6 +14,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import flwr as fl
 import hydra
 import transformers
+from anyio import Path
 from composer import Trainer
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
@@ -24,6 +26,7 @@ from pollen_worker.clients.llm_client_functions import (
     get_raw_model_parameters,
     llm_eval,
     llm_fit,
+    set_all_data_paths,
     set_n_workers_dataloaders,
 )
 
@@ -161,6 +164,18 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
+    # NOTE: When using remote data, we need one tmp folder per worker
+    if _llm_config.data_remote is not None:  # type: ignore[union-attr]
+        # Set the appropriate path given the `client_id`
+        new_remote_path = (
+            str(_llm_config.data_remote) + "/client_0"  # type: ignore[union-attr]
+        )
+        _llm_config = set_all_data_paths(_llm_config, new_remote_path, False)
+    new_local_path = (
+        str(_llm_config.data_local)  # type: ignore[union-attr]
+        + f"/{cfg.run_uuid}_client_0"
+    )
+    _llm_config = set_all_data_paths(_llm_config, new_local_path)
     log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
@@ -186,6 +201,7 @@ def main(cfg: DictConfig) -> None:
     parameters, num_examples, metrics = virtual_llm_client.fit(
         parameters=parameters, config={}
     )
+    shutil.rmtree(Path(new_local_path), ignore_errors=True)
     log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
     log(INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}")
     log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
@@ -201,6 +217,7 @@ def main(cfg: DictConfig) -> None:
         f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
     )
     log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
+    shutil.rmtree(Path(new_local_path), ignore_errors=True)
 
 
 if __name__ == "__main__":

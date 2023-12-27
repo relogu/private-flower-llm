@@ -2,7 +2,12 @@
 #! Moving to the project folder
 cd $HOME/projects/pollen_worker
 #! Install Poetry environment
-poetry install
+if ! [[ $(poetry check --lock) ]]; then
+    echo "Installing Poetry environment..."
+    poetry install -q
+else
+    echo "Poetry environment already installed."
+fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
@@ -16,6 +21,12 @@ fi
 #! Check the output of `nvcc -V`
 nvcc -V
 #! Install `flash-attn`
-poetry run pip install flash-attn==2.3.2 --no-build-isolation
+if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
+    echo "Installing flash-attn..."
+    poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
+fi
 #! Install `xentropy-cuda-lib`
-poetry run pip install xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
+if ! [[ $(poetry run pip list | grep xentropy) ]]; then
+    echo "Installing xentropy-cuda-lib..."
+    poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
+fi

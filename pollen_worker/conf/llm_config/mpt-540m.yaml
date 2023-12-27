@@ -1,5 +1,5 @@
 ---
-name: mpt-70b
+name: mpt-500m
 data_local: ./my-copy-c4
 data_remote: null  # If blank, files must be present in data_local
 max_seq_len: 2048
@@ -13,9 +13,9 @@ run_name: null  # If left blank, will be read from env var $RUN_NAME
 model:
   name: mpt_causal_lm
   init_device: meta
-  d_model: 8192
-  n_heads: 64
-  n_layers: 80
+  d_model: 1280
+  n_heads: 10
+  n_layers: 24
   expansion_ratio: 4
   max_seq_len: ${llm_config.max_seq_len}
   vocab_size: 50368
@@ -63,7 +63,7 @@ scheduler:
 
 optimizer:
   name: decoupled_adamw
-  lr: 8.0e-5
+  lr: 3.0e-4
   betas: [0.9, 0.95]
   eps: 1.0e-08
   weight_decay: 0.0
@@ -74,16 +74,16 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 63900ba  # ~ 134B tokens
-max_duration: 333800ba  # ~ 1.4T tokens
-eval_interval: 10000ba
+max_duration: 13400ba  # ~ 7B tokens
+eval_interval: 1000ba
 eval_first: false
 eval_subset_num_batches: -1
-global_train_batch_size: 2048
+global_train_batch_size: 256
 
 # System
 seed: ${llm_config.global_seed}
-device_eval_batch_size: 4
-device_train_microbatch_size: 4
+device_eval_batch_size: 8
+device_train_microbatch_size: 8
 # device_train_microbatch_size: auto
 precision: amp_bf16
 
@@ -91,7 +91,7 @@ precision: amp_bf16
 fsdp_config:
   sharding_strategy: FULL_SHARD
   mixed_precision: PURE
-  activation_checkpointing: true
+  activation_checkpointing: false
   activation_checkpointing_reentrant: false
   activation_cpu_offload: false
   limit_all_gathers: true
@@ -110,7 +110,9 @@ callbacks:
   runtime_estimator: {}
 
 # loggers:
-#   wandb: {}
+#   wandb:
+#     project: {}
+#     name: {}
 
 # Checkpoint to local filesystem or remote object store
 save_interval: 500ba
@@ -120,5 +122,5 @@ save_folder: ./{run_name}/checkpoints
 save_overwrite: false
 
 # Load from local filesystem or remote object store
-# load_path: ./gpt-70b/checkpoints/latest-rank{rank}.pt
-# load_path: s3://my-bucket/my-folder/gpt-70b/checkpoints/latest-rank{rank}.pt
+# load_path: ./gpt-350m/checkpoints/latest-rank{rank}.pt
+# load_path: s3://my-bucket/my-folder/gpt-350m/checkpoints/latest-rank{rank}.pt

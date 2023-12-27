@@ -273,6 +273,7 @@ def _get_model_for_trainer(
             model = model.to(dtype=torch.bfloat16)
         elif model_config.get("master_weights_dtype") in ("f16", "float16"):
             model = model.to(dtype=torch.float16)
+        print_trainable_parameters(model)  # should not be 100%
     return model
 
 
