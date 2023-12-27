@@ -14,7 +14,7 @@ model:
   name: mpt_causal_lm
   init_device: meta
   d_model: 1280
-  n_heads: 10 % to satisfy flash attention d_head=128
+  n_heads: 10
   n_layers: 24
   expansion_ratio: 4
   max_seq_len: ${llm_config.max_seq_len}
