@@ -201,7 +201,7 @@ def main(cfg: DictConfig) -> None:
     parameters, num_examples, metrics = virtual_llm_client.fit(
         parameters=parameters, config={}
     )
-    shutil.rmtree(Path(new_local_path))
+    shutil.rmtree(Path(new_local_path), ignore_errors=True)
     log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
     log(INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}")
     log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
@@ -217,7 +217,7 @@ def main(cfg: DictConfig) -> None:
         f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
     )
     log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
-    shutil.rmtree(Path(new_local_path))
+    shutil.rmtree(Path(new_local_path), ignore_errors=True)
 
 
 if __name__ == "__main__":
