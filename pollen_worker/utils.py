@@ -32,6 +32,10 @@ from torch import device as device_type
 
 import wandb
 
+# NOTE: Setting the maximum value according to the documentation
+# https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
+POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
+
 
 #### Server ####
 def weighted_average(

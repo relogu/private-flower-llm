@@ -62,6 +62,7 @@ from pollen_worker.node_manager.utils import (
 from pollen_worker.node_manager.worker import Worker, create_new_worker, start_worker
 from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import (
+    POLLEN_LLM_MAX_MESSAGE_LENGTH,
     get_n_cuda_devices,
     partially_aggregate,
     weighted_average,
@@ -484,7 +485,7 @@ def main(cfg: DictConfig) -> None:
         fl.client.start_numpy_client(
             server_address=cfg.pollen.server_address,
             client=node_manager,
-            grpc_max_message_length=int(1_000_000_000),
+            grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
     log(
         INFO,

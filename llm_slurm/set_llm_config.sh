@@ -27,7 +27,7 @@ elif [[ $GPU_TYPE == *'A100'* ]]; then
     FLOP_COUNT="" # Already hardcoded in the MosaicML's callback
     #! NOTE: We didn't investigate the performance at inference
     LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=triton llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=512 llm_config.eval_subset_num_batches=-1" # The model is so small that the batch sizes really don't matter
-    LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=128 llm_config.device_eval_batch_size=50"
+    LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=82 llm_config.device_eval_batch_size=50" # This has issues (we can't scale up the microbatch size even though it seems possible)
     LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=20" # This has issues (we can't scale up the microbatch size even though it seems possible)
     LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=20" # This has issues (we can't scale up the microbatch size even though it seems possible)
     LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=20" # This has issues (we can't scale up the microbatch size even though it seems possible)
