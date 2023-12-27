@@ -104,6 +104,7 @@ console_log_interval: 1ba
 callbacks:
   speed_monitor:
     window_size: 10
+    gpu_flops_available: null
   lr_monitor: {}
   memory_monitor: {}
   runtime_estimator: {}
