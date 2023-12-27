@@ -193,7 +193,7 @@ class Worker(mp.Process):  # type: ignore
         tmp_client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
         # Forcing not to load the model from a checkpoint
         # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
-        tmp_client.cfg.load_ignore_keys = ["state/model/*"]
+        tmp_client.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
         # Try to execute the task of the client
         try:
             if action == "fit":
