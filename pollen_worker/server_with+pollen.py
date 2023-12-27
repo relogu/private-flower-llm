@@ -21,7 +21,11 @@ from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import wandb_init, weighted_average
+from pollen_worker.utils import (
+    POLLEN_LLM_MAX_MESSAGE_LENGTH,
+    wandb_init,
+    weighted_average,
+)
 from pollen_worker.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
@@ -83,7 +87,7 @@ def main(cfg: DictConfig) -> None:
                 num_nodes=cfg.pollen.n_nodes,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
-            grpc_max_message_length=int(1_000_000_000),
+            grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
         Path(cfg.pollen.saving_path).mkdir(parents=True, exist_ok=True)
         with open(Path(cfg.pollen.saving_path) / "history.json", "x") as f:
