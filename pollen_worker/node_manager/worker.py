@@ -179,6 +179,8 @@ class Worker(mp.Process):  # type: ignore
             tmp_client.cfg = set_all_data_paths(
                 tmp_client.cfg, new_remote_path, False
             )
+        # TODO: This must be the same for all the NodeManagers in a node
+        # (if any), linked to run_uuid
         new_local_path = (
             str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
             + f"/{self.node_manager_uuid}_client_{client_id}"
@@ -224,6 +226,12 @@ class Worker(mp.Process):  # type: ignore
         del tmp_client
         torch.cuda.empty_cache()
         gc.collect()
+        log(
+            INFO,
+            "Worker %s. Memory snapshot\n%s.",
+            self.worker_uuid,
+            torch.cuda.memory_summary(),
+        )
 
     def _unregister_shms(self) -> None:
         """Unregister shared memories."""
