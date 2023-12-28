@@ -226,6 +226,7 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
     shutil.rmtree(Path(new_local_path), ignore_errors=True)
+    streaming.base.util.clean_stale_shared_memory()
 
 
 if __name__ == "__main__":
