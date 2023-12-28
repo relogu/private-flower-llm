@@ -43,7 +43,8 @@ mkdir -p $SAVE_PATH
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
 #! Additional settings specific for the current testing
-TESTING_OPTIONS="llm_config.console_log_interval=100ba"
+# TESTING_OPTIONS=""
+TESTING_OPTIONS="llm_config.console_log_interval=512ba"
 # TESTING_OPTIONS="pollen.server_address='localhost:50735' run_uuid='chiappe1' fl.n_clients_per_round=5 llm_config.console_log_interval=50ba"
 # TESTING_OPTIONS="pollen.server_address='localhost:50736' run_uuid='chiappe2' fl.n_clients_per_round=10 llm_config.console_log_interval=100ba"
 # TESTING_OPTIONS="pollen.server_address='localhost:50737' run_uuid='chiappe3' fl.n_clients_per_round=5 llm_config.console_log_interval=50ba"
