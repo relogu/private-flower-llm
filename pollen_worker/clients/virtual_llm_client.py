@@ -40,11 +40,9 @@ class VirtualLLMClient(fl.client.NumPyClient):
         *,
         cid: Union[int, str],
         cfg: Optional[DictConfig] = None,
-        trainer: Optional[Trainer] = None,
     ) -> None:
         self.cid = cid
         self.cfg = cfg
-        self.trainer = trainer
         transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualLLMClient.__init__ :: cid {self.cid}')
 
@@ -83,7 +81,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
-        return get_parameters(config, cfg, self.trainer)
+        return get_parameters(config, cfg)
 
     def fit(
         self, parameters: NDArrays, config: Dict
@@ -100,7 +98,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "Please ensure that the `cfg` object is passed to the client."
             )
 
-        return llm_fit(parameters, config, cfg, self.trainer)
+        return llm_fit(parameters, config, cfg)
 
     def evaluate(
         self,
@@ -118,12 +116,11 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
-        return llm_eval(parameters, config, cfg, self.trainer)
+        return llm_eval(parameters, config, cfg)
 
 
 def gen_client_fn(
     cfg: Optional[DictConfig] = None,
-    trainer: Optional[Trainer] = None,
     **kwargs,
 ) -> Callable[[int], VirtualLLMClient]:
     """Return generic `client_fn` for Flower Framework."""
@@ -132,7 +129,6 @@ def gen_client_fn(
         client = VirtualLLMClient(
             cid=client_id,
             cfg=copy.deepcopy(cfg),
-            trainer=trainer,
         )
         return client
 

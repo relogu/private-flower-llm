@@ -775,7 +775,6 @@ def _get_trainer_object(
 def get_parameters(
     config: Dict[str, Scalar],
     cfg: DictConfig,
-    trainer: Optional[Trainer] = None,
 ) -> NDArrays:
     """Return the current local model parameters.
 
@@ -791,27 +790,14 @@ def get_parameters(
     parameters : NDArrays
         The local model parameters as a list of NumPy ndarrays.
     """
-    if trainer is None:
-        # Extract configs to build the trainer
-        trainer, _, _ = _get_trainer_object(
-            _cfg=cfg,
-        )
-    return get_parameters_from_state(config, cfg, trainer)
+    return get_raw_model_parameters(copy.deepcopy(cfg))
 
 
 def get_parameters_from_state(
     config: Config,
-    cfg: DictConfig,
-    trainer: Optional[Trainer] = None,
+    trainer: Trainer,
 ) -> NDArrays:
     """Implement how to get parameters."""
-    if trainer is None:
-        # Extract configs to build the trainer
-        trainer, _, logged_cfg = _get_trainer_object(
-            _cfg=cfg,
-        )
-        log(INFO, "Logging config")
-        log_config(logged_cfg)
     # FIXME: This might not be enough!!! Check `composer.callback.CheckpointSaver`
     return [
         val.detach().to("cpu").numpy()
@@ -821,18 +807,10 @@ def get_parameters_from_state(
 
 def set_parameters_to_state(
     parameters: NDArrays,
-    cfg: DictConfig,
-    trainer: Optional[Trainer] = None,
-) -> torch.nn.Module:
+    trainer: Trainer,
+) -> None:
     """Implement how to set parameters in the case of an LLM."""
     # TODO: Check if there is space for optimisation here
-    if trainer is None:
-        # Extract configs to build the trainer
-        trainer, _, logged_cfg = _get_trainer_object(
-            _cfg=cfg,
-        )
-        log(INFO, "Logging config")
-        log_config(logged_cfg)
     # FIXME: This might not be enough!!! Check `composer.callback.CheckpointSaver`
     keys = list(trainer.state.model.state_dict().keys())
     params_dict = zip(keys, parameters)
@@ -840,35 +818,34 @@ def set_parameters_to_state(
     # NOTE: We may want to try strict=False
     trainer.state.model.load_state_dict(state_dict, strict=True)
     # state.model.load_state_dict(state_dict, strict=False)
-    return trainer.state.model
 
 
 def llm_fit(
     parameters: NDArrays,
     config: Dict,
     cfg: DictConfig,
-    trainer: Optional[Trainer] = None,
+    # trainer: Optional[Trainer] = None,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
-    if trainer is None:
-        # Extract configs to build the trainer
-        trainer, eval_first, logged_cfg = _get_trainer_object(
-            _cfg=cfg,
-        )
-        log(INFO, "Logging config")
-        log_config(logged_cfg)
-        torch.cuda.empty_cache()
-        gc.collect()
-        # Eval first if requested
-        if eval_first and trainer.state.timestamp.batch.value == 0:
-            trainer.eval()
+    # if trainer is None:
+    # Extract configs to build the trainer
+    trainer, eval_first, logged_cfg = _get_trainer_object(
+        _cfg=cfg,
+    )
+    log(INFO, "Logging config")
+    log_config(logged_cfg)
+    torch.cuda.empty_cache()
+    gc.collect()
+    # Eval first if requested
+    if eval_first and trainer.state.timestamp.batch.value == 0:
+        trainer.eval()
     # Set the parameters
     if parameters is not None:
         log(INFO, "Initializing model...")
         # TODO: Check if there is space for optimisation here
-        trainer.state.model = set_parameters_to_state(parameters, cfg, trainer)
+        set_parameters_to_state(parameters, trainer)
     log(INFO, "Starting training...")
     # NOTE: Prevent to run eval at the end of the training
     trainer.state.evaluators = None
@@ -882,8 +859,13 @@ def llm_fit(
         for k, v in trainer.state.train_metric_values.items()
     }
     # Retrieve model parameters
-    model_parameters = get_parameters_from_state({}, cfg, trainer)
+    model_parameters = get_parameters_from_state({}, trainer)
     trainer.close()
+    # del trainer.engine, trainer.state
+    # del trainer
+    for _ in range(5):
+        torch.cuda.empty_cache()
+        gc.collect()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
@@ -909,7 +891,8 @@ def llm_eval(
     # Set the parameters
     log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
-    trainer.state.model = set_parameters_to_state(parameters, cfg, trainer)
+    # trainer.state.model = set_parameters_to_state(parameters, cfg) #, trainer)
+    set_parameters_to_state(parameters, trainer)
     torch.cuda.empty_cache()
     gc.collect()
     log(INFO, "Starting evaluation...")
