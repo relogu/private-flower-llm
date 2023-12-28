@@ -10,6 +10,7 @@ from contextlib import _GeneratorContextManager
 from logging import INFO, WARN
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import streaming
 import torch
 from composer import Callback, ComposerModel, Evaluator, Trainer
 from composer.loggers import MosaicMLLogger
@@ -878,8 +879,12 @@ def llm_fit(
         k: v.cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
+    # Retrieve model parameters
+    model_parameters = get_parameters_from_state({}, cfg, trainer)
+    trainer.close()
+    streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
-    return get_parameters_from_state({}, cfg, trainer), n_samples_trained, train_metrics
+    return model_parameters, n_samples_trained, train_metrics
 
 
 def llm_eval(
@@ -911,6 +916,8 @@ def llm_eval(
         k: v.cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
+    trainer.close()
+    streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics

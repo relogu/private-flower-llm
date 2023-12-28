@@ -106,6 +106,8 @@ class NodeManager(fl.client.NumPyClient):
             create=True,
             name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
         )
+        # Init workers dict
+        self.workers_dict: Dict[int, Worker] = {}
 
     def _get_node_properties(self) -> Dict[str, Scalar]:
         device_info: Dict[str, Device] = {}
@@ -141,35 +143,36 @@ class NodeManager(fl.client.NumPyClient):
         """Implement how to get parameters."""
         return self.round_parameters
 
-    def _launch_worker_task(self, current_cid: int, action: str) -> Dict[int, Worker]:
+    def _launch_worker_task(self, current_cid: int, action: str) -> None:
         """Launch tasks and return workers dict."""
         # Set the task
         current_task = (current_cid, action)
-        # Get the port
-        current_port = str(get_free_tcp_port())
-        # Create a new worker
-        workers_dict: Dict[int, Worker] = {}
-        for i in range(get_n_cuda_devices()):
-            worker = create_new_worker(
-                client_fn=self.client_fn,
-                task_queue=self.task_queue,
-                result_queue=self.result_queue,
-                node_manager_uuid=self.node_manager_uuid,
-                parameters=self.round_parameters,
-                n_workers=get_n_cuda_devices(),
-                worker_rank=i,
-                port=current_port,
+        if len(self.workers_dict) == 0:
+            # Get the port
+            current_port = str(get_free_tcp_port())
+            # Create workers
+            self.workers_dict: Dict[int, Worker] = {}  # type: ignore[no-redef]
+            for i in range(get_n_cuda_devices()):
+                worker = create_new_worker(
+                    client_fn=self.client_fn,
+                    task_queue=self.task_queue,
+                    result_queue=self.result_queue,
+                    node_manager_uuid=self.node_manager_uuid,
+                    parameters=self.round_parameters,
+                    n_workers=get_n_cuda_devices(),
+                    worker_rank=i,
+                    port=current_port,
+                )
+                self.workers_dict[i] = worker
+            log(
+                DEBUG,
+                "NodeManager %s: the worker dict has been build %s.",
+                self.name,
+                self.workers_dict,
             )
-            workers_dict[i] = worker
-        log(
-            DEBUG,
-            "NodeManager %s: the worker dict has been build %s.",
-            self.name,
-            workers_dict,
-        )
-        # Start the workers
-        for _, worker in workers_dict.items():
-            start_worker(worker)
+            # Start the workers
+            for _, worker in self.workers_dict.items():
+                start_worker(worker)
         # Send the task to the workers
         for _ in range(get_n_cuda_devices()):
             self.task_queue.put(current_task)
@@ -179,20 +182,21 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             current_task,
         )
-        return workers_dict
 
-    def _close_workers(self, workers_dict: Dict[int, Worker]) -> None:
+    def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
         # Close and unlink the shared memory
-        close_all_shms(workers_dict[0].worker_uuid)
+        close_all_shms(self.workers_dict[0].worker_uuid)
         log(
             DEBUG,
             "NodeManager %s: worker %s shared memories have been closed.",
             self.name,
-            workers_dict[0].worker_uuid,
+            self.workers_dict[0].worker_uuid,
         )
         # Wait until the worker is dead
-        for _, worker in workers_dict.items():
+        for _ in range(get_n_cuda_devices()):
+            self.task_queue.put(None)
+        for _, worker in self.workers_dict.items():
             while worker.is_alive():
                 time.sleep(0.1)
         log(
@@ -200,7 +204,7 @@ class NodeManager(fl.client.NumPyClient):
             "NodeManager %s: workers are dead.",
             self.name,
         )
-        del workers_dict
+        del self.workers_dict
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -213,7 +217,6 @@ class NodeManager(fl.client.NumPyClient):
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_train = cast(str, assignments).split(",")
-        # list_of_cids_to_train = [0, 1, 2, 3, 4, 5]
         # Update shared memories objects
         self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
             config=config,
@@ -228,14 +231,14 @@ class NodeManager(fl.client.NumPyClient):
         while len(list_of_cids_to_train) > 0:
             # Get the current cid
             current_cid = int(list_of_cids_to_train.pop(0))
-            workers_dict = self._launch_worker_task(current_cid, "fit")
+            self._launch_worker_task(current_cid, "fit")
             # Get the result
             current_stats = self.result_queue.get()
             log(
                 DEBUG,
                 "NodeManager %s: worker %s finished and returned %s.",
                 self.name,
-                workers_dict[0].worker_uuid,
+                self.workers_dict[0].worker_uuid,
                 current_stats,
             )
             # Check if the training was successful
@@ -245,15 +248,15 @@ class NodeManager(fl.client.NumPyClient):
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
                 w_parameters, w_parameters_shm = get_parameters_shm(
                     parameters=self.round_parameters,
-                    name=workers_dict[0].worker_uuid
+                    name=self.workers_dict[0].worker_uuid
                     + POLLEN_PARAMETERS_SHM,  # noqa: F821
                 )
                 w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                    name=workers_dict[0].worker_uuid
+                    name=self.workers_dict[0].worker_uuid
                     + POLLEN_N_SAMPLES_SHM,  # noqa: F821
                 )
                 w_metrics, w_metrics_shm = get_config_shm(
-                    name=workers_dict[0].worker_uuid + POLLEN_METRICS_SHM
+                    name=self.workers_dict[0].worker_uuid + POLLEN_METRICS_SHM
                 )
                 # Node's partial aggregation for parameters
                 partially_aggregated_params = partially_aggregate(
@@ -270,7 +273,7 @@ class NodeManager(fl.client.NumPyClient):
                 )
             else:
                 list_of_cids_to_train.append(str(current_cid))
-            self._close_workers(workers_dict)
+            # self._close_workers(self.workers_dict)
         # Aggregation of train metrics
         node_train_metrics = weighted_average(clients_train_metrics)
         log(
@@ -303,7 +306,6 @@ class NodeManager(fl.client.NumPyClient):
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_eval = cast(str, assignments).split(",")
-        # list_of_cids_to_eval = [0, 1, 2, 3, 4, 5]
         # Update shared memories objects
         self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
             config=config,
@@ -319,14 +321,14 @@ class NodeManager(fl.client.NumPyClient):
         while len(list_of_cids_to_eval) > 0:
             # Get the current cid
             current_cid = int(list_of_cids_to_eval.pop(0))
-            workers_dict = self._launch_worker_task(current_cid, "evaluate")
+            self._launch_worker_task(current_cid, "evaluate")
             # Get the result
             current_stats = self.result_queue.get()
             log(
                 DEBUG,
                 "NodeManager %s: worker %s finished and returned %s.",
                 self.name,
-                workers_dict[0].worker_uuid,
+                self.workers_dict[0].worker_uuid,
                 current_stats,
             )
             # Check if the evaluation was successful
@@ -335,15 +337,15 @@ class NodeManager(fl.client.NumPyClient):
                 # Get stuff from shared memories
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
                 w_eval_loss, w_eval_loss_shm = get_eval_loss_shm(
-                    name=workers_dict[0].worker_uuid
+                    name=self.workers_dict[0].worker_uuid
                     + POLLEN_EVAL_LOSS_SHM,  # noqa: F821
                 )
                 w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                    name=workers_dict[0].worker_uuid
+                    name=self.workers_dict[0].worker_uuid
                     + POLLEN_N_SAMPLES_SHM,  # noqa: F821
                 )
                 w_metrics, w_metrics_shm = get_config_shm(
-                    name=workers_dict[0].worker_uuid + POLLEN_METRICS_SHM
+                    name=self.workers_dict[0].worker_uuid + POLLEN_METRICS_SHM
                 )
                 # Append eval losses to aggregate later
                 clients_eval_losses.append((w_num_samples[0], w_eval_loss[0]))
@@ -359,7 +361,7 @@ class NodeManager(fl.client.NumPyClient):
                 )
             else:
                 list_of_cids_to_eval.append(str(current_cid))
-            self._close_workers(workers_dict)
+            # self._close_workers(self.workers_dict)
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
@@ -386,6 +388,7 @@ class NodeManager(fl.client.NumPyClient):
         """Implement the closing on the NodeManager."""
         log(DEBUG, "Closing NodeManager...")
         # TODO: Closing workers?
+        self._close_workers()
         # Free shared memories
         close_all_shms(self.node_manager_uuid)
         log(DEBUG, "Shared memories closed")
@@ -424,25 +427,25 @@ def main(cfg: DictConfig) -> None:
     # Choose the type of execution
     if cfg.is_test:
         log(INFO, "NodeManager::test")
-        fl_instructions_config: Config = {"server_round": 1, "merged": "0"}
-        # loss, n_samples, train_metrics = node_manager.evaluate(
-        #     parameters, fl_instructions_config
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : loss=%s",
-        #     loss,
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : n_samples=%s",
-        #     n_samples,
-        # )
-        # log(
-        #     INFO,
-        #     "NodeManager::test::evaluate : train_metrics=%s",
-        #     train_metrics,
-        # )
+        fl_instructions_config: Config = {"server_round": 1, "merged": "0,1,2"}
+        loss, n_samples, train_metrics = node_manager.evaluate(
+            parameters, fl_instructions_config
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : loss=%s",
+            loss,
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : n_samples=%s",
+            n_samples,
+        )
+        log(
+            INFO,
+            "NodeManager::test::evaluate : train_metrics=%s",
+            train_metrics,
+        )
         parameters, n_samples, train_metrics = node_manager.fit(
             parameters, fl_instructions_config
         )

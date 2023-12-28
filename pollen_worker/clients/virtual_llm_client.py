@@ -209,8 +209,6 @@ def main(cfg: DictConfig) -> None:
     log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
 
     # NOTE: Can't do both train and test in the same process currently
-    virtual_llm_client.trainer.close()
-    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to re-build the trainer
     virtual_llm_client.trainer, _, _ = _get_trainer_object(
         _cfg=copy.deepcopy(_llm_config),
@@ -226,7 +224,6 @@ def main(cfg: DictConfig) -> None:
     )
     log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
     shutil.rmtree(Path(new_local_path), ignore_errors=True)
-    streaming.base.util.clean_stale_shared_memory()
 
 
 if __name__ == "__main__":
