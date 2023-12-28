@@ -850,6 +850,8 @@ def llm_fit(
     trainer: Optional[Trainer] = None,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     if trainer is None:
         # Extract configs to build the trainer
         trainer, eval_first, logged_cfg = _get_trainer_object(
@@ -882,6 +884,7 @@ def llm_fit(
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, cfg, trainer)
     trainer.close()
+    # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
     return model_parameters, n_samples_trained, train_metrics
@@ -894,6 +897,8 @@ def llm_eval(
     trainer: Optional[Trainer] = None,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     if trainer is None:
         # Extract configs to build the trainer
         trainer, _, logged_cfg = _get_trainer_object(
@@ -917,6 +922,7 @@ def llm_eval(
         for k, v in trainer.state.eval_metric_values.items()
     }
     trainer.close()
+    # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
     # TODO: What do we do with the first argument?

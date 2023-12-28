@@ -178,7 +178,6 @@ def main(cfg: DictConfig) -> None:
     )
     _llm_config = set_all_data_paths(_llm_config, new_local_path)
     log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
-    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=copy.deepcopy(_llm_config),
