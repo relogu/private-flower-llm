@@ -22,7 +22,7 @@
 #! Note that the job submission script will enforce no more than 32 cpus per GPU.
 #SBATCH --gres=gpu:1
 #! How much wallclock time will be required?
-#SBATCH --time=00:30:00
+#SBATCH --time=12:00:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=ALL
 #! Uncomment this to prevent the job from being requeued (e.g. if
@@ -107,4 +107,5 @@ echo -e "\nExecuting command:\n==================\n$CMD\n"
 
 # eval $CMD 
 
-sh $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "small"
+# sh $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "small"
+sh $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "small"
