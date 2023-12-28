@@ -6,7 +6,8 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 else
     echo "Assuming the script is executing NOT in the CSD3."
     # export DATA_TMP_DIR="$HOME/tmp"
-    export DATA_TMP_DIR="/tmp"
+    export DATA_TMP_DIR="/home/$USER/tmp"
+    # export DATA_TMP_DIR="/tmp"
 fi
 mkdir -p $DATA_TMP_DIR
 #! Check if the external var has been set
