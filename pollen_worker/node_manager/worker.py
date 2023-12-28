@@ -63,7 +63,6 @@ class Worker(mp.Process):  # type: ignore
         self.worker_rank = worker_rank
         self.port = port
         self.worker_metrics_sh: SharedMemory | None = None
-        self.client: VirtualLLMClient | None = None
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -155,63 +154,55 @@ class Worker(mp.Process):  # type: ignore
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
         )
         # Load client
-        if self.client is None:
-            self.client = self.client_fn(client_id)
-        else:
-            # Update `cid`
-            self.client.cid = client_id
-            # Reset the config
-            self.client.cfg = copy.deepcopy(self.client_fn(client_id).cfg)
-            # Reset the `trainer` object
-            self.client.trainer = None
+        tmp_client = self.client_fn(client_id)
         # NOTE: We MUST change the save folder for the checkpoints,
         # it won't train otherwise
-        self.client.cfg.save_folder = (  # type: ignore[union-attr]
-            self.client.cfg.save_folder  # type: ignore[union-attr]
+        tmp_client.cfg.save_folder = (  # type: ignore[union-attr]
+            tmp_client.cfg.save_folder  # type: ignore[union-attr]
             + "_c"
-            + str(self.client.cid)
+            + str(tmp_client.cid)
         )
         # NOTE: Prevent slave workers to log to the console
         if self.worker_rank > 0:
-            self.client.cfg.log_to_console = False  # type: ignore[union-attr]
+            tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
         # Automatically setting the `n_workers` parameter based on CPU available
-        self.client.cfg = set_n_workers_dataloaders(
-            self.client.cfg  # type: ignore[union-attr]
+        tmp_client.cfg = set_n_workers_dataloaders(
+            tmp_client.cfg  # type: ignore[union-attr]
         )
         # NOTE: When using remote data, we need one tmp folder per worker
-        if self.client.cfg.data_remote is not None:  # type: ignore[union-attr]
+        if tmp_client.cfg.data_remote is not None:  # type: ignore[union-attr]
             # Set the appropriate path given the `client_id`
             new_remote_path = (
-                str(self.client.cfg.data_remote)  # type: ignore[union-attr]
+                str(tmp_client.cfg.data_remote)  # type: ignore[union-attr]
                 + f"/client_{client_id}"
             )
-            self.client.cfg = set_all_data_paths(
-                self.client.cfg, new_remote_path, False
+            tmp_client.cfg = set_all_data_paths(
+                tmp_client.cfg, new_remote_path, False
             )
         new_local_path = (
-            str(self.client.cfg.data_local)  # type: ignore[union-attr]
+            str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
             + f"/{self.node_manager_uuid}_client_{client_id}"
         )
-        self.client.cfg = set_all_data_paths(self.client.cfg, new_local_path)
+        tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_local_path)
         # Set `max_duration` as the number of steps times the number of rounds
         max_duration = int(fl_instructions_config["server_round"]) * int(
-            self.client.cfg.local_steps  # type: ignore[union-attr]
+            tmp_client.cfg.local_steps  # type: ignore[union-attr]
         )
-        self.client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
+        tmp_client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
         # Forcing not to load the model from a checkpoint
         # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
-        self.client.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+        tmp_client.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
         # Try to execute the task of the client
         try:
             if action == "fit":
-                self._fit_action(self.client, fl_instructions_config)
+                self._fit_action(tmp_client, fl_instructions_config)
             elif action == "evaluate":
-                self._evaluate_action(self.client, fl_instructions_config)
+                self._evaluate_action(tmp_client, fl_instructions_config)
             # Take the timestamp after the task is done
             end_time = time.time_ns()
             if self.worker_rank == 0:
                 self.result_queue.put(
-                    [int(self.client.cid), start_time, end_time, self.worker_uuid]
+                    [int(tmp_client.cid), start_time, end_time, self.worker_uuid]
                 )
         except Exception as e:
             log(
@@ -230,6 +221,7 @@ class Worker(mp.Process):  # type: ignore
         # # Removing the tmp folder used for the dataset
         # if self.worker_rank == 0:
         #     shutil.rmtree(Path(new_local_path), ignore_errors=True)
+        del tmp_client
         torch.cuda.empty_cache()
         gc.collect()
 
@@ -316,16 +308,13 @@ class Worker(mp.Process):  # type: ignore
             # This is the first piece of code of the worker that live in the child
             # process, the `__init__()` function does not.
             self._link_shms()
-            # self.worker_metrics_sh: SharedMemory | None = None
             ## Task loop
-            # self.client: VirtualLLMClient | None = None
             task: Optional[Tuple[int, str]] = None
             for task in iter(self.task_queue.get, None):
                 cid, action = task  # type: ignore[misc]
                 self.process_task(cid, action)  # type: ignore[has-type]
                 if self.auto_terminate:
                     break
-            del self.client
             torch.cuda.empty_cache()
             gc.collect()
             ## Un-register shared memories
