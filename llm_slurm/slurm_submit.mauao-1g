@@ -9,13 +9,13 @@
 #SBATCH --time=01:00:00
 #!SBATCH --dependency=afterany:80339
 
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "small"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "125M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "small"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "125M"
 
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "small"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "16M"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "125M"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "350M"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "540M"
-# bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "760M"
-bash /nfs-share/ls985/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "1B"
+bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "small"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "16M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "125M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "350M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "540M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "760M"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_node_manager_llm.sh "1B"
