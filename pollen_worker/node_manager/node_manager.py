@@ -191,13 +191,6 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             workers_dict[0].worker_uuid,
         )
-        # for _, worker in workers_dict.items():
-        #     worker.terminate()
-        # log(
-        #     DEBUG,
-        #     "NodeManager %s: sending termination command to workers.",
-        #     self.name,
-        # )
         # Wait until the worker is dead
         for _, worker in workers_dict.items():
             while worker.is_alive():

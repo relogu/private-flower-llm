@@ -160,12 +160,7 @@ class Worker(mp.Process):  # type: ignore
             tmp_client.cfg.save_folder  # type: ignore[union-attr]
             + "_c"
             + str(tmp_client.cid)
-            # + "_r"
-            # + str(fl_instructions_config["server_round"])
         )
-        # # NOTE: This is necessary to prevent erros when executing a
-        # # config with the same `cfg.save_folder`
-        # tmp_client.cfg.save_overwrite = True  # type: ignore[union-attr]
         # NOTE: Prevent slave workers to log to the console
         if self.worker_rank > 0:
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
@@ -322,9 +317,6 @@ class Worker(mp.Process):  # type: ignore
             ## Un-register shared memories
             # NOTE: Bug https://bugs.python.org/issue39959#msg364351
             self._unregister_shms()
-            # ## Put the closing task's results in the result queue
-            # if not self.auto_terminate:
-            #     self.result_queue.put([-1, 0, 0, ""])
 
 
 def create_new_worker(
