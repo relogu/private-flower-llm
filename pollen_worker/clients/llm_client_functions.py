@@ -3,6 +3,7 @@ import copy
 import gc
 import logging
 import os
+import sys
 import time
 import warnings
 from collections import OrderedDict
@@ -49,7 +50,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import get_n_cpu_cores
+from pollen_worker.utils import force_referenced_tensors_destruction, get_n_cpu_cores, get_referenced_tensors_summary
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -305,7 +306,8 @@ def get_raw_model_parameters(
     lora_config: Optional[Dict[str, Any]] = pop_config(
         _cfg, "lora", must_exist=False, default_value=None, convert=True
     )
-    # Get model
+    # Get model while forcing cpu to prevent any GPU allocation
+    model_config.init_device = "cpu"
     model = _get_model_for_trainer(
         init_context=process_init_device(model_config, None),
         tokenizer=build_tokenizer(tokenizer_name, tokenizer_kwargs),
@@ -818,6 +820,7 @@ def set_parameters_to_state(
     # NOTE: We may want to try strict=False
     trainer.state.model.load_state_dict(state_dict, strict=True)
     # state.model.load_state_dict(state_dict, strict=False)
+    del state_dict
 
 
 def llm_fit(
@@ -836,21 +839,20 @@ def llm_fit(
     )
     log(INFO, "Logging config")
     log_config(logged_cfg)
-    torch.cuda.empty_cache()
-    gc.collect()
-    # Eval first if requested
-    if eval_first and trainer.state.timestamp.batch.value == 0:
-        trainer.eval()
     # Set the parameters
     if parameters is not None:
         log(INFO, "Initializing model...")
         # TODO: Check if there is space for optimisation here
         set_parameters_to_state(parameters, trainer)
+    # Eval first if requested
+    if eval_first and trainer.state.timestamp.batch.value == 0:
+        trainer.eval()
     log(INFO, "Starting training...")
     # NOTE: Prevent to run eval at the end of the training
     trainer.state.evaluators = None
     # TODO: Assess whether we need to set some params here to respect FL setting
     trainer.fit()
+    # gpu_profile(frame=sys._getframe(), event='line', arg=None)
     # Retrieve number of samples trained
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
@@ -860,12 +862,29 @@ def llm_fit(
     }
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
+    # Closing the trainer
     trainer.close()
-    # del trainer.engine, trainer.state
-    # del trainer
-    for _ in range(5):
-        torch.cuda.empty_cache()
-        gc.collect()
+    # FIXME: Trying to delete stuff
+    for attribute_name in trainer.state.serialized_attributes:
+        current_attr = getattr(trainer.state, attribute_name)
+        del current_attr
+    del trainer.state, trainer.engine, trainer._original_model
+    del trainer
+    gc.collect()
+    torch.cuda.empty_cache()
+    log(
+        INFO,
+        "Trainer closed. Memory snapshot\n%s.",
+        torch.cuda.memory_summary(),
+    )
+    get_referenced_tensors_summary()
+    force_referenced_tensors_destruction()
+    get_referenced_tensors_summary()
+    log(
+        INFO,
+        "Forced destruction. Memory snapshot\n%s.",
+        torch.cuda.memory_summary(),
+    )
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
@@ -891,10 +910,9 @@ def llm_eval(
     # Set the parameters
     log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
-    # trainer.state.model = set_parameters_to_state(parameters, cfg) #, trainer)
     set_parameters_to_state(parameters, trainer)
-    torch.cuda.empty_cache()
     gc.collect()
+    torch.cuda.empty_cache()
     log(INFO, "Starting evaluation...")
     trainer.eval()
     # Retrieve number of samples evaluated
@@ -904,12 +922,10 @@ def llm_eval(
         k: v.cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
+    # Closing the trainer
     trainer.close()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
-    del trainer
-    torch.cuda.empty_cache()
-    gc.collect()
     log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics
