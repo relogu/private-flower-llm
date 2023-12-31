@@ -20,7 +20,7 @@ else
     # Check CUDA
     nvcc -V
     # Remove shared memories of the user if they exist
-    # find /dev/shm -name '*pollen*' -type f -delete
+    find /dev/shm -name '*pollen*' -type f -delete
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
@@ -42,7 +42,8 @@ mkdir -p $SAVE_PATH
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
 #! Additional settings specific for the current testing
-TESTING_OPTIONS="llm_config.max_duration=100ba"
+TESTING_OPTIONS="llm_config.console_log_interval=512ba"
+export CUDA_LAUNCH_BLOCKING=1
 
 #! Test VirtualLLMClient
 poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/virtual_llm_client.log 
