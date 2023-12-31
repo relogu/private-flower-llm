@@ -3,10 +3,13 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
+import gc
+from logging import INFO
 import shutil
 from collections import OrderedDict, defaultdict
 from functools import reduce
 from pathlib import Path
+import sys
 from typing import (
     Any,
     Callable,
@@ -25,7 +28,7 @@ import psutil
 import pyarrow as pa
 import ray
 import torch
-from flwr.common import FitRes, NDArrays, Scalar, parameters_to_ndarrays
+from flwr.common import FitRes, NDArrays, Scalar, parameters_to_ndarrays, log
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from torch import device as device_type
@@ -313,6 +316,96 @@ def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
     with pa.ipc.open_file(buffer) as reader:
         ret_table = reader.read_all()
     return ret_table
+
+def namestr(obj, namespace):
+    return [name for name in namespace if namespace[name] is obj]
+
+def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    counter, total_size, gpu_size = 0, 0, 0
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            # Checking if the object is a tensor or a tensor data attribute
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                # Skip if the tensor is on CPU and `cuda_only` is True
+                if cuda_only and not obj.is_cuda:
+                    continue
+                else:
+                    # Getting the memory allocation of the current object
+                    mem_alloc = obj.element_size() * obj.nelement()
+                    # Getting the referrers of the current object
+                    # NOTE: This creates a new referrer!
+                    referrers = gc.get_referrers(obj)
+                    # Building the summary for the current object:
+                    # ( type (some tensor type), size (shape), whether it requires grad, memory allocation
+                    summary += f"(type{type(obj)}, {obj.size()}, r_g={obj.requires_grad}, mem={mem_alloc}, "
+                    # whether it is on GPU, the number of referrers
+                    summary += f"cuda={obj.is_cuda}, n_ref={len(referrers)}, "
+                    # # first of the referrers
+                    # summary += f"ref0={referrers[0]}, "
+                    # # looking for names of the first referrer (DOESN'T WORK)
+                    # summary += f"{namestr(referrers[0], globals())}, {namestr(referrers[0], locals())}, "
+                    # type of the referrers
+                    summary += f"type_ref={[type(referrers) for r in referrers]}, "
+                    # # referrers of the referrers
+                    # summary += f"{[gc.get_referrers(referrers) for r in referrers]})"
+                    summary += "\n"
+                    # Updating the counters
+                    counter += 1
+                    total_size += mem_alloc
+                    if obj.is_cuda:
+                        gpu_size += mem_alloc
+        except:
+            pass
+    if verbose:
+        # Converting the size from bytes to MiB
+        total_size = total_size / 1e6
+        gpu_size = gpu_size / 1e6
+        # More verbose logging
+        log(
+            INFO,
+            "get_referenced_tensors_summary :: there are %s referenced tensors for a total size of %s MiB (%s MiB on GPU, %s MiB on CPU). Summary is:\n%s",
+            counter,
+            total_size,
+            gpu_size,
+            total_size - gpu_size,
+            summary,
+        )
+        # # Less verbose logging
+        # log(
+        #     INFO,
+        #     "get_referenced_tensors_summary :: there are %s referenced tensors for a size of %s",
+        #     counter,
+        #     total_size,
+        # )
+    return summary
+
+
+def force_referenced_tensors_destruction() -> None:
+    """Force destruction of the tensors in the current Python session."""
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    obj.to('cpu')
+                referrers = gc.get_referrers(obj)
+                for referrer in referrers:
+                    parent_referrers = gc.get_referrers(referrer)
+                    referrer = None
+                    for p_r in parent_referrers:
+                        p_r = None
+                    # del referrer
+                del obj
+        except:
+            pass
+    log(INFO, "force_referenced_tensors_destruction :: done")
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 class IntentionalClientDropout(Exception):
