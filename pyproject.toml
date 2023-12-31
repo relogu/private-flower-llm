@@ -103,6 +103,7 @@ mosaicml-turbo = "0.0.4"
 # bitsandbytes = "0.39.1"
 # peft = "0.4.0"
 pip = "^23.3.2"
+py3nvml = "^0.2.7"
 
 
 [tool.poetry.dev-dependencies]
