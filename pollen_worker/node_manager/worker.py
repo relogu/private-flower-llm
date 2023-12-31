@@ -157,11 +157,12 @@ class Worker(mp.Process):  # type: ignore
         tmp_client = self.client_fn(client_id)
         # NOTE: We MUST change the save folder for the checkpoints,
         # it won't train otherwise
-        tmp_client.cfg.save_folder = (  # type: ignore[union-attr]
-            tmp_client.cfg.save_folder  # type: ignore[union-attr]
-            + "_c"
-            + str(tmp_client.cid)
-        )
+        if tmp_client.cfg.save_folder is not None:  # type: ignore[union-attr]
+            tmp_client.cfg.save_folder = (  # type: ignore[union-attr]
+                tmp_client.cfg.save_folder  # type: ignore[union-attr]
+                + "_c"
+                + str(tmp_client.cid)
+            )
         # NOTE: Prevent slave workers to log to the console
         if self.worker_rank > 0:
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
