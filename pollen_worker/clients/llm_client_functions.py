@@ -50,7 +50,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import force_referenced_tensors_destruction, get_n_cpu_cores, get_referenced_tensors_summary
+from pollen_worker.utils import clean_trainer_state, force_referenced_tensors_destruction, get_n_cpu_cores, get_referenced_tensors_summary
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -247,8 +247,8 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
             trainable_params += param.numel()
     log(
         INFO,
-        f"trainable params: {trainable_params} || all params: {all_param} ||"
-        f"trainable%:{100 * trainable_params / all_param}",
+        f"trainable params: {trainable_params} || all params: {all_param} || "
+        f"trainable params (%): {100 * trainable_params / all_param}",
     )
 
 
@@ -314,6 +314,7 @@ def get_raw_model_parameters(
         model_config=model_config,
         lora_config=lora_config,
     )
+    model.cpu()
     return [val.detach().to("cpu").numpy() for _, val in model.state_dict().items()]
 
 
@@ -857,34 +858,35 @@ def llm_fit(
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
     train_metrics = {
-        k: v.cpu().item()  # type: ignore[attr-defined]
+        k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
-    # Closing the trainer
+    # Close the trainer
     trainer.close()
-    # FIXME: Trying to delete stuff
-    for attribute_name in trainer.state.serialized_attributes:
-        current_attr = getattr(trainer.state, attribute_name)
-        del current_attr
-    del trainer.state, trainer.engine, trainer._original_model
-    del trainer
+    # Clean leaked bjects
+    clean_trainer_state(trainer)
+    # Delete the trainer
+    try:
+        del trainer
+    except Exception as e:
+        log(WARN, "Exception %s", e)
     gc.collect()
     torch.cuda.empty_cache()
-    log(
-        INFO,
-        "Trainer closed. Memory snapshot\n%s.",
-        torch.cuda.memory_summary(),
-    )
-    get_referenced_tensors_summary()
-    force_referenced_tensors_destruction()
-    get_referenced_tensors_summary()
-    log(
-        INFO,
-        "Forced destruction. Memory snapshot\n%s.",
-        torch.cuda.memory_summary(),
-    )
+    # log(
+    #     INFO,
+    #     "Trainer closed. Memory snapshot\n%s.",
+    #     torch.cuda.memory_summary(),
+    # )
+    # get_referenced_tensors_summary()
+    # force_referenced_tensors_destruction()
+    # get_referenced_tensors_summary()
+    # log(
+    #     INFO,
+    #     "Forced destruction. Memory snapshot\n%s.",
+    #     torch.cuda.memory_summary(),
+    # )
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
@@ -919,11 +921,20 @@ def llm_eval(
     num_samples = trainer.state.eval_timestamp._sample.value
     # Retrieve evaluation metrics
     eval_metrics = {
-        k: v.cpu().item()  # type: ignore[attr-defined]
+        k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
-    # Closing the trainer
+    # Close the trainer
     trainer.close()
+    # Clean leaked bjects
+    clean_trainer_state(trainer)
+    # Delete the trainer
+    try:
+        del trainer
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    gc.collect()
+    torch.cuda.empty_cache()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")

@@ -4,7 +4,7 @@ They assure compatibility with the Flower and wandb APIs.
 """
 
 import gc
-from logging import INFO
+from logging import INFO, WARN
 import shutil
 from collections import OrderedDict, defaultdict
 from functools import reduce
@@ -22,6 +22,7 @@ from typing import (
     Union,
     cast,
 )
+from composer import Trainer
 
 import numpy as np
 import psutil
@@ -351,8 +352,9 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
                     # # looking for names of the first referrer (DOESN'T WORK)
                     # summary += f"{namestr(referrers[0], globals())}, {namestr(referrers[0], locals())}, "
                     # type of the referrers
-                    summary += f"type_ref={[type(referrers) for r in referrers]}, "
+                    summary += f"type_ref={[type(r) for r in referrers]}, "
                     # # referrers of the referrers
+                    
                     # summary += f"{[gc.get_referrers(referrers) for r in referrers]})"
                     summary += "\n"
                     # Updating the counters
@@ -386,26 +388,114 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
     return summary
 
 
+# NOTE: This doesn't work as expected
 def force_referenced_tensors_destruction() -> None:
     """Force destruction of the tensors in the current Python session."""
+    gc.collect()
     for obj in gc.get_objects():
         try:
             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                if obj.is_cuda:
-                    obj.to('cpu')
-                referrers = gc.get_referrers(obj)
-                for referrer in referrers:
-                    parent_referrers = gc.get_referrers(referrer)
-                    referrer = None
-                    for p_r in parent_referrers:
-                        p_r = None
-                    # del referrer
-                del obj
+                try:
+                    if obj.is_cuda:
+                        obj.to('cpu')
+                    referrers = gc.get_referrers(obj)
+                    for referrer in referrers:
+                        parent_referrers = gc.get_referrers(referrer)
+                        for p_r in parent_referrers:
+                            del p_r
+                        del referrer
+                    del obj
+                except Exception as e:
+                    log(
+                        INFO,
+                        "force_referenced_tensors_destruction :: error while deleting object of type %s: %s",
+                        type(obj),
+                        e,
+                    )
         except:
             pass
     log(INFO, "force_referenced_tensors_destruction :: done")
     gc.collect()
     torch.cuda.empty_cache()
+    
+
+
+def clean_trainer_state(trainer: Trainer) -> None:
+    """Clean the state of the trainer."""
+    # for attribute_name in trainer.state.serialized_attributes:
+    #     current_attr = getattr(trainer.state, attribute_name)
+    #     log(INFO, "State's attribute %s: %s", attribute_name, current_attr)
+    try:
+        trainer.state.model.cpu()
+        delattr(trainer.state, "model")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for optimizer in trainer.state.optimizers:
+            del optimizer
+        delattr(trainer.state, "_optimizers")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for scheduler in trainer.state.schedulers:
+            del scheduler
+        delattr(trainer.state, "_schedulers")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for callback in trainer.state.callbacks:
+            del callback
+        delattr(trainer.state, "_callbacks")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "scaler")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "timestamp")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for k, t_m in trainer.state.train_metrics.items():
+            t_m.cpu()
+            del t_m
+        delattr(trainer.state, "train_metrics")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for k, e_m in trainer.state.eval_metrics.items():
+            for kk, ee_m in e_m.items():
+                ee_m.cpu()
+                del ee_m
+            del e_m
+        delattr(trainer.state, "eval_metrics")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "batch")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "loss")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "outputs")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "state")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "engine")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "_original_model")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
 
 
 class IntentionalClientDropout(Exception):
