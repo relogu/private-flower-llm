@@ -224,15 +224,6 @@ class Worker(mp.Process):  # type: ignore
         # # Removing the tmp folder used for the dataset
         # if self.worker_rank == 0:
         #     shutil.rmtree(Path(new_local_path), ignore_errors=True)
-        del tmp_client
-        torch.cuda.empty_cache()
-        gc.collect()
-        log(
-            INFO,
-            "Worker %s. Memory snapshot\n%s.",
-            self.worker_uuid,
-            torch.cuda.memory_summary(),
-        )
 
     def _unregister_shms(self) -> None:
         """Unregister shared memories."""
