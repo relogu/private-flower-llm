@@ -7,7 +7,7 @@ global_seed: 17
 autoresume: true
 
 # Run Name
-run_name: null  # If left blank, will be read from env var $RUN_NAME
+run_name: ${run_uuid}  # If left blank, will be read from env var $RUN_NAME
 
 # Model
 model:
