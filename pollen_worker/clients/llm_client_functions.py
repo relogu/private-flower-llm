@@ -69,11 +69,13 @@ def set_all_data_paths(
         return cfg
     if is_local:
         cfg.data_local = new_path
-        cfg.train_loader.dataset.local = new_path
+        if cfg.train_loader is not None:
+            cfg.train_loader.dataset.local = new_path
         cfg.eval_loader.dataset.local = new_path
     else:
         cfg.data_remote = new_path
-        cfg.train_loader.dataset.remote = new_path
+        if cfg.train_loader is not None:
+            cfg.train_loader.dataset.remote = new_path
         cfg.eval_loader.dataset.remote = new_path
     return cfg
 
@@ -108,40 +110,41 @@ def validate_config(cfg: DictConfig):
         else:
             loaders.append(eval_loader)
     for loader in loaders:
-        if loader.name == "text":
-            if cfg.model.name in ["hf_prefix_lm", "hf_t5"]:
-                raise ValueError(
-                    f'Model type "{cfg.model.name}" is not supported when using the'
-                    '"text " dataloader. Please use the "text_denoising" dataloader'
-                    "to pre-train that model type."
-                )
-        elif loader.name == "text_denoising":
-            if cfg.model.name == "hf_causal_lm":
-                raise ValueError(
-                    f'Model type "{cfg.model.name}" is not supported when using the'
-                    '"text_denoising"  dataloader. Please use the "text" dataloader'
-                    "to pre-train that model type."
-                )
-            if (
-                loader.mixture_of_denoisers.decoder_only_format
-                and cfg.model.name == "hf_t5"
-            ):
-                log(
-                    WARN,
-                    'Model type "hf_t5" requires `decoder_only_format` to be ``False``.'
-                    " Overriding `decoder_only_format` from ``True`` to ``False``.",
-                )
-                loader.mixture_of_denoisers.decoder_only_format = False
-            if (
-                not loader.mixture_of_denoisers.decoder_only_format
-            ) and cfg.model.name == "hf_prefix_lm":
-                log(
-                    WARN,
-                    'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
-                    "``True``. Overriding `decoder_only_format` from ``False`` to"
-                    "``True``.",
-                )
-                loader.mixture_of_denoisers.decoder_only_format = True
+        if loader is not None:
+            if loader.name == "text":
+                if cfg.model.name in ["hf_prefix_lm", "hf_t5"]:
+                    raise ValueError(
+                        f'Model type "{cfg.model.name}" is not supported when using the'
+                        '"text " dataloader. Please use the "text_denoising" dataloader'
+                        "to pre-train that model type."
+                    )
+            elif loader.name == "text_denoising":
+                if cfg.model.name == "hf_causal_lm":
+                    raise ValueError(
+                        f'Model type "{cfg.model.name}" is not supported when using the'
+                        '"text_denoising"  dataloader. Please use the "text" dataloader'
+                        "to pre-train that model type."
+                    )
+                if (
+                    loader.mixture_of_denoisers.decoder_only_format
+                    and cfg.model.name == "hf_t5"
+                ):
+                    log(
+                        WARN,
+                        'Model type "hf_t5" requires `decoder_only_format` to be ``False``.'
+                        " Overriding `decoder_only_format` from ``True`` to ``False``.",
+                    )
+                    loader.mixture_of_denoisers.decoder_only_format = False
+                if (
+                    not loader.mixture_of_denoisers.decoder_only_format
+                ) and cfg.model.name == "hf_prefix_lm":
+                    log(
+                        WARN,
+                        'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
+                        "``True``. Overriding `decoder_only_format` from ``False`` to"
+                        "``True``.",
+                    )
+                    loader.mixture_of_denoisers.decoder_only_format = True
 
     if "icl_tasks" in cfg:
         if cfg.model.name == "hf_t5":
@@ -373,7 +376,7 @@ def _get_trainer_object(
     scheduler_config: Dict[str, Any] = pop_config(
         _cfg, "scheduler", must_exist=True, convert=True
     )
-    train_loader_config: DictConfig = pop_config(_cfg, "train_loader", must_exist=True)
+    train_loader_config: DictConfig = pop_config(_cfg, "train_loader", must_exist=False, default_value=None)
 
     # Optional fsdp data, fine-tuning, and eval configs
     fsdp_config: Optional[Dict[str, Any]] = pop_config(
@@ -646,11 +649,13 @@ def _get_trainer_object(
 
     # Dataloaders
     log(INFO, "Building train loader...")
-    train_loader = build_dataloader(
-        train_loader_config,
-        tokenizer,
-        device_train_batch_size,
-    )
+    train_loader = None
+    if train_loader_config is not None:
+        train_loader = build_dataloader(
+            train_loader_config,
+            tokenizer,
+            device_train_batch_size,
+        )
 
     if mosaicml_logger is not None:
         mosaicml_logger.log_metrics({"data_validated": time.time()})
@@ -837,8 +842,8 @@ def llm_fit(
     trainer, eval_first, logged_cfg = _get_trainer_object(
         _cfg=cfg,
     )
-    log(INFO, "Logging config")
-    log_config(logged_cfg)
+    # log(INFO, "Logging config")
+    # log_config(logged_cfg)
     # Set the parameters
     if parameters is not None:
         log(INFO, "Initializing model...")
@@ -906,8 +911,9 @@ def llm_eval(
         trainer, _, logged_cfg = _get_trainer_object(
             _cfg=cfg,
         )
-        log(INFO, "Logging config")
-        log_config(logged_cfg)
+        # log(INFO, "Logging config")
+        # log_config(logged_cfg)
+    # TODO: Remove trainloaders from the trainer
     # Set the parameters
     log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
