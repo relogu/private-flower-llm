@@ -348,7 +348,7 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
                     referrers = gc.get_referrers(obj)
                     # Building the summary for the current object:
                     # ( type (some tensor type), size (shape)
-                    summary += f"(type{type(obj)}, {obj.size()},"
+                    summary += f"(type{type(obj)}, {obj.size()}, "
                     # whether it requires grad, memory allocation
                     summary += f"r_g={obj.requires_grad}, mem={mem_alloc}, "
                     # whether it is on GPU, the number of referrers
