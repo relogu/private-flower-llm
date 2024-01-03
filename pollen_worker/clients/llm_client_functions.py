@@ -3,7 +3,6 @@ import copy
 import gc
 import logging
 import os
-import sys
 import time
 import warnings
 from collections import OrderedDict
@@ -50,7 +49,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import clean_trainer_state, force_referenced_tensors_destruction, get_n_cpu_cores, get_referenced_tensors_summary
+from pollen_worker.utils import clean_trainer_state, get_n_cpu_cores
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,

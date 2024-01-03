@@ -1,5 +1,4 @@
 """TODO: Add description here."""
-import copy
 import gc
 import time
 import uuid
@@ -177,9 +176,7 @@ class Worker(mp.Process):  # type: ignore
                 str(tmp_client.cfg.data_remote)  # type: ignore[union-attr]
                 + f"/client_{client_id}"
             )
-            tmp_client.cfg = set_all_data_paths(
-                tmp_client.cfg, new_remote_path, False
-            )
+            tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_remote_path, False)
         # TODO: This must be the same for all the NodeManagers in a node
         # (if any), linked to run_uuid
         new_local_path = (

@@ -11,7 +11,6 @@ from enum import Enum
 from logging import INFO
 from typing import Dict, Iterable, Optional, Union
 
-import datasets as hf_datasets
 import psutil
 from flwr.common.logger import log
 from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
@@ -20,6 +19,8 @@ from streaming import MDSWriter
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
+
+import datasets as hf_datasets
 
 
 class ConcatMode(Enum):

@@ -13,16 +13,13 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import flwr as fl
 import hydra
-import streaming
 import transformers
 from anyio import Path
-from composer import Trainer
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import (
-    _get_trainer_object,
     get_parameters,
     get_raw_model_parameters,
     llm_eval,
@@ -181,7 +178,9 @@ def main(cfg: DictConfig) -> None:
     for _ in range(2):
         # Get initial model parameters
         parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
-        log(INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}")
+        log(
+            INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}"
+        )
         # Create a virtual client
         virtual_llm_client = client_fn(0)
         # Test virtual client's get_properties function
@@ -191,7 +190,8 @@ def main(cfg: DictConfig) -> None:
         parameters = virtual_llm_client.get_parameters(config={})
         log(
             INFO,
-            f"VirtualLLMClient.get_parameters :: parameters' length is {len(parameters)}",
+            "VirtualLLMClient.get_parameters :: parameters' length is %s",
+            len(parameters),
         )
 
         # Test virtual client's fit function
@@ -200,7 +200,9 @@ def main(cfg: DictConfig) -> None:
         )
         shutil.rmtree(Path(new_local_path), ignore_errors=True)
         log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
-        log(INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}")
+        log(
+            INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}"
+        )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
 
         # # NOTE: Can't do both train and test in the same process currently
@@ -213,13 +215,13 @@ def main(cfg: DictConfig) -> None:
         #     parameters=parameters, config={}
         # )
         # log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
-        # log(
-        #     INFO,
-        #     f"VirtualLLMClient.evaluate :: number of example evaluated is {num_examples}",
-        # )
+        log(
+            INFO,
+            "VirtualLLMClient.evaluate :: number of example evaluated is %s.",
+            num_examples,
+        )
         # log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
         # shutil.rmtree(Path(new_local_path), ignore_errors=True)
-    
 
 
 if __name__ == "__main__":
