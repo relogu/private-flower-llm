@@ -50,10 +50,10 @@ def main(cfg: DictConfig) -> None:
     # No evaluation here, all lazy
     strategy = FedNesterov(
         fraction_fit=sys.float_info.min,
-        fraction_evaluate=0,
+        fraction_evaluate=sys.float_info.min,
         min_fit_clients=cfg.fl.n_clients_per_round,
         min_available_clients=cfg.fl.n_clients_per_round,
-        min_evaluate_clients=0,
+        min_evaluate_clients=1,
         evaluate_fn=None,
         on_fit_config_fn=lambda x: {"server_round": x, "batch_size": 32},
         on_evaluate_config_fn=lambda x: {"server_round": x, "batch_size": 32},
@@ -65,7 +65,6 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
-
     with wandb_init(
         cfg.use_wandb,
         **cfg.wandb.setup,
