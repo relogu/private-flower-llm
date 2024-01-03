@@ -49,7 +49,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import clean_trainer_state, get_n_cpu_cores
+from pollen_worker.utils import get_n_cpu_cores, get_referenced_tensors_summary
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -779,6 +779,107 @@ def _get_trainer_object(
     return trainer, eval_first, logged_cfg
 
 
+def clean_trainer_state(trainer: Trainer) -> None:
+    """Clean the state of the trainer."""
+    # for attribute_name in trainer.state.serialized_attributes:
+    #     current_attr = getattr(trainer.state, attribute_name)
+    #     log(INFO, "State's attribute %s: %s", attribute_name, current_attr)
+    try:
+        trainer.state.model.cpu()
+        delattr(trainer.state, "model")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for optimizer in trainer.state.optimizers:
+            try:
+                delattr(optimizer, "state")
+            except Exception as e:
+                log(WARN, "Exception %s", e)
+            for p_g in optimizer.params_groups:
+                p_g.cpu()
+                del p_g
+            try:
+                delattr(optimizer, "param_groups")
+            except Exception as e:
+                log(WARN, "Exception %s", e)
+            del optimizer
+        delattr(trainer.state, "_optimizers")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for scheduler in trainer.state.schedulers:
+            del scheduler
+        delattr(trainer.state, "_schedulers")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    # try:
+    #     for callback in trainer.state.callbacks:
+    #         del callback
+    #     delattr(trainer.state, "_callbacks")
+    # except Exception as e:
+    #     log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "scaler")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "timestamp")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for _k, t_m in trainer.state.train_metrics.items():
+            t_m.cpu()
+            del t_m
+        delattr(trainer.state, "train_metrics")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        for _k, e_m in trainer.state.eval_metrics.items():
+            for _kk, ee_m in e_m.items():
+                ee_m.cpu()
+                del ee_m
+            del e_m
+        delattr(trainer.state, "eval_metrics")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "batch")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "loss")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer.state, "outputs")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "state")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "engine")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "_original_model")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer._checkpoint_saver, "start_batch")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "_checkpoint_saver")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+    try:
+        delattr(trainer, "logger")
+    except Exception as e:
+        log(WARN, "Exception %s", e)
+
+
 def get_parameters(
     config: Dict[str, Scalar],
     cfg: DictConfig,
@@ -832,18 +933,14 @@ def llm_fit(
     parameters: NDArrays,
     config: Dict,
     cfg: DictConfig,
-    # trainer: Optional[Trainer] = None,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
-    # if trainer is None:
     # Extract configs to build the trainer
-    trainer, eval_first, logged_cfg = _get_trainer_object(
+    trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg,
     )
-    # log(INFO, "Logging config")
-    # log_config(logged_cfg)
     # Set the parameters
     if parameters is not None:
         log(INFO, "Initializing model...")
@@ -853,11 +950,10 @@ def llm_fit(
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
     log(INFO, "Starting training...")
-    # NOTE: Prevent to run eval at the end of the training
+    # Prevent to run eval at the end of the training
     trainer.state.evaluators = None
-    # TODO: Assess whether we need to set some params here to respect FL setting
+    # Execute fit step
     trainer.fit()
-    # gpu_profile(frame=sys._getframe(), event='line', arg=None)
     # Retrieve number of samples trained
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
@@ -884,13 +980,6 @@ def llm_fit(
     #     torch.cuda.memory_summary(),
     # )
     # get_referenced_tensors_summary()
-    # force_referenced_tensors_destruction()
-    # get_referenced_tensors_summary()
-    # log(
-    #     INFO,
-    #     "Forced destruction. Memory snapshot\n%s.",
-    #     torch.cuda.memory_summary(),
-    # )
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
     log(INFO, "Done.")
@@ -908,12 +997,9 @@ def llm_eval(
     streaming.base.util.clean_stale_shared_memory()
     if trainer is None:
         # Extract configs to build the trainer
-        trainer, _, logged_cfg = _get_trainer_object(
+        trainer, _, _ = _get_trainer_object(
             _cfg=cfg,
         )
-        # log(INFO, "Logging config")
-        # log_config(logged_cfg)
-    # TODO: Remove trainloaders from the trainer
     # Set the parameters
     log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
