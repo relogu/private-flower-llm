@@ -7,6 +7,7 @@ from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Optional, Tuple
+from pathlib import Path
 
 import multiprocess as mp
 import torch
@@ -154,49 +155,30 @@ class Worker(mp.Process):  # type: ignore
         )
         # Load client
         tmp_client = self.client_fn(client_id)
-        # NOTE: We MUST change the save folder for the checkpoints,
-        # it won't train otherwise
-        if tmp_client.cfg.save_folder is not None:  # type: ignore[union-attr]
-            tmp_client.cfg.save_folder = (  # type: ignore[union-attr]
-                tmp_client.cfg.save_folder  # type: ignore[union-attr]
-                + "_c"
-                + str(tmp_client.cid)
-            )
-        # NOTE: Prevent slave workers to log to the console
+        # Prevent slave workers to log to the console
         if self.worker_rank > 0:
             tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
-        # Automatically setting the `n_workers` parameter based on CPU available
-        tmp_client.cfg = set_n_workers_dataloaders(
-            tmp_client.cfg  # type: ignore[union-attr]
-        )
-        # NOTE: When using remote data, we need one tmp folder per worker
-        if tmp_client.cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Set the appropriate path given the `client_id`
-            new_remote_path = (
-                str(tmp_client.cfg.data_remote)  # type: ignore[union-attr]
-                + f"/client_{client_id}"
-            )
-            tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_remote_path, False)
-        # TODO: This must be the same for all the NodeManagers in a node
-        # (if any), linked to run_uuid
-        new_local_path = (
-            str(tmp_client.cfg.data_local)  # type: ignore[union-attr]
-            + f"/{self.node_manager_uuid}_client_{client_id}"
-        )
-        tmp_client.cfg = set_all_data_paths(tmp_client.cfg, new_local_path)
-        # Set `max_duration` as the number of steps times the number of rounds
-        max_duration = int(fl_instructions_config["server_round"]) * int(
+
+        # NOTE: We reset the state everytime we train a new client
+        # # Set `max_duration` as the number of steps times the number of rounds
+        # max_duration = int(fl_instructions_config["server_round"]) * int(
+        #     tmp_client.cfg.local_steps  # type: ignore[union-attr]
+        # )
+        max_duration = int(
             tmp_client.cfg.local_steps  # type: ignore[union-attr]
         )
         tmp_client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
         # Forcing not to load the model from a checkpoint
         # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
         tmp_client.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+
         # Try to execute the task of the client
         try:
             if action == "fit":
+                # Fit the client
                 self._fit_action(tmp_client, fl_instructions_config)
             elif action == "evaluate":
+                # Eval the client
                 self._evaluate_action(tmp_client, fl_instructions_config)
             # Take the timestamp after the task is done
             end_time = time.time_ns()

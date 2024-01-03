@@ -38,8 +38,22 @@ class VirtualLLMClient(fl.client.NumPyClient):
         cid: Union[int, str],
         cfg: Optional[DictConfig] = None,
     ) -> None:
+        # Set init parameters
         self.cid = cid
         self.cfg = cfg
+        # Automatically setting the `n_workers` parameter based on CPU available
+        self.cfg = set_n_workers_dataloaders(
+            self.cfg  # type: ignore[union-attr]
+        )
+        # Set the save folder specifically for this client and this run
+        if self.cfg.save_folder is not None:  # type: ignore[union-attr]
+            self.cfg.save_folder = (  # type: ignore[union-attr]
+                self.cfg.save_folder  # type: ignore[union-attr]
+                + "_"
+                + self.cfg.run_name  # type: ignore[union-attr]
+                + "_c"
+                + str(self.cid)
+            )
         transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualLLMClient.__init__ :: cid {self.cid}')
 
@@ -94,7 +108,21 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
-
+        # Set the appropriate path given the `client_id`
+        if cfg.data_remote is not None:  # type: ignore[union-attr]
+            # Set the appropriate path given the `client_id`
+            new_remote_path = (
+                str(cfg.data_remote)  # type: ignore[union-attr]
+                + f"/client_{self.cid}"
+            )
+            cfg = set_all_data_paths(cfg, new_remote_path, False)
+        # Tie the local path to the client_id and the run_uuid
+        new_local_path = (
+            str(cfg.data_local)  # type: ignore[union-attr]
+            + f"/{cfg.run_name}_client_{self.cid}" # type: ignore[union-attr]
+        )
+        cfg = set_all_data_paths(cfg, new_local_path)
+        # Execute the fit function
         return llm_fit(parameters, config, cfg)
 
     def evaluate(
@@ -113,6 +141,23 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 "The `cfg` object is missing from the config/object. "
                 "Please ensure that the `cfg` object is passed to the client."
             )
+        # Force llm_config params to select the centralised eval set
+        cfg.train_loader = None  # type: ignore[union-attr]
+        # Set the appropriate path for the (centralised) val set
+        if cfg.data_remote is not None:  # type: ignore[union-attr]
+            # Extracts the parent folder from the remote path
+            new_remote_path = "s3:/"+str(
+                Path(
+                    str(cfg.data_remote).replace("s3:/", "")  # type: ignore[union-attr]
+                ).parent  # type: ignore[union-attr]
+            )
+            cfg = set_all_data_paths(cfg, new_remote_path, False)
+        # Tie the local path to the client_id and the run_uuid
+        new_local_path = (
+            str(cfg.data_local)  # type: ignore[union-attr]
+            + f"/{cfg.run_name}_val"
+        )
+        cfg = set_all_data_paths(cfg, new_local_path)
         return llm_eval(parameters, config, cfg)
 
 
