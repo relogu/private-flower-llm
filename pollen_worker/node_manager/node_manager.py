@@ -387,7 +387,7 @@ class NodeManager(fl.client.NumPyClient):
     def __del__(self) -> None:
         """Implement the closing on the NodeManager."""
         log(DEBUG, "Closing NodeManager...")
-        # TODO: Closing workers?
+        # Closing workers
         self._close_workers()
         # Free shared memories
         close_all_shms(self.node_manager_uuid)
