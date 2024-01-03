@@ -191,43 +191,32 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.set_struct(_llm_config, False)
     log(
         INFO,
-        "NodeManager received the llm_config:\n%s",
+        "VirtualLLMClient received the llm_config:\n%s",
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
     assert isinstance(_llm_config, DictConfig)
-    # NOTE: When using remote data, we need one tmp folder per worker
-    if _llm_config.data_remote is not None:  # type: ignore[union-attr]
-        # Set the appropriate path given the `client_id`
-        new_remote_path = (
-            str(_llm_config.data_remote) + "/client_0"  # type: ignore[union-attr]
-        )
-        _llm_config = set_all_data_paths(_llm_config, new_remote_path, False)
-    new_local_path = (
-        str(_llm_config.data_local)  # type: ignore[union-attr]
-        + f"/{cfg.run_uuid}_client_0"
-    )
-    _llm_config = set_all_data_paths(_llm_config, new_local_path)
-    # Automatically setting the `n_workers` parameter based on CPU available
-    _llm_config = set_n_workers_dataloaders(_llm_config)
-    # Set `max_duration` as the number of steps times the number of rounds
-    # max_duration = int(fl_instructions_config["server_round"]) * int(
-    #     _llm_config.local_steps  # type: ignore[union-attr]
-    # )
+    # Set `max_duration` to a low value for testing
     _llm_config.max_duration = "10ba"  # type: ignore[union-attr]
+    # FIXME: test
+    
+    log(
+        INFO,
+        "VirtualLLMClient received the following config:\n%s",
+        OmegaConf.to_yaml(cfg, resolve=True),
+    )
     # Get the client generator function
     client_fn = gen_client_fn(
         cfg=copy.deepcopy(_llm_config),
     )
     # Looping over two clients
-    # FIXME: This shows the leakage of GBs of memory to the VRAM
-    for _ in range(2):
+    for i in range(2):
         # Get initial model parameters
         parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
         log(
             INFO, f"get_raw_model_parameters :: parameters' length is {len(parameters)}"
         )
         # Create a virtual client
-        virtual_llm_client = client_fn(0)
+        virtual_llm_client = client_fn(i)
         # Test virtual client's get_properties function
         properties = virtual_llm_client.get_properties(config={})
         log(INFO, f"VirtualLLMClient.get_properties :: properties={properties}")
@@ -238,35 +227,26 @@ def main(cfg: DictConfig) -> None:
             "VirtualLLMClient.get_parameters :: parameters' length is %s",
             len(parameters),
         )
-
         # Test virtual client's fit function
         parameters, num_examples, metrics = virtual_llm_client.fit(
             parameters=parameters, config={}
         )
-        shutil.rmtree(Path(new_local_path), ignore_errors=True)
         log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
         log(
             INFO, f"VirtualLLMClient.fit :: number of example trained is {num_examples}"
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
-
-        # # NOTE: Can't do both train and test in the same process currently
-        # # Extract configs to re-build the trainer
-        # virtual_llm_client.trainer, _, _ = _get_trainer_object(
-        #     _cfg=copy.deepcopy(_llm_config),
-        # )
         # # Test virtual client's evaluate function
         # loss, num_examples, metrics = virtual_llm_client.evaluate(
         #     parameters=parameters, config={}
         # )
         # log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
-        log(
-            INFO,
-            "VirtualLLMClient.evaluate :: number of example evaluated is %s.",
-            num_examples,
-        )
+        # log(
+        #     INFO,
+        #     "VirtualLLMClient.evaluate :: number of example evaluated is %s.",
+        #     num_examples,
+        # )
         # log(INFO, f"VirtualLLMClient.evaluate :: evaluation metrics={metrics}")
-        # shutil.rmtree(Path(new_local_path), ignore_errors=True)
 
 
 if __name__ == "__main__":
