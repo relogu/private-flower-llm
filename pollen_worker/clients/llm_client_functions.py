@@ -19,7 +19,8 @@ from composer.loggers.mosaicml_logger import (
     MOSAICML_PLATFORM_ENV_VAR,
 )
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
-from composer.utils import dist
+from composer.utils import dist, get_device, reproducibility
+from composer.devices import DeviceGPU
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
@@ -341,21 +342,28 @@ def _get_trainer_object(
     if max_split_size_mb is not None:
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = f"max_split_size_mb:{max_split_size_mb}"
 
-    # Set CUDA lazy loading
-    # This can save a bit of memory if not all modules are needed
+    # Set CUDA lazy loading which can save a bit of memory if not all modules are needed
     cuda_load_lazy: bool = _cfg.pop("cuda_load_lazy", False)
     if cuda_load_lazy:
         os.environ["CUDA_MODULE_LOADING"] = "LAZY"
 
     # Set seed first
     seed: int = pop_config(_cfg, "seed", must_exist=True)
-    # reproducibility.seed_all(seed)
+    reproducibility.seed_all(seed)
 
-    # # Initialize pytorch distributed training process groups
+    # Initialize pytorch distributed training process groups
     dist_timeout: Union[int, float] = pop_config(
         _cfg, "dist_timeout", must_exist=False, default_value=600.0
     )
-    # dist.initialize_dist(get_device(None), timeout=dist_timeout)
+    
+    # Initialize pytorch distributed training process groups
+    device = None
+    dist.initialize_dist(get_device(device), timeout=dist_timeout)
+    # TODO: Force the devices in case multiple GPUs are requested
+    # to be independent and not collaborative.
+    # NOTE: Remember to pass the device to the trainer constructor as well
+    # device = DeviceGPU(device_id=int(os.environ["CUDA_VISIBLE_DEVICES"]))
+    # dist.initialize_dist(get_device(device), timeout=dist_timeout)
 
     # Get global and device batch size information from distributed/single node setting
     _cfg = update_batch_size_info(_cfg)
@@ -694,24 +702,6 @@ def _get_trainer_object(
     if eval_gauntlet_callback is not None:
         callbacks.append(eval_gauntlet_callback)
 
-    # # Build Model
-    # log(INFO, "Initializing model...")
-    # with init_context:
-    #     if lora_config is not None:  # frozen model + trainable lora modules
-    #         model: ComposerHFCausalLM = build_composer_peft_model(
-    #             model_config.pretrained_model_name_or_path,
-    #             lora_config["args"],
-    #             tokenizer,
-    #         )
-    #         print_trainable_parameters(model)  # should not be 100%
-    #     else:  # standard model
-    #         model = build_composer_model(model_config, tokenizer)
-
-    #     if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
-    #         model = model.to(dtype=torch.bfloat16)
-    #     elif model_config.get("master_weights_dtype") in ("f16", "float16"):
-    #         model = model.to(dtype=torch.float16)
-
     model = _get_model_for_trainer(
         init_context,
         tokenizer,
@@ -773,6 +763,7 @@ def _get_trainer_object(
         dist_timeout=dist_timeout,
         profiler=profiler,
         compile_config=compile_config,
+        device=device,
     )
     return trainer, eval_first, logged_cfg
 
@@ -933,8 +924,6 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg,
@@ -998,8 +987,7 @@ def llm_eval(
     trainer: Optional[Trainer] = None,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
+    # Extract configs to build the trainer
     if trainer is None:
         # Extract configs to build the trainer
         trainer, _, _ = _get_trainer_object(
