@@ -16,8 +16,8 @@ from flwr.common import ndarrays_to_parameters
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
+from pollen_worker.clients.empty_virtual_client import gen_client_fn
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
-from pollen_worker.clients.virtual_llm_client import gen_client_fn
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.strategy.rs_nesterov import FedNesterov

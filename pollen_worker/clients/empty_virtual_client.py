@@ -1,5 +1,5 @@
 """Empty Flower Client for Pollen server."""
-from typing import Any, Dict, Union
+from typing import Any, Callable, Dict, Union
 
 import flwr as fl
 from flwr.common.typing import Config, NDArrays, Scalar
@@ -56,3 +56,15 @@ class EmptyVirtualClient(fl.client.NumPyClient):
     ) -> tuple[float, int, Dict[str, Scalar]]:
         """Implement the evaluation step."""
         return 0.0, 0, {}
+
+
+def gen_client_fn() -> Callable[[int], EmptyVirtualClient]:
+    """Return generic `client_fn` for Flower Framework."""
+
+    def client_fn(client_id: int) -> EmptyVirtualClient:
+        client = EmptyVirtualClient(
+            cid=client_id,
+        )
+        return client
+
+    return client_fn
