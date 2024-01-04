@@ -41,7 +41,6 @@ from llmfoundry.utils.builders import (
     build_tokenizer,
 )
 from llmfoundry.utils.config_utils import (
-    log_config,
     pop_config,
     process_init_device,
     update_batch_size_info,
@@ -49,7 +48,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import get_n_cpu_cores, get_referenced_tensors_summary
+from pollen_worker.utils import get_n_cpu_cores
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -62,11 +61,9 @@ COMPOSER_MODEL_REGISTRY = {
 
 
 def set_all_data_paths(
-    cfg: Optional[DictConfig], new_path: str, is_local: bool = True
-) -> Optional[DictConfig]:
+    cfg: DictConfig, new_path: str, is_local: bool = True
+) -> DictConfig:
     """Set the data paths for all dataloaders in the config."""
-    if cfg is None:
-        return cfg
     if is_local:
         cfg.data_local = new_path
         if cfg.train_loader is not None:
@@ -81,12 +78,10 @@ def set_all_data_paths(
 
 
 def set_n_workers_dataloaders(
-    cfg: Optional[DictConfig],
+    cfg: DictConfig,
     n_workers: int = -1,
-) -> Optional[DictConfig]:
+) -> DictConfig:
     """Set the `n_workers` parameter for all dataloaders in the config."""
-    if cfg is None:
-        return cfg
     if n_workers < 0:
         n_workers = get_n_cpu_cores()
     cfg.train_loader.num_workers = n_workers
@@ -131,8 +126,9 @@ def validate_config(cfg: DictConfig):
                 ):
                     log(
                         WARN,
-                        'Model type "hf_t5" requires `decoder_only_format` to be ``False``.'
-                        " Overriding `decoder_only_format` from ``True`` to ``False``.",
+                        'Model type "hf_t5" requires `decoder_only_format` to be '
+                        "``False``. Overriding `decoder_only_format` from ``True`` "
+                        "to ``False``.",
                     )
                     loader.mixture_of_denoisers.decoder_only_format = False
                 if (
@@ -221,18 +217,18 @@ def build_composer_peft_model(
         ) from e
 
     # 1) loads a hf model, 2) adds peft modules, 3) wraps it in a ComposerHFCausalLM.
-    log(INFO, "Building Lora config...")
+    # log(INFO, "Building Lora config...")
     lora_cfg = LoraConfig(**lora_args)
 
-    log(INFO, "Building model from HuggingFace checkpoint...")
+    # log(INFO, "Building model from HuggingFace checkpoint...")
     model = MPTForCausalLM.from_pretrained(
         pretrained_model_name_or_path, trust_remote_code=True
     )
-    log(INFO, "Model built!")
+    # log(INFO, "Model built!")
 
-    log(INFO, "Adding Lora modules...")
+    # log(INFO, "Adding Lora modules...")
     model = get_peft_model(model, lora_cfg)
-    log(INFO, "Lora modules added!")
+    # log(INFO, "Lora modules added!")
 
     model = ComposerHFCausalLM(model, tokenizer)
 
@@ -247,11 +243,11 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         all_param += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
-    log(
-        INFO,
-        f"trainable params: {trainable_params} || all params: {all_param} || "
-        f"trainable params (%): {100 * trainable_params / all_param}",
-    )
+    # log(
+    #     INFO,
+    #     f"trainable params: {trainable_params} || all params: {all_param} || "
+    #     f"trainable params (%): {100 * trainable_params / all_param}",
+    # )
 
 
 def _get_model_for_trainer(
@@ -261,7 +257,7 @@ def _get_model_for_trainer(
     lora_config: Optional[Dict[str, Any]],
 ) -> ComposerModel:
     # Build Model
-    log(INFO, "Initializing model...")
+    # log(INFO, "Initializing model...")
     with init_context:
         if lora_config is not None:  # frozen model + trainable lora modules
             model: ComposerHFCausalLM = build_composer_peft_model(
@@ -376,7 +372,9 @@ def _get_trainer_object(
     scheduler_config: Dict[str, Any] = pop_config(
         _cfg, "scheduler", must_exist=True, convert=True
     )
-    train_loader_config: DictConfig = pop_config(_cfg, "train_loader", must_exist=False, default_value=None)
+    train_loader_config: DictConfig = pop_config(
+        _cfg, "train_loader", must_exist=False, default_value=None
+    )
 
     # Optional fsdp data, fine-tuning, and eval configs
     fsdp_config: Optional[Dict[str, Any]] = pop_config(
@@ -648,7 +646,7 @@ def _get_trainer_object(
     )
 
     # Dataloaders
-    log(INFO, "Building train loader...")
+    # log(INFO, "Building train loader...")
     train_loader = None
     if train_loader_config is not None:
         train_loader = build_dataloader(
@@ -661,7 +659,7 @@ def _get_trainer_object(
         mosaicml_logger.log_metrics({"data_validated": time.time()})
 
     ## Evaluation
-    log(INFO, "Building eval loader...")
+    # log(INFO, "Building eval loader...")
     evaluators = []
     eval_loaders = []
     if eval_loader_config is not None:
@@ -738,7 +736,7 @@ def _get_trainer_object(
             evaluators.insert(0, eval_loader)  # Put the base eval_loaders first
 
     # Build the Trainer
-    log(INFO, "Building trainer...")
+    # log(INFO, "Building trainer...")
     trainer = Trainer(
         run_name=run_name,
         seed=seed,
@@ -943,13 +941,13 @@ def llm_fit(
     )
     # Set the parameters
     if parameters is not None:
-        log(INFO, "Initializing model...")
+        # log(INFO, "Initializing model...")
         # TODO: Check if there is space for optimisation here
         set_parameters_to_state(parameters, trainer)
     # Eval first if requested
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
-    log(INFO, "Starting training...")
+    # log(INFO, "Starting training...")
     # Prevent to run eval at the end of the training
     trainer.state.evaluators = None
     # Execute fit step
@@ -980,9 +978,16 @@ def llm_fit(
     #     torch.cuda.memory_summary(),
     # )
     # get_referenced_tensors_summary()
+    # force_referenced_tensors_destruction()
+    # get_referenced_tensors_summary()
+    # log(
+    #     INFO,
+    #     "Trainer closed. Memory snapshot\n%s.",
+    #     torch.cuda.memory_summary(),
+    # )
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
-    log(INFO, "Done.")
+    # log(INFO, "Done.")
     return model_parameters, n_samples_trained, train_metrics
 
 
@@ -1001,18 +1006,18 @@ def llm_eval(
             _cfg=cfg,
         )
     # Set the parameters
-    log(INFO, "Initializing model...")
+    # log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
     set_parameters_to_state(parameters, trainer)
     gc.collect()
     torch.cuda.empty_cache()
-    log(INFO, "Starting evaluation...")
+    # log(INFO, "Starting evaluation...")
     trainer.eval()
     # Retrieve number of samples evaluated
     num_samples = trainer.state.eval_timestamp._sample.value
     # Retrieve evaluation metrics
     eval_metrics = {
-        k: v.detach().cpu().item()  # type: ignore[attr-defined]
+        "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
     # Close the trainer
@@ -1028,6 +1033,6 @@ def llm_eval(
     torch.cuda.empty_cache()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
-    log(INFO, "Done.")
+    # log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics
