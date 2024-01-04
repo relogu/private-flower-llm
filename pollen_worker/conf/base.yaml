@@ -11,9 +11,9 @@ pollen:
   saving_path: /tmp/pollen
 
 fl:
-  n_total_clients: 10
-  n_clients_per_round: 10
-  n_rounds: 100
+  n_total_clients: 8
+  n_clients_per_round: 8
+  n_rounds: 200
 
 # Defaults
 defaults:
