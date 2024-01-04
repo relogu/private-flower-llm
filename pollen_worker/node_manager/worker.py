@@ -2,12 +2,11 @@
 import gc
 import time
 import uuid
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR
 from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Optional, Tuple
-from pathlib import Path
 
 import multiprocess as mp
 import torch
@@ -15,10 +14,6 @@ from composer.cli.launcher import _patch_env
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 
-from pollen_worker.clients.llm_client_functions import (
-    set_all_data_paths,
-    set_n_workers_dataloaders,
-)
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
@@ -72,17 +67,17 @@ class Worker(mp.Process):  # type: ignore
         fit_trained_weights, fit_num_samples, train_metrics = client.fit(
             self.round_parameters, fl_instructions_config
         )
-        log(
-            INFO,
-            "Worker %s with rank %s successfully obtained the training results from"
-            " client %s: (%s, %s, %s).",
-            self.worker_uuid,
-            self.worker_rank,
-            client.cid,
-            len(fit_trained_weights),
-            fit_num_samples,
-            len(train_metrics),
-        )
+        # log(
+        #     INFO,
+        #     "Worker %s with rank %s successfully obtained the training results from"
+        #     " client %s: (%s, %s, %s).",
+        #     self.worker_uuid,
+        #     self.worker_rank,
+        #     client.cid,
+        #     len(fit_trained_weights),
+        #     fit_num_samples,
+        #     len(train_metrics),
+        # )
         if self.worker_rank == 0:
             set_num_samples_shm(self.worker_num_samples, fit_num_samples)
             set_parameters_shm(self.worker_parameters, fit_trained_weights)
@@ -96,13 +91,13 @@ class Worker(mp.Process):  # type: ignore
                 create=self.worker_metrics_sh is None,
                 name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
             )
-        log(
-            INFO,
-            "Worker %s with rank %s successfully trained client %s.",
-            self.worker_uuid,
-            self.worker_rank,
-            client.cid,
-        )
+        # log(
+        #     INFO,
+        #     "Worker %s with rank %s successfully trained client %s.",
+        #     self.worker_uuid,
+        #     self.worker_rank,
+        #     client.cid,
+        # )
 
     def _evaluate_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -112,17 +107,17 @@ class Worker(mp.Process):  # type: ignore
         eval_loss, eval_num_samples, eval_metrics = client.evaluate(
             self.round_parameters, fl_instructions_config
         )
-        log(
-            INFO,
-            "Worker %s with rank %s successfully obtained the training results from"
-            " client %s: (%s, %s, %s).",
-            self.worker_uuid,
-            self.worker_rank,
-            client.cid,
-            eval_loss,
-            eval_num_samples,
-            eval_metrics,
-        )
+        # log(
+        #     INFO,
+        #     "Worker %s with rank %s successfully obtained the validation results from"
+        #     " client %s: (%s, %s, %s).",
+        #     self.worker_uuid,
+        #     self.worker_rank,
+        #     client.cid,
+        #     eval_loss,
+        #     eval_num_samples,
+        #     eval_metrics,
+        # )
         if self.worker_rank == 0:
             set_num_samples_shm(self.worker_num_samples, eval_num_samples)
             set_eval_loss_shm(self.worker_eval_loss, eval_loss)
@@ -136,13 +131,13 @@ class Worker(mp.Process):  # type: ignore
                 create=self.worker_metrics_sh is None,
                 name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
             )
-        log(
-            INFO,
-            "Worker %s with rank %s successfully evaluated client %s.",
-            self.worker_uuid,
-            self.worker_rank,
-            client.cid,
-        )
+        # log(
+        #     INFO,
+        #     "Worker %s with rank %s successfully evaluated client %s.",
+        #     self.worker_uuid,
+        #     self.worker_rank,
+        #     client.cid,
+        # )
 
     def process_task(self, client_id: int, action: str = "fit") -> None:
         """Process the received task."""
@@ -164,9 +159,7 @@ class Worker(mp.Process):  # type: ignore
         # max_duration = int(fl_instructions_config["server_round"]) * int(
         #     tmp_client.cfg.local_steps  # type: ignore[union-attr]
         # )
-        max_duration = int(
-            tmp_client.cfg.local_steps  # type: ignore[union-attr]
-        )
+        max_duration = int(tmp_client.cfg.local_steps)  # type: ignore[union-attr]
         tmp_client.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
         # Forcing not to load the model from a checkpoint
         # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
@@ -313,7 +306,7 @@ def create_new_worker(
 ) -> Worker:
     """Create a new Worker."""
     # Generate the Worker's UUID
-    worker_uuid = node_manager_uuid + str(uuid.uuid4())
+    worker_uuid = node_manager_uuid + "-" + str(uuid.uuid4())
     # Create the Worker object
     worker = Worker(
         client_fn=client_fn,

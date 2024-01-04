@@ -88,7 +88,7 @@ class NodeManager(fl.client.NumPyClient):
         self.properties: Dict[str, Scalar] = {}
         self.all_gpus: List[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
-        self.node_manager_uuid = run_uuid + str(uuid.uuid4())
+        self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
         self.client_fn = client_fn
         ## Set up Queues
         self.task_queue: QueueType = Queue()
@@ -97,8 +97,8 @@ class NodeManager(fl.client.NumPyClient):
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
-        max_proc_device = [(k, v.concurrency) for k, v in self.node.device_info.items()]
-        log(DEBUG, "Max processes per device: %s", max_proc_device)
+        [(k, v.concurrency) for k, v in self.node.device_info.items()]
+        # log(DEBUG, "Max processes per device: %s", max_proc_device)
         ## Set up round parameters SharedMemory
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
@@ -121,7 +121,7 @@ class NodeManager(fl.client.NumPyClient):
             cpus = len(psutil.Process().cpu_affinity())  # type: ignore
         except AttributeError:
             cpus = psutil.cpu_count()
-        log(DEBUG, "NodeManager %s: device_info are %s", self.name, device_info)
+        # log(DEBUG, "NodeManager %s: device_info are %s", self.name, device_info)
         # Get general node properties
         self.node = Node(
             name=getfqdn(),
@@ -131,7 +131,7 @@ class NodeManager(fl.client.NumPyClient):
             - psutil.virtual_memory().used,
             device_info=device_info,
         )
-        log(DEBUG, "NodeManager %s: node properties are %s", self.name, self.node)
+        # log(DEBUG, "NodeManager %s: node properties are %s", self.name, self.node)
 
         return {"node": str(self.node)}
 
@@ -164,24 +164,24 @@ class NodeManager(fl.client.NumPyClient):
                     port=current_port,
                 )
                 self.workers_dict[i] = worker
-            log(
-                DEBUG,
-                "NodeManager %s: the worker dict has been build %s.",
-                self.name,
-                self.workers_dict,
-            )
+            # log(
+            #     DEBUG,
+            #     "NodeManager %s: the worker dict has been build %s.",
+            #     self.name,
+            #     self.workers_dict,
+            # )
             # Start the workers
             for _, worker in self.workers_dict.items():
                 start_worker(worker)
         # Send the task to the workers
         for _ in range(get_n_cuda_devices()):
             self.task_queue.put(current_task)
-        log(
-            DEBUG,
-            "NodeManager %s: set task %s to workers.",
-            self.name,
-            current_task,
-        )
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: set task %s to workers.",
+        #     self.name,
+        #     current_task,
+        # )
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
@@ -212,7 +212,7 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, Dict[str, Scalar]]:
         """Implement the fit step."""
-        log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
+        # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
@@ -234,13 +234,13 @@ class NodeManager(fl.client.NumPyClient):
             self._launch_worker_task(current_cid, "fit")
             # Get the result
             current_stats = self.result_queue.get()
-            log(
-                DEBUG,
-                "NodeManager %s: worker %s finished and returned %s.",
-                self.name,
-                self.workers_dict[0].worker_uuid,
-                current_stats,
-            )
+            # log(
+            #     DEBUG,
+            #     "NodeManager %s: worker %s finished and returned %s.",
+            #     self.name,
+            #     self.workers_dict[0].worker_uuid,
+            #     current_stats,
+            # )
             # Check if the training was successful
             if current_stats[0] > -1:
                 # TODO: Collect stats
@@ -266,11 +266,11 @@ class NodeManager(fl.client.NumPyClient):
                 # Append train metrics to aggregate later
                 clients_train_metrics.append((w_num_samples[0], w_metrics))
                 num_processed_virtual_clients += 1
-                log(
-                    DEBUG,
-                    "NodeManager %s: processed results.",
-                    self.name,
-                )
+                # log(
+                #     DEBUG,
+                #     "NodeManager %s: processed results.",
+                #     self.name,
+                # )
             else:
                 list_of_cids_to_train.append(str(current_cid))
             # self._close_workers(self.workers_dict)
@@ -282,14 +282,14 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
-        log(
-            DEBUG,
-            "NodeManager %s: Results (%s, %s, %s).",
-            self.name,
-            len(partially_aggregated_params[0]),
-            partially_aggregated_params[1],
-            node_train_metrics,
-        )
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: Results (%s, %s, %s).",
+        #     self.name,
+        #     len(partially_aggregated_params[0]),
+        #     partially_aggregated_params[1],
+        #     node_train_metrics,
+        # )
         # Close the config shared memory
         self.fl_instructions_config_sh.close()
         self.fl_instructions_config_sh.unlink()
@@ -324,13 +324,13 @@ class NodeManager(fl.client.NumPyClient):
             self._launch_worker_task(current_cid, "evaluate")
             # Get the result
             current_stats = self.result_queue.get()
-            log(
-                DEBUG,
-                "NodeManager %s: worker %s finished and returned %s.",
-                self.name,
-                self.workers_dict[0].worker_uuid,
-                current_stats,
-            )
+            # log(
+            #     DEBUG,
+            #     "NodeManager %s: worker %s finished and returned %s.",
+            #     self.name,
+            #     self.workers_dict[0].worker_uuid,
+            #     current_stats,
+            # )
             # Check if the evaluation was successful
             if current_stats[0] > -1:
                 # TODO: Collect stats
@@ -354,11 +354,11 @@ class NodeManager(fl.client.NumPyClient):
                 # Append eval samples to aggregate later
                 clients_eval_samples.append(w_num_samples[0])
                 num_processed_virtual_clients += 1
-                log(
-                    DEBUG,
-                    "NodeManager %s: processed results.",
-                    self.name,
-                )
+                # log(
+                #     DEBUG,
+                #     "NodeManager %s: processed results.",
+                #     self.name,
+                # )
             else:
                 list_of_cids_to_eval.append(str(current_cid))
             # self._close_workers(self.workers_dict)
