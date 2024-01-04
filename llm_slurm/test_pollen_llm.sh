@@ -19,8 +19,6 @@ else
     export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     # Check CUDA
     nvcc -V
-    # Remove shared memories of the user if they exist
-    find /dev/shm -name '*pollen*' -type f -delete
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
@@ -41,9 +39,15 @@ mkdir -p $SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 
+#! Getting visible GPUs
+N_GPUS=$(nvidia-smi -L | wc -l)
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # Default to 0 if not set
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
+
 #! Additional settings specific for the current testing
 # TESTING_OPTIONS=""
-TESTING_OPTIONS="llm_config.console_log_interval=512ba"
+TESTING_OPTIONS="llm_config.console_log_interval=512ba pollen.n_nodes=$N_GPUS"
 # TESTING_OPTIONS="pollen.server_address='localhost:50735' run_uuid='chiappe1' fl.n_clients_per_round=5 llm_config.console_log_interval=50ba"
 # TESTING_OPTIONS="pollen.server_address='localhost:50736' run_uuid='chiappe2' fl.n_clients_per_round=10 llm_config.console_log_interval=100ba"
 # TESTING_OPTIONS="pollen.server_address='localhost:50737' run_uuid='chiappe3' fl.n_clients_per_round=5 llm_config.console_log_interval=50ba"
@@ -54,5 +58,10 @@ HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CO
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 
-#! Launch NodeManager
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log 
+#! Launch NodeManagers
+for DEVICE in "${DEVICES[@]}"; do
+    echo "Launching NodeManager on GPU $DEVICE" 
+    CUDA_VISIBLE_DEVICES=$DEVICE HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager_$DEVICE.log &
+done
+BACK_PID=$!
+wait $BACK_PID

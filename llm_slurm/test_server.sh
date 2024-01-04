@@ -16,8 +16,6 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 else
     echo "Assuming the script is executing NOT in the CSD3."
     export DATA_TMP_DIR="$HOME/tmp"
-    # Remove shared memories of the user if they exist
-    find /dev/shm -name '*pollen*' -type f -delete
 fi
 mkdir -p $DATA_TMP_DIR
 #! Activate Poetry environment

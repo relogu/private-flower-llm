@@ -19,8 +19,6 @@ else
     export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     # Check CUDA
     nvcc -V
-    # Remove shared memories of the user if they exist
-    find /dev/shm -name '*pollen*' -type f -delete
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
