@@ -8,11 +8,11 @@ import numpy as np
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 
-POLLEN_CONFIG_SHM = "pollen_config_shm"
-POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
-POLLEN_N_SAMPLES_SHM = "pollen_n_samples_shm"
-POLLEN_EVAL_LOSS_SHM = "pollen_eval_loss_shm"
-POLLEN_METRICS_SHM = "pollen_metrics_shm"
+POLLEN_CONFIG_SHM = "_pollen_config_shm"
+POLLEN_PARAMETERS_SHM = "_pollen_parameters_shm"
+POLLEN_N_SAMPLES_SHM = "_pollen_n_samples_shm"
+POLLEN_EVAL_LOSS_SHM = "_pollen_eval_loss_shm"
+POLLEN_METRICS_SHM = "_pollen_metrics_shm"
 
 
 def get_ndarrays_size_and_bounds(
