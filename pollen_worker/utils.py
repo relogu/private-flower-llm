@@ -353,8 +353,8 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
                     summary += f"r_g={obj.requires_grad}, mem={mem_alloc}, "
                     # whether it is on GPU, the number of referrers
                     summary += f"cuda={obj.is_cuda}, n_ref={len(referrers)}, "
-                    # # first of the referrers
-                    # summary += f"ref0={referrers[0]}, "
+                    # referrers
+                    summary += f"refs={[r for r in referrers if type(r) is not list]}, "
                     # # looking for names of the first referrer (DOESN'T WORK)
                     # summary += f"{namestr(referrers[0], globals())}, "
                     # summary += f"{namestr(referrers[0], locals())}, "
@@ -378,8 +378,8 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         # More verbose logging
         log(
             INFO,
-            "get_referenced_tensors_summary :: there are %s"
-            "referenced tensors for a total size of %s MiB"
+            "get_referenced_tensors_summary :: there are %s "
+            "referenced tensors for a total size of %s MiB "
             "(%s MiB on GPU, %s MiB on CPU). Summary is:\n%s",
             counter,
             total_size_mb,
@@ -410,12 +410,12 @@ def force_referenced_tensors_destruction() -> None:
                 try:
                     if obj.is_cuda:
                         obj.to("cpu")
-                    referrers = gc.get_referrers(obj)
-                    for referrer in referrers:
-                        parent_referrers = gc.get_referrers(referrer)
-                        for p_r in parent_referrers:
-                            del p_r
-                        del referrer
+                    # referrers = gc.get_referrers(obj)
+                    # for referrer in referrers:
+                    #     parent_referrers = gc.get_referrers(referrer)
+                    #     for p_r in parent_referrers:
+                    #         del p_r
+                    #     del referrer
                     del obj
                 except Exception as e:
                     log(
