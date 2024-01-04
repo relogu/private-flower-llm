@@ -371,24 +371,26 @@ class PollenServer(Server):
         )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
-            # Get the `fit_config` for the virtual clients
-            node_evaluate_config = self.on_evaluate_config(server_round)
+            # Skip if the device_assigment is empty
+            if len(device_assignment) > 0:
+                # Get the `fit_config` for the virtual clients
+                node_evaluate_config = self.on_evaluate_config(server_round)
 
-            # NOTE: This key is used only when the training policy of workers
-            # is not `sequential`, and for setting the `num_workers` parameter
-            # in the `DataLoader`
-            if "server_round" not in node_evaluate_config:
-                node_evaluate_config["server_round"] = server_round
-            if "n_workers" not in node_evaluate_config:
-                node_evaluate_config["n_workers"] = 1
+                # NOTE: This key is used only when the training policy of workers
+                # is not `sequential`, and for setting the `num_workers` parameter
+                # in the `DataLoader`
+                if "server_round" not in node_evaluate_config:
+                    node_evaluate_config["server_round"] = server_round
+                if "n_workers" not in node_evaluate_config:
+                    node_evaluate_config["n_workers"] = 1
 
-            # Assign `cids` to NodeManagers' devices
-            node_evaluate_config.update(device_assignment)
+                # Assign `cids` to NodeManagers' devices
+                node_evaluate_config.update(device_assignment)
 
-            # Append instruction
-            node_instructions.append(
-                (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
-            )
+                # Append instruction
+                node_instructions.append(
+                    (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
+                )
 
         log(
             DEBUG,
@@ -728,12 +730,12 @@ def get_properties_client(
     ins = GetPropertiesIns(config={})
     node_properties_res = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties
-    log(
-        DEBUG,
-        "node properties received from %s: %s",
-        client,
-        node_properties,
-    )
+    # log(
+    #     DEBUG,
+    #     "node properties received from %s: %s",
+    #     client,
+    #     node_properties,
+    # )
     return client, Node.from_str(str(node_properties["node"]))
 
 
