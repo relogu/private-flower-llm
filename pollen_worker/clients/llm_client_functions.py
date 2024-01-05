@@ -13,14 +13,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import streaming
 import torch
 from composer import Callback, ComposerModel, Evaluator, Trainer
+from composer.devices import DeviceGPU
 from composer.loggers import MosaicMLLogger
 from composer.loggers.mosaicml_logger import (
     MOSAICML_ACCESS_TOKEN_ENV_VAR,
     MOSAICML_PLATFORM_ENV_VAR,
 )
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
-from composer.utils import dist, get_device, reproducibility
-from composer.devices import DeviceGPU
+from composer.utils import dist, reproducibility
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
@@ -355,15 +355,16 @@ def _get_trainer_object(
     dist_timeout: Union[int, float] = pop_config(
         _cfg, "dist_timeout", must_exist=False, default_value=600.0
     )
-    
-    # Initialize pytorch distributed training process groups
-    device = None
-    dist.initialize_dist(get_device(device), timeout=dist_timeout)
-    # TODO: Force the devices in case multiple GPUs are requested
-    # to be independent and not collaborative.
-    # NOTE: Remember to pass the device to the trainer constructor as well
-    # device = DeviceGPU(device_id=int(os.environ["CUDA_VISIBLE_DEVICES"]))
-    # dist.initialize_dist(get_device(device), timeout=dist_timeout)
+
+    # Set the device in case multiple GPUs are requested to be
+    # independent and not collaborative. If `device == None` the
+    # Trainer will automatically initialize PyTorch Distributed
+    # with the parameters from the environmental variables.
+    visible_devices = eval(os.environ["CUDA_VISIBLE_DEVICES"])
+    if type(visible_devices) is int:
+        device = DeviceGPU(device_id=int(visible_devices))
+    else:
+        device = None
 
     # Get global and device batch size information from distributed/single node setting
     _cfg = update_batch_size_info(_cfg)
