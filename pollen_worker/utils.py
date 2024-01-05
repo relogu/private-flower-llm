@@ -28,9 +28,9 @@ import pyarrow as pa
 import ray
 import torch
 from composer import Trainer
-from flwr.common import FitRes, NDArrays, Scalar, log, parameters_to_ndarrays
+from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
 
 import wandb
@@ -61,8 +61,9 @@ def weighted_average(
     )
     weighted_metrics: dict = defaultdict(float)
     for num_examples, metric in metrics:
-        for key, value in metric.items():
-            weighted_metrics[key] += num_examples * value
+        if metric is not None:
+            for key, value in metric.items():
+                weighted_metrics[key] += num_examples * value
 
     return {key: value / total_num_examples for key, value in weighted_metrics.items()}
 
@@ -72,7 +73,8 @@ def partially_aggregate(
 ) -> Tuple[NDArrays, int]:
     """Aggregate partially parameters."""
     updated_agg = None
-    if (current_agg[0] is None) or (current_agg[1] == 0):  # first time
+    # Assuming that the partially aggregate is empty when n_samples is 0
+    if current_agg[1] == 0:
         updated_agg = new_results[0]
         total_num_examples = new_results[1]
     else:
@@ -81,29 +83,19 @@ def partially_aggregate(
     return updated_agg, total_num_examples
 
 
-def partially_aggregate_with_metrics(
-    current_agg: Tuple[NDArrays, int, float, float],
-    new_results: Tuple[NDArrays, int, float, float],
-) -> Tuple[NDArrays, int, float, float]:
-    """Aggregate partially parameters with metrics."""
+def partially_aggregate_metrics(
+    current_agg: tuple[int, Config], new_results: tuple[int, Config]
+) -> tuple[int, Config]:
+    """Aggregate partially parameters."""
     updated_agg = None
-    if (current_agg[0] is None) or (current_agg[1] == 0):  # first time
-        updated_agg = new_results[0]
-        total_num_examples = new_results[1]
-        train_loss = new_results[2]
-        train_accuracy = new_results[3]
+    # Assuming that the partially aggregate is empty when n_samples is 0
+    if current_agg[0] == 0:
+        total_num_examples = new_results[0]
+        updated_agg = new_results[1]
     else:
-        updated_agg = aggregate(
-            [(current_agg[0], current_agg[1]), (new_results[0], new_results[1])]
-        )
-        total_num_examples = current_agg[1] + new_results[1]
-        train_loss = weighted_loss_avg(
-            [(current_agg[1], current_agg[2]), (new_results[1], new_results[2])]
-        )
-        train_accuracy = weighted_loss_avg(
-            [(current_agg[1], current_agg[3]), (new_results[1], new_results[3])]
-        )
-    return updated_agg, total_num_examples, train_loss, train_accuracy
+        total_num_examples = current_agg[0] + new_results[0]
+        updated_agg = weighted_average([current_agg, new_results])
+    return total_num_examples, updated_agg
 
 
 #### Client ####
