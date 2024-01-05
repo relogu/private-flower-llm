@@ -36,14 +36,13 @@ def get_config_shm(
     create: bool = False,
     name: str = POLLEN_CONFIG_SHM,
 ) -> Tuple[Config, SharedMemory]:
-    """Get a Shared Memory object and backed config."""
+    """Get a Shared Memory object and its backed config."""
     if create and config is None:
         raise ValueError("Cannot create config without config object.")
     if create:
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         # TODO: Evaluate if we need to set up some margin here
         shm = SharedMemory(create=True, size=len(config_bytes), name=name)
-        shm.buf[:] = config_bytes
     else:
         shm = SharedMemory(name=name)
     config_sh = pickle.loads(shm.buf)
