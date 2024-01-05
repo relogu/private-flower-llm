@@ -26,6 +26,7 @@ import time
 import uuid
 from logging import DEBUG, INFO
 from multiprocessing.queues import Queue as QueueType
+from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
 from typing import Any, Callable, Dict, List, Tuple, cast
 
@@ -39,7 +40,7 @@ import transformers
 from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
-from flwr.server.strategy.aggregate import weighted_loss_avg
+from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
@@ -57,6 +58,8 @@ from pollen_worker.node_manager.utils import (
     get_eval_loss_shm,
     get_num_samples_shm,
     get_parameters_shm,
+    set_config_shm,
+    set_num_samples_shm,
     set_parameters_shm,
 )
 from pollen_worker.node_manager.worker import Worker, create_new_worker, start_worker
@@ -64,7 +67,6 @@ from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     get_n_cuda_devices,
-    partially_aggregate,
     weighted_average,
 )
 
@@ -106,8 +108,30 @@ class NodeManager(fl.client.NumPyClient):
             create=True,
             name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
         )
-        # Init workers dict
+        # Create workers
         self.workers_dict: Dict[int, Worker] = {}
+        for i in range(get_n_cuda_devices()):
+            worker = create_new_worker(
+                client_fn=self.client_fn,
+                task_queue=self.task_queue,
+                result_queue=self.result_queue,
+                node_manager_uuid=self.node_manager_uuid,
+                run_uuid=self.run_uuid,
+                parameters=self.round_parameters,
+                worker_rank=i,
+            )
+            self.workers_dict[i] = worker
+            log(DEBUG, f"Created worker with rank {i}")
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: the worker dict has been build %s.",
+        #     self.name,
+        #     self.workers_dict,
+        # )
+        # Start the workers
+        for _, worker in self.workers_dict.items():
+            start_worker(worker)
+        log(DEBUG, "NodeManager %s: all workers started.", self.name)
 
     def _get_node_properties(self) -> Dict[str, Scalar]:
         device_info: Dict[str, Device] = {}
@@ -132,7 +156,6 @@ class NodeManager(fl.client.NumPyClient):
             device_info=device_info,
         )
         # log(DEBUG, "NodeManager %s: node properties are %s", self.name, self.node)
-
         return {"node": str(self.node)}
 
     def get_properties(self, config: Config) -> Dict[str, Scalar]:
@@ -143,45 +166,43 @@ class NodeManager(fl.client.NumPyClient):
         """Implement how to get parameters."""
         return self.round_parameters
 
-    def _launch_worker_task(self, current_cid: int, action: str) -> None:
-        """Launch tasks and return workers dict."""
-        # Set the task
-        current_task = (current_cid, action)
-        if len(self.workers_dict) == 0:
-            # Get the port
-            current_port = str(get_free_tcp_port())
-            # Create workers
-            self.workers_dict: Dict[int, Worker] = {}  # type: ignore[no-redef]
-            for i in range(get_n_cuda_devices()):
-                worker = create_new_worker(
-                    client_fn=self.client_fn,
-                    task_queue=self.task_queue,
-                    result_queue=self.result_queue,
-                    node_manager_uuid=self.node_manager_uuid,
-                    parameters=self.round_parameters,
-                    n_workers=get_n_cuda_devices(),
-                    worker_rank=i,
-                    port=current_port,
-                )
-                self.workers_dict[i] = worker
-            # log(
-            #     DEBUG,
-            #     "NodeManager %s: the worker dict has been build %s.",
-            #     self.name,
-            #     self.workers_dict,
-            # )
-            # Start the workers
-            for _, worker in self.workers_dict.items():
-                start_worker(worker)
-        # Send the task to the workers
-        for _ in range(get_n_cuda_devices()):
-            self.task_queue.put(current_task)
-        # log(
-        #     DEBUG,
-        #     "NodeManager %s: set task %s to workers.",
-        #     self.name,
-        #     current_task,
-        # )
+    def _get_training_results(
+        self,
+    ) -> tuple[
+        list[tuple[NDArrays, int]],
+        list[tuple[int, dict]],
+        NDArrays,
+        list[tuple[SharedMemory, SharedMemory, SharedMemory],],
+    ]:
+        workers_params_samples: list[tuple[NDArrays, int]] = []
+        workers_samples_metrics: list[tuple[int, dict]] = []
+        workers_samples: NDArrays = []
+        workers_shms: list[tuple[SharedMemory, SharedMemory, SharedMemory],] = []
+        for worker in self.workers_dict.values():
+            w_parameters, w_parameters_shm = get_parameters_shm(
+                parameters=self.round_parameters,
+                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            )
+            w_num_samples, w_num_samples_shm = get_num_samples_shm(
+                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            )
+            w_metrics, w_metrics_shm = get_config_shm(
+                name=worker.worker_uuid + POLLEN_METRICS_SHM
+            )
+            workers_params_samples.append((w_parameters, w_num_samples[0]))
+            workers_samples_metrics.append((w_num_samples[0], w_metrics))
+            workers_samples.append(w_num_samples)
+            workers_shms.append((w_parameters_shm, w_num_samples_shm, w_metrics_shm))
+        return (
+            workers_params_samples,
+            workers_samples_metrics,
+            workers_samples,
+            workers_shms,
+        )
+
+    def _check_workers_health(self) -> None:
+        # TODO
+        pass
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
@@ -194,7 +215,7 @@ class NodeManager(fl.client.NumPyClient):
             self.workers_dict[0].worker_uuid,
         )
         # Wait until the worker is dead
-        for _ in range(get_n_cuda_devices()):
+        for _ in range(len(self.workers_dict)):
             self.task_queue.put(None)
         for _, worker in self.workers_dict.items():
             while worker.is_alive():
@@ -223,80 +244,62 @@ class NodeManager(fl.client.NumPyClient):
             create=True,
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
         )
+        set_config_shm(config, self.fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
-        # Loop over virtual clients' results
-        num_processed_virtual_clients = 0
-        partially_aggregated_params: Tuple[NDArrays, int] = ([], 0)
-        clients_train_metrics: List[Tuple[int, Dict]] = []
-        while len(list_of_cids_to_train) > 0:
-            # Get the current cid
-            current_cid = int(list_of_cids_to_train.pop(0))
-            self._launch_worker_task(current_cid, "fit")
-            # Get the result
+        # Here, workers are forced to train independently
+        # Send the independent tasks to the workers
+        for cid in list_of_cids_to_train:
+            self.task_queue.put((cid, "fit"))
+        # Get the results
+        successes = 0
+        while successes < len(list_of_cids_to_train):
+            # TODO: Check Workers' health
             current_stats = self.result_queue.get()
-            # log(
-            #     DEBUG,
-            #     "NodeManager %s: worker %s finished and returned %s.",
-            #     self.name,
-            #     self.workers_dict[0].worker_uuid,
-            #     current_stats,
-            # )
+            log(
+                DEBUG,
+                "NodeManager %s: worker %s finished and returned cid %s.",
+                self.name,
+                current_stats[3],
+                current_stats[0],
+            )
             # Check if the training was successful
             if current_stats[0] > -1:
+                successes += 1
                 # TODO: Collect stats
-                # Get stuff from shared memories
-                # NOTE: Keep the `*_shm` variables to prevent Seg Fault
-                w_parameters, w_parameters_shm = get_parameters_shm(
-                    parameters=self.round_parameters,
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_PARAMETERS_SHM,  # noqa: F821
-                )
-                w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_N_SAMPLES_SHM,  # noqa: F821
-                )
-                w_metrics, w_metrics_shm = get_config_shm(
-                    name=self.workers_dict[0].worker_uuid + POLLEN_METRICS_SHM
-                )
-                # Node's partial aggregation for parameters
-                partially_aggregated_params = partially_aggregate(
-                    partially_aggregated_params,
-                    (copy.deepcopy(w_parameters), copy.deepcopy(w_num_samples[0])),
-                )
-                # Append train metrics to aggregate later
-                clients_train_metrics.append((w_num_samples[0], w_metrics))
-                num_processed_virtual_clients += 1
-                # log(
-                #     DEBUG,
-                #     "NodeManager %s: processed results.",
-                #     self.name,
-                # )
-            else:
-                list_of_cids_to_train.append(str(current_cid))
-            # self._close_workers(self.workers_dict)
+        # Get stuff from shared memories of the workers
+        # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
+        w_p_s, w_s_m, w_s, w_shms = self._get_training_results()
+        # Node's aggregation for parameters
+        aggregated_params = aggregate(w_p_s)
         # Aggregation of train metrics
-        node_train_metrics = weighted_average(clients_train_metrics)
+        node_train_metrics = weighted_average(w_s_m)
+        # Get sum of the number of samples
+        sum_of_samples = int(sum([n_s for p, n_s in w_p_s]))
+        # Zero out the n_samples shared memories
+        for ww_ss in w_s:
+            set_num_samples_shm(ww_ss, 0)
         log(
             DEBUG,
-            "NodeManager %s: time spent before collecting results is %s seconds.",
+            "NodeManager %s: resuls have been processed. "
+            "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
         )
-        # log(
-        #     DEBUG,
-        #     "NodeManager %s: Results (%s, %s, %s).",
-        #     self.name,
-        #     len(partially_aggregated_params[0]),
-        #     partially_aggregated_params[1],
-        #     node_train_metrics,
-        # )
+        log(
+            DEBUG,
+            "NodeManager %s: Results (%s, %s, %s).",
+            self.name,
+            len(aggregated_params),
+            sum_of_samples,
+            node_train_metrics,
+        )
         # Close the config shared memory
         self.fl_instructions_config_sh.close()
         self.fl_instructions_config_sh.unlink()
         # Return results
         return (
-            partially_aggregated_params[0],
-            int(partially_aggregated_params[1]),
+            aggregated_params,
+            sum_of_samples,
             node_train_metrics,
         )
 
@@ -307,34 +310,41 @@ class NodeManager(fl.client.NumPyClient):
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_eval = cast(str, assignments).split(",")
         # Update shared memories objects
+        config["MASTER_PORT"] = str(get_free_tcp_port())
         self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
             config=config,
             create=True,
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
         )
+        set_config_shm(config, self.fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
         clients_eval_losses: List[Tuple[int, float]] = []
         clients_eval_metrics: List[Tuple[int, Dict]] = []
         clients_eval_samples: List[int] = []
+        # Here, workers are forced to collaborate with each other,
+        # as such, we evaluate one client at a time
         while len(list_of_cids_to_eval) > 0:
+            # TODO: Check Workers' health
             # Get the current cid
             current_cid = int(list_of_cids_to_eval.pop(0))
-            self._launch_worker_task(current_cid, "evaluate")
-            # Get the result
+            # Send the collaborative task to the workers
+            for _ in range(len(self.workers_dict)):
+                self.task_queue.put((current_cid, "evaluate"))
+            # Wait for the result
             current_stats = self.result_queue.get()
-            # log(
-            #     DEBUG,
-            #     "NodeManager %s: worker %s finished and returned %s.",
-            #     self.name,
-            #     self.workers_dict[0].worker_uuid,
-            #     current_stats,
-            # )
+            log(
+                DEBUG,
+                "NodeManager %s: worker %s finished and returned cid %s.",
+                self.name,
+                current_stats[3],
+                current_stats[0],
+            )
             # Check if the evaluation was successful
             if current_stats[0] > -1:
                 # TODO: Collect stats
-                # Get stuff from shared memories
+                # Get stuff from shared memories of the rank 0 worker
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
                 w_eval_loss, w_eval_loss_shm = get_eval_loss_shm(
                     name=self.workers_dict[0].worker_uuid
@@ -354,14 +364,10 @@ class NodeManager(fl.client.NumPyClient):
                 # Append eval samples to aggregate later
                 clients_eval_samples.append(w_num_samples[0])
                 num_processed_virtual_clients += 1
-                # log(
-                #     DEBUG,
-                #     "NodeManager %s: processed results.",
-                #     self.name,
-                # )
+                # Zero out the n_samples shared memory
+                set_num_samples_shm(w_num_samples, 0)
             else:
                 list_of_cids_to_eval.append(str(current_cid))
-            # self._close_workers(self.workers_dict)
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
@@ -370,9 +376,18 @@ class NodeManager(fl.client.NumPyClient):
         node_eval_samples = sum(clients_eval_samples)
         log(
             DEBUG,
-            "NodeManager %s: time spent before collecting results is %s seconds.",
+            "NodeManager %s: resuls have been processed. "
+            "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
+        )
+        log(
+            DEBUG,
+            "NodeManager %s: Results (%s, %s, %s).",
+            self.name,
+            node_eval_loss,
+            int(node_eval_samples),
+            node_eval_metrics,
         )
         # Close the config shared memory
         self.fl_instructions_config_sh.close()
