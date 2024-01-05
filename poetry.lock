@@ -3500,7 +3500,7 @@ spark = ["pyspark (>=3,<4)"]
 type = "git"
 url = "https://github.com/relogu/streaming.git"
 reference = "fl"
-resolved_reference = "4f88aa04aca41df7bc104f9b8e189ed049bfd068"
+resolved_reference = "5d0e5b075a4409f35c48d4d8cfa4a33e4766094b"
 
 [[package]]
 name = "mosaicml-turbo"
