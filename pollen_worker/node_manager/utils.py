@@ -43,9 +43,10 @@ def get_config_shm(
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         # TODO: Evaluate if we need to set up some margin here
         shm = SharedMemory(create=True, size=len(config_bytes), name=name)
+        config_sh = config
     else:
         shm = SharedMemory(name=name)
-    config_sh = pickle.loads(shm.buf)
+        config_sh = pickle.loads(shm.buf)
     return config_sh, shm
 
 
