@@ -63,6 +63,7 @@ class Worker(mp.Process):  # type: ignore
         self.worker_rank = worker_rank
         self.worker_metrics_sh: SharedMemory | None = None
         self.worker_metrics: Config | None = None
+        self.auto_terminate = False
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -265,6 +266,7 @@ class Worker(mp.Process):  # type: ignore
                 self.task_queue.put((client_id, action))
             elif self.worker_rank == 0:
                 self.task_queue.put((client_id, action))
+            self.auto_terminate = True
 
     def _unregister_shms(self) -> None:
         """Unregister shared memories."""
@@ -343,6 +345,8 @@ class Worker(mp.Process):  # type: ignore
         for task in iter(self.task_queue.get, None):
             cid, action = task  # type: ignore[misc]
             self.process_task(cid, action)  # type: ignore[has-type]
+            if self.auto_terminate:
+                break
         torch.cuda.empty_cache()
         gc.collect()
         ## Un-register shared memories
