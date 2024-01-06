@@ -21,7 +21,6 @@ POETRY_ENV_PATH=$(poetry env info --path)
 
 #! Set `LLM_CONFIG` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh "125M"
-shift
 
 #! Set `DATA_CONFIG` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
