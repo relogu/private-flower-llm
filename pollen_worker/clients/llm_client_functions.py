@@ -353,7 +353,7 @@ def _get_trainer_object(
 
     # Initialize pytorch distributed training process groups
     dist_timeout: Union[int, float] = pop_config(
-        _cfg, "dist_timeout", must_exist=False, default_value=600.0
+        _cfg, "dist_timeout", must_exist=False, default_value=10.0
     )
 
     # Set the device in case multiple GPUs are requested to be
