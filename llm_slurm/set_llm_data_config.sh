@@ -3,12 +3,12 @@
 if [[ $(hostname) == *'gpu-q'* ]]; then
     echo "Assuming the script is executing in the CSD3."
     export DATA_TMP_DIR="$HOME/rds/rds-ndl32-camlsys-DNlKPrIaphU/datasets"
-else
-    echo "Assuming the script is executing NOT in the CSD3."
-    # export DATA_TMP_DIR="$HOME/tmp"
-    # export DATA_TMP_DIR="/home/$USER/tmp"
+elif [[ $(hostname) == *'mauao'* ]]; then
+    echo "Assuming the script is executing in Mauao."
     export DATA_TMP_DIR="/local/scratch/$USER/tmp"
-    # export DATA_TMP_DIR="/tmp"
+else
+    echo "Assuming the script is executing NOT in the CSD3 and not in Mauao (Fluidstack)."
+    export DATA_TMP_DIR="/ephemeral/$USER/tmp"
 fi
 mkdir -p $DATA_TMP_DIR
 #! Check if the external var has been set
