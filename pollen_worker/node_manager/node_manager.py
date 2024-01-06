@@ -179,20 +179,21 @@ class NodeManager(fl.client.NumPyClient):
         workers_samples: NDArrays = []
         workers_shms: list[tuple[SharedMemory, SharedMemory, SharedMemory],] = []
         for worker in self.workers_dict.values():
-            w_parameters, w_parameters_shm = get_parameters_shm(
-                parameters=self.round_parameters,
-                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
-            )
-            w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
-            )
-            w_metrics, w_metrics_shm = get_config_shm(
-                name=worker.worker_uuid + POLLEN_METRICS_SHM
-            )
-            workers_params_samples.append((w_parameters, w_num_samples[0]))
-            workers_samples_metrics.append((w_num_samples[0], w_metrics))
-            workers_samples.append(w_num_samples)
-            workers_shms.append((w_parameters_shm, w_num_samples_shm, w_metrics_shm))
+            if worker.is_alive():
+                w_parameters, w_parameters_shm = get_parameters_shm(
+                    parameters=self.round_parameters,
+                    name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+                )
+                w_num_samples, w_num_samples_shm = get_num_samples_shm(
+                    name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+                )
+                w_metrics, w_metrics_shm = get_config_shm(
+                    name=worker.worker_uuid + POLLEN_METRICS_SHM
+                )
+                workers_params_samples.append((w_parameters, w_num_samples[0]))
+                workers_samples_metrics.append((w_num_samples[0], w_metrics))
+                workers_samples.append(w_num_samples)
+                workers_shms.append((w_parameters_shm, w_num_samples_shm, w_metrics_shm))
         return (
             workers_params_samples,
             workers_samples_metrics,
@@ -210,6 +211,7 @@ class NodeManager(fl.client.NumPyClient):
                     self.name,
                     rank,
                 )
+                close_all_shms(worker.worker_uuid)
                 self.workers_dict[rank] = create_new_worker(
                     client_fn=self.client_fn,
                     task_queue=self.task_queue,
@@ -219,6 +221,7 @@ class NodeManager(fl.client.NumPyClient):
                     parameters=self.round_parameters,
                     worker_rank=rank,
                 )
+                start_worker(self.workers_dict[rank])
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
