@@ -201,8 +201,24 @@ class NodeManager(fl.client.NumPyClient):
         )
 
     def _check_workers_health(self) -> None:
-        # TODO
-        pass
+        """Check if workers are alive and restart them if not."""""
+        for rank, worker in self.workers_dict.items():
+            if not worker.is_alive():
+                log(
+                    DEBUG,
+                    "NodeManager %s: worker %s is dead. Restarting it...",
+                    self.name,
+                    rank,
+                )
+                self.workers_dict[rank] = create_new_worker(
+                    client_fn=self.client_fn,
+                    task_queue=self.task_queue,
+                    result_queue=self.result_queue,
+                    node_manager_uuid=self.node_manager_uuid,
+                    run_uuid=self.run_uuid,
+                    parameters=self.round_parameters,
+                    worker_rank=rank,
+                )
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
@@ -253,7 +269,7 @@ class NodeManager(fl.client.NumPyClient):
         # Get the results
         successes = 0
         while successes < len(list_of_cids_to_train):
-            # TODO: Check Workers' health
+            self._check_workers_health()
             current_stats = self.result_queue.get()
             log(
                 DEBUG,
@@ -326,7 +342,7 @@ class NodeManager(fl.client.NumPyClient):
         # Here, workers are forced to collaborate with each other,
         # as such, we evaluate one client at a time
         while len(list_of_cids_to_eval) > 0:
-            # TODO: Check Workers' health
+            self._check_workers_health()
             # Get the current cid
             current_cid = int(list_of_cids_to_eval.pop(0))
             # Send the collaborative task to the workers
