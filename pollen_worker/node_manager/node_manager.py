@@ -201,7 +201,7 @@ class NodeManager(fl.client.NumPyClient):
         )
 
     def _check_workers_health(self) -> None:
-        """Check if workers are alive and restart them if not."""""
+        """Check if workers are alive and restart them if not."""
         for rank, worker in self.workers_dict.items():
             if not worker.is_alive():
                 log(
