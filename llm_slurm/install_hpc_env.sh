@@ -16,8 +16,6 @@ module load cudnn/8.9_cuda-12.1
 #! Load additional modules
 module load ceuadmin/gettext/0.20
 module load vgl/2.5.1/64
-#! Check the output of `nvcc -V`
-nvcc -V
 #! Entering the project folder
 cd $HOME/projects/pollen_worker
 #! Activate Poetry environment
