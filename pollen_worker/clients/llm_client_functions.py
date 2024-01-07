@@ -360,7 +360,7 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    visible_devices = eval(os.environ["CUDA_VISIBLE_DEVICES"])
+    visible_devices = eval(os.environ["APPOINTED_CUDA_DEVICE"])
     if type(visible_devices) is int:
         device = DeviceGPU(device_id=int(visible_devices))
     else:
