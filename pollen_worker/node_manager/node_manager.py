@@ -110,28 +110,7 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Create workers
         self.workers_dict: Dict[int, Worker] = {}
-        for i in range(get_n_cuda_devices()):
-            worker = create_new_worker(
-                client_fn=self.client_fn,
-                task_queue=self.task_queue,
-                result_queue=self.result_queue,
-                node_manager_uuid=self.node_manager_uuid,
-                run_uuid=self.run_uuid,
-                parameters=self.round_parameters,
-                worker_rank=i,
-            )
-            self.workers_dict[i] = worker
-            log(DEBUG, f"Created worker with rank {i}")
-        # log(
-        #     DEBUG,
-        #     "NodeManager %s: the worker dict has been build %s.",
-        #     self.name,
-        #     self.workers_dict,
-        # )
-        # Start the workers
-        for _, worker in self.workers_dict.items():
-            start_worker(worker)
-        log(DEBUG, "NodeManager %s: all workers started.", self.name)
+        self._create_and_start_workers()
 
     def _get_node_properties(self) -> Dict[str, Scalar]:
         device_info: Dict[str, Device] = {}
@@ -193,7 +172,9 @@ class NodeManager(fl.client.NumPyClient):
                 workers_params_samples.append((w_parameters, w_num_samples[0]))
                 workers_samples_metrics.append((w_num_samples[0], w_metrics))
                 workers_samples.append(w_num_samples)
-                workers_shms.append((w_parameters_shm, w_num_samples_shm, w_metrics_shm))
+                workers_shms.append(
+                    (w_parameters_shm, w_num_samples_shm, w_metrics_shm)
+                )
         return (
             workers_params_samples,
             workers_samples_metrics,
@@ -223,16 +204,36 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 start_worker(self.workers_dict[rank])
 
+    def _create_and_start_workers(self) -> None:
+        """Create and start workers."""
+        for i in range(get_n_cuda_devices()):
+            worker = create_new_worker(
+                client_fn=self.client_fn,
+                task_queue=self.task_queue,
+                result_queue=self.result_queue,
+                node_manager_uuid=self.node_manager_uuid,
+                run_uuid=self.run_uuid,
+                parameters=self.round_parameters,
+                worker_rank=i,
+            )
+            self.workers_dict[i] = worker
+            log(DEBUG, f"Created worker with rank {i}")
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: the worker dict has been build %s.",
+        #     self.name,
+        #     self.workers_dict,
+        # )
+        # Start the workers
+        for _, worker in self.workers_dict.items():
+            start_worker(worker)
+        log(DEBUG, "NodeManager %s: all workers started.", self.name)
+
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
-        # Close and unlink the shared memory
-        close_all_shms(self.workers_dict[0].worker_uuid)
-        log(
-            DEBUG,
-            "NodeManager %s: worker %s shared memories have been closed.",
-            self.name,
-            self.workers_dict[0].worker_uuid,
-        )
+        # Close and unlink all the shared memories
+        for _, worker in self.workers_dict.items():
+            close_all_shms(worker.worker_uuid)
         # Wait until the worker is dead
         for _ in range(len(self.workers_dict)):
             self.task_queue.put(None)
@@ -244,7 +245,6 @@ class NodeManager(fl.client.NumPyClient):
             "NodeManager %s: workers are dead.",
             self.name,
         )
-        del self.workers_dict
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -265,6 +265,12 @@ class NodeManager(fl.client.NumPyClient):
         )
         set_config_shm(config, self.fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
+        # Restart all the worker every 10 rounds
+        if config["server_round"] % 50 == 0:
+            # Close and remove the workers
+            self._close_workers()
+            # Re-create and start the workers
+            self._create_and_start_workers()
         # Here, workers are forced to train independently
         # Send the independent tasks to the workers
         for cid in list_of_cids_to_train:
@@ -292,6 +298,9 @@ class NodeManager(fl.client.NumPyClient):
         aggregated_params = aggregate(w_p_s)
         # Aggregation of train metrics
         node_train_metrics = weighted_average(w_s_m)
+        node_train_metrics.update(
+            {"node_training_time_s": float(time.time() - start_time)}
+        )
         # Get sum of the number of samples
         sum_of_samples = int(sum([n_s for p, n_s in w_p_s]))
         # Zero out the n_samples shared memories
@@ -391,6 +400,7 @@ class NodeManager(fl.client.NumPyClient):
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
         node_eval_metrics = weighted_average(clients_eval_metrics)
+        node_eval_metrics.update({"node_eval_time_s": float(time.time() - start_time)})
         # Aggregation of eval samples
         node_eval_samples = sum(clients_eval_samples)
         log(
