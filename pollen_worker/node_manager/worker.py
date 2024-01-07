@@ -232,6 +232,7 @@ class Worker(mp.Process):  # type: ignore
                     PYTHONUNBUFFERED="1",
                     NCCL_ASYNC_ERROR_HANDLING="1",
                     RUN_UUID=self.node_manager_uuid,
+                    APPOINTED_CUDA_DEVICE="all",
                 ):
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
