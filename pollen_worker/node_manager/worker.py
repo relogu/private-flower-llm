@@ -201,7 +201,7 @@ class Worker(mp.Process):  # type: ignore
                     PYTHONUNBUFFERED="1",
                     NCCL_ASYNC_ERROR_HANDLING="1",
                     RUN_UUID=self.worker_uuid,
-                    CUDA_VISIBLE_DEVICES=str(self.worker_rank),
+                    APPOINTED_CUDA_DEVICE=str(self.worker_rank),
                 ):
                     # Trying to destroy the process group of PyTorch Distributed, if any
                     if dist.is_initialized():
