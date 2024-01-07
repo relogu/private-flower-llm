@@ -7,7 +7,7 @@ import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
-from logging import INFO, WARN
+from logging import ERROR, INFO, WARN
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import streaming
@@ -771,58 +771,171 @@ def _get_trainer_object(
 
 def clean_trainer_state(trainer: Trainer) -> None:
     """Clean the state of the trainer."""
-    # for attribute_name in trainer.state.serialized_attributes:
-    #     current_attr = getattr(trainer.state, attribute_name)
-    #     log(INFO, "State's attribute %s: %s", attribute_name, current_attr)
     try:
         trainer.state.model.cpu()
         delattr(trainer.state, "model")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "model")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
+    try:
+        delattr(trainer.state, "_dataloader")
+    except AttributeError:
+        pass
+    except Exception as e:
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "_dataloader")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
+    try:
+        delattr(trainer.state, "_train_dataloader")
+    except AttributeError:
+        pass
+    except Exception as e:
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "_train_dataloader")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
+    try:
+        for evaluator in trainer.state._evaluators:
+            try:
+                delattr(evaluator, "dataloader")
+            except AttributeError:
+                pass
+            except Exception as e:
+                log(
+                    ERROR,
+                    'Error running `delattr(evaluator, "dataloader")`',
+                    exc_info=e,
+                    stack_info=True,
+                )
+        delattr(trainer.state, "_evaluators")
+    except AttributeError:
+        pass
+    except Exception as e:
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "_evaluators")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         for optimizer in trainer.state.optimizers:
             try:
                 delattr(optimizer, "state")
+            except AttributeError:
+                pass
             except Exception as e:
-                log(WARN, "Exception %s", e)
+                log(
+                    ERROR,
+                    'Error running `delattr(optimizer, "state")`',
+                    exc_info=e,
+                    stack_info=True,
+                )
             for p_g in optimizer.params_groups:
                 p_g.cpu()
                 del p_g
             try:
                 delattr(optimizer, "param_groups")
+            except AttributeError:
+                pass
             except Exception as e:
-                log(WARN, "Exception %s", e)
+                log(
+                    ERROR,
+                    'Error running `delattr(optimizer, "param_groups")`',
+                    exc_info=e,
+                    stack_info=True,
+                )
             del optimizer
         delattr(trainer.state, "_optimizers")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "_optimizers")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         for scheduler in trainer.state.schedulers:
             del scheduler
         delattr(trainer.state, "_schedulers")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "_schedulers")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     # try:
     #     for callback in trainer.state.callbacks:
     #         del callback
     #     delattr(trainer.state, "_callbacks")
     # except Exception as e:
-    #     log(WARN, "Exception %s", e)
+    #     log(
+    #         ERROR,
+    #         'Error running `delattr(trainer.state, "model")`',
+    #         exc_info=e,
+    #         stack_info=True,
+    #     )
+
     try:
         delattr(trainer.state, "scaler")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "scaler")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer.state, "timestamp")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "timestamp")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         for _k, t_m in trainer.state.train_metrics.items():
             t_m.cpu()
             del t_m
         delattr(trainer.state, "train_metrics")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "train_metrics")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         for _k, e_m in trainer.state.eval_metrics.items():
             for _kk, ee_m in e_m.items():
@@ -830,44 +943,123 @@ def clean_trainer_state(trainer: Trainer) -> None:
                 del ee_m
             del e_m
         delattr(trainer.state, "eval_metrics")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "eval_metrics")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer.state, "batch")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "batch")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer.state, "loss")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "loss")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer.state, "outputs")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer.state, "outputs")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer, "state")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer, "state")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer, "engine")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer, "engine")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer, "_original_model")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer, "_original_model")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer._checkpoint_saver, "start_batch")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer._checkpoint_saver, "start_batch")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer, "_checkpoint_saver")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer, "_checkpoint_saver")`',
+            exc_info=e,
+            stack_info=True,
+        )
+
     try:
         delattr(trainer, "logger")
+    except AttributeError:
+        pass
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(
+            ERROR,
+            'Error running `delattr(trainer, "logger")`',
+            exc_info=e,
+            stack_info=True,
+        )
 
 
 def get_parameters(
@@ -967,7 +1159,7 @@ def llm_fit(
     #     "Trainer closed. Memory snapshot\n%s.",
     #     torch.cuda.memory_summary(),
     # )
-    # get_referenced_tensors_summary()
+    # get_referenced_tensors_summary(cuda_only=False)
     # force_referenced_tensors_destruction()
     # get_referenced_tensors_summary()
     # log(
