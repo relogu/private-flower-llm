@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J pollen-llm-test-540M
+#SBATCH -J pollen-llm-540M
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A LANE-SL3-GPU
 #! How many whole nodes should be allocated?
