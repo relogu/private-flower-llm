@@ -376,7 +376,7 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
             counter,
             total_size_mb,
             gpu_size_mb,
-            total_size - gpu_size,
+            total_size_mb - gpu_size_mb,
             summary,
         )
         # # Less verbose logging
