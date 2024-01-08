@@ -83,6 +83,7 @@ class NodeManager(fl.client.NumPyClient):
         client_fn: Callable[[int], VirtualLLMClient],
         run_uuid: str,
         parameters: NDArrays,
+        refresh_period: int,
     ) -> None:
         super().__init__()
         ## NodeManager general attributes
@@ -92,6 +93,7 @@ class NodeManager(fl.client.NumPyClient):
         self.run_uuid = run_uuid
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
         self.client_fn = client_fn
+        self.refresh_period = refresh_period
         ## Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs
@@ -257,6 +259,8 @@ class NodeManager(fl.client.NumPyClient):
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_train = cast(str, assignments).split(",")
+        # Append NodeManager's config
+        config["refresh_period"] = self.refresh_period
         # Update shared memories objects
         self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
             config=config,
@@ -467,6 +471,7 @@ def main(cfg: DictConfig) -> None:
         client_fn=client_fn,
         run_uuid=cfg.run_uuid,
         parameters=parameters,
+        refresh_period=int(cfg.pollen.refresh_period),
     )
     # Choose the type of execution
     if cfg.is_test:
