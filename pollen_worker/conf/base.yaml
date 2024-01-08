@@ -9,6 +9,7 @@ pollen:
   n_nodes: 1
   server_address: localhost:50734
   saving_path: /tmp/pollen
+  refresh_period: 50
 
 fl:
   n_total_clients: 8
