@@ -30,6 +30,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50735'"
+# POLLEN_CONFIG="pollen.server_address='localhost:50735' llm_config.optimizer.weight_decay=0.1" # TODO: to try later
 #! Launch ServerWithPollen
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
@@ -39,3 +40,4 @@ NCCL_BLOCKING_WAIT=1 CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python
 #! Keep the pid and wait for it 
 BACK_PID=$!
 wait $BACK_PID
+ 

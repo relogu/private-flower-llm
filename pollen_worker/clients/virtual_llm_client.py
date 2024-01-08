@@ -51,14 +51,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 + "_c"
                 + str(self.cid)
             )
-
-        # NOTE: We reset the state everytime we train a new client
-        # # Set `max_duration` as the number of steps times the number of rounds
-        # max_duration = int(fl_instructions_config["server_round"]) * int(
-        #     self.cfg.local_steps  # type: ignore[union-attr]
-        # )
-        max_duration = int(self.cfg.local_steps)  # type: ignore[union-attr]
-        self.cfg.max_duration = f"{max_duration}ba"  # type: ignore[union-attr]
+        # FIXME: Read this from the config insted of hardcoding it
         # Forcing not to load the model from a checkpoint
         # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
         self.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]

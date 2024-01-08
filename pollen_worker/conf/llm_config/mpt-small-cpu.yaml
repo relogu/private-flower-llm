@@ -61,8 +61,9 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 100ba
+  t_warmup: 1000ba
   alpha_f: 0.1
+  t_max: 100000ba
 
 optimizer:
   name: decoupled_adamw
@@ -76,8 +77,8 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-local_steps: 63900ba  # ~ 134B tokens
-max_duration: 10ba
+local_steps: 512ba
+max_duration: 63900ba  # ~ 134B tokens
 eval_interval: 5ba
 eval_first: false
 eval_subset_num_batches: 5
