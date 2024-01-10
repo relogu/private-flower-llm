@@ -1,12 +1,19 @@
 """TODO: Add description here."""
+import copy
 import pickle
 from logging import ERROR
 from multiprocessing.shared_memory import SharedMemory
-from typing import List, Optional, Tuple
 
 import numpy as np
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
+from flwr.server.strategy.aggregate import aggregate
+
+from pollen_worker.utils import (
+    partially_aggregate,
+    partially_aggregate_metrics,
+    weighted_average,
+)
 
 POLLEN_CONFIG_SHM = "_pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "_pollen_parameters_shm"
@@ -15,9 +22,44 @@ POLLEN_EVAL_LOSS_SHM = "_pollen_eval_loss_shm"
 POLLEN_METRICS_SHM = "_pollen_metrics_shm"
 
 
+def aggregate_training_results(
+    parameters: list[tuple[NDArrays, int]],
+    samples: list[int],
+    metrics: list[tuple[int, dict]],
+) -> tuple[NDArrays, int, dict]:
+    """Aggregate the training results."""
+    return (
+        aggregate(parameters),
+        sum(samples),
+        weighted_average(metrics),
+    )
+
+
+def partially_aggregate_training_results(
+    old_results: tuple[NDArrays, int, dict],
+    new_results: tuple[NDArrays, int, dict],
+) -> tuple[NDArrays, int, dict]:
+    """Aggregate partially the training results."""
+    # Partial aggregation for parameters and n_samples
+    (p_agg_params, p_agg_samples) = partially_aggregate(
+        (old_results[0], old_results[1]),
+        (copy.deepcopy(new_results[0]), copy.deepcopy(new_results[1])),
+    )
+    # Partial aggregation for metrics
+    (p_agg_samples, p_agg_metrics) = partially_aggregate_metrics(
+        (old_results[1], old_results[2]),
+        (copy.deepcopy(new_results[1]), copy.deepcopy(new_results[2])),
+    )
+    return (
+        p_agg_params,
+        p_agg_samples,
+        p_agg_metrics,
+    )
+
+
 def get_ndarrays_size_and_bounds(
     ndarrays: NDArrays,
-) -> Tuple[int, List[Tuple[int, int]]]:
+) -> tuple[int, list[tuple[int, int]]]:
     """Return the total byte size of the NDArrays and their bounds."""
     nbytes = [val.nbytes for val in ndarrays]
     array_bounds = [(sum(nbytes[:i]), sum(nbytes[: i + 1])) for i in range(len(nbytes))]
@@ -32,10 +74,10 @@ def zero_out_shm(
 
 
 def get_config_shm(
-    config: Optional[Config] = None,
+    config: Config,
     create: bool = False,
     name: str = POLLEN_CONFIG_SHM,
-) -> Tuple[Config, SharedMemory]:
+) -> tuple[Config, SharedMemory]:
     """Get a Shared Memory object and its backed config."""
     if create and config is None:
         raise ValueError("Cannot create config without config object.")
@@ -63,7 +105,7 @@ def get_parameters_shm(
     parameters: NDArrays,
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,
-) -> Tuple[NDArrays, SharedMemory]:
+) -> tuple[NDArrays, SharedMemory]:
     """Allocate a Shared Memory object and backed arrays."""
     total_num_bytes, array_bounds = get_ndarrays_size_and_bounds(parameters)
     if create:
@@ -93,7 +135,7 @@ def set_parameters_shm(
 def get_num_samples_shm(
     create: bool = False,
     name: str = POLLEN_N_SAMPLES_SHM,
-) -> Tuple[np.ndarray, SharedMemory]:
+) -> tuple[np.ndarray, SharedMemory]:
     """Allocate a Shared Memory object and backed arrays."""
     if create:
         shm = SharedMemory(create=True, size=np.dtype(np.int64).itemsize, name=name)
@@ -115,7 +157,7 @@ def set_num_samples_shm(
 def get_eval_loss_shm(
     create: bool = False,
     name: str = POLLEN_N_SAMPLES_SHM,
-) -> Tuple[np.ndarray, SharedMemory]:
+) -> tuple[np.ndarray, SharedMemory]:
     """Allocate a Shared Memory object and backed arrays."""
     if create:
         shm = SharedMemory(create=True, size=np.dtype(np.float64).itemsize, name=name)
