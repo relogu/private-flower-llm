@@ -7,12 +7,12 @@ import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
-from logging import ERROR, INFO, WARN
+from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import streaming
 import torch
-from composer import Callback, ComposerModel, Evaluator, Time, TimeUnit, Trainer
+from composer import Callback, ComposerModel, Evaluator, Trainer
 from composer.devices import DeviceGPU
 from composer.loggers import MosaicMLLogger
 from composer.loggers.mosaicml_logger import (
@@ -360,8 +360,9 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    visible_devices = eval(os.environ["APPOINTED_CUDA_DEVICE"])
+    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE"))
     if type(visible_devices) is int:
+        log(DEBUG, f"Selecting device {visible_devices}")
         device = DeviceGPU(device_id=int(visible_devices))
     else:
         device = None
@@ -542,16 +543,21 @@ def _get_trainer_object(
 
     # Warn users for unused parameters
     for key in _cfg:
-        log(
-            WARN,
-            "Unused parameter %s found in cfg. Please check your yaml to ensure"
-            " this parameter is necessary.",
-            key,
-        )
+        if os.environ.get("LOCAL_RANK", "0") == "0":
+            log(
+                WARN,
+                "Unused parameter %s found in cfg. Please check your yaml to ensure"
+                " this parameter is necessary.",
+                key,
+            )
 
     # Warn if fsdp is enabled but user only has 1 GPU
     if dist.get_world_size() == 1 and fsdp_config is not None:
-        log(WARN, "FSDP is not applicable for single-GPU training. Reverting to DDP.")
+        if os.environ.get("LOCAL_RANK", "0") == "0":
+            log(
+                WARN,
+                "FSDP is not applicable for single-GPU training. Reverting to DDP.",
+            )
         fsdp_config = None
 
     # set logging level
@@ -774,12 +780,19 @@ def clean_trainer_state(trainer: Trainer, just_evaluators: bool = False) -> None
     try:
         # Shutting down the workers is necessary to avoid a memory leak
         for evaluator in trainer.state._evaluators:
+            iterator = evaluator.dataloader.dataloader._iterator
             try:
-                evaluator.dataloader.dataloader._iterator._shutdown_workers()  # type: ignore [reportGeneralTypeIssues]
-            except AttributeError as e:
+                iterator._shutdown_workers()
+            except AttributeError:
                 pass
             except Exception as e:
-                log.error(f'Error running evaluator(s).dataloader.dataloader._iterator._shutdown_workers().', exc_info=e, stack_info=True)
+                log(
+                    ERROR,
+                    "Error running evaluator(s).dataloader.dataloader"
+                    "._iterator._shutdown_workers().",
+                    exc_info=e,
+                    stack_info=True,
+                )
         for evaluator in trainer.state._evaluators:
             try:
                 delattr(evaluator, "dataloader")
@@ -1126,6 +1139,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
+    # # Cleaning stale shared memory
+    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg,
@@ -1139,11 +1154,14 @@ def llm_fit(
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
     # log(INFO, "Starting training...")
-    # Prevent to run eval at the end of the training)
+    # Prevent to run any evaluator
     trainer.state.evaluators = None
     # Execute fit step for the appointed duration
     # FIXME: Makes this keep track of the already trained samples (in previous rounds)
-    trainer.fit(duration=cfg["local_steps"])
+    try:
+        trainer.fit(duration=cfg["local_steps"])
+    except Exception as e:
+        log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
@@ -1161,7 +1179,7 @@ def llm_fit(
     try:
         del trainer
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
     gc.collect()
     torch.cuda.empty_cache()
     # FIXME: There's still some leakage to be found
@@ -1172,7 +1190,7 @@ def llm_fit(
     # )
     # get_referenced_tensors_summary(cuda_only=False)
     # force_referenced_tensors_destruction()
-    # get_referenced_tensors_summary()
+    # get_referenced_trainers_and_engines()
     # log(
     #     INFO,
     #     "Trainer closed. Memory snapshot\n%s.",
@@ -1188,15 +1206,14 @@ def llm_eval(
     parameters: NDArrays,
     config: Dict,
     cfg: DictConfig,
-    trainer: Optional[Trainer] = None,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    # # Cleaning stale shared memory
+    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
-    if trainer is None:
-        # Extract configs to build the trainer
-        trainer, _, _ = _get_trainer_object(
-            _cfg=cfg,
-        )
+    trainer, _, _ = _get_trainer_object(
+        _cfg=cfg,
+    )
     # Set the parameters
     # log(INFO, "Initializing model...")
     # TODO: Check if there is space for optimisation here
@@ -1220,7 +1237,7 @@ def llm_eval(
     try:
         del trainer
     except Exception as e:
-        log(WARN, "Exception %s", e)
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
     gc.collect()
     torch.cuda.empty_cache()
     # Cleaning stale shared memory
