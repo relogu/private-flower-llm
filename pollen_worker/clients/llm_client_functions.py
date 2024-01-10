@@ -1139,8 +1139,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
-    # # Cleaning stale shared memory
-    # streaming.base.util.clean_stale_shared_memory()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg,
@@ -1208,8 +1208,8 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
-    # # Cleaning stale shared memory
-    # streaming.base.util.clean_stale_shared_memory()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
