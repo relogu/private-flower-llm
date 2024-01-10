@@ -1,10 +1,9 @@
 """TODO: Add description here."""
-import copy
 import gc
-import sys
+import os
 import time
-import traceback
 import uuid
+from contextlib import contextmanager
 from logging import DEBUG, ERROR
 from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
@@ -12,6 +11,7 @@ from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Optional, Tuple
 
 import multiprocess as mp
+import numpy as np
 import torch
 import torch.distributed as dist
 from composer.cli.launcher import _patch_env
@@ -62,7 +62,7 @@ class Worker(mp.Process):  # type: ignore
         self.parameters = parameters
         self.worker_rank = worker_rank
         self.worker_metrics_sh: SharedMemory | None = None
-        self.worker_metrics: Config | None = None
+        self.worker_metrics: Config = {}
         self.auto_terminate = False
 
     def _fit_action(
@@ -74,7 +74,7 @@ class Worker(mp.Process):  # type: ignore
             self.round_parameters, fl_instructions_config
         )
         # log(
-        #     INFO,
+        #     DEBUG,
         #     "Worker %s with rank %s successfully obtained the training results from"
         #     " client %s: (%s, %s, %s).",
         #     self.worker_uuid,
@@ -84,37 +84,38 @@ class Worker(mp.Process):  # type: ignore
         #     fit_num_samples,
         #     len(train_metrics),
         # )
-        # Worker's partial aggregation for parameters and n_samples
-        (p_agg_params, p_agg_samples) = partially_aggregate(
-            (self.worker_parameters, self.worker_num_samples[0]),
-            (copy.deepcopy(fit_trained_weights), copy.deepcopy(fit_num_samples)),
-        )
-        # Worker's partial aggregation for metrics
-        (p_agg_samples, p_agg_metrics) = partially_aggregate_metrics(
-            (int(self.worker_num_samples[0]), self.worker_metrics),
-            (copy.deepcopy(fit_num_samples), copy.deepcopy(train_metrics)),
-        )
-        # Update shared memories
-        set_num_samples_shm(self.worker_num_samples, p_agg_samples)
-        set_parameters_shm(self.worker_parameters, p_agg_params)
-        # Destroy the shared memory for the metrics
-        if self.worker_metrics_sh is not None:
-            self.worker_metrics_sh.close()
-            self.worker_metrics_sh.unlink()
-        # NOTE: Now we know the structure and we can create the train metrics
-        # shared memory. Since the structure might changed, we cannot assume
-        # a fixed size for the shared memory.
-        (
-            self.worker_metrics,
-            self.worker_metrics_sh,
-        ) = get_config_shm(
-            config=p_agg_metrics,
-            create=True,
-            name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
-        )
-        set_config_shm(p_agg_metrics, self.worker_metrics_sh)
+        if int(os.getenv("LOCAL_RANK")) == 0:
+            # Worker's partial aggregation for parameters and n_samples
+            (p_agg_params, p_agg_samples) = partially_aggregate(
+                (self.worker_parameters, self.worker_num_samples[0]),
+                (fit_trained_weights, fit_num_samples),
+            )
+            # Worker's partial aggregation for metrics
+            (p_agg_samples, p_agg_metrics) = partially_aggregate_metrics(
+                (int(self.worker_num_samples[0]), self.worker_metrics),
+                (fit_num_samples, train_metrics),
+            )
+            # Update shared memories
+            set_num_samples_shm(self.worker_num_samples, p_agg_samples)
+            set_parameters_shm(self.worker_parameters, p_agg_params)
+            # Destroy the shared memory for the metrics
+            if self.worker_metrics_sh is not None:
+                self.worker_metrics_sh.close()
+                self.worker_metrics_sh.unlink()
+            # NOTE: Now we know the structure and we can create the train metrics
+            # shared memory. Since the structure might changed, we cannot assume
+            # a fixed size for the shared memory.
+            (
+                self.worker_metrics,
+                self.worker_metrics_sh,
+            ) = get_config_shm(
+                config=p_agg_metrics,
+                create=True,
+                name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
+            )
+            set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
-        #     INFO,
+        #     DEBUG,
         #     "Worker %s with rank %s successfully trained client %s.",
         #     self.worker_uuid,
         #     self.worker_rank,
@@ -130,7 +131,7 @@ class Worker(mp.Process):  # type: ignore
             self.round_parameters, fl_instructions_config
         )
         # log(
-        #     INFO,
+        #     DEBUG,
         #     "Worker %s with rank %s successfully obtained the validation results from"
         #     " client %s: (%s, %s, %s).",
         #     self.worker_uuid,
@@ -140,12 +141,12 @@ class Worker(mp.Process):  # type: ignore
         #     eval_num_samples,
         #     eval_metrics,
         # )
-        if self.worker_rank == 0:
+        if int(os.getenv("LOCAL_RANK")) == 0:
             # TODO: Worker's partial aggregation for eval_loss
             # Worker's partial aggregation for metrics
             (agg_n_samples, p_agg_metrics) = partially_aggregate_metrics(
                 (int(self.worker_num_samples[0]), self.worker_metrics),
-                (copy.deepcopy(eval_num_samples), copy.deepcopy(eval_metrics)),
+                (eval_num_samples, eval_metrics),
             )
             set_num_samples_shm(self.worker_num_samples, agg_n_samples)
             set_eval_loss_shm(self.worker_eval_loss, eval_loss)
@@ -166,7 +167,7 @@ class Worker(mp.Process):  # type: ignore
             )
             set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
-        #     INFO,
+        #     DEBUG,
         #     "Worker %s with rank %s successfully evaluated client %s.",
         #     self.worker_uuid,
         #     self.worker_rank,
@@ -180,67 +181,53 @@ class Worker(mp.Process):  # type: ignore
         # Loads a dict from the shared memory buffer
         # FL config shared memory
         fl_instructions_config, fl_instructions_config_sh = get_config_shm(
+            config={},
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+        )
+        resource_tracker.unregister(
+            name=fl_instructions_config_sh._name,  # type: ignore[attr-defined]
+            rtype="shared_memory",
         )
         # Load client
         tmp_client = self.client_fn(client_id)
-        # Try to execute the task of the client
-        try:
-            if action == "fit":
-                # Fit the client
-                # NOTE: We force the workers to be independent and
-                # not to collaborate while training clients
-                with _patch_env(
-                    RANK="0",
-                    WORLD_SIZE="1",
-                    LOCAL_RANK="0",
-                    LOCAL_WORLD_SIZE="1",
-                    NODE_RANK="0",
-                    MASTER_ADDR="127.0.0.1",
-                    MASTER_PORT=str(get_free_tcp_port()),
-                    PYTHONUNBUFFERED="1",
-                    NCCL_ASYNC_ERROR_HANDLING="1",
-                    RUN_UUID=self.worker_uuid,
-                    APPOINTED_CUDA_DEVICE=str(self.worker_rank),
-                ):
-                    # Trying to destroy the process group of PyTorch Distributed, if any
-                    if dist.is_initialized():
-                        dist.destroy_process_group()
+        is_collaborative = bool(fl_instructions_config["collaborative"])
+        # Prevent slave workers to log to the console
+        if is_collaborative and self.worker_rank > 0:
+            tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
+        # Patch the environment given the received instructions
+        with get_env_patcher(
+            collaborative=is_collaborative,
+            run_uuid=(
+                str(fl_instructions_config["run_uuid"])
+                if is_collaborative
+                else self.worker_uuid
+            ),
+            rank=str(self.worker_rank),
+            master_port=str(fl_instructions_config["MASTER_PORT"]),
+        ):
+            # Try to execute the task of the client
+            try:
+                if action == "fit":
                     # Lauch the fit routine
                     self._fit_action(tmp_client, fl_instructions_config)
                     # Take the timestamp after the task is done
                     end_time = time.time_ns()
-                    # Put the result in the result queue
-                    self.result_queue.put(
-                        [int(tmp_client.cid), start_time, end_time, self.worker_uuid]
-                    )
-            elif action == "evaluate":
-                # Eval the client
-                # Prevent slave workers to log to the console
-                if self.worker_rank > 0:
-                    tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
-                # NOTE: We force the workers to collaborate with each other
-                # in doing the evaluation
-                with _patch_env(
-                    RANK=str(self.worker_rank),
-                    WORLD_SIZE=str(torch.cuda.device_count()),
-                    LOCAL_RANK=str(self.worker_rank),
-                    LOCAL_WORLD_SIZE=str(torch.cuda.device_count()),
-                    NODE_RANK="0",
-                    MASTER_ADDR="127.0.0.1",
-                    MASTER_PORT=str(fl_instructions_config["MASTER_PORT"]),
-                    PYTHONUNBUFFERED="1",
-                    NCCL_ASYNC_ERROR_HANDLING="1",
-                    RUN_UUID=self.node_manager_uuid,
-                    APPOINTED_CUDA_DEVICE="all",
-                ):
+                    # Only rank 0 returns the result
+                    if int(os.getenv("LOCAL_RANK")) == 0:
+                        # Put the result in the result queue
+                        self.result_queue.put(
+                            [
+                                int(tmp_client.cid),
+                                start_time,
+                                end_time,
+                                self.worker_uuid,
+                            ]
+                        )
+                elif action == "evaluate":
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
-                    # Trying to destroy the process group of PyTorch Distributed, if any
-                    if dist.is_initialized():
-                        dist.destroy_process_group()
-                    # Since they are collaborating, only rank 0 returns the result
-                    if self.worker_rank == 0:
+                    # Only rank 0 returns the result
+                    if int(os.getenv("LOCAL_RANK")) == 0:
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
@@ -252,32 +239,26 @@ class Worker(mp.Process):  # type: ignore
                                 self.worker_uuid,
                             ]
                         )
-        except Exception as e:
-            log(
-                ERROR,
-                "Worker %s failed executing %s for client %s\n\t\t\texception %s.",
-                self.worker_uuid,
-                action,
-                client_id,
-                e,
-            )
-            traceback.print_exc(*sys.exc_info())
-            self.result_queue.put([-1, 0, 0, self.worker_uuid])
-            if action == "fit":
-                self.task_queue.put((client_id, action))
-            elif self.worker_rank == 0:
-                self.task_queue.put((client_id, action))
-            self.auto_terminate = True
+            except Exception as e:
+                log(
+                    ERROR,
+                    "Worker %s failed executing %s for client %s.",
+                    self.worker_uuid,
+                    action,
+                    client_id,
+                    exc_info=e,
+                    stack_info=True,
+                )
+                # Always return the error to the result queue to notify the NodeManager
+                self.result_queue.put([-1, 0, 0, self.worker_uuid])
+                # Append to the task queu only if not collaborative
+                if not is_collaborative:
+                    self.task_queue.put((client_id, action))
+                # TODO: Maybe not terminate the worker?
+                self.auto_terminate = True
 
     def _unregister_shms(self) -> None:
         """Unregister shared memories."""
-        _, fl_instructions_config_sh = get_config_shm(
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
-        )
-        resource_tracker.unregister(
-            name=fl_instructions_config_sh._name,  # type: ignore[attr-defined]
-            rtype="shared_memory",
-        )
         resource_tracker.unregister(
             name=self.round_parameters_sh._name,  # type: ignore[attr-defined]
             rtype="shared_memory",
@@ -353,6 +334,144 @@ class Worker(mp.Process):  # type: ignore
         ## Un-register shared memories
         # NOTE: Bug https://bugs.python.org/issue39959#msg364351
         self._unregister_shms()
+
+
+@contextmanager
+def get_env_patcher(
+    collaborative: bool,
+    run_uuid: str,
+    rank: str,
+    master_port: str,
+):
+    """Yield a context manager to patch the environment variables."""
+    try:
+        # Trying to destroy the process group of PyTorch Distributed,
+        # if any, to let the workers deal with this
+        if dist.is_initialized():
+            dist.destroy_process_group()
+        if not collaborative:
+            with _patch_env(
+                RANK="0",
+                WORLD_SIZE="1",
+                LOCAL_RANK="0",
+                LOCAL_WORLD_SIZE="1",
+                NODE_RANK="0",
+                MASTER_ADDR="127.0.0.1",
+                MASTER_PORT=str(get_free_tcp_port()),
+                PYTHONUNBUFFERED="1",
+                NCCL_ASYNC_ERROR_HANDLING="1",
+                RUN_UUID=run_uuid,
+                APPOINTED_CUDA_DEVICE=rank,
+            ) as env_patcher:
+                yield env_patcher
+        else:
+            with _patch_env(
+                RANK=rank,
+                WORLD_SIZE=str(torch.cuda.device_count()),
+                LOCAL_RANK=rank,
+                LOCAL_WORLD_SIZE=str(torch.cuda.device_count()),
+                NODE_RANK="0",
+                MASTER_ADDR="127.0.0.1",
+                MASTER_PORT=master_port,
+                PYTHONUNBUFFERED="1",
+                NCCL_ASYNC_ERROR_HANDLING="1",
+                RUN_UUID=run_uuid,
+                APPOINTED_CUDA_DEVICE="all",
+            ) as env_patcher:
+                yield env_patcher
+    except Exception as e:
+        log(
+            ERROR,
+            "Error while patching the environment variables.",
+            exc_info=e,
+            stack_info=True,
+        )
+    finally:
+        # Trying to destroy the process group of PyTorch Distributed,
+        # if any, to clean the environment
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def get_training_results_from_workers_dict(
+    workers_dict: dict[int, Worker],
+) -> tuple[
+    list[tuple[NDArrays, int]],
+    list[tuple[int, dict]],
+    NDArrays,
+    list[tuple[SharedMemory, SharedMemory, SharedMemory],],
+]:
+    """Collect the training results from the workers dict given."""
+    workers_params_samples: list[tuple[NDArrays, int]] = []
+    workers_samples_metrics: list[tuple[int, dict]] = []
+    workers_samples: NDArrays = []
+    workers_shms: list[tuple[SharedMemory, SharedMemory, SharedMemory],] = []
+    for worker in workers_dict.values():
+        if worker.is_alive():
+            w_parameters, w_parameters_shm = get_parameters_shm(
+                parameters=worker.parameters,
+                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            )
+            w_num_samples, w_num_samples_shm = get_num_samples_shm(
+                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            )
+            w_metrics, w_metrics_shm = get_config_shm(
+                config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM
+            )
+            workers_params_samples.append((w_parameters, w_num_samples[0]))
+            workers_samples_metrics.append((w_num_samples[0], w_metrics))
+            workers_samples.append(w_num_samples)
+            workers_shms.append((w_parameters_shm, w_num_samples_shm, w_metrics_shm))
+    return (
+        workers_params_samples,
+        workers_samples_metrics,
+        workers_samples,
+        workers_shms,
+    )
+
+
+def get_training_results_from_worker(
+    worker: Worker | None,
+) -> (
+    tuple[
+        tuple[NDArrays, int],
+        tuple[int, dict],
+        np.ndarray,
+        tuple[SharedMemory, SharedMemory, SharedMemory],
+    ]
+    | None
+):
+    """Collect the training results from the workers dict given."""
+    if worker is None:
+        log(
+            ERROR,
+            "Worker is None. Cannot collect its results.",
+        )
+        return None
+    if worker.is_alive():
+        w_parameters, w_parameters_shm = get_parameters_shm(
+            parameters=worker.parameters,
+            name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+        )
+        w_num_samples, w_num_samples_shm = get_num_samples_shm(
+            name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+        )
+        w_metrics, w_metrics_shm = get_config_shm(
+            config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM
+        )
+        return (
+            (w_parameters, w_num_samples[0]),
+            (w_num_samples[0], w_metrics),
+            w_num_samples,
+            (w_parameters_shm, w_num_samples_shm, w_metrics_shm),
+        )
+    else:
+        log(
+            ERROR,
+            "Worker %s is not alive anymore. Cannot collect its results.",
+            worker.worker_uuid,
+        )
+        return None
 
 
 def create_new_worker(
