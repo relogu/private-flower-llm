@@ -55,8 +55,16 @@ def main(cfg: DictConfig) -> None:
         min_available_clients=cfg.fl.n_clients_per_round,
         min_evaluate_clients=1,
         evaluate_fn=None,
-        on_fit_config_fn=lambda x: {"server_round": x, "batch_size": 32},
-        on_evaluate_config_fn=lambda x: {"server_round": x, "batch_size": 32},
+        on_fit_config_fn=lambda x: {
+            "server_round": x,
+            "batch_size": 32,
+            "collaborative": cfg.pollen.fit_collaborative,
+        },
+        on_evaluate_config_fn=lambda x: {
+            "server_round": x,
+            "batch_size": 32,
+            "collaborative": cfg.pollen.eval_collaborative,
+        },
         accept_failures=False,
         initial_parameters=initial_parameters,
         evaluate_metrics_aggregation_fn=weighted_average,

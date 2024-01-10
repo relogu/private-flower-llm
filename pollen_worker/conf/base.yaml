@@ -10,6 +10,8 @@ pollen:
   server_address: localhost:50734
   saving_path: /tmp/pollen
   refresh_period: 50
+  fit_collaborative: false
+  eval_collaborative: true
 
 fl:
   n_total_clients: 8
