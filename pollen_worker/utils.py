@@ -3,6 +3,7 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
+import copy
 import gc
 import shutil
 from collections import OrderedDict, defaultdict
@@ -75,11 +76,13 @@ def partially_aggregate(
     updated_agg = None
     # Assuming that the partially aggregate is empty when n_samples is 0
     if current_agg[1] == 0:
-        updated_agg = new_results[0]
-        total_num_examples = new_results[1]
+        updated_agg = copy.deepcopy(new_results[0])
+        total_num_examples = copy.deepcopy(new_results[1])
     else:
         updated_agg = aggregate([current_agg, new_results])
-        total_num_examples = current_agg[1] + new_results[1]
+        total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
+            new_results[1]
+        )
     return updated_agg, total_num_examples
 
 
@@ -90,10 +93,10 @@ def partially_aggregate_metrics(
     updated_agg = None
     # Assuming that the partially aggregate is empty when n_samples is 0
     if current_agg[0] == 0:
-        total_num_examples = new_results[0]
-        updated_agg = new_results[1]
+        total_num_examples = copy.deepcopy(new_results[0])
+        updated_agg = copy.deepcopy(new_results[1])
     else:
-        total_num_examples = current_agg[0] + new_results[0]
+        total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
         updated_agg = weighted_average([current_agg, new_results])
     return total_num_examples, updated_agg
 
@@ -361,7 +364,15 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
                     total_size += mem_alloc
                     if obj.is_cuda:
                         gpu_size += mem_alloc
-        except:
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
             pass
     if verbose:
         # Converting the size from bytes to MiB
@@ -417,7 +428,15 @@ def force_referenced_tensors_destruction() -> None:
                         type(obj),
                         e,
                     )
-        except:
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
             pass
     log(INFO, "force_referenced_tensors_destruction :: done")
     gc.collect()
