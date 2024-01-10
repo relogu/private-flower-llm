@@ -28,7 +28,7 @@ import psutil
 import pyarrow as pa
 import ray
 import torch
-from composer import Trainer
+from composer import Engine, Trainer
 from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
@@ -398,6 +398,42 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         #     counter,
         #     total_size,
         # )
+    return summary
+
+
+def get_referenced_trainers_and_engines(verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    n_trainers, n_engines = 0, 0
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            # Checking if the object is a tensor or a tensor data attribute
+            if type(obj) is Trainer:
+                n_trainers += 1
+            if type(obj) is Engine:
+                n_engines += 1
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+            pass
+    if verbose:
+        log(
+            INFO,
+            "get_referenced_trainers_and_engines ::"
+            "there are %s engines and %s trainers",
+            n_engines,
+            n_trainers,
+        )
     return summary
 
 
