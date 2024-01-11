@@ -90,5 +90,6 @@ sudo mkdir -p /ephemeral/$USER/tmp
 mkdir -p $HOME/projects
 cd $HOME/projects
 git clone https://github.com/relogu/pollen_worker.git
+cd pollen_worker
 git fetch origin
 git checkout --track origin/llm
