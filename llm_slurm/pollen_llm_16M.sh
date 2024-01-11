@@ -25,9 +25,8 @@ mkdir -p $SAVE_PATH
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # Default to 0 if not set
+CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50736' pollen.refresh_period=20"
 #! Launch ServerWithPollen
