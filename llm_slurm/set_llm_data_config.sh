@@ -22,7 +22,7 @@ if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
     echo -e "\t<split>: 'full' or 'small'. Default: 'full'"
     echo -e "\t<is_local>: bool. Default: true"
     echo -e "\t<is_federated>: bool. Default: true"
-    echo -e "\t<n_clients>: integer. Default: 10"
+    echo -e "\t<n_clients>: integer. Default: 8"
     echo -e "\tExample: bash set_llm_data_config.sh full true"
     echo -e "\tNOTE: the external variable DATA_TMP_DIR must be set."
     exit 1
@@ -31,7 +31,7 @@ fi
 SPLIT="full"
 IS_LOCAL=false
 IS_FEDERATED=true
-N_CLIENTS=10
+N_CLIENTS=8
 if [[ $# -eq 0 ]]; then
     echo "set_llm_data_config.sh: Using default values for all input arguments."
 elif [[ $# -eq 1 ]]; then
