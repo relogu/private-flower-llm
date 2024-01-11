@@ -11,6 +11,7 @@ if [[ -e $POETRY_ENV_PATH ]]; then
     fi
 else
     echo "Poetry environment doesn't exist. Installing..."
+    poetry config installer.max-workers 10
     poetry install -q
 fi
 . $POETRY_ENV_PATH/bin/activate
