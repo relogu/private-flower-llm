@@ -93,3 +93,5 @@ git clone https://github.com/relogu/pollen_worker.git
 cd pollen_worker
 git fetch origin
 git checkout --track origin/llm
+#! Changing permissions to the 'ephemeral storage' folder again
+sudo chmod -R a+wr /ephemeral
