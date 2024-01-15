@@ -365,8 +365,8 @@ def _get_trainer_object(
     # with the parameters from the environmental variables.
     visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE"))
     if type(visible_devices) is int:
-        log(DEBUG, f"Selecting device {visible_devices}")
         device = DeviceGPU(device_id=int(visible_devices))
+        log(DEBUG, f"Selecting device {visible_devices}, {device}")
     else:
         device = None
 
@@ -1142,10 +1142,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
-    trainer, eval_first, _ = _get_trainer_object(
+    trainer, eval_first, logged_cfg = _get_trainer_object(
         _cfg=cfg,
     )
     # Set the parameters
@@ -1199,8 +1197,6 @@ def llm_fit(
     #     "Trainer closed. Memory snapshot\n%s.",
     #     torch.cuda.memory_summary(),
     # )
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
     # log(INFO, "Done.")
     return model_parameters, n_samples_trained, train_metrics
 
@@ -1211,8 +1207,6 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
@@ -1243,8 +1237,6 @@ def llm_eval(
         log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
     gc.collect()
     torch.cuda.empty_cache()
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
     # log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics
