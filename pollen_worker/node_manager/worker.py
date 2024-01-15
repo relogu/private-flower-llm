@@ -12,6 +12,7 @@ from typing import Callable, Optional, Tuple
 
 import multiprocess as mp
 import numpy as np
+import streaming
 import torch
 import torch.distributed as dist
 from composer.cli.launcher import _patch_env
@@ -363,6 +364,27 @@ def get_env_patcher(
                 RUN_UUID=run_uuid,
                 APPOINTED_CUDA_DEVICE=rank,
             ) as env_patcher:
+                # Cleaning stale shared memory
+                streaming.base.util.clean_stale_shared_memory()
+                log(
+                    DEBUG,
+                    "Environment variables pathed for worker with rank %s.\n\t\t"
+                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s,"
+                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                    "NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, APPOINTED_CUDA_DEVICE=%s",
+                    rank,
+                    os.getenv("RANK"),
+                    os.getenv("WORLD_SIZE"),
+                    os.getenv("LOCAL_RANK"),
+                    os.getenv("LOCAL_WORLD_SIZE"),
+                    os.getenv("NODE_RANK"),
+                    os.getenv("MASTER_ADDR"),
+                    os.getenv("MASTER_PORT"),
+                    os.getenv("PYTHONUNBUFFERED"),
+                    os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
+                    os.getenv("RUN_UUID"),
+                    os.getenv("APPOINTED_CUDA_DEVICE"),
+                )
                 yield env_patcher
         else:
             with _patch_env(
@@ -378,6 +400,27 @@ def get_env_patcher(
                 RUN_UUID=run_uuid,
                 APPOINTED_CUDA_DEVICE="all",
             ) as env_patcher:
+                # Cleaning stale shared memory
+                streaming.base.util.clean_stale_shared_memory()
+                log(
+                    DEBUG,
+                    "Environment variables pathed for worker with rank %s.\n\t\t"
+                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s,"
+                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                    "NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, APPOINTED_CUDA_DEVICE=%s",
+                    rank,
+                    os.getenv("RANK"),
+                    os.getenv("WORLD_SIZE"),
+                    os.getenv("LOCAL_RANK"),
+                    os.getenv("LOCAL_WORLD_SIZE"),
+                    os.getenv("NODE_RANK"),
+                    os.getenv("MASTER_ADDR"),
+                    os.getenv("MASTER_PORT"),
+                    os.getenv("PYTHONUNBUFFERED"),
+                    os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
+                    os.getenv("RUN_UUID"),
+                    os.getenv("APPOINTED_CUDA_DEVICE"),
+                )
                 yield env_patcher
     except Exception as e:
         log(
@@ -391,6 +434,8 @@ def get_env_patcher(
         # if any, to clean the environment
         if dist.is_initialized():
             dist.destroy_process_group()
+        # Cleaning stale shared memory
+        streaming.base.util.clean_stale_shared_memory()
 
 
 def get_training_results_from_workers_dict(
