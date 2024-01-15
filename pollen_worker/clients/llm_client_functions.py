@@ -49,7 +49,7 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import get_n_cpu_cores
+from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -85,6 +85,9 @@ def set_n_workers_dataloaders(
     """Set the `n_workers` parameter for all dataloaders in the config."""
     if n_workers < 0:
         n_workers = get_n_cpu_cores()
+    n_cuda_device = get_n_cuda_devices()
+    if n_cuda_device > 0:
+        n_workers = n_workers // n_cuda_device
     cfg.train_loader.num_workers = n_workers
     cfg.eval_loader.num_workers = n_workers
     return cfg
