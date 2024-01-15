@@ -76,7 +76,7 @@ echo '    email = lollonasi97@gmail.com' >> ~/.gitconfig
 mkdir ~/.aws
 echo '[default]' > ~/.aws/config
 echo '[default]' > ~/.aws/credentials
-echo '    aws_access_key_id = ${AWS_ID}' >> ~/.aws/credentials
+echo '    aws_access_key_id = jj15X7kIlfU9uHwyuTmJ' >> ~/.aws/credentials
 echo '    aws_secret_access_key = rAD3IMOhooHO79BD1tY9DbxOY2bSN9MEj02XOFwP' >> ~/.aws/credentials
 #! Set up wandb credentials
 echo 'machine api.wandb.ai' > ~/.netrc
