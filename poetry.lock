@@ -3364,13 +3364,13 @@ files = [
 
 [[package]]
 name = "mlflow"
-version = "2.9.0"
+version = "2.9.2"
 description = "MLflow: A Platform for ML Development and Productionization"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "mlflow-2.9.0-py3-none-any.whl", hash = "sha256:a321b020eba5aaf5714adc946c7048f75f8bb794c9f04dede93d366000517374"},
-    {file = "mlflow-2.9.0.tar.gz", hash = "sha256:937ef806f46d5ad5a0e32367954ec86eb0d301c3dccb4b3ef01d7156274f73b8"},
+    {file = "mlflow-2.9.2-py3-none-any.whl", hash = "sha256:5c1aac70238636bfc798f41925b93c6cce3a8835287311e97b7dbc90d07a8777"},
+    {file = "mlflow-2.9.2.tar.gz", hash = "sha256:25f2ad3d0b0e78bd32296058fb4c315dff4379515cd669ac6137f39507b9dfe9"},
 ]
 
 [package.dependencies]
@@ -3409,8 +3409,8 @@ waitress = {version = "<3", markers = "platform_system == \"Windows\""}
 aliyun-oss = ["aliyunstoreplugin"]
 databricks = ["azure-storage-file-datalake (>12)", "boto3 (>1)", "google-cloud-storage (>=1.30.0)"]
 extras = ["azureml-core (>=1.2.0)", "boto3", "google-cloud-storage (>=1.30.0)", "kubernetes", "mlserver (>=1.2.0,!=1.3.1)", "mlserver-mlflow (>=1.2.0,!=1.3.1)", "prometheus-flask-exporter", "pyarrow", "pysftp", "requests-auth-aws-sigv4", "virtualenv"]
-gateway = ["aiohttp (<4)", "boto3 (>=1.28.56,<2)", "fastapi (<1)", "pydantic (>=1.0,<3)", "uvicorn[standard] (<1)", "watchfiles (<1)"]
-genai = ["aiohttp (<4)", "boto3 (>=1.28.56,<2)", "fastapi (<1)", "pydantic (>=1.0,<3)", "uvicorn[standard] (<1)", "watchfiles (<1)"]
+gateway = ["aiohttp (<4)", "boto3 (>=1.28.56,<2)", "fastapi (<1)", "pydantic (>=1.0,<3)", "tiktoken (<1)", "uvicorn[standard] (<1)", "watchfiles (<1)"]
+genai = ["aiohttp (<4)", "boto3 (>=1.28.56,<2)", "fastapi (<1)", "pydantic (>=1.0,<3)", "tiktoken (<1)", "uvicorn[standard] (<1)", "watchfiles (<1)"]
 sqlserver = ["mlflow-dbstore"]
 xethub = ["mlflow-xethub"]
 
@@ -3428,8 +3428,8 @@ apache-libcloud = {version = ">=3.3.1,<4", optional = true, markers = "extra == 
 coolname = ">=1.1.0,<3"
 google-cloud-storage = {version = ">=2.0.0,<3.0", optional = true, markers = "extra == \"gcs\""}
 importlib-metadata = ">=5.0.0,<7"
-mlflow = {version = ">=2.9.0,<3.0", optional = true, markers = "extra == \"mlflow\""}
-mosaicml-cli = ">=0.5.25,<0.6"
+mlflow = {version = ">=2.9.2,<3.0", optional = true, markers = "extra == \"mlflow\""}
+mosaicml-cli = ">=0.5.25,<0.7"
 numpy = ">=1.21.5,<1.27.0"
 oci = {version = ">=2.88.2,<3.0.0", optional = true, markers = "extra == \"oci\""}
 packaging = ">=21.3.0,<23"
@@ -3438,24 +3438,24 @@ py-cpuinfo = ">=8.0.0,<10"
 pyyaml = ">=6.0,<7"
 requests = ">=2.26.0,<3"
 tabulate = "0.9.0"
-torch = ">=1.13.1,<2.2.1"
+torch = ">=1.13.1,<2.3.1"
 torch_optimizer = ">=0.3.0,<0.4"
 torchmetrics = ">=0.10.0,<1.1"
-torchvision = ">=0.13.1,<0.19"
+torchvision = ">=0.13.1,<0.20"
 tqdm = ">=4.62.3,<5"
 wandb = {version = ">=0.13.2,<0.17", optional = true, markers = "extra == \"wandb\""}
 
 [package.extras]
-all = ["GitPython (==3.1.40)", "apache-libcloud (>=3.3.1,<4)", "boto3 (>=1.21.45,<2)", "comet_ml (>=3.31.12,<4.0.0)", "coverage[toml] (==7.3.4)", "cryptography (==41.0.5)", "custom_inherit (==2.4.1)", "databricks-sdk (>=0.15.0,<1.0)", "datasets (>=2.4,<3)", "deepspeed (==0.8.3)", "docutils (==0.17.1)", "fasteners (==0.18)", "furo (==2022.9.29)", "google-cloud-storage (>=2.0.0,<3.0)", "ipykernel (==6.28.0)", "ipython (==8.11.0)", "junitparser (==3.1.1)", "jupyter (==1.0.0)", "mlflow (>=2.9.0,<3.0)", "mock-ssh-server (==0.9.1)", "monai (>=0.9.1,<1.4)", "mosaicml-streaming (<1.0)", "moto[s3] (>=4.0.1,<5)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "oci (>=2.88.2,<3.0.0)", "onnx (>=1.12.0,<2)", "onnxruntime (>=1.12.1,<2)", "pandas (>=2.0.0,<3.0)", "pandoc (==2.3)", "paramiko (>=2.11.0,<3)", "pre-commit (>=3.4.0,<4)", "protobuf (<3.21)", "py-cpuinfo (>=8.0.0,<10)", "pycocotools (>=2.0.4,<3)", "pydantic (>=1.0,<2)", "pynvml (>=11.5.0,<12)", "pypandoc (==1.12)", "pytest (==7.4.4)", "pytest-httpserver (>=1.0.4,<1.1)", "pytest_codeblocks (==0.17.0)", "recommonmark (==0.7.1)", "scikit-learn (>=1.0.1,<2)", "sentencepiece (==0.1.99)", "setuptools (<=59.5.0)", "slack_sdk (>=3.19.5,<4)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx_markdown_tables (==0.0.17)", "sphinx_panels (==0.6.0)", "sphinxcontrib-images (==0.9.4)", "sphinxcontrib.katex (==0.9.6)", "sphinxemoji (==0.2.0)", "sphinxext.opengraph (==0.9.1)", "tensorboard (>=2.9.1,<3.0.0)", "testbook (==0.4.2)", "timm (>=0.5.4,<0.6)", "toml (==0.10.2)", "traitlets (==5.13.0)", "transformers (>=4.11,!=4.34.0,<4.37)", "vit_pytorch (==1.6.1)", "wandb (>=0.13.2,<0.17)", "yamllint (==1.33.0)"]
+all = ["GitPython (==3.1.40)", "apache-libcloud (>=3.3.1,<4)", "boto3 (>=1.21.45,<2)", "comet_ml (>=3.31.12,<4.0.0)", "coverage[toml] (==7.3.4)", "cryptography (==41.0.5)", "custom_inherit (==2.4.1)", "databricks-sdk (>=0.15.0,<1.0)", "datasets (>=2.4,<3)", "deepspeed (==0.8.3)", "docutils (==0.17.1)", "fasteners (==0.18)", "furo (==2022.9.29)", "google-cloud-storage (>=2.0.0,<3.0)", "ipykernel (==6.28.0)", "ipython (==8.11.0)", "junitparser (==3.1.1)", "jupyter (==1.0.0)", "mlflow (>=2.9.2,<3.0)", "mock-ssh-server (==0.9.1)", "monai (>=0.9.1,<1.4)", "mosaicml-streaming (<1.0)", "moto[s3] (>=4.0.1,<5)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "oci (>=2.88.2,<3.0.0)", "onnx (>=1.12.0,<2)", "onnxruntime (>=1.12.1,<2)", "pandas (>=2.0.0,<3.0)", "pandoc (==2.3)", "paramiko (>=2.11.0,<3)", "pre-commit (>=3.4.0,<4)", "protobuf (<3.21)", "py-cpuinfo (>=8.0.0,<10)", "pycocotools (>=2.0.4,<3)", "pydantic (>=1.0,<2)", "pynvml (>=11.5.0,<12)", "pypandoc (==1.12)", "pytest (==7.4.4)", "pytest-httpserver (>=1.0.4,<1.1)", "pytest_codeblocks (==0.17.0)", "recommonmark (==0.7.1)", "scikit-learn (>=1.0.1,<2)", "sentencepiece (==0.1.99)", "setuptools (<=59.5.0)", "slack_sdk (>=3.19.5,<4)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx_markdown_tables (==0.0.17)", "sphinx_panels (==0.6.0)", "sphinxcontrib-applehelp (==1.0.0)", "sphinxcontrib-devhelp (==1.0.0)", "sphinxcontrib-htmlhelp (==2.0.0)", "sphinxcontrib-images (==0.9.4)", "sphinxcontrib-qthelp (==1.0.0)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib.katex (==0.9.6)", "sphinxemoji (==0.2.0)", "sphinxext.opengraph (==0.9.1)", "tensorboard (>=2.9.1,<3.0.0)", "testbook (==0.4.2)", "timm (>=0.5.4,<0.6)", "toml (==0.10.2)", "traitlets (==5.14.1)", "transformers (>=4.11,!=4.34.0,<4.37)", "vit_pytorch (==1.6.1)", "wandb (>=0.13.2,<0.17)", "yamllint (==1.33.0)"]
 coco = ["pycocotools (>=2.0.4,<3)"]
 comet-ml = ["comet_ml (>=3.31.12,<4.0.0)"]
 databricks = ["databricks-sdk (>=0.15.0,<1.0)"]
 deepspeed = ["deepspeed (==0.8.3)", "pydantic (>=1.0,<2)"]
-dev = ["GitPython (==3.1.40)", "coverage[toml] (==7.3.4)", "cryptography (==41.0.5)", "custom_inherit (==2.4.1)", "docutils (==0.17.1)", "fasteners (==0.18)", "furo (==2022.9.29)", "ipykernel (==6.28.0)", "ipython (==8.11.0)", "junitparser (==3.1.1)", "jupyter (==1.0.0)", "mock-ssh-server (==0.9.1)", "moto[s3] (>=4.0.1,<5)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "pandoc (==2.3)", "pre-commit (>=3.4.0,<4)", "pypandoc (==1.12)", "pytest (==7.4.4)", "pytest-httpserver (>=1.0.4,<1.1)", "pytest_codeblocks (==0.17.0)", "recommonmark (==0.7.1)", "setuptools (<=59.5.0)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx_markdown_tables (==0.0.17)", "sphinx_panels (==0.6.0)", "sphinxcontrib-images (==0.9.4)", "sphinxcontrib.katex (==0.9.6)", "sphinxemoji (==0.2.0)", "sphinxext.opengraph (==0.9.1)", "testbook (==0.4.2)", "toml (==0.10.2)", "traitlets (==5.13.0)", "yamllint (==1.33.0)"]
+dev = ["GitPython (==3.1.40)", "coverage[toml] (==7.3.4)", "cryptography (==41.0.5)", "custom_inherit (==2.4.1)", "docutils (==0.17.1)", "fasteners (==0.18)", "furo (==2022.9.29)", "ipykernel (==6.28.0)", "ipython (==8.11.0)", "junitparser (==3.1.1)", "jupyter (==1.0.0)", "mock-ssh-server (==0.9.1)", "moto[s3] (>=4.0.1,<5)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "pandoc (==2.3)", "pre-commit (>=3.4.0,<4)", "pypandoc (==1.12)", "pytest (==7.4.4)", "pytest-httpserver (>=1.0.4,<1.1)", "pytest_codeblocks (==0.17.0)", "recommonmark (==0.7.1)", "setuptools (<=59.5.0)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx_markdown_tables (==0.0.17)", "sphinx_panels (==0.6.0)", "sphinxcontrib-applehelp (==1.0.0)", "sphinxcontrib-devhelp (==1.0.0)", "sphinxcontrib-htmlhelp (==2.0.0)", "sphinxcontrib-images (==0.9.4)", "sphinxcontrib-qthelp (==1.0.0)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib.katex (==0.9.6)", "sphinxemoji (==0.2.0)", "sphinxext.opengraph (==0.9.1)", "testbook (==0.4.2)", "toml (==0.10.2)", "traitlets (==5.14.1)", "yamllint (==1.33.0)"]
 gcs = ["google-cloud-storage (>=2.0.0,<3.0)"]
 health-checker = ["pynvml (>=11.5.0,<12)"]
 libcloud = ["apache-libcloud (>=3.3.1,<4)"]
-mlflow = ["mlflow (>=2.9.0,<3.0)"]
+mlflow = ["mlflow (>=2.9.2,<3.0)"]
 mlperf = ["py-cpuinfo (>=8.0.0,<10)"]
 nlp = ["datasets (>=2.4,<3)", "transformers (>=4.11,!=4.34.0,<4.37)"]
 oci = ["oci (>=2.88.2,<3.0.0)"]
@@ -3475,7 +3475,7 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "fl"
-resolved_reference = "b7427f99afa84cc83bc4971605a896fa05f3f56d"
+resolved_reference = "e6de077bc7330b930edc447ca11affc58c003c99"
 
 [[package]]
 name = "mosaicml-cli"
