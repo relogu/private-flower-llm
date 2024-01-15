@@ -13,6 +13,7 @@ else
     echo "Poetry environment doesn't exist. Installing..."
     poetry config installer.max-workers 10
     poetry install -q
+    POETRY_ENV_PATH=$(poetry env info --path)
 fi
 . $POETRY_ENV_PATH/bin/activate
 # Adding CUDA paths to environment variables
