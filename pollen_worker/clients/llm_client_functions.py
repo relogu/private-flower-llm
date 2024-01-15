@@ -1197,6 +1197,8 @@ def llm_fit(
     #     "Trainer closed. Memory snapshot\n%s.",
     #     torch.cuda.memory_summary(),
     # )
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     # log(INFO, "Done.")
     return model_parameters, n_samples_trained, train_metrics
 
@@ -1237,6 +1239,8 @@ def llm_eval(
         log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
     gc.collect()
     torch.cuda.empty_cache()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()
     # log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics

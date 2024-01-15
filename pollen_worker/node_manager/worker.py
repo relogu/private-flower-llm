@@ -434,8 +434,6 @@ def get_env_patcher(
         # if any, to clean the environment
         if dist.is_initialized():
             dist.destroy_process_group()
-        # Cleaning stale shared memory
-        streaming.base.util.clean_stale_shared_memory()
 
 
 def get_training_results_from_workers_dict(
