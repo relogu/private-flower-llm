@@ -28,11 +28,13 @@ import psutil
 import pyarrow as pa
 import ray
 import torch
-from composer import Engine, Trainer
+from composer import DataSpec, Engine, Evaluator, Trainer
 from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
+from torch.cuda.amp import GradScaler
+from torch.utils.data import DataLoader
 
 import wandb
 
@@ -433,6 +435,195 @@ def get_referenced_trainers_and_engines(verbose: bool = True) -> str:
             "there are %s engines and %s trainers",
             n_engines,
             n_trainers,
+        )
+    return summary
+
+
+def get_referenced_dataloaders_and_dataspec(verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    n_dataloaders, n_dataspec = 0, 0
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            # Checking if the object is a tensor or a tensor data attribute
+            if type(obj) is DataLoader:
+                n_dataloaders += 1
+            if type(obj) is DataSpec:
+                n_dataspec += 1
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+            pass
+    if verbose:
+        log(
+            INFO,
+            "get_referenced_dataloaders_and_dataspec ::"
+            "there are %s dataspec and %s dataloaders",
+            n_dataspec,
+            n_dataloaders,
+        )
+    return summary
+
+
+def get_referenced_gradscaler_and_evaluators(verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    n_gradscaler, n_evaluators = 0, 0
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            # Checking if the object is a tensor or a tensor data attribute
+            if type(obj) is GradScaler:
+                n_gradscaler += 1
+            if type(obj) is Evaluator:
+                n_evaluators += 1
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+            pass
+    if verbose:
+        log(
+            INFO,
+            "get_referenced_gradscaler_and_evaluators ::"
+            "there are %s evaluators and %s gradscaler",
+            n_evaluators,
+            n_gradscaler,
+        )
+    return summary
+
+
+def get_objects_dict(verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            summary += f"{type(obj)} :: {obj.__dict__}\n"
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+            pass
+    if verbose:
+        log(
+            INFO,
+            "get_objects_dict :: %s",
+            summary,
+        )
+    return summary
+
+
+def get_objects_types(verbose: bool = True) -> str:
+    """Inspect the tensors in the current Python session."""
+    # Initalizing the summary string and variables
+    summary = ""
+    gc.collect()
+    # Looping over the objects in the current Python session
+    for obj in gc.get_objects():
+        # Surrounding the tensor inspection with a try-except block
+        try:
+            if f"{type(obj)}" == "<class 'list'>":
+                pass
+            elif f"{type(obj)}" == "<class 'dict'>":
+                pass
+            elif f"{type(obj)}" == "<class 'wrapper_descriptor'>":
+                pass
+            elif f"{type(obj)}" == "<class 'function'>":
+                pass
+            elif f"{type(obj)}" == "<class 'property'>":
+                pass
+            elif f"{type(obj)}" == "<class 'method_descriptor'>":
+                pass
+            elif f"{type(obj)}" == "<class 'classmethod_descriptor'>":
+                pass
+            elif f"{type(obj)}" == "<class 'getset_descriptor'>":
+                pass
+            elif f"{type(obj)}" == "<class 'tuple'>":
+                pass
+            elif f"{type(obj)}" == "<class 'type'>":
+                pass
+            elif "wandb" in f"{type(obj)}":
+                pass
+            elif "google" in f"{type(obj)}":
+                pass
+            elif "_frozen" in f"{type(obj)}":
+                pass
+            elif "weakref" in f"{type(obj)}":
+                pass
+            elif "omegaconf" in f"{type(obj)}":
+                pass
+            elif f"{type(obj)}" == "<class 'module'>":
+                pass
+            elif f"{type(obj)}" == "<class 'member_descriptor'>":
+                pass
+            elif f"{type(obj)}" == "<class 'builtin_function_or_method'>":
+                pass
+            elif f"{type(obj)}" == "<class 'set'>":
+                pass
+            elif f"{type(obj)}" == "<class 'classmethod'>":
+                pass
+            elif f"{type(obj)}" == "<class 'method'>":
+                pass
+            elif f"{type(obj)}" == "<class 'frozenset'>":
+                pass
+            elif f"{type(obj)}" == "<class 'cell'>":
+                pass
+            elif f"{type(obj)}" == "<class 'pathlib.PosixPath'>":
+                pass
+            elif f"{type(obj)}" == "<class 'weakref.ReferenceType'>":
+                pass
+            elif f"{type(obj)}" == "<class 'dataclasses.Field'>":
+                pass
+            elif f"{type(obj)}" == "<class '_collections._tuplegetter'>":
+                pass
+            elif f"{type(obj)}" == "<class 'staticmethod'>":
+                pass
+            elif f"{type(obj)}" == "<class 'collections.defaultdict'>":
+                pass
+            else:
+                summary += f"{type(obj)}\n"
+        except Exception:
+            # log(
+            #     ERROR,
+            #     "get_referenced_tensors_summary :: error while inspecting ",
+            #     "object of type %s",
+            #     type(obj),
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+            pass
+    if verbose:
+        log(
+            INFO,
+            "get_objects_types :: %s",
+            summary,
         )
     return summary
 
