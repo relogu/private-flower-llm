@@ -1,9 +1,9 @@
 """Provides the internal fucntions used by the LLM client."""
+import atexit
 import copy
 import gc
 import logging
 import os
-import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
@@ -14,11 +14,6 @@ import streaming
 import torch
 from composer import Callback, ComposerModel, Evaluator, Trainer
 from composer.devices import DeviceGPU
-from composer.loggers import MosaicMLLogger
-from composer.loggers.mosaicml_logger import (
-    MOSAICML_ACCESS_TOKEN_ENV_VAR,
-    MOSAICML_PLATFORM_ENV_VAR,
-)
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility
 from flwr.common.logger import log
@@ -36,7 +31,6 @@ from llmfoundry.utils.builders import (
     build_algorithm,
     build_callback,
     build_icl_data_and_gauntlet,
-    build_logger,
     build_optimizer,
     build_scheduler,
     build_tokenizer,
@@ -422,9 +416,7 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    logger_configs: Optional[DictConfig] = pop_config(
-        _cfg, "loggers", must_exist=False, default_value=None
-    )
+    pop_config(_cfg, "loggers", must_exist=False, default_value=None)
     callback_configs: Optional[DictConfig] = pop_config(
         _cfg, "callbacks", must_exist=False, default_value=None
     )
@@ -479,9 +471,9 @@ def _get_trainer_object(
     progress_bar = pop_config(
         _cfg, "progress_bar", must_exist=False, default_value=False
     )
-    log_to_console: bool = pop_config(
-        _cfg, "log_to_console", must_exist=False, default_value=True
-    )
+    # log_to_console: bool = pop_config(
+    #     _cfg, "log_to_console", must_exist=False, default_value=True
+    # )
     python_log_level: Optional[str] = pop_config(
         _cfg, "python_log_level", must_exist=False, default_value="debug"
     )
@@ -510,9 +502,7 @@ def _get_trainer_object(
     compile_config: Optional[Dict[str, Any]] = pop_config(
         _cfg, "compile_config", must_exist=False, default_value=None
     )
-    metadata: Optional[Dict[str, str]] = pop_config(
-        _cfg, "metadata", must_exist=False, default_value=None, convert=True
-    )
+    pop_config(_cfg, "metadata", must_exist=False, default_value=None, convert=True)
 
     # Enable autoresume from model checkpoints if possible
     autoresume_default: bool = False
@@ -586,35 +576,35 @@ def _get_trainer_object(
     scheduler_name: str = scheduler_config.pop("name")
     scheduler = build_scheduler(scheduler_name, scheduler_config)
 
-    # Loggers
-    loggers = (
-        [
-            build_logger(str(name), logger_cfg)
-            for name, logger_cfg in logger_configs.items()
-        ]
-        if logger_configs
-        else []
-    )
+    # # Loggers
+    # loggers = (
+    #     [
+    #         build_logger(str(name), logger_cfg)
+    #         for name, logger_cfg in logger_configs.items()
+    #     ]
+    #     if logger_configs
+    #     else []
+    # )
 
-    mosaicml_logger = next(
-        (logger for logger in loggers if isinstance(logger, MosaicMLLogger)), None
-    )
-    if mosaicml_logger is None:
-        if os.environ.get(
-            MOSAICML_PLATFORM_ENV_VAR, "false"
-        ).lower() == "true" and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR):
-            # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
-            # access token is set, and mosaic logger wasn't previously added
-            mosaicml_logger = MosaicMLLogger()
-            loggers.append(mosaicml_logger)
+    # mosaicml_logger = next(
+    #     (logger for logger in loggers if isinstance(logger, MosaicMLLogger)), None
+    # )
+    # if mosaicml_logger is None:
+    #     if os.environ.get(
+    #         MOSAICML_PLATFORM_ENV_VAR, "false"
+    #     ).lower() == "true" and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR):
+    #         # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
+    #         # access token is set, and mosaic logger wasn't previously added
+    #         mosaicml_logger = MosaicMLLogger()
+    #         loggers.append(mosaicml_logger)
 
-    if metadata is not None:
-        # Flatten the metadata for logging
-        logged_cfg.pop("metadata", None)
-        logged_cfg.update(metadata, merge=True)
-        if mosaicml_logger is not None:
-            mosaicml_logger.log_metrics(metadata)
-            mosaicml_logger._flush_metadata(force_flush=True)
+    # if metadata is not None:
+    #     # Flatten the metadata for logging
+    #     logged_cfg.pop("metadata", None)
+    #     logged_cfg.update(metadata, merge=True)
+    #     if mosaicml_logger is not None:
+    #         mosaicml_logger.log_metrics(metadata)
+    #         mosaicml_logger._flush_metadata(force_flush=True)
 
     # Profiling
     profiler: Optional[Profiler] = None
@@ -673,8 +663,8 @@ def _get_trainer_object(
             device_train_batch_size,
         )
 
-    if mosaicml_logger is not None:
-        mosaicml_logger.log_metrics({"data_validated": time.time()})
+    # if mosaicml_logger is not None:
+    #     mosaicml_logger.log_metrics({"data_validated": time.time()})
 
     ## Evaluation
     # log(INFO, "Building eval loader...")
@@ -749,9 +739,9 @@ def _get_trainer_object(
         eval_interval=eval_interval,
         eval_subset_num_batches=eval_subset_num_batches,
         progress_bar=progress_bar,
-        log_to_console=log_to_console,
+        # log_to_console=log_to_console,
         console_log_interval=console_log_interval,
-        loggers=loggers,
+        # loggers=loggers,
         callbacks=callbacks,
         precision=precision,
         algorithms=algorithms,
@@ -1026,6 +1016,32 @@ def clean_trainer_state(trainer: Trainer, just_evaluators: bool = False) -> None
                 stack_info=True,
             )
 
+        atexit.unregister(trainer.engine._close)
+
+        try:
+            delattr(trainer.engine, "logger")
+        except AttributeError:
+            pass
+        except Exception as e:
+            log(
+                ERROR,
+                'Error running `delattr(trainer.engine, "logger")`',
+                exc_info=e,
+                stack_info=True,
+            )
+
+        try:
+            delattr(trainer.engine, "state")
+        except AttributeError:
+            pass
+        except Exception as e:
+            log(
+                ERROR,
+                'Error running `delattr(trainer.engine, "state")`',
+                exc_info=e,
+                stack_info=True,
+            )
+
         try:
             delattr(trainer, "engine")
         except AttributeError:
@@ -1070,6 +1086,18 @@ def clean_trainer_state(trainer: Trainer, just_evaluators: bool = False) -> None
             log(
                 ERROR,
                 'Error running `delattr(trainer, "_checkpoint_saver")`',
+                exc_info=e,
+                stack_info=True,
+            )
+
+        try:
+            delattr(trainer.logger, "_state")
+        except AttributeError:
+            pass
+        except Exception as e:
+            log(
+                ERROR,
+                'Error running `delattr(trainer.logger, "_state")`',
                 exc_info=e,
                 stack_info=True,
             )
@@ -1192,6 +1220,8 @@ def llm_fit(
     # get_referenced_tensors_summary(cuda_only=False)
     # force_referenced_tensors_destruction()
     # get_referenced_trainers_and_engines()
+    # get_referenced_dataloaders_and_dataspec()
+    # get_referenced_gradscaler_and_evaluators()
     # log(
     #     INFO,
     #     "Trainer closed. Memory snapshot\n%s.",
@@ -1239,8 +1269,13 @@ def llm_eval(
         log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
     gc.collect()
     torch.cuda.empty_cache()
+    # get_referenced_trainers_and_engines()
+    # get_referenced_dataloaders_and_dataspec()
+    # get_referenced_gradscaler_and_evaluators()
+    # get_objects_dict()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
+    # get_objects_types()
     # log(INFO, "Done.")
     # TODO: What do we do with the first argument?
     return 0.0, num_samples, eval_metrics
