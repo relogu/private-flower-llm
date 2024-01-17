@@ -46,8 +46,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         if self.cfg.save_folder is not None:  # type: ignore[union-attr]
             self.cfg.save_folder = (  # type: ignore[union-attr]
                 self.cfg.save_folder  # type: ignore[union-attr]
-                + "_"
-                + self.cfg.run_name  # type: ignore[union-attr]
                 + "_c"
                 + str(self.cid)
             )
@@ -104,7 +102,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Tie the local path to the client_id and the run_uuid
         new_local_path = (
             str(cfg.data_local)  # type: ignore[union-attr]
-            + f"/{cfg.run_name}_client_{self.cid}"  # type: ignore[union-attr]
+            + f"/client_{self.cid}"
         )
         cfg = set_all_data_paths(cfg, new_local_path)
         # Execute the fit function
@@ -131,7 +129,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
             cfg = set_all_data_paths(cfg, new_remote_path, False)
         # Tie the local path to the client_id and the run_uuid
         new_local_path = (
-            str(cfg.data_local) + f"/{cfg.run_name}_val"  # type: ignore[union-attr]
+            str(cfg.data_local) + "/val"  # type: ignore[union-attr]
         )
         cfg = set_all_data_paths(cfg, new_local_path)
         return llm_eval(parameters, config, cfg)
@@ -202,16 +200,16 @@ def main(cfg: DictConfig) -> None:
             "VirtualLLMClient.get_parameters :: parameters' length is %s",
             len(parameters),
         )
-        # # Test virtual client's fit function
-        # parameters, num_examples, metrics = virtual_llm_client.fit(
-        #     parameters=parameters, config={}
-        # )
-        # log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
-        # log(
-        #     INFO, "VirtualLLMClient.fit :: number of example trained is %s.",
-        #     num_examples,
-        # )
-        # log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
+        # Test virtual client's fit function
+        parameters, num_examples, metrics = virtual_llm_client.fit(
+            parameters=parameters, config={}
+        )
+        log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
+        log(
+            INFO, "VirtualLLMClient.fit :: number of example trained is %s.",
+            num_examples,
+        )
+        log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
         # Test virtual client's evaluate function
         loss, num_examples, metrics = virtual_llm_client.evaluate(
             parameters=parameters, config={}
