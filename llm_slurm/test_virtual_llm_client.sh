@@ -14,34 +14,26 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
     . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
 else
     echo "Assuming the script is executing NOT in the CSD3."
-    # Adding CUDA paths to environment variables
-    export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-    export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-    # Check CUDA
-    nvcc -V
+    #! Executing the environment preparation script
+    #! NOTE: Must use "." to execute, "sh" doesn't work
+    . $HOME/projects/pollen_worker/llm_slurm/install_env.sh
 fi
-#! Activate Poetry environment
-POETRY_ENV_PATH=$(poetry env info --path)
-. $POETRY_ENV_PATH/bin/activate
-
 #! Set `LLM_CONFIG` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
 shift
-
 #! Set `DATA_CONFIG` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
-
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
 mkdir -p $SAVE_PATH
-
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
-
+#! Getting visible GPUs
+N_GPUS=$(nvidia-smi -L | wc -l)
+CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional settings specific for the current testing
-TESTING_OPTIONS="llm_config.console_log_interval=512ba"
-export CUDA_LAUNCH_BLOCKING=1
-
+TESTING_OPTIONS=""
 #! Test VirtualLLMClient
-poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/virtual_llm_client.log 
+RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES NCCL_BLOCKING_WAIT=1 CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.clients.virtual_llm_client $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/virtual_llm_client.log 
