@@ -22,10 +22,11 @@ from typing import (
 import numpy as np
 import ray
 import torch
-import wandb
 from flwr.common import FitRes, Metrics, NDArrays, Scalar, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
+
+import wandb
 
 
 #### Server ####
