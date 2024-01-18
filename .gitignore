@@ -186,3 +186,9 @@ results/*
 
 # Simulations' results
 *.pickle
+
+# Checkpoints
+checkpoints/*
+
+# llmfoundry scripts symlinked
+llm-foundry-scripts
