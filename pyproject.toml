@@ -107,6 +107,7 @@ mosaicml-turbo = "0.0.4"
 pip = "^23.3.2"
 py3nvml = "^0.2.7"
 memray = "^1.11.0"
+objgraph = "^3.6.0"
 
 
 [tool.poetry.dev-dependencies]
