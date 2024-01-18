@@ -85,7 +85,7 @@ class Worker(mp.Process):  # type: ignore
         #     fit_num_samples,
         #     len(train_metrics),
         # )
-        if int(os.getenv("LOCAL_RANK")) == 0:
+        if int(os.getenv("LOCAL_RANK", "")) == 0:
             # Worker's partial aggregation for parameters and n_samples
             (p_agg_params, p_agg_samples) = partially_aggregate(
                 (self.worker_parameters, self.worker_num_samples[0]),
@@ -142,7 +142,7 @@ class Worker(mp.Process):  # type: ignore
         #     eval_num_samples,
         #     eval_metrics,
         # )
-        if int(os.getenv("LOCAL_RANK")) == 0:
+        if int(os.getenv("LOCAL_RANK", "")) == 0:
             # TODO: Worker's partial aggregation for eval_loss
             # Worker's partial aggregation for metrics
             (agg_n_samples, p_agg_metrics) = partially_aggregate_metrics(
@@ -214,7 +214,7 @@ class Worker(mp.Process):  # type: ignore
                     # Take the timestamp after the task is done
                     end_time = time.time_ns()
                     # Only rank 0 returns the result
-                    if int(os.getenv("LOCAL_RANK")) == 0:
+                    if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Put the result in the result queue
                         self.result_queue.put(
                             [
@@ -228,7 +228,7 @@ class Worker(mp.Process):  # type: ignore
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
                     # Only rank 0 returns the result
-                    if int(os.getenv("LOCAL_RANK")) == 0:
+                    if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
