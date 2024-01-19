@@ -9,7 +9,7 @@
 #!SBATCH --dependency=afterany:77959
 
 # Load modules or your own conda environment here
-cd /nfs-share/ls985/pollen_worker
+cd $HOME/projects/pollen_worker
 poetry shell
 
 #! Set up the redis password

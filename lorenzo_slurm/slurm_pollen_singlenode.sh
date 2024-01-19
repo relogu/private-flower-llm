@@ -10,7 +10,7 @@
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-cd /nfs-share/ls985/pollen_worker
+cd $HOME/projects/pollen_worker
 poetry shell
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
