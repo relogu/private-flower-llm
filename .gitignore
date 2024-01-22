@@ -189,3 +189,6 @@ checkpoints/*
 
 # llmfoundry scripts symlinked
 llm-foundry-scripts
+
+# CSVs
+*.csv
