@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodelist=mauao,ngongotaha
 #SBATCH --gres=gpu:3
-#SBATCH --job-name=PG13-lb-scale10k
+#SBATCH --job-name=PG13-bu-scale10k
 #SBATCH --cpus-per-task 24
 #SBATCH --ntasks-per-node=1
 #SBATCH --output=%x-%j.out
@@ -23,7 +23,7 @@ poetry shell
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-policy="lb"
+policy="bu"
 echo "Using policy $policy"
 CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=google_speech task.n_clients_per_round=10000 task.num_rounds=10 local_epochs=1 placement_policy=$policy flwr_address=$ip:6481"
 

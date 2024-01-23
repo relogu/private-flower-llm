@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --time=04:00:00
-#SBATCH --dependency=afterany:78324
+#SBATCH --dependency=afterany:82101
 
 #! Need to force the nodes. Otherwise, the nodes might be allocated randomly.
 #! Head node is `mauao`, 128.232.115.0
@@ -25,7 +25,7 @@ poetry shell
 # Set the custom hydra arguments that will be passed to the server and the node manager
 policy="lb"
 echo "Using policy $policy"
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=10000 task.num_rounds=10 local_epochs=1 placement_policy=$policy flwr_address=$ip:6379"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=shakespeare_memory task.n_clients_per_round=10000 task.num_rounds=10 local_epochs=1 placement_policy=$policy flwr_address=$ip:6479"
 
 echo "STARTING POLLEN SERVER at $node_1"
 poetry run python -m pollen_worker.server_with+pollen $CUSTOM_HYDRA_ARGS &
