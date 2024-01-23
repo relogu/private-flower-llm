@@ -196,3 +196,7 @@ llm-foundry-scripts
 
 # Flower history objects
 history.json
+
+# Results from Pollen's rebuttal
+gpu_results
+notebooks/*.txt
