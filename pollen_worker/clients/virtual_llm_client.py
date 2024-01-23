@@ -7,11 +7,12 @@ even if many are spawned at once.
 """
 import copy
 import time
-from logging import INFO
+from logging import DEBUG, INFO
 from typing import Any, Callable, Dict, Union
 
 import flwr as fl
 import hydra
+import psutil
 import transformers
 from anyio import Path
 from flwr.common.logger import log
@@ -25,6 +26,12 @@ from pollen_worker.clients.llm_client_functions import (
     llm_fit,
     set_all_data_paths,
     set_n_workers_dataloaders,
+)
+from pollen_worker.utils import (
+    get_file_names_from_file_number,
+    get_open_fds,
+    get_referenced_tensors_summary,
+    get_selected_objects_types,
 )
 
 
@@ -206,6 +213,68 @@ def main(cfg: DictConfig) -> None:
             num_examples,
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
+        all_opened = 0
+        sum_of_ram = 0
+        for proc in psutil.process_iter():
+            try:
+                n_opened_files = len(proc.open_files())
+                ram_occupied = proc.memory_info().rss
+                # log(
+                #     DEBUG, "Process %s with PID %s has %d opened files."
+                #     "RAM occupied: %d bytes.",
+                #     proc.name(), proc.pid, n_opened_files, ram_occupied,
+                # )
+                all_opened += n_opened_files
+                sum_of_ram += ram_occupied
+            except Exception:
+                # log(
+                #     DEBUG,
+                #     "Error running `len(proc.open_files())` for process %s",
+                #     proc.name(),
+                #     exc_info=e,
+                #     stack_info=True,
+                # )
+                pass
+        log(
+            DEBUG,
+            "All processes have %d opened files and %d file descriptors. "
+            "RAM occupied: %d bytes.",
+            all_opened,
+            len(get_open_fds()),
+            sum_of_ram,
+        )
+        log(
+            DEBUG,
+            "Opened file descriptors: %s",
+            "\n".join(get_file_names_from_file_number(get_open_fds())),
+        )
+        proc = psutil.Process()
+        n_opened_files = len(proc.open_files())
+        log(
+            DEBUG,
+            "Current process %s has %d opened files. RAM occupied: %d bytes.",
+            proc.name(),
+            n_opened_files,
+            proc.memory_info().rss,
+        )
+
+        get_referenced_tensors_summary(cuda_only=False)
+
+        get_selected_objects_types(
+            selection=[
+                "torch",
+                "streaming",
+                "multiprocessing",
+                "composer",
+                "subprocess",
+                "llmfoundry",
+            ],
+            second_selection=[
+                "streaming.base.compression",
+                "streaming.base.shared.memory.SharedMemory",
+                "multiprocessing.context.Process",
+            ],
+        )
         # Test virtual client's evaluate function
         loss, num_examples, metrics = virtual_llm_client.evaluate(
             parameters=parameters, config={}
