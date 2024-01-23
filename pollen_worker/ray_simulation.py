@@ -42,7 +42,7 @@ def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
     # NOTE: These numbers are compatible with the last version of Pollen
     if name == "reddit":
         return {
-            "NVIDIA A40": 14,
+            "NVIDIA A40": 13,
             "NVIDIA GeForce RTX 2080 Ti": 3,
         }
     if name == "shakespeare" or name == "shakespeare_memory":
@@ -52,12 +52,12 @@ def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
         }
     if name == "google_speech":
         return {
-            "NVIDIA A40": 22,
+            "NVIDIA A40": 20,
             "NVIDIA GeForce RTX 2080 Ti": 6,
         }
     if name == "openimage":
         return {
-            "NVIDIA A40": 15,
+            "NVIDIA A40": 14,
             "NVIDIA GeForce RTX 2080 Ti": 4,
         }
     raise ValueError(f"Unknown dataset name: {name}")
@@ -142,11 +142,14 @@ def main(cfg: DictConfig) -> None:
 
     # (Optional) Specify Ray configuration
     log(INFO, f"This simulation has affinity: {os.sched_getaffinity(0)}")
-    ray_init_args = {
-        "address": cfg.ray_address,
-        "_redis_password": cfg.ray_redis_password,
-        "_node_ip_address": cfg.ray_node_ip_address,
-    }
+    if cfg.ray_address is not None:
+        ray_init_args = {
+            "address": cfg.ray_address,
+            "_redis_password": cfg.ray_redis_password,
+            "_node_ip_address": cfg.ray_node_ip_address,
+        }
+    else:
+        ray_init_args = None
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Start simulation

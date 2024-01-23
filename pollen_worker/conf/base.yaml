@@ -1,33 +1,29 @@
 ---
+# General parmeters
 local_epochs: 1
-flwr_address: 127.0.0.1:1042
-ray_address: localhost:8042
-ray_redis_password: culo
-ray_node_ip_address: localhost
-run_uuid: 0
+flwr_address: null
+ray_address: null
+ray_redis_password: null
+ray_node_ip_address: null
+run_uuid: null
 save_freq: 100
-output_dir: /nfs-share/ls985/pollen_worker/outputs/2023-09-01/16-20-25
+output_dir: null
 multirun_output_dir: null
 seed: 1337
-placement_policy: rr # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
+placement_policy: lb # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
 num_nodes: 1
 
 # Task
 defaults:
   - _self_
-  - task: reddit
-
-gen_num_total_virtual_clients:
-  _target_: pollen_worker.utils.shakespeare_gen_num_total_virtual_clients
-  data_root: ${task.data_root}
-  dataset: train
-  min_samples_per_client: ${task.batch_size}
+  - task: shakespeare_memory
 
 # Client Fit Function
 gen_client_fn:
   _target_: pollen_worker.virtual_client.gen_client_fn
   name: ${task.name}
 
+# Fit configuration
 gen_on_fit_config_fn:
   _target_: pollen_worker.utils.gen_on_fit_config_fn
   batch_size: ${task.batch_size}
@@ -38,8 +34,8 @@ gen_on_fit_config_fn:
   is_fake: ${task.is_fake}
   n_workers: ${task.n_workers}
 
+# Wandb configuration
 use_wandb: false
-
 wandb:
   setup:
     project: pollen
