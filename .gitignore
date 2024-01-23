@@ -192,3 +192,6 @@ llm-foundry-scripts
 
 # CSVs
 *.csv
+
+# Other results
+notebooks/*.txt
