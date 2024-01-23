@@ -3475,7 +3475,7 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "fl"
-resolved_reference = "e6de077bc7330b930edc447ca11affc58c003c99"
+resolved_reference = "37972bc1a1407559440d330acd94b232b6a63815"
 
 [[package]]
 name = "mosaicml-cli"
@@ -3549,7 +3549,7 @@ spark = ["pyspark (>=3,<4)"]
 type = "git"
 url = "https://github.com/relogu/streaming.git"
 reference = "fl"
-resolved_reference = "c3b5b7e6fa22673ba06f4ccf4f63b4ad350f1d41"
+resolved_reference = "7e7505e3581782c30843a9db768877cb202bba28"
 
 [[package]]
 name = "mosaicml-turbo"
