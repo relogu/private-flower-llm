@@ -350,7 +350,7 @@ def _get_trainer_object(
 
     # Initialize pytorch distributed training process groups
     dist_timeout: Union[int, float] = pop_config(
-        _cfg, "dist_timeout", must_exist=False, default_value=10.0
+        _cfg, "dist_timeout", must_exist=False, default_value=600.0
     )
 
     # Set the device in case multiple GPUs are requested to be
@@ -789,8 +789,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
+    # # Cleaning stale shared memory
+    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, logged_cfg = _get_trainer_object(
         _cfg=cfg,
@@ -855,8 +855,8 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
+    # # Cleaning stale shared memory
+    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
