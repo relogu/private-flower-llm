@@ -212,6 +212,7 @@ class NodeManager(fl.client.NumPyClient):
         for _, worker in self.workers_dict.items():
             while worker.is_alive():
                 time.sleep(0.1)
+                worker.terminate()
         log(
             DEBUG,
             "NodeManager %s: workers are dead.",
@@ -419,7 +420,6 @@ class NodeManager(fl.client.NumPyClient):
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_eval = cast(str, assignments).split(",")
         # Append NodeManager's config
-        config["MASTER_PORT"] = str(get_free_tcp_port())
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
         )
@@ -442,6 +442,7 @@ class NodeManager(fl.client.NumPyClient):
             self._check_workers_health()
             # Get the current cid
             current_cid = int(list_of_cids_to_eval.pop(0))
+            config["MASTER_PORT"] = str(get_free_tcp_port())
             # Send the collaborative task to the workers
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "evaluate"))
@@ -482,6 +483,8 @@ class NodeManager(fl.client.NumPyClient):
                 set_num_samples_shm(w_num_samples, 0)
             else:
                 list_of_cids_to_eval.append(str(current_cid))
+                # Kill all the workers and restart
+                self._close_workers()
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
