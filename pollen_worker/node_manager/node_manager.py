@@ -423,13 +423,6 @@ class NodeManager(fl.client.NumPyClient):
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
         )
-        # Update shared memories objects
-        self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
-            config=config,
-            create=True,
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
-        )
-        set_config_shm(config, self.fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
@@ -443,6 +436,13 @@ class NodeManager(fl.client.NumPyClient):
             # Get the current cid
             current_cid = int(list_of_cids_to_eval.pop(0))
             config["MASTER_PORT"] = str(get_free_tcp_port())
+            # Update shared memories objects
+            self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
+                config=config,
+                create=True,
+                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+            )
+            set_config_shm(config, self.fl_instructions_config_sh)
             # Send the collaborative task to the workers
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "evaluate"))
@@ -485,6 +485,9 @@ class NodeManager(fl.client.NumPyClient):
                 list_of_cids_to_eval.append(str(current_cid))
                 # Kill all the workers and restart
                 self._close_workers()
+            # Close the config shared memory
+            self.fl_instructions_config_sh.close()
+            self.fl_instructions_config_sh.unlink()
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
@@ -507,9 +510,6 @@ class NodeManager(fl.client.NumPyClient):
             int(node_eval_samples),
             node_eval_metrics,
         )
-        # Close the config shared memory
-        self.fl_instructions_config_sh.close()
-        self.fl_instructions_config_sh.unlink()
         # Return results
         return (
             node_eval_loss,
