@@ -75,6 +75,7 @@ def set_all_data_paths(
 def set_n_workers_dataloaders(
     cfg: DictConfig,
     n_workers: int = -1,
+    cap: int = 32,
 ) -> DictConfig:
     """Set the `n_workers` parameter for all dataloaders in the config."""
     if n_workers < 0:
@@ -82,8 +83,8 @@ def set_n_workers_dataloaders(
     n_cuda_device = get_n_cuda_devices()
     if n_cuda_device > 0:
         n_workers = n_workers // n_cuda_device
-    cfg.train_loader.num_workers = n_workers
-    cfg.eval_loader.num_workers = n_workers
+    cfg.train_loader.num_workers = min(n_workers, cap)
+    cfg.eval_loader.num_workers = min(n_workers, cap)
     return cfg
 
 
