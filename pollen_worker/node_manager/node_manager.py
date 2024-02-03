@@ -207,9 +207,8 @@ class NodeManager(fl.client.NumPyClient):
         for _, worker in self.workers_dict.items():
             close_all_shms(worker.worker_uuid)
         # Wait until the worker is dead
-        for _ in range(len(self.workers_dict)):
-            self.task_queue.put(None)
         for _, worker in self.workers_dict.items():
+            worker.soft_shutdown()
             while worker.is_alive():
                 time.sleep(0.1)
                 worker.terminate()
@@ -437,7 +436,10 @@ class NodeManager(fl.client.NumPyClient):
             current_cid = int(list_of_cids_to_eval.pop(0))
             config["MASTER_PORT"] = str(get_free_tcp_port())
             # Update shared memories objects
-            self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
+            (
+                self.fl_instructions_config,
+                self.fl_instructions_config_sh,
+            ) = get_config_shm(
                 config=config,
                 create=True,
                 name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
@@ -447,7 +449,21 @@ class NodeManager(fl.client.NumPyClient):
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "evaluate"))
             # Wait for the result
-            current_stats = self.result_queue.get()
+            current_stats = None
+            while current_stats is None:
+                try:
+                    current_stats = self.result_queue.get(timeout=10)
+                except Exception as e:
+                    log(
+                        ERROR,
+                        "NodeManager %s: no results received in time.",
+                        self.name,
+                        exc_info=e,
+                        stack_info=True,
+                    )
+                    for _, worker in self.workers_dict.items():
+                        if not worker.is_alive():
+                            current_stats = [-1, 0, 0, -1]
             log(
                 DEBUG,
                 "NodeManager %s: worker %s finished and returned cid %s.",
@@ -488,6 +504,9 @@ class NodeManager(fl.client.NumPyClient):
             # Close the config shared memory
             self.fl_instructions_config_sh.close()
             self.fl_instructions_config_sh.unlink()
+            # Empty the tasks list
+            while not self.task_queue.empty():
+                self.task_queue.get()
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
