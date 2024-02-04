@@ -790,6 +790,10 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
+    # Automatically setting the `n_workers` parameter based on CPU available
+    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
+    # Ignoring model if loading a checkpoint
+    cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
@@ -821,6 +825,12 @@ def llm_fit(
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
+    # Extract LR
+    for optimizer in trainer.state.optimizers:
+        lrs = [group['lr'] for group in optimizer.param_groups]
+        name = optimizer.__class__.__name__
+        for idx, lr in enumerate(lrs):
+            train_metrics.update({f'lr-{name}/group{idx}': lr})
     # TODO: Extract learning rate and put it into the metrics
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
@@ -856,6 +866,10 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    # Automatically setting the `n_workers` parameter based on CPU available
+    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
+    # Ignoring model and optimizer if loading a checkpoint
+    cfg.load_ignore_keys = ["state/model/*", "*optim*"]  # type: ignore[union-attr]
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
