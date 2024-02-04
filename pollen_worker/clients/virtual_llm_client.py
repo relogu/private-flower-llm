@@ -127,8 +127,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Force llm_config params to select the centralised eval set
-        cfg.train_loader = None  # type: ignore[union-attr]
         # Set the appropriate path for the (centralised) val set
         if cfg.data_remote is not None:  # type: ignore[union-attr]
             # Extracts the parent folder from the remote path

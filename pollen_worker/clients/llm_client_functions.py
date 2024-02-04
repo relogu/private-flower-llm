@@ -868,6 +868,8 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
+    # Force llm_config params to select the centralised eval set
+    cfg.train_loader = None  # type: ignore[union-attr]
     # Ignoring model and optimizer if loading a checkpoint
     cfg.load_ignore_keys = ["state/model/*", "*optim*"]  # type: ignore[union-attr]
     # # Cleaning stale shared memory
