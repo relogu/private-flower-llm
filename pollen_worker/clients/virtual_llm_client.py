@@ -26,7 +26,6 @@ from pollen_worker.clients.llm_client_functions import (
     llm_eval,
     llm_fit,
     set_all_data_paths,
-    set_n_workers_dataloaders,
 )
 from pollen_worker.utils import (
     get_file_names_from_file_number,
@@ -56,7 +55,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
             try:
                 for file in os.listdir(Path(self.cfg.save_folder)):
                     if "latest" in file:
-                        self.cfg.load_path = self.cfg.save_folder+f"/{file}"
+                        self.cfg.load_path = self.cfg.save_folder + f"/{file}"
                         log(INFO, "Found a checkpoint to load: %s", file)
             except Exception as e:
                 log(
