@@ -794,6 +794,8 @@ def llm_fit(
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Ignoring model if loading a checkpoint
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+    # TEST: Try not to load the optim state
+    cfg.load_ignore_keys.append("*optim*")
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
@@ -827,10 +829,10 @@ def llm_fit(
     }
     # Extract LR
     for optimizer in trainer.state.optimizers:
-        lrs = [group['lr'] for group in optimizer.param_groups]
+        lrs = [group["lr"] for group in optimizer.param_groups]
         name = optimizer.__class__.__name__
         for idx, lr in enumerate(lrs):
-            train_metrics.update({f'lr-{name}/group{idx}': lr})
+            train_metrics.update({f"lr-{name}/group{idx}": lr})
     # TODO: Extract learning rate and put it into the metrics
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
