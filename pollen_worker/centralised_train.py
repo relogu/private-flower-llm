@@ -158,7 +158,6 @@ def build_composer_model(
         raise ValueError(f"Not sure how to build model with name={model_cfg.name}")
     return COMPOSER_MODEL_REGISTRY[model_cfg.name](model_cfg, tokenizer)
 
-
 def build_composer_peft_model(
     pretrained_model_name_or_path: str,
     lora_args: Dict[str, Any],
@@ -663,7 +662,7 @@ def main(_cfg: DictConfig) -> Trainer:
         save_num_checkpoints_to_keep=save_num_checkpoints_to_keep,
         save_overwrite=save_overwrite,
         save_weights_only=save_weights_only,
-        save_ignore_keys=save_ignore_keys,
+        # save_ignore_keys=save_ignore_keys,
         load_path=load_path,
         load_weights_only=load_weights_only,
         load_strict_model_weights=load_strict_model_weights,
