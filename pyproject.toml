@@ -45,7 +45,7 @@ wandb = "^0.16.1"
 pyarrow = "^13.0.0"
 multiprocess = "^0.70.15"
 nvsmi = "^0.4.2"
-transformers = ">=4.34.1,<4.35"
+transformers = ">=4.37,<4.38"
 cloudpickle = "^2.2.1"
 tqdm = "^4.66.1"
 psutil = "^5.9.5"
@@ -61,18 +61,15 @@ seaborn = "^0.13.0"
 jupyter-server = "^2.7.3"
 ipywidgets = "^8.1.1"
 ipython = "^8.17.2"
-torch = {url = "https://download.pytorch.org/whl/cu121_pypi_cudnn/torch-2.1.0%2Bcu121.with.pypi.cudnn-cp310-cp310-linux_x86_64.whl"}
-torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.0%2Bcu121-cp310-cp310-linux_x86_64.whl"}
-torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.0%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=5ea8bba7e82bf89467e7f8790499e3c20c97c7d0ccd778789ccdd2d84c647c9a"}
-# composer = "^0.17.1"
-mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl" }
-# mosaicml = { version = ">=0.17,<0.18", extras = ["libcloud,wandb,mlflow,oci,gcs"] }
-accelerate = ">=0.20,<0.21"
-# mosaicml-streaming = ">=0.7.1,<0.8"
-mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl" }
-datasets = ">=2.14.5,<2.15"
+torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=b2184b7729ef3b9b10065c074a37c1e603fd99f91e38376e25cb7ed6e1d54696"}
+torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=1e8a9207631e8ba6ecbdee3c9d66f1e9d438ad62b0b4d4f184016d8be89d68a7"}
+torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=baa7970c6b5437312e5dd0bd0f2571a20b786c3e285bafd6ed3e4f62a5c3c76e"}
+mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl-update", extras = ["libcloud,wandb,mlflow,oci,gcs"] }
+accelerate = ">=0.25,<0.26"
+mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl-update" }
+datasets = ">=2.16,<2.17"
 fsspec = "2023.6.0"
-einops = "0.5.0"
+einops = "0.7.0"
 omegaconf = ">=2.2.3,<3"
 slack-sdk = "<4"
 mosaicml-cli = ">=0.3,<1"
@@ -85,29 +82,17 @@ boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
-llm-foundry = "^0.4.0"
+llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl-update" }
 wheel = "^0.42.0"
-
-# ## For GPU flash attention
-# mosaicml-turbo = "0.0.4"
-# flash-attn = "1.0.9" # This fucks up, need to install it later
-# # PyPI does not support direct dependencies, so we remove this line before uploading from PyPI
-# xentropy-cuda-lib = { git = "https://github.com/HazyResearch/flash-attention.git", branch = "v1.0.9", subdirectory = "csrc/xentropy" }
-
-## For GPU flash attention v2
 mosaicml-turbo = "0.0.4"
-# flash-attn = "2.3.2" # This fucks up, need to install it later
-# # PyPI does not support direct dependencies, so we remove this line before uploading from PyPI
-# xentropy-cuda-lib = { git = "https://github.com/HazyResearch/flash-attention.git", branch = "v2.3.2", subdirectory = "csrc/xentropy" } # This fucks up, need to install it later
-
-# ## For peft
-# loralib = "0.1.1"
-# bitsandbytes = "0.39.1"
-# peft = "0.4.0"
+loralib = "0.1.1"
+bitsandbytes = "0.39.1"
+peft = "0.4.0"
 pip = "^23.3.2"
 py3nvml = "^0.2.7"
 memray = "^1.11.0"
 objgraph = "^3.6.0"
+watchdog = "3.0.0"
 
 
 [tool.poetry.dev-dependencies]
