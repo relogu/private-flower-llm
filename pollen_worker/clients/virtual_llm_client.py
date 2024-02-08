@@ -8,7 +8,7 @@ even if many are spawned at once.
 import copy
 import os
 import time
-from logging import DEBUG, INFO
+from logging import DEBUG, INFO, WARNING
 from typing import Any, Callable, Dict, Union
 
 import flwr as fl
@@ -58,13 +58,14 @@ class VirtualLLMClient(fl.client.NumPyClient):
                         self.cfg.load_path = self.cfg.save_folder + f"/{file}"
                         log(INFO, "Found a checkpoint to load: %s", file)
             except Exception as e:
-                log(
-                    DEBUG,
-                    "Error running `os.listdir` for folder %s",
-                    self.cfg.save_folder,
-                    exc_info=e,
-                    stack_info=True,
-                )
+                log(WARNING, "The `load_path` wasn't set.")
+                # log(
+                #     DEBUG,
+                #     "Error running `os.listdir` for folder %s",
+                #     self.cfg.save_folder,
+                #     exc_info=e,
+                #     stack_info=True,
+                # )
 
         transformers.logging.set_verbosity_error()
 
