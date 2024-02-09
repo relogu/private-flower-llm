@@ -1,6 +1,6 @@
 #!/bin/bash
 ## This script aims to setup the OS for a fluidstack machine
-## starting from the "Plain Ubuntu 22.04" image
+## starting from the "Plain Ubuntu 20.04" image
 #! Update and upgrade package manager
 sudo apt-get update
 sudo apt-get upgrade -y
@@ -15,7 +15,7 @@ if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
 else
     #! Get and install CUDA 12.1.1 and its drivers
     wget https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
-    sudo sh cuda_12.1.1_530.30.02_linux.run --toolkit --no-man-page --silent --driver
+    sudo sh cuda_12.1.1_530.30.02_linux.run --toolkit --no-man-page --driver --silent
 fi
 if [[ $PATH == *"cuda-12.1"* ]]; then
     echo "PATH variable is already set."
