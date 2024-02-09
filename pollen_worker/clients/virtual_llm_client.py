@@ -178,6 +178,7 @@ def main(cfg: DictConfig) -> None:
     assert isinstance(_llm_config, DictConfig)
     # Set `max_duration` to a low value for testing
     _llm_config.max_duration = "10ba"  # type: ignore[union-attr]
+    _llm_config.local_steps = "10ba"  # type: ignore[union-attr]
     # FIXME: test
     log(
         INFO,
@@ -189,7 +190,11 @@ def main(cfg: DictConfig) -> None:
         cfg=copy.deepcopy(_llm_config),
     )
     # Looping over two clients
-    for i in range(2):
+    # Cleaning stale shared memory
+    import streaming
+    streaming.base.util.clean_stale_shared_memory()
+    # for i in range(2):
+    for i in range(1):
         # Get initial model parameters
         parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
         log(
@@ -218,6 +223,7 @@ def main(cfg: DictConfig) -> None:
             num_examples,
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
+        ## PROFILING
         all_opened = 0
         sum_of_ram = 0
         for proc in psutil.process_iter():
