@@ -242,11 +242,11 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         all_param += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
-    # log(
-    #     INFO,
-    #     f"trainable params: {trainable_params} || all params: {all_param} || "
-    #     f"trainable params (%): {100 * trainable_params / all_param}",
-    # )
+    log(
+        INFO,
+        f"trainable params: {trainable_params} || all params: {all_param} || "
+        f"trainable params (%): {100 * trainable_params / all_param}",
+    )
 
 
 def _get_model_for_trainer(
@@ -802,6 +802,7 @@ def llm_fit(
     trainer, eval_first, logged_cfg = _get_trainer_object(
         _cfg=cfg,
     )
+    # log(INFO, f"Trainer config: {logged_cfg}")
     # Set the parameters
     if parameters is not None:
         # log(INFO, "Initializing model...")
