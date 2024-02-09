@@ -647,7 +647,7 @@ def main(cfg: DictConfig) -> None:
         )
     else:
         # Start NodeManager as a Flower client
-        fl.client.start_numpy_client(
+        fl.client.start_client(
             server_address=cfg.pollen.server_address,
             client=node_manager.to_client(),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
