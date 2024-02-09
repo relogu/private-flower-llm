@@ -59,9 +59,10 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 400ba
+  t_warmup: 100ba
   alpha_f: 0.1
-  t_max: 4800ba
+  # t_max: 4800ba
+  t_max: 5120ba
 
 optimizer:
   name: decoupled_adamw
@@ -76,7 +77,8 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 512ba
-max_duration: 4800ba  # ~ 2.5B tokens
+# max_duration: 4800ba
+max_duration: 5120ba
 eval_interval: 400ba
 eval_first: false
 eval_subset_num_batches: -1
@@ -118,10 +120,8 @@ callbacks:
 
 # Checkpoint to local filesystem or remote object store
 # save_interval: 400ba
-save_interval: 1ba
+save_interval: 512ba
 save_num_checkpoints_to_keep: 1  # Important, this cleans up checkpoints saved to DISK
-save_weights_only: true
-# save_ignore_keys: ["*optim*"]
 save_folder: ./{run_name}/checkpoints
 # save_folder: s3://my-bucket/my-folder/{run_name}/checkpoints
 save_overwrite: false

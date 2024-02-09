@@ -28,7 +28,7 @@ N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50735' fl.n_rounds=50"
+POLLEN_CONFIG="pollen.server_address='localhost:50735' fl.n_rounds=10"
 # POLLEN_CONFIG="pollen.server_address='localhost:50735' llm_config.optimizer.weight_decay=0.1" # Flat curves
 #! Launch ServerWithPollen
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $SAVE_PATH/server.log &
