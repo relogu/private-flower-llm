@@ -2,6 +2,7 @@
 import copy
 import pickle
 from logging import ERROR
+from multiprocessing import resource_tracker as res_track
 from multiprocessing.shared_memory import SharedMemory
 
 import numpy as np
@@ -200,3 +201,27 @@ def close_all_shms(process_uuid: str) -> None:
                     shm_name,
                     e,
                 )
+
+
+def remove_shm_from_resource_tracker() -> None:
+    """Monkey-patch multiprocessing.resource_tracker so SharedMemory won't be tracked.
+
+    More details at: https://bugs.python.org/issue38119
+    """
+
+    def fix_register(name, rtype) -> None:
+        if rtype == "shared_memory":
+            return
+        return res_track._resource_tracker.register(name, rtype)
+
+    res_track.register = fix_register
+
+    def fix_unregister(name, rtype) -> None:
+        if rtype == "shared_memory":
+            return
+        return res_track._resource_tracker.unregister(name, rtype)
+
+    res_track.unregister = fix_unregister
+
+    if "shared_memory" in res_track._CLEANUP_FUNCS:  # type: ignore[attr-defined]
+        del res_track._CLEANUP_FUNCS["shared_memory"]  # type: ignore[attr-defined]

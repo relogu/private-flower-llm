@@ -5,7 +5,6 @@ import time
 import uuid
 from contextlib import contextmanager
 from logging import DEBUG, ERROR
-from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Optional, Tuple
@@ -32,6 +31,7 @@ from pollen_worker.node_manager.utils import (
     get_eval_loss_shm,
     get_num_samples_shm,
     get_parameters_shm,
+    remove_shm_from_resource_tracker,
     set_config_shm,
     set_eval_loss_shm,
     set_num_samples_shm,
@@ -186,10 +186,6 @@ class Worker(mp.Process):  # type: ignore
             config={},
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
         )
-        resource_tracker.unregister(
-            name=fl_instructions_config_sh._name,  # type: ignore[attr-defined]
-            rtype="shared_memory",
-        )
         # Load client
         tmp_client = self.client_fn(client_id)
         is_collaborative = bool(fl_instructions_config["collaborative"])
@@ -270,11 +266,6 @@ class Worker(mp.Process):  # type: ignore
             parameters=self.parameters,
             name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
         )
-        # Un-registering b/c this is handled by the NodeManager
-        resource_tracker.unregister(
-            name=self.round_parameters_sh._name,  # type: ignore[attr-defined]
-            rtype="shared_memory",
-        )
         # NOTE: This is the Worker's shared memory for the fit results.
         # NodeManager should only read this. Worker should only write this.
         # Shared memory for worker's parameters
@@ -298,6 +289,8 @@ class Worker(mp.Process):  # type: ignore
     def run(self) -> None:
         """Start the process."""
         ## Create shared memories
+        # Call the monkey-patch for the resource-register
+        remove_shm_from_resource_tracker()
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
         # process, the `__init__()` function does not.
@@ -314,31 +307,6 @@ class Worker(mp.Process):  # type: ignore
 
     def soft_shutdown(self) -> None:
         """Soft shutdown."""
-        # Unregistering shared memories from NodeManager
-        try:
-            resource_tracker.unregister(
-                name=SharedMemory(name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM)._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-        except Exception as e:
-            log(
-                ERROR,
-                "Error while unregistering the shared memory for the round parameters.",
-                exc_info=e,
-                stack_info=True,
-            )
-        try:
-            resource_tracker.unregister(
-                name=SharedMemory(name=self.node_manager_uuid + POLLEN_CONFIG_SHM)._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-        except Exception as e:
-            log(
-                ERROR,
-                "Error while unregistering the shared memory for the FL instructions.",
-                exc_info=e,
-                stack_info=True,
-            )
         # Close and unlink Worker's shared memories
         close_all_shms(self.worker_uuid)
 
@@ -552,7 +520,7 @@ def create_new_worker(
     return worker
 
 
-def start_worker(worker: Worker):
+def start_worker(worker: Worker) -> None:
     """Start a worker."""
     worker.start()
     log(

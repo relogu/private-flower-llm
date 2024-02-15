@@ -59,6 +59,7 @@ from pollen_worker.node_manager.utils import (
     get_num_samples_shm,
     get_parameters_shm,
     partially_aggregate_training_results,
+    remove_shm_from_resource_tracker,
     set_config_shm,
     set_num_samples_shm,
     set_parameters_shm,
@@ -111,6 +112,8 @@ class NodeManager(fl.client.NumPyClient):
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # log(DEBUG, "Max processes per device: %s", max_proc_device)
         ## Set up round parameters SharedMemory
+        # Call the monkey-patch for the resource-register
+        remove_shm_from_resource_tracker()
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=parameters,
@@ -203,9 +206,6 @@ class NodeManager(fl.client.NumPyClient):
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
-        # Close and unlink all the shared memories
-        for _, worker in self.workers_dict.items():
-            close_all_shms(worker.worker_uuid)
         # Wait until the worker is dead
         for _, worker in self.workers_dict.items():
             worker.soft_shutdown()
@@ -316,7 +316,7 @@ class NodeManager(fl.client.NumPyClient):
             while current_stats is None:
                 try:
                     current_stats = self.result_queue.get(timeout=10)
-                except Exception as e:
+                except Exception:
                     # log(
                     #     ERROR,
                     #     "NodeManager %s: no results received in time.",
@@ -469,7 +469,7 @@ class NodeManager(fl.client.NumPyClient):
             while current_stats is None:
                 try:
                     current_stats = self.result_queue.get(timeout=10)
-                except Exception as e:
+                except Exception:
                     # log(
                     #     ERROR,
                     #     "NodeManager %s: no results received in time.",
