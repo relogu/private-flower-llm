@@ -50,14 +50,17 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Set the save folder specifically for this client and this run
         if self.cfg.save_folder is not None:  # type: ignore[union-attr]
             self.cfg.save_folder = (  # type: ignore[union-attr]
-                self.cfg.save_folder + "_c" + str(self.cid)  # type: ignore[union-attr]
+                self.cfg.save_folder
+                + f"/{self.cfg.run_name}"
+                + "/client_"  # type: ignore[union-attr]
+                + str(self.cid)  # type: ignore[union-attr]
             )
             try:
                 for file in os.listdir(Path(self.cfg.save_folder)):
                     if "latest" in file:
                         self.cfg.load_path = self.cfg.save_folder + f"/{file}"
                         log(INFO, "Found a checkpoint to load: %s", file)
-            except Exception as e:
+            except Exception:
                 log(WARNING, "The `load_path` wasn't set.")
                 # log(
                 #     DEBUG,
@@ -192,6 +195,7 @@ def main(cfg: DictConfig) -> None:
     # Looping over two clients
     # Cleaning stale shared memory
     import streaming
+
     streaming.base.util.clean_stale_shared_memory()
     # for i in range(2):
     for i in range(1):
