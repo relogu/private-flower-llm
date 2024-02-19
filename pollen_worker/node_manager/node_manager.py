@@ -27,7 +27,7 @@ import uuid
 from logging import DEBUG, ERROR, INFO
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
-from typing import Any, Callable, cast
+from typing import Any, Callable, cast, Optional
 
 import cloudpickle
 import flwr as fl
@@ -46,6 +46,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
+from pollen_worker.node_manager.minio_state import MinioState
+from pollen_worker.node_manager.minio_tools import MinioTools
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
@@ -91,6 +93,7 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
+        minio_state: Optional[MinioState] = None
     ) -> None:
         super().__init__()
         ## NodeManager general attributes
@@ -101,6 +104,7 @@ class NodeManager(fl.client.NumPyClient):
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
         self.client_fn = client_fn
         self.refresh_period = refresh_period
+        self.minio_state = minio_state
         ## Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs
@@ -359,6 +363,10 @@ class NodeManager(fl.client.NumPyClient):
     def fit(
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
+        # If applicable, override the parameters with values from MinIO
+        use_minio = isinstance(self.minio_state, MinioState)
+        if use_minio:
+            parameters = MinioTools.pull_parameters(self.minio_state)
         """Implement the fit step."""
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
@@ -406,6 +414,9 @@ class NodeManager(fl.client.NumPyClient):
             sum_of_samples,
             node_train_metrics,
         )
+        # If applicable, push the aggregated parameters to MinIO
+        if use_minio:
+            MinioTools.push_parameters(self.minio_state, aggregated_params)
         # Return results
         return (
             aggregated_params,
