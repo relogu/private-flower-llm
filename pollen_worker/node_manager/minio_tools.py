@@ -29,10 +29,13 @@ class MinioTools(object):
     def pull_parameters(state: MinioState) -> NDArrays:
         metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         file_list = []
+        tensor_type = ""
         try:
             response = state.client.get_object(state.bucket_name, metadata_file_path)
             metadata_json_string = response.read().decode("utf-8")
-            file_list = json.loads(metadata_json_string)
+            json_root = json.loads(metadata_json_string)
+            file_list = json_root["files"]
+            tensor_type = json_root["tensor_type"]
         finally:
             response.close()
             response.release_conn()
@@ -42,7 +45,7 @@ class MinioTools(object):
         tensors: list[bytes] = []
         number_of_files = len(file_list)
         for index in range(0, number_of_files, 1):
-            current_file_name = file_list[index]["fileName"]
+            current_file_name = file_list[index]["name"]
             current_file_hash = file_list[index]["sha3_256"]
             if len(current_file_name) < 15:
                 raise TypeError("The metadata JSON contains an invalid file name")
@@ -73,13 +76,14 @@ class MinioTools(object):
                     tensors.append(chunk)
                     tensor_start += tensor_length
 
-        return parameters_to_ndarrays(Parameters(tensors, ""))
+        return parameters_to_ndarrays(Parameters(tensors, tensor_type))
 
     @staticmethod
     def push_parameters(state: MinioState, parameters: NDArrays) -> bool:
         if not isinstance(parameters, list):
             raise TypeError("parameters are not an instance of List (i.e., NDArrays)")
-        tensors = ndarrays_to_parameters(parameters).tensors
+        params_with_bytes = ndarrays_to_parameters(parameters)
+        tensors = params_with_bytes.tensors
         minimum_file_size = 1024 * 1 * 50 # 10 MB
         file_list = []
         current_file_id = 1
@@ -97,7 +101,7 @@ class MinioTools(object):
                 hash.update(current_file_content)
                 current_file_hash = binascii.hexlify(hash.digest()).decode("utf-8")
                 file_list.append({
-                    "fileName": current_file_name,
+                    "name": current_file_name,
                     "tensors": tensors_in_file,
                     "sha3_256": current_file_hash
                 })
@@ -113,7 +117,8 @@ class MinioTools(object):
                 current_file_content = bytearray()
 
         metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
-        metadata_json_string = json.dumps(file_list)
+        json_root = {"files": file_list, "tensor_type": params_with_bytes.tensor_type}
+        metadata_json_string = json.dumps(json_root)
         metadata_bytes = metadata_json_string.encode("utf-8")
 
         write_result = state.client.put_object(

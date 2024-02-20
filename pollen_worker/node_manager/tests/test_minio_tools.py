@@ -49,8 +49,6 @@ class TestMinioTools(unittest.TestCase):
         state = MinioState(self.client, self.bucket_name, 1, self.buffer_length, self.run_uuid, self.node_manager_uuid)
         self.assertTrue(MinioTools.push_parameters(state, self.mock_parameters))
 
-        time.sleep(0.5)
-
         # Pull
         state = MinioState(self.client, self.bucket_name, 1, self.buffer_length, self.run_uuid, self.node_manager_uuid)
         pulled_parameters = MinioTools.pull_parameters(state)
