@@ -112,10 +112,9 @@ callbacks:
   memory_monitor: {}
   runtime_estimator: {}
 
-# loggers:
-#   wandb:
-#     project: {}
-#     name: {}
+loggers:
+  wandb: 
+    init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store
 # save_interval: 400ba
