@@ -91,7 +91,7 @@ elif [[ "$1" == "70B" ]]; then
     export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_70B"
 else
     echo "Invalid input argument: $1"
-    echo "Valid input arguments are: small, 16M, 125M, 350M, 540M, 760M, 1B, 3B, 7B, 70B"
+    echo "Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 70B"
     exit 1
 fi
 
