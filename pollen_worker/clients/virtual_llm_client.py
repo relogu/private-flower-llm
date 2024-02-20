@@ -6,8 +6,9 @@ virtual clients can be used to simulate a large number of clients on a single ma
 even if many are spawned at once.
 """
 import copy
+import os
 import time
-from logging import DEBUG, INFO
+from logging import DEBUG, INFO, WARNING
 from typing import Any, Callable, Dict, Union
 
 import flwr as fl
@@ -25,7 +26,6 @@ from pollen_worker.clients.llm_client_functions import (
     llm_eval,
     llm_fit,
     set_all_data_paths,
-    set_n_workers_dataloaders,
 )
 from pollen_worker.utils import (
     get_file_names_from_file_number,
@@ -47,20 +47,30 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Set init parameters
         self.cid = cid
         self.cfg = cfg
-        # Automatically setting the `n_workers` parameter based on CPU available
-        self.cfg = set_n_workers_dataloaders(self.cfg)  # type: ignore[union-attr]
         # Set the save folder specifically for this client and this run
         if self.cfg.save_folder is not None:  # type: ignore[union-attr]
             self.cfg.save_folder = (  # type: ignore[union-attr]
-                self.cfg.save_folder + "_c" + str(self.cid)  # type: ignore[union-attr]
+                self.cfg.save_folder
+                + f"/{self.cfg.run_name}"
+                + "/client_"  # type: ignore[union-attr]
+                + str(self.cid)  # type: ignore[union-attr]
             )
-        # FIXME: Read this from the config insted of hardcoding it
-        # Forcing not to load the model from a checkpoint
-        # From: https://github.com/mosaicml/composer/blob/2aa50e7741a077ff21f5743934fbcf4b755d441e/composer/trainer/trainer.py#L639
-        self.cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+            try:
+                for file in os.listdir(Path(self.cfg.save_folder)):
+                    if "latest" in file:
+                        self.cfg.load_path = self.cfg.save_folder + f"/{file}"
+                        log(INFO, "Found a checkpoint to load: %s", file)
+            except Exception:
+                log(WARNING, "The `load_path` wasn't set.")
+                # log(
+                #     DEBUG,
+                #     "Error running `os.listdir` for folder %s",
+                #     self.cfg.save_folder,
+                #     exc_info=e,
+                #     stack_info=True,
+                # )
 
         transformers.logging.set_verbosity_error()
-        # log(INFO, f'VirtualLLMClient.__init__ :: cid {self.cid}')
 
     def __repr__(self) -> str:
         """Implement the string representation."""
@@ -120,8 +130,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Force llm_config params to select the centralised eval set
-        cfg.train_loader = None  # type: ignore[union-attr]
         # Set the appropriate path for the (centralised) val set
         if cfg.data_remote is not None:  # type: ignore[union-attr]
             # Extracts the parent folder from the remote path
@@ -173,6 +181,7 @@ def main(cfg: DictConfig) -> None:
     assert isinstance(_llm_config, DictConfig)
     # Set `max_duration` to a low value for testing
     _llm_config.max_duration = "10ba"  # type: ignore[union-attr]
+    _llm_config.local_steps = "10ba"  # type: ignore[union-attr]
     # FIXME: test
     log(
         INFO,
@@ -184,7 +193,12 @@ def main(cfg: DictConfig) -> None:
         cfg=copy.deepcopy(_llm_config),
     )
     # Looping over two clients
-    for i in range(2):
+    # Cleaning stale shared memory
+    import streaming
+
+    streaming.base.util.clean_stale_shared_memory()
+    # for i in range(2):
+    for i in range(1):
         # Get initial model parameters
         parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
         log(
@@ -213,6 +227,7 @@ def main(cfg: DictConfig) -> None:
             num_examples,
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
+        ## PROFILING
         all_opened = 0
         sum_of_ram = 0
         for proc in psutil.process_iter():

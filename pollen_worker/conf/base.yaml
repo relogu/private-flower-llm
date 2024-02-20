@@ -48,4 +48,5 @@ wandb:
       # - batch_size_${task.batch_size}
     entity: null
     mode: online
+    name: ${run_uuid}
   start_eval: 0

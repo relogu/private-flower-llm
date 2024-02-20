@@ -5,7 +5,6 @@ import time
 import uuid
 from contextlib import contextmanager
 from logging import DEBUG, ERROR
-from multiprocessing import resource_tracker  # type: ignore[attr-defined]
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from typing import Callable, Optional, Tuple
@@ -27,10 +26,12 @@ from pollen_worker.node_manager.utils import (
     POLLEN_METRICS_SHM,
     POLLEN_N_SAMPLES_SHM,
     POLLEN_PARAMETERS_SHM,
+    close_all_shms,
     get_config_shm,
     get_eval_loss_shm,
     get_num_samples_shm,
     get_parameters_shm,
+    remove_shm_from_resource_tracker,
     set_config_shm,
     set_eval_loss_shm,
     set_num_samples_shm,
@@ -185,10 +186,6 @@ class Worker(mp.Process):  # type: ignore
             config={},
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
         )
-        resource_tracker.unregister(
-            name=fl_instructions_config_sh._name,  # type: ignore[attr-defined]
-            rtype="shared_memory",
-        )
         # Load client
         tmp_client = self.client_fn(client_id)
         is_collaborative = bool(fl_instructions_config["collaborative"])
@@ -258,33 +255,6 @@ class Worker(mp.Process):  # type: ignore
                 # TODO: Maybe not terminate the worker?
                 self.auto_terminate = True
 
-    def _unregister_shms(self) -> None:
-        """Unregister shared memories."""
-        resource_tracker.unregister(
-            name=self.round_parameters_sh._name,  # type: ignore[attr-defined]
-            rtype="shared_memory",
-        )
-        if hasattr(self, "worker_parameters_sh"):
-            resource_tracker.unregister(
-                name=self.worker_parameters_sh._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-        if hasattr(self, "worker_num_samples_sh"):
-            resource_tracker.unregister(
-                name=self.worker_num_samples_sh._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-        if self.worker_metrics_sh is not None:
-            resource_tracker.unregister(
-                name=self.worker_metrics_sh._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-        if hasattr(self, "worker_eval_loss_sh"):
-            resource_tracker.unregister(
-                name=self.worker_eval_loss_sh._name,  # type: ignore[attr-defined]
-                rtype="shared_memory",
-            )
-
     def _link_shms(
         self,
     ) -> None:
@@ -319,6 +289,8 @@ class Worker(mp.Process):  # type: ignore
     def run(self) -> None:
         """Start the process."""
         ## Create shared memories
+        # Call the monkey-patch for the resource-register
+        remove_shm_from_resource_tracker()
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
         # process, the `__init__()` function does not.
@@ -332,9 +304,11 @@ class Worker(mp.Process):  # type: ignore
                 break
         torch.cuda.empty_cache()
         gc.collect()
-        ## Un-register shared memories
-        # NOTE: Bug https://bugs.python.org/issue39959#msg364351
-        self._unregister_shms()
+
+    def soft_shutdown(self) -> None:
+        """Soft shutdown."""
+        # Close and unlink Worker's shared memories
+        close_all_shms(self.worker_uuid)
 
 
 @contextmanager
@@ -368,7 +342,7 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables pathed for worker with rank %s.\n\t\t"
+                    "Environment variables patched for worker with rank %s.\n\t\t"
                     "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
                     "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
                     "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
@@ -405,7 +379,7 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables pathed for worker with rank %s.\n\t\t"
+                    "Environment variables patched for worker with rank %s.\n\t\t"
                     "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
                     "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
                     "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
@@ -546,7 +520,7 @@ def create_new_worker(
     return worker
 
 
-def start_worker(worker: Worker):
+def start_worker(worker: Worker) -> None:
     """Start a worker."""
     worker.start()
     log(

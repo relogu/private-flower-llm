@@ -20,7 +20,7 @@ model:
   max_seq_len: ${llm_config.max_seq_len}
   vocab_size: 50368
   attn_config:
-    attn_impl: triton
+    attn_impl: flash
 
 # Tokenizer
 tokenizer:
@@ -58,9 +58,10 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 1000ba
+  t_warmup: 100ba
   alpha_f: 0.1
-  t_max: 100000ba
+  # t_max: 4800ba
+  t_max: 5120ba
 
 optimizer:
   name: decoupled_adamw
@@ -75,7 +76,8 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 512ba
-max_duration: 4800ba  # ~ 2.5B tokens
+# max_duration: 4800ba
+max_duration: 5120ba
 eval_interval: 500ba
 eval_first: false
 eval_subset_num_batches: -1
@@ -110,13 +112,12 @@ callbacks:
   memory_monitor: {}
   runtime_estimator: {}
 
-# loggers:
-#   wandb:
-#     project: {}
-#     name: {}
+loggers:
+  wandb: 
+    init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store
-save_interval: 500ba
+save_interval: 512ba
 save_num_checkpoints_to_keep: 1  # Important, this cleans up checkpoints saved to DISK
 save_folder: ./{run_name}/checkpoints
 # save_folder: s3://my-bucket/my-folder/{run_name}/checkpoints
@@ -125,3 +126,4 @@ save_overwrite: false
 # Load from local filesystem or remote object store
 # load_path: ./gpt-125m/checkpoints/latest-rank{rank}.pt
 # load_path: s3://my-bucket/my-folder/gpt-125m/checkpoints/latest-rank{rank}.pt
+load_path: null

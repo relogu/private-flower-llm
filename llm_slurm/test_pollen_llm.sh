@@ -61,6 +61,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CO
 sleep 30
 
 #! Launch NodeManager
+#! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 NCCL_DEBUG="INFO" CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager_$DEVICE.log &
 
 #! Keep the pid and wait for it 

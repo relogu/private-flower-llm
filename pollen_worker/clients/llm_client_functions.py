@@ -75,6 +75,7 @@ def set_all_data_paths(
 def set_n_workers_dataloaders(
     cfg: DictConfig,
     n_workers: int = -1,
+    cap: int = 32,
 ) -> DictConfig:
     """Set the `n_workers` parameter for all dataloaders in the config."""
     if n_workers < 0:
@@ -82,8 +83,8 @@ def set_n_workers_dataloaders(
     n_cuda_device = get_n_cuda_devices()
     if n_cuda_device > 0:
         n_workers = n_workers // n_cuda_device
-    cfg.train_loader.num_workers = n_workers
-    cfg.eval_loader.num_workers = n_workers
+    cfg.train_loader.num_workers = min(n_workers, cap)
+    cfg.eval_loader.num_workers = min(n_workers, cap)
     return cfg
 
 
@@ -241,11 +242,11 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         all_param += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
-    # log(
-    #     INFO,
-    #     f"trainable params: {trainable_params} || all params: {all_param} || "
-    #     f"trainable params (%): {100 * trainable_params / all_param}",
-    # )
+    log(
+        INFO,
+        f"trainable params: {trainable_params} || all params: {all_param} || "
+        f"trainable params (%): {100 * trainable_params / all_param}",
+    )
 
 
 def _get_model_for_trainer(
@@ -789,12 +790,19 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
     """Implement the fit step using MosaicML codebase."""
+    # Automatically setting the `n_workers` parameter based on CPU available
+    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
+    # Ignoring model if loading a checkpoint
+    cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+    # # TEST: Try not to load the optim state
+    # cfg.load_ignore_keys.append("*optim*")
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, logged_cfg = _get_trainer_object(
         _cfg=cfg,
     )
+    # log(INFO, f"Trainer config: {logged_cfg}")
     # Set the parameters
     if parameters is not None:
         # log(INFO, "Initializing model...")
@@ -820,7 +828,12 @@ def llm_fit(
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
-    # TODO: Extract learning rate and put it into the metrics
+    # Extract LR
+    for optimizer in trainer.state.optimizers:
+        lrs = [group["lr"] for group in optimizer.param_groups]
+        name = optimizer.__class__.__name__
+        for idx, lr in enumerate(lrs):
+            train_metrics.update({f"lr-{name}/group{idx}": lr})
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
 
@@ -855,6 +868,13 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, Dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    # Automatically setting the `n_workers` parameter based on CPU available
+    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
+    # Force llm_config params to select the centralised eval set
+    cfg.train_loader = None  # type: ignore[union-attr]
+    # NOTE: We must load the checkpoint to retrieve the timestamp
+    # Ignoring model and optimizer (prevents crashes) if loading a checkpoint
+    cfg.load_ignore_keys = ["state/model/*", "*optim*"]  # type: ignore[union-attr]
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer

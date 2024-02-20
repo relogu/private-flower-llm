@@ -61,6 +61,7 @@ from pollen_worker.node_manager.utils import (
     get_num_samples_shm,
     get_parameters_shm,
     partially_aggregate_training_results,
+    remove_shm_from_resource_tracker,
     set_config_shm,
     set_num_samples_shm,
     set_parameters_shm,
@@ -115,6 +116,8 @@ class NodeManager(fl.client.NumPyClient):
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # log(DEBUG, "Max processes per device: %s", max_proc_device)
         ## Set up round parameters SharedMemory
+        # Call the monkey-patch for the resource-register
+        remove_shm_from_resource_tracker()
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=parameters,
@@ -207,13 +210,9 @@ class NodeManager(fl.client.NumPyClient):
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
-        # Close and unlink all the shared memories
-        for _, worker in self.workers_dict.items():
-            close_all_shms(worker.worker_uuid)
         # Wait until the worker is dead
-        for _ in range(len(self.workers_dict)):
-            self.task_queue.put(None)
         for _, worker in self.workers_dict.items():
+            worker.soft_shutdown()
             while worker.is_alive():
                 time.sleep(0.1)
                 worker.terminate()
@@ -317,8 +316,21 @@ class NodeManager(fl.client.NumPyClient):
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "fit"))
             # Wait for the result
-            # TODO: Handle the case where they all fail
-            current_stats = self.result_queue.get()
+            current_stats = None
+            while current_stats is None:
+                try:
+                    current_stats = self.result_queue.get(timeout=10)
+                except Exception:
+                    # log(
+                    #     ERROR,
+                    #     "NodeManager %s: no results received in time.",
+                    #     self.name,
+                    #     exc_info=e,
+                    #     stack_info=True,
+                    # )
+                    for _, worker in self.workers_dict.items():
+                        if not worker.is_alive():
+                            current_stats = [-1, 0, 0, -1]
             log(
                 DEBUG,
                 "NodeManager %s: worker %s finished and returned cid %s.",
@@ -354,6 +366,9 @@ class NodeManager(fl.client.NumPyClient):
             # Close the config shared memory
             fl_instructions_config_sh.close()
             fl_instructions_config_sh.unlink()
+            # Empty the tasks list
+            while not self.task_queue.empty():
+                self.task_queue.get()
         return (
             aggregated_params,
             sum_of_samples,
@@ -448,7 +463,10 @@ class NodeManager(fl.client.NumPyClient):
             current_cid = int(list_of_cids_to_eval.pop(0))
             config["MASTER_PORT"] = str(get_free_tcp_port())
             # Update shared memories objects
-            self.fl_instructions_config, self.fl_instructions_config_sh = get_config_shm(
+            (
+                self.fl_instructions_config,
+                self.fl_instructions_config_sh,
+            ) = get_config_shm(
                 config=config,
                 create=True,
                 name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
@@ -458,7 +476,21 @@ class NodeManager(fl.client.NumPyClient):
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "evaluate"))
             # Wait for the result
-            current_stats = self.result_queue.get()
+            current_stats = None
+            while current_stats is None:
+                try:
+                    current_stats = self.result_queue.get(timeout=10)
+                except Exception:
+                    # log(
+                    #     ERROR,
+                    #     "NodeManager %s: no results received in time.",
+                    #     self.name,
+                    #     exc_info=e,
+                    #     stack_info=True,
+                    # )
+                    for _, worker in self.workers_dict.items():
+                        if not worker.is_alive():
+                            current_stats = [-1, 0, 0, -1]
             log(
                 DEBUG,
                 "NodeManager %s: worker %s finished and returned cid %s.",
@@ -499,6 +531,9 @@ class NodeManager(fl.client.NumPyClient):
             # Close the config shared memory
             self.fl_instructions_config_sh.close()
             self.fl_instructions_config_sh.unlink()
+            # Empty the tasks list
+            while not self.task_queue.empty():
+                self.task_queue.get()
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
@@ -623,9 +658,9 @@ def main(cfg: DictConfig) -> None:
         )
     else:
         # Start NodeManager as a Flower client
-        fl.client.start_numpy_client(
+        fl.client.start_client(
             server_address=cfg.pollen.server_address,
-            client=node_manager,
+            client=node_manager.to_client(),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
     log(

@@ -1,17 +1,20 @@
 #!/bin/bash
-#SBATCH -c 11
+#SBATCH -c 22
 #SBATCH -w mauao
-#SBATCH --gres=gpu:1
-#SBATCH --job-name=llm-pollen-client-test
+#SBATCH --gres=gpu:2
+#SBATCH --job-name=llm-centralised-test
 #!SBATCH --job-name=llm_test
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --time=01:00:00
 #!SBATCH --dependency=afterany:80339
 
-bash $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "small"
+# bash $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "small"
 # bash $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "16M"
 # bash $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "125M"
+
+bash $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "small"
+# bash $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "16M"
 
 # bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "small"
 # bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "125M"

@@ -58,9 +58,9 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 1000ba
+  t_warmup: 100ba
   alpha_f: 0.1
-  t_max: 100000ba
+  t_max: 30720ba
 
 optimizer:
   name: decoupled_adamw
@@ -75,7 +75,8 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 512ba
-max_duration: 29000ba  # ~ 15.2B tokens
+# max_duration: 29000ba  # ~ 15.2B tokens
+max_duration: 30720ba
 eval_interval: 2000ba
 eval_first: false
 eval_subset_num_batches: -1
@@ -110,10 +111,9 @@ callbacks:
   memory_monitor: {}
   runtime_estimator: {}
 
-# loggers:
-#   wandb:
-#     project: {}
-#     name: {}
+loggers:
+  wandb: 
+    init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store
 save_interval: 500ba
@@ -125,3 +125,4 @@ save_overwrite: false
 # Load from local filesystem or remote object store
 # load_path: ./gpt-760m/checkpoints/latest-rank{rank}.pt
 # load_path: s3://my-bucket/my-folder/gpt-760m/checkpoints/latest-rank{rank}.pt
+load_path: null
