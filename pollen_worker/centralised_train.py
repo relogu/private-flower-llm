@@ -1,6 +1,6 @@
 """Centralised training script for LLMFoundry models.
 
-Slightly adapted from the originalç https://github.com/mosaicml/llm-foundry/blob/25599294c942cfed2c6f8329e14791e4a2f91539/scripts/train/train.py
+Slightly adapted from the original https://github.com/mosaicml/llm-foundry/blob/25599294c942cfed2c6f8329e14791e4a2f91539/scripts/train/train.py
 Copyright 2022 MosaicML LLM Foundry authors
 SPDX-License-Identifier: Apache-2.0
 """
