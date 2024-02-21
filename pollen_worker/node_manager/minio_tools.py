@@ -22,8 +22,8 @@ class MinioTools(object):
         return f"{state.run_uuid}/{MinioTools.get_justified_number(state.server_round)}/{state.node_manager_uuid}"
 
     @staticmethod
-    def get_justified_number(number: int) -> str:
-        return str(number).rjust(8, "0")
+    def get_justified_number(number: int, digits = 8) -> str:
+        return str(number).rjust(digits, "0")
 
     @staticmethod
     def pull_parameters(state: MinioState) -> NDArrays:
@@ -79,12 +79,14 @@ class MinioTools(object):
         return parameters_to_ndarrays(Parameters(tensors, tensor_type))
 
     @staticmethod
-    def push_parameters(state: MinioState, parameters: NDArrays) -> bool:
-        if not isinstance(parameters, list):
-            raise TypeError("parameters are not an instance of List (i.e., NDArrays)")
-        params_with_bytes = ndarrays_to_parameters(parameters)
-        tensors = params_with_bytes.tensors
-        minimum_file_size = 1024 * 1 * 50 # 10 MB
+    def push_parameters(state: MinioState, parameters: NDArrays | Parameters) -> bool:
+        if isinstance(parameters, list):
+            parameters = ndarrays_to_parameters(parameters)
+        else: 
+            if not isinstance(parameters, Parameters):
+                raise TypeError("parameters are not an instance of List (i.e., NDArrays) or Parameters")
+
+        tensors = parameters.tensors
         file_list = []
         current_file_id = 1
         current_file_size = 0
@@ -95,7 +97,7 @@ class MinioTools(object):
             current_file_size += len(tensors[index])
             tensors_in_file.append(len(tensors[index]))
             current_file_content.extend(tensors[index])
-            if (current_file_size >= minimum_file_size) or (index == number_of_tensors - 1):
+            if (current_file_size >= state.minimum_file_size) or (index == number_of_tensors - 1):
                 current_file_name = f"{MinioTools.get_justified_number(current_file_id)}.params"
                 hash = hashlib.sha3_256()
                 hash.update(current_file_content)
@@ -117,7 +119,7 @@ class MinioTools(object):
                 current_file_content = bytearray()
 
         metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
-        json_root = {"files": file_list, "tensor_type": params_with_bytes.tensor_type}
+        json_root = {"files": file_list, "tensor_type": parameters.tensor_type}
         metadata_json_string = json.dumps(json_root)
         metadata_bytes = metadata_json_string.encode("utf-8")
 

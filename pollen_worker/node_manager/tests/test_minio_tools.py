@@ -32,7 +32,6 @@ class TestMinioTools(unittest.TestCase):
         self.bucket_name = "test"
         self.assertTrue(self.client.bucket_exists(self.bucket_name))
 
-        self.buffer_length = 1024 * 1024
         self.run_uuid = str(uuid.uuid4())
         self.node_manager_uuid = str(uuid.uuid4())
 
@@ -46,11 +45,10 @@ class TestMinioTools(unittest.TestCase):
     def test_push_and_pull(self):
 
         # Push
-        state = MinioState(self.client, self.bucket_name, 1, self.buffer_length, self.run_uuid, self.node_manager_uuid)
+        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name)
         self.assertTrue(MinioTools.push_parameters(state, self.mock_parameters))
 
         # Pull
-        state = MinioState(self.client, self.bucket_name, 1, self.buffer_length, self.run_uuid, self.node_manager_uuid)
         pulled_parameters = MinioTools.pull_parameters(state)
         self.assertTrue(isinstance(pulled_parameters, list))
 

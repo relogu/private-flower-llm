@@ -1,31 +1,100 @@
+import configparser
 import copy
+import gc
+import os
+import time
+import uuid
 import hydra
 from flwr.common import log, NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
+from minio import Minio
+import numpy as np
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from omegaconf import DictConfig, OmegaConf
 
+from pollen_worker.node_manager.minio_state import MinioState
+from pollen_worker.node_manager.minio_tools import MinioTools
+
+
+"""
+            "args": [
+                "llm_config=mpt-75m"
+            ],
+"""
 class Benchmarks(object):
 
-    def __init__(self):
-        self.main()
+    def __init__(self, parameters_as_ndarrays: NDArrays):
+        self.parameters_as_ndarrays = parameters_as_ndarrays
+        self.parameters_as_tensors = ndarrays_to_parameters(parameters_as_ndarrays)
+        home = os.path.expanduser("~")
+        config_file_path = os.path.join(home, ".aws", "credentials")
+        if not os.path.isfile(config_file_path):
+            raise ValueError("Invalid config_file_path")
+        config = configparser.ConfigParser()
+        config.read(config_file_path)
+        access_key_id = config["default"]["aws_access_key_id"]
+        aws_secret_access_key = config["default"]["aws_secret_access_key"]
+        if not (isinstance(access_key_id, str) and len(access_key_id) > 0):
+            raise TypeError("Invalid access_key_id")
+        if not (isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0):
+            raise TypeError("Invalid aws_secret_access_key")
+        self.client = Minio("mauao.cl.cam.ac.uk:9000",
+            access_key = access_key_id,
+            secret_key = aws_secret_access_key,
+            secure = False
+        )
 
-    def buffer_length_and_minimum_file_size() -> None:
-        x = 1
+        self.bucket_name = "test"
+        if not self.client.bucket_exists(self.bucket_name):
+            raise ValueError("Invalid aws_secret_access_key")
 
+        self.run_uuid = str(uuid.uuid4())
+        self.node_manager_uuid = str(uuid.uuid4())
+        #self.minimum_file_size = 1024 * 1024 * 100 # 100MB
 
+    def minimum_file_size_vs_speed(self) -> None:
 
+        mb = 1024 * 1024
+        file_sizes = [ 1024*100, 1*mb, 2*mb, 5*mb ]
+        for size in range(10, 310, 10):
+            file_sizes.append(size * mb)
+        print(f"Benchmark file sizes: {[value/mb for value in file_sizes]} MB")
 
+        for minimum_file_size in file_sizes:
+
+            size_str = MinioTools.get_justified_number(minimum_file_size, 36)
+
+            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, minimum_file_size)
+
+            gc.collect()
+            time.sleep(1)
+
+            start_time = time.time()
+            MinioTools.push_parameters(state, self.parameters_as_ndarrays)
+            pulled_parameters = MinioTools.pull_parameters(state)
+            end_time = time.time()
+
+            time_diff = end_time - start_time
+
+            print(f"File size: {minimum_file_size/mb} MB; Time: {time_diff} seconds")
+
+            # Check the integrity of the pulled parameters
+            if len(self.parameters_as_ndarrays) != len(pulled_parameters):
+                raise ValueError("Invalid parameters length")
+            for index in range(0, len(self.parameters_as_ndarrays), 1):
+                if not np.array_equal(self.parameters_as_ndarrays[index], pulled_parameters[index]):
+                    raise ValueError("Parameter arrays are not equal")
+            
+        print("All done!")
 
 @hydra.main(config_path="../../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
-    initial_parameters = ndarrays_to_parameters(
-        get_raw_model_parameters(copy.deepcopy(_llm_config))
-    )
-    print(f"Tesors: {len(initial_parameters.tensors)}")
+    model_parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
 
+    benchmarks = Benchmarks(model_parameters)
+    benchmarks.minimum_file_size_vs_speed()
 
 
 if __name__ == "__main__":
