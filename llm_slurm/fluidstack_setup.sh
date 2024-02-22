@@ -62,7 +62,7 @@ pyenv global 3.10.13
 #! Upgrade pip
 pip install --upgrade pip
 #! Monitoring utilities
-sudo apt install -y bpytop
+sudo snap install bpytop
 pip install nvitop
 #! Install poetry
 pip install poetry
