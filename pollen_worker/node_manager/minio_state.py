@@ -9,7 +9,7 @@ class MinioState(object):
         node_manager_uuid: str,
         server_round: int,
         bucket_name: str,
-        minimum_file_size: int = 1024 * 1024 * 100 # 100MB
+        file_size: int = 1024 * 1024 * 100 # 100MB
     ) -> None:
 
         if not isinstance(client, Minio):
@@ -22,7 +22,7 @@ class MinioState(object):
             raise TypeError("server_round is not a positive integer")
         if not isinstance(bucket_name, str) or len(bucket_name) < 1:
             raise TypeError("bucket_name is not a valid string")
-        if not isinstance(minimum_file_size, int) or minimum_file_size < 1:
+        if not isinstance(file_size, int) or file_size < 1:
             raise TypeError("minimum_file_size is not a positive non-zero integer")
 
         self.client: Minio = client
@@ -30,4 +30,4 @@ class MinioState(object):
         self.node_manager_uuid: str = node_manager_uuid
         self.server_round: int = server_round
         self.bucket_name: str = bucket_name
-        self.minimum_file_size: int = minimum_file_size
+        self.file_size: int = file_size

@@ -45,7 +45,7 @@ class TestMinioTools(unittest.TestCase):
     def test_push_and_pull(self):
 
         # Push
-        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name)
+        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name, 1024 * 100)
         self.assertTrue(MinioTools.push_parameters(state, self.mock_parameters))
 
         # Pull
