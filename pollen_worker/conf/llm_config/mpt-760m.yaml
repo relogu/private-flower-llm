@@ -20,7 +20,7 @@ model:
   max_seq_len: ${llm_config.max_seq_len}
   vocab_size: 50368
   attn_config:
-    attn_impl: triton
+    attn_impl: flash
 
 # Tokenizer
 tokenizer:
@@ -58,9 +58,9 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 100ba
+  t_warmup: 1000ba
   alpha_f: 0.1
-  t_max: 30720ba
+  t_max: 29000ba
 
 optimizer:
   name: decoupled_adamw
@@ -74,9 +74,8 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-local_steps: 512ba
-# max_duration: 29000ba  # ~ 15.2B tokens
-max_duration: 30720ba
+local_steps: 500ba
+max_duration: 29000ba
 eval_interval: 2000ba
 eval_first: false
 eval_subset_num_batches: -1

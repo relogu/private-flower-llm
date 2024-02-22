@@ -58,7 +58,7 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 100ba
+  t_warmup: 1000ba
   alpha_f: 0.1
   t_max: 24800ba
 
@@ -75,7 +75,7 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 500ba
-max_duration: 24800ba  # ~ 26B tokens
+max_duration: 24800ba
 eval_interval: 2000ba
 eval_first: false
 eval_subset_num_batches: -1
