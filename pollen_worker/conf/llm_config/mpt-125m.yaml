@@ -60,8 +60,7 @@ scheduler:
   name: cosine_with_warmup
   t_warmup: 100ba
   alpha_f: 0.1
-  # t_max: 4800ba
-  t_max: 5120ba
+  t_max: 4800ba
 
 optimizer:
   name: decoupled_adamw
@@ -75,9 +74,8 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-local_steps: 512ba
-# max_duration: 4800ba
-max_duration: 5120ba
+local_steps: 500ba
+max_duration: 4800ba
 eval_interval: 500ba
 eval_first: false
 eval_subset_num_batches: -1
@@ -117,7 +115,7 @@ loggers:
     init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store
-save_interval: 512ba
+save_interval: 500ba
 save_num_checkpoints_to_keep: 1  # Important, this cleans up checkpoints saved to DISK
 save_folder: ./{run_name}/checkpoints
 # save_folder: s3://my-bucket/my-folder/{run_name}/checkpoints
