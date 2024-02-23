@@ -114,7 +114,7 @@ callbacks:
   runtime_estimator: {}
 
 loggers:
-  wandb: 
+  wandb:
     init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store
