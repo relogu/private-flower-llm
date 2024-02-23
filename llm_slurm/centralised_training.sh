@@ -1,7 +1,8 @@
 #!/bin/bash
-#! Check if there's an input argument
-if [[ $# -eq 0 ]]; then
-    echo "No input argument supplied."
+#! Check if at least two arguments are passed
+if [[ $# -lt 2 ]]; then
+    echo "Illegal number of parameters."
+    echo "Usage: centralised_training.sh <llm_model_config> <max_duration>"
     exit 1
 fi
 #! Moving to the project folder
