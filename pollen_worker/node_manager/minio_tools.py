@@ -1,14 +1,14 @@
+import gc
 import io
-from logging import DEBUG
+from logging import DEBUG, ERROR, INFO
 import hashlib
 import binascii
+import time
 from minio.helpers import ObjectWriteResult
-from flwr.common import log, NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
+from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
 import numpy as np
 from pollen_worker.node_manager.minio_state import MinioState
 import json
-
-#TODO: Add logging
 
 class MinioTools(object):
 
@@ -113,12 +113,43 @@ class MinioTools(object):
         return parameters_to_ndarrays(Parameters(tensors, tensor_type))
 
     @staticmethod
+    def _push_single_file(state: MinioState, full_file_path: str, file_content) -> bool:
+        start_time = time.time()
+        elapsed_time = 0.0
+        try_again = True
+        push_successful = False
+        numer_of_attemts = 0
+        while try_again:
+            numer_of_attemts += 1
+            try:
+                write_result = state.client.put_object(
+                    state.bucket_name, full_file_path, io.BytesIO(file_content), length = len(file_content)
+                )
+                if not (isinstance(write_result, ObjectWriteResult) and len(write_result.object_name) > 0):
+                    MinioTools._connection_error(state, f"Failed to push the file to MinIO: {full_file_path}")
+                push_successful = True
+            except:
+                MinioTools._log_error(state, f"Failed to push the file to MinIO: {full_file_path}")
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            try_again = (not push_successful) and (elapsed_time < state.timeout_in_seconds)
+            if try_again:
+                MinioTools._log_info(state, f"Attempt #{numer_of_attemts}; trying again to push the file to MinIO: {full_file_path}")
+                gc.collect()
+                time.sleep(3)
+        if push_successful and numer_of_attemts > 1:
+            MinioTools._log_info(state, f"Successfully pushed the file to MinIO after {numer_of_attemts} attempts: {full_file_path}")
+        if not push_successful:
+            MinioTools._log_error(state, f"🚨 Timed out after {numer_of_attemts} attempt(s) and {int(elapsed_time)} second(s). Completely failed to push the file to MinIO: {full_file_path}")
+        return push_successful
+
+    @staticmethod
     def push_parameters(state: MinioState, parameters: NDArrays | Parameters) -> bool:
         if isinstance(parameters, list):
             parameters = ndarrays_to_parameters(parameters)
         else: 
             if not isinstance(parameters, Parameters):
-                raise TypeError("parameters are not an instance of List (i.e., NDArrays) or Parameters")
+                MinioTools._type_error(state, "parameters are not an instance of List (i.e., NDArrays) or Parameters")
 
         tensors = parameters.tensors
         file_list = []
@@ -145,11 +176,11 @@ class MinioTools(object):
                     "sha3_256": current_file_hash
                 })
                 full_file_path = MinioTools.get_full_file_path(state, current_file_name)
-                write_result = state.client.put_object(
-                    state.bucket_name, full_file_path, io.BytesIO(current_file_content), length=len(current_file_content)
-                )
-                if not (isinstance(write_result, ObjectWriteResult) and len(write_result.object_name) > 0):
-                    raise ConnectionError("Failed to push the file to MinIO")
+
+                result = MinioTools._push_single_file(state, full_file_path, current_file_content)
+                if not result:
+                    return False
+
                 if all_tensors_processed:
                     all_done = True
                 else:
@@ -169,20 +200,47 @@ class MinioTools(object):
                     current_tensor_pointer += available_space
                 all_tensors_processed = len(tensors) == current_tensor_index
             else:
-                raise ValueError("available_space cannot be a negative number")
+                # Just an integrity check. This should never happen.
+                MinioTools._value_error(state, "available_space cannot be a negative number")
         
         if total_size_of_tensors != total_size_of_files:
-            raise ValueError("Tensor and file sizes are not the same")
+            # Just a integrity check. This should never happen.
+            MinioTools._value_error(state, "Tensor and file sizes are not the same")
 
         metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         json_root = {"tensorType": parameters.tensor_type, "tensorSizes": tensor_sizes, "files": file_list}
         metadata_json_string = json.dumps(json_root)
         metadata_bytes = metadata_json_string.encode("utf-8")
 
-        write_result = state.client.put_object(
-            state.bucket_name, metadata_file_path, io.BytesIO(metadata_bytes), length=len(metadata_bytes)
-        )
-        if not (isinstance(write_result, ObjectWriteResult) and len(write_result.object_name) > 0):
-            raise ConnectionError("Failed to push the file to MinIO")
+        return MinioTools._push_single_file(state, metadata_file_path, metadata_bytes)
 
-        return True
+    @staticmethod
+    def _log_info(state: MinioState, message: str) -> None:
+        if callable(state.log):
+            state.log(INFO, message)
+
+    @staticmethod
+    def _log_error(state: MinioState, message: str) -> None:
+        if callable(state.log):
+            state.log(ERROR, message)
+
+    @staticmethod
+    def _type_error(state: MinioState, message: str) -> None:
+        if state.throw_on_error:
+            if callable(state.log):
+                state.log(ERROR, message)
+            raise TypeError(message)
+        
+    @staticmethod
+    def _value_error(state: MinioState, message: str) -> None:
+        if state.throw_on_error:
+            if callable(state.log):
+                state.log(ERROR, message)
+            raise ValueError(message)
+
+    @staticmethod
+    def _connection_error(state: MinioState, message: str) -> None:
+        if state.throw_on_error:
+            if callable(state.log):
+                state.log(ERROR, message)
+            raise ConnectionError(message)

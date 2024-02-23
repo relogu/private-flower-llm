@@ -1,4 +1,6 @@
+import logging
 import random
+import sys
 import time
 import unittest
 import os
@@ -42,10 +44,14 @@ class TestMinioTools(unittest.TestCase):
              randomized_list = random.sample(ordered_list, list_len)
              self.mock_parameters.append(np.array(randomized_list))
 
+        logger = logging.getLogger("MinIO_logger")
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+        self.log = logger.log
+
     def test_push_and_pull(self):
 
         # Push
-        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name, 1024 * 100)
+        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name, 1024 * 100, True, 30, self.log)
         self.assertTrue(MinioTools.push_parameters(state, self.mock_parameters))
 
         # Pull
