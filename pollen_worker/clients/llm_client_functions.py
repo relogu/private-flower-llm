@@ -31,6 +31,7 @@ from llmfoundry.utils.builders import (
     build_algorithm,
     build_callback,
     build_icl_data_and_gauntlet,
+    build_logger,
     build_optimizer,
     build_scheduler,
     build_tokenizer,
@@ -417,7 +418,9 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    pop_config(_cfg, "loggers", must_exist=False, default_value=None)
+    logger_configs: Optional[DictConfig] = pop_config(
+        _cfg, "loggers", must_exist=False, default_value=None
+    )
     callback_configs: Optional[DictConfig] = pop_config(
         _cfg, "callbacks", must_exist=False, default_value=None
     )
@@ -577,6 +580,16 @@ def _get_trainer_object(
     scheduler_name: str = scheduler_config.pop("name")
     scheduler = build_scheduler(scheduler_name, scheduler_config)
 
+    # Loggers
+    loggers = (
+        [
+            build_logger(str(name), logger_cfg)
+            for name, logger_cfg in logger_configs.items()
+        ]
+        if logger_configs
+        else []
+    )
+
     # Profiling
     profiler: Optional[Profiler] = None
     profiler_cfg: Optional[DictConfig] = pop_config(
@@ -709,6 +722,7 @@ def _get_trainer_object(
         progress_bar=progress_bar,
         log_to_console=log_to_console,
         console_log_interval=console_log_interval,
+        loggers=loggers,
         callbacks=callbacks,
         precision=precision,
         algorithms=algorithms,
@@ -794,8 +808,6 @@ def llm_fit(
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Ignoring model if loading a checkpoint
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
-    # # TEST: Try not to load the optim state
-    # cfg.load_ignore_keys.append("*optim*")
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
@@ -872,9 +884,11 @@ def llm_eval(
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Force llm_config params to select the centralised eval set
     cfg.train_loader = None  # type: ignore[union-attr]
-    # NOTE: We must load the checkpoint to retrieve the timestamp
-    # Ignoring model and optimizer (prevents crashes) if loading a checkpoint
-    cfg.load_ignore_keys = ["state/model/*", "*optim*"]  # type: ignore[union-attr]
+    # NOTE: Trying to exclude checkpointing for eval
+    cfg.autoresume = False  # type: ignore[union-attr]
+    cfg.save_folder = None  # type: ignore[union-attr]
+    cfg.load_path = None  # type: ignore[union-attr]
+    cfg.loggers = None  # type: ignore[union-attr]
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
