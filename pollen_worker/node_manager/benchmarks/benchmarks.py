@@ -10,6 +10,7 @@ from minio import Minio
 import numpy as np
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from omegaconf import DictConfig, OmegaConf
+import csv
 
 from pollen_worker.node_manager.minio_state import MinioState
 from pollen_worker.node_manager.minio_tools import MinioTools
@@ -53,37 +54,60 @@ class Benchmarks(object):
 
     def minimum_file_size_vs_speed(self) -> None:
 
-        mb = 1024 * 1024
-        file_sizes = [ 1024*100, 1*mb, 2*mb, 5*mb ]
-        for size in range(10, 310, 10):
-            file_sizes.append(size * mb)
-        print(f"Benchmark file sizes: {[value/mb for value in file_sizes]} MB")
+        kb = 1024
+        mb = 1024 * kb
+        file_sizes = []
+        file_size = 64 * mb
+        while file_size <= 256 * mb:
+            file_sizes.append(file_size)
+            file_size *= 2
 
-        for minimum_file_size in file_sizes:
+        print(f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]} kB\n")
 
-            size_str = MinioTools.get_justified_number(minimum_file_size, 36)
+        results: list[list[float]] = []
 
-            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, minimum_file_size)
+        results_index = 0
 
-            gc.collect()
-            time.sleep(1)
+        for file_size in file_sizes:
 
-            start_time = time.time()
-            MinioTools.push_parameters(state, self.parameters_as_ndarrays)
-            pulled_parameters = MinioTools.pull_parameters(state)
-            end_time = time.time()
+            results.append([])
+            results[results_index] = []
+            results[results_index].append(file_size)
 
-            time_diff = end_time - start_time
+            size_str = MinioTools.get_justified_number(file_size, 36)
 
-            print(f"File size: {minimum_file_size/mb} MB; Time: {time_diff} seconds")
+            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, file_size)
 
-            # Check the integrity of the pulled parameters
-            if len(self.parameters_as_ndarrays) != len(pulled_parameters):
-                raise ValueError("Invalid parameters length")
-            for index in range(0, len(self.parameters_as_ndarrays), 1):
-                if not np.array_equal(self.parameters_as_ndarrays[index], pulled_parameters[index]):
-                    raise ValueError("Parameter arrays are not equal")
-            
+            for attempt in range(1, 3, 1):
+                gc.collect()
+                time.sleep(1)
+
+                start_time = time.time()
+                MinioTools.push_parameters(state, self.parameters_as_ndarrays)
+                pulled_parameters = MinioTools.pull_parameters(state)
+                end_time = time.time()
+
+                time_diff = end_time - start_time
+
+                print(f"File size: {int(file_size/mb)} MB; Time: {time_diff} seconds")
+
+                # Check the integrity of the pulled parameters
+                if len(self.parameters_as_ndarrays) != len(pulled_parameters):
+                    raise ValueError("Invalid parameters length")
+                for index in range(0, len(self.parameters_as_ndarrays), 1):
+                    if not np.array_equal(self.parameters_as_ndarrays[index], pulled_parameters[index]):
+                        raise ValueError("Parameter arrays are not equal")
+                    
+                results[results_index].append(time_diff)
+
+            results_index += 1
+
+        home = os.path.expanduser("~")
+        csv_file_path = os.path.join(home, "benchmarks", "mpt-75m.csv")
+        with open(csv_file_path, "w") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerows(results)
+
         print("All done!")
 
 @hydra.main(config_path="../../conf/", config_name="base", version_base=None)
