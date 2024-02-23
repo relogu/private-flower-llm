@@ -75,7 +75,7 @@ algorithms:
     clipping_threshold: 1.0
 
 local_steps: 500ba
-max_duration: 33696ba
+max_duration: 51500ba
 eval_interval: 5000ba
 eval_first: false
 eval_subset_num_batches: -1
