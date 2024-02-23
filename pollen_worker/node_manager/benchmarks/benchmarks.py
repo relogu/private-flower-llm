@@ -1,11 +1,13 @@
 import configparser
 import copy
 import gc
+import logging
 import os
+import sys
 import time
 import uuid
 import hydra
-from flwr.common import log, NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
+from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
 from minio import Minio
 import numpy as np
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
@@ -49,19 +51,22 @@ class Benchmarks(object):
 
         self.run_uuid = str(uuid.uuid4())
         self.node_manager_uuid = str(uuid.uuid4())
-        #self.minimum_file_size = 1024 * 1024 * 100 # 100MB
+
+        logger = logging.getLogger("MinIO_logger")
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+        self.log = logger.log
 
     def minimum_file_size_vs_speed(self) -> None:
 
         kb = 1024
         mb = 1024 * kb
         file_sizes = []
-        file_size = 64 * mb
+        file_size = 64 * kb
         while file_size <= 256 * mb:
             file_sizes.append(file_size)
             file_size *= 2
 
-        print(f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]} kB\n")
+        print(f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]}\n")
 
         results: list[list[float]] = []
 
@@ -75,20 +80,22 @@ class Benchmarks(object):
 
             size_str = MinioTools.get_justified_number(file_size, 36)
 
-            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, file_size)
+            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, file_size, True, 60 * 30, self.log)
 
-            for attempt in range(1, 3, 1):
+            for attempt in range(1, 2, 1):
                 gc.collect()
                 time.sleep(1)
 
                 start_time = time.time()
                 MinioTools.push_parameters(state, self.parameters_as_ndarrays)
                 pulled_parameters = MinioTools.pull_parameters(state)
+                if not isinstance(pulled_parameters, list):
+                    raise ConnectionError("Failed to pull parameters")
                 end_time = time.time()
 
                 time_diff = end_time - start_time
 
-                print(f"File size: {int(file_size/mb)} MB; Time: {time_diff} seconds")
+                print(f"File size: {file_size/mb} MB; Time: {time_diff} seconds")
 
                 # Check the integrity of the pulled parameters
                 if len(self.parameters_as_ndarrays) != len(pulled_parameters):
