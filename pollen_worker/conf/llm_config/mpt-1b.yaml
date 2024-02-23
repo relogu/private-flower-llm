@@ -58,7 +58,7 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 1000ba
+  t_warmup: 100ba
   alpha_f: 0.1
   t_max: ${llm_config.max_duration}
 
@@ -76,7 +76,7 @@ algorithms:
 
 local_steps: 500ba
 max_duration: 24800ba
-eval_interval: 2000ba
+eval_interval: 500ba
 eval_first: false
 eval_subset_num_batches: -1
 global_train_batch_size: 512
