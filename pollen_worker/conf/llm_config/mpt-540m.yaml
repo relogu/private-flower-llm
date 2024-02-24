@@ -1,5 +1,5 @@
 ---
-name: mpt-500m
+name: mpt-540m
 data_local: ./my-copy-c4
 data_remote: null  # If blank, files must be present in data_local
 max_seq_len: 2048
