@@ -26,7 +26,10 @@ fi
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
-export SAVE_PATH="s3://checkpoints/centralised-$1-$DATETIME"
+#! If SAVE_PATH hasn't been set, set it to the default value
+if [ -z "$SAVE_PATH" ]; then
+    export SAVE_PATH="s3://checkpoints/centralised-$1-$DATETIME"
+fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
