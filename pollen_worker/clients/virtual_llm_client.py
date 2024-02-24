@@ -57,16 +57,16 @@ class VirtualLLMClient(fl.client.NumPyClient):
             )
             try:
                 local_path = Path(
-                    str(self.cfg.save_folder).replace(
+                    str(self.cfg.save_folder).replace(  # type: ignore[union-attr]
                         "s3://checkpoints/", ""
-                    )  # type: ignore[union-attr]
-                ).relative_to("/")
+                    )
+                )
                 log(INFO, "Looking for a checkpoint to load in %s", local_path)
                 if os.path.exists(local_path):
                     self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
                     log(INFO, "Set checkpoint to load: %s", self.cfg.load_path)
-            except Exception:
-                log(WARNING, "The `load_path` wasn't set.")
+            except Exception as e:
+                log(WARNING, "The `load_path` wasn't set.", exc_info=e)
                 # log(
                 #     DEBUG,
                 #     "Error running `os.listdir` for folder %s",
