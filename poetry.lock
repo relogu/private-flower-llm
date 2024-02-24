@@ -3032,7 +3032,7 @@ tensorboard = ["mosaicml[tensorboard] (>=0.19,<0.20)"]
 type = "git"
 url = "https://github.com/relogu/llm-foundry.git"
 reference = "fl-update"
-resolved_reference = "a667ebf58ea8eacaed6924363dc88053bc201507"
+resolved_reference = "f8debc291cc6d96b4218bb00a3efd92f39ffa9e1"
 
 [[package]]
 name = "llvmlite"
@@ -3505,7 +3505,7 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "fl-update"
-resolved_reference = "0da0c964b48341e968e4ea7041f88d5ec7964076"
+resolved_reference = "65e0b063e8c2a9ed96a1bb67d8bb79c5e36d7e0a"
 
 [[package]]
 name = "mosaicml-cli"
