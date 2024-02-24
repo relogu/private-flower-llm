@@ -30,6 +30,10 @@ export POLLEN_SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
 if [ -z "$SAVE_PATH" ]; then
     export SAVE_PATH="s3://checkpoints/centralised-$1-$DATETIME"
 fi
+#! If RUN_UUID hasn't been set, set it to the default value
+if [ -z "$RUN_UUID" ]; then
+    export RUN_UUID="centralised-$1-$DATETIME"
+fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
@@ -40,10 +44,10 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Number of steps
 DURATION=$2
 #! Additional config
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=$DURATION llm_config.scheduler.t_max=$DURATION"
+export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID llm_config.max_duration=$DURATION llm_config.scheduler.t_max=$DURATION"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $HOME/projects/pollen_worker/pollen_worker/centralised_train.py $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG run_uuid=centralised-$1-$DATETIME is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
+CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $HOME/projects/pollen_worker/pollen_worker/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
 #! Keep the pid and wait for it 
 BACK_PID=$!
 wait $BACK_PID
