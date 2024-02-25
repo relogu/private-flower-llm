@@ -179,34 +179,7 @@ class PollenServer(Server):
             str(i): cast(ClientProxy, EmptyVirtualClient(cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
-        # Collect nodes' properties
-        # NOTE: Ideally, we want to get here the info about the concurrency
-        # per hardware accelerator because everything from the server-side
-        # has been launched and running, e.g. centralised evaluation (on GPU).
-        log(
-            DEBUG,
-            "Asking for nodes properties to %s NodeManagers",
-            self._client_manager.node_managers,
-        )
-        results, failures = get_nodes_properties(
-            node_managers=self._client_manager.node_managers,
-            max_workers=self.max_workers,
-        )
-        log(
-            INFO,
-            "Get nodes properties: there are %s results and %s failures",
-            len(results),
-            len(failures),
-        )
-        # This is a dictionary of the form {"node_id": Node}
-        self.nodes_dict = {
-            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
-        }
-        log(
-            INFO,
-            "Connected node managers: %s",
-            self.nodes_dict,
-        )
+
         log(
             INFO,
             "Start-up time for the server is %s",
@@ -216,58 +189,8 @@ class PollenServer(Server):
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
-            while self._client_manager.num_available_node_managers() < self.num_nodes:
-                log(
-                    INFO,
-                    "Waiting for %s nodes to connect",
-                    self.num_nodes - self._client_manager.num_available_node_managers(),
-                )
-                time.sleep(5)
-                # Check for changes in connected NodeManagers
-                dropped, new = _check_connected_node_managers(
-                    old_connected_node_managers_cid=[
-                        k for k, _ in self.nodes_dict.items()
-                    ],
-                    new_connected_node_managers_cid=[
-                        k for k, _ in self._client_manager.node_managers.items()
-                    ],
-                )
-                if len(dropped) > 0:
-                    # Handle dropped NodeManagers
-                    [self.nodes_dict.pop(k) for k in dropped]
-                if len(new) > 0:
-                    # Handle newly added NodeManagers
-                    results, failures = get_nodes_properties(
-                        node_managers={
-                            k: self._client_manager.node_managers[k] for k in new
-                        },
-                        max_workers=self.max_workers,
-                    )
-                    log(
-                        INFO,
-                        "Get nodes properties: there are %s results and %s failures",
-                        len(results),
-                        len(failures),
-                    )
-                    new_nodes_dict = {
-                        client_proxy.cid: (client_proxy, node)
-                        for client_proxy, node in results
-                    }
-                    self.nodes_dict.update(new_nodes_dict)
-            results, failures = get_nodes_properties(
-                node_managers=self._client_manager.node_managers,
-                max_workers=self.max_workers,
-            )
-            log(
-                INFO,
-                "Get nodes properties: there are %s results and %s failures",
-                len(results),
-                len(failures),
-            )
-            # This is a dictionary of the form {"node_id": Node}
-            self.nodes_dict = {
-                client_proxy.cid: (client_proxy, node) for client_proxy, node in results
-            }
+            # Check for changes in connected NodeManagers
+            self.check_node_managers()
 
             # Train model and replace previous global model
             res_fit = self.fit_round(
@@ -642,6 +565,61 @@ class PollenServer(Server):
             metrics_aggregated,
             (metrics_accumulator, failures, intentional_failures),
         )
+
+    def check_node_managers(
+        self,
+    ) -> None:
+        """Quick check on the availability of the NodeManagers."""
+        while self._client_manager.num_available_node_managers() < self.num_nodes:
+            log(
+                INFO,
+                "Waiting for %s nodes to connect",
+                self.num_nodes - self._client_manager.num_available_node_managers(),
+            )
+            time.sleep(5)
+            # Check for changes in connected NodeManagers
+            dropped, new = _check_connected_node_managers(
+                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
+                new_connected_node_managers_cid=[
+                    k for k, _ in self._client_manager.node_managers.items()
+                ],
+            )
+            if len(dropped) > 0:
+                # Handle dropped NodeManagers
+                [self.nodes_dict.pop(k) for k in dropped]
+            if len(new) > 0:
+                # Handle newly added NodeManagers
+                results, failures = get_nodes_properties(
+                    node_managers={
+                        k: self._client_manager.node_managers[k] for k in new
+                    },
+                    max_workers=self.max_workers,
+                )
+                log(
+                    INFO,
+                    "Get nodes properties: there are %s results and %s failures",
+                    len(results),
+                    len(failures),
+                )
+                new_nodes_dict = {
+                    client_proxy.cid: (client_proxy, node)
+                    for client_proxy, node in results
+                }
+                self.nodes_dict.update(new_nodes_dict)
+        results, failures = get_nodes_properties(
+            node_managers=self._client_manager.node_managers,
+            max_workers=self.max_workers,
+        )
+        log(
+            INFO,
+            "Get nodes properties: there are %s results and %s failures",
+            len(results),
+            len(failures),
+        )
+        # This is a dictionary of the form {"node_id": Node}
+        self.nodes_dict = {
+            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
+        }
 
 
 ####################### NEW FUNCTIONS #######################
