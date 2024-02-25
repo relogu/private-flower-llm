@@ -1,9 +1,11 @@
 import gc
 import io
-from logging import DEBUG, ERROR, INFO
+from logging import ERROR, INFO
 import hashlib
 import binascii
+from re import template
 import time
+from minio import S3Error
 from minio.helpers import ObjectWriteResult
 from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
 from pollen_worker.node_manager.minio_state import MinioState
@@ -14,15 +16,15 @@ class MinioTools(object):
     METADATA_FILE_NAME = "metadata.json"
 
     @staticmethod
-    def get_full_file_path(state: MinioState, file_name: str) -> str:
-        return f"{MinioTools.get_params_folder_path(state)}/{file_name}"
+    def _get_full_file_path(state: MinioState, file_name: str) -> str:
+        return f"{MinioTools._get_params_folder_path(state)}/{file_name}"
 
     @staticmethod
-    def get_params_folder_path(state: MinioState) -> str:
-        return f"{state.run_uuid}/{MinioTools.get_justified_number(state.server_round)}/{state.node_manager_uuid}"
+    def _get_params_folder_path(state: MinioState) -> str:
+        return f"{state.run_uuid}/{MinioTools._get_justified_number(state.server_round)}/{state.endpoint_id}"
 
     @staticmethod
-    def get_justified_number(number: int, digits = 8) -> str:
+    def _get_justified_number(number: int, digits = 8) -> str:
         return str(number).rjust(digits, "0")
 
     @staticmethod
@@ -41,7 +43,7 @@ class MinioTools(object):
         if len(file_hash) != 64:
             MinioTools._value_error(state, "The metadata contain an invalid hash code")
             return None
-        full_file_path = MinioTools.get_full_file_path(state, file_name)
+        full_file_path = MinioTools._get_full_file_path(state, file_name)
         file_bytes = MinioTools._pull_single_file(state, full_file_path)
         if not isinstance(file_bytes, bytes):
             return None
@@ -66,10 +68,16 @@ class MinioTools(object):
             try:
                 response = state.client.get_object(state.bucket_name, full_file_path)
                 file_bytes = response.read()
-                pull_successful = True
-            finally:
                 response.close()
                 response.release_conn()
+                pull_successful = True
+            except Exception as ex:
+                if isinstance(ex, S3Error) and ex.code == "NoSuchKey":
+                    message = f"🚨 The requested file does not exist on MinIO: {full_file_path}"
+                    MinioTools._log_error(state, message)
+                    raise ValueError(message)
+                else:
+                    MinioTools._log_error(state, f"Failed to pull the file: {full_file_path}")
             elapsed_time = time.time() - start_time
             try_again = (not pull_successful) and (elapsed_time < state.timeout_in_seconds)
             if try_again:
@@ -88,7 +96,7 @@ class MinioTools(object):
         tensor_type = ""
         tensor_sizes = []
         file_list = []
-        metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+        metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         metadata_bytes = MinioTools._pull_single_file(state, metadata_file_path)
         if not isinstance(metadata_bytes, bytes):
             return None
@@ -156,7 +164,7 @@ class MinioTools(object):
         return parameters_to_ndarrays(Parameters(tensors, tensor_type))
 
     @staticmethod
-    def _push_single_file(state: MinioState, full_file_path: str, file_content) -> bool:
+    def _push_single_file(state: MinioState, full_file_path: str, file_content: bytes | bytearray) -> bool:
         start_time = time.time()
         elapsed_time = 0.0
         try_again = True
@@ -209,7 +217,7 @@ class MinioTools(object):
         while not all_done:
             available_space = state.file_size - len(current_file_content)
             if available_space == 0 or all_tensors_processed:
-                current_file_name = f"{MinioTools.get_justified_number(current_file_id)}.params"
+                current_file_name = f"{MinioTools._get_justified_number(current_file_id)}.params"
                 hash = hashlib.sha3_256()
                 hash.update(current_file_content)
                 current_file_hash = binascii.hexlify(hash.digest()).decode("utf-8")
@@ -217,7 +225,7 @@ class MinioTools(object):
                     "name": current_file_name,
                     "sha3_256": current_file_hash
                 })
-                full_file_path = MinioTools.get_full_file_path(state, current_file_name)
+                full_file_path = MinioTools._get_full_file_path(state, current_file_name)
 
                 result = MinioTools._push_single_file(state, full_file_path, current_file_content)
                 if not result:
@@ -249,7 +257,7 @@ class MinioTools(object):
             # Just a integrity check. This should never happen.
             MinioTools._value_error(state, "Tensor and file sizes are not the same")
 
-        metadata_file_path = MinioTools.get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+        metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         json_root = {"tensorType": parameters.tensor_type, "tensorSizes": tensor_sizes, "files": file_list}
         metadata_json_string = json.dumps(json_root)
         metadata_bytes = metadata_json_string.encode("utf-8")

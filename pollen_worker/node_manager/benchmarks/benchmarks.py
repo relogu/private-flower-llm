@@ -19,7 +19,7 @@ from pollen_worker.node_manager.minio_tools import MinioTools
 
 """
             "args": [
-                "llm_config=mpt-75m"
+                "llm_config=mpt-1b"
             ],
 """
 class Benchmarks(object):
@@ -56,13 +56,20 @@ class Benchmarks(object):
         logger.addHandler(logging.StreamHandler(sys.stdout))
         self.log = logger.log
 
+    @staticmethod
+    def _get_stylizes_size(size: int) -> str:
+        if size >= 1024 * 1024:
+            return f"{size / (1024 * 1024):,} MB"
+        else:
+            return f"{size / 1024} kB"
+
     def minimum_file_size_vs_speed(self) -> None:
 
         kb = 1024
         mb = 1024 * kb
         file_sizes = []
-        file_size = 64 * kb
-        while file_size <= 256 * mb:
+        file_size = 32 * mb
+        while file_size <= 512 * mb:
             file_sizes.append(file_size)
             file_size *= 2
 
@@ -78,7 +85,7 @@ class Benchmarks(object):
             results[results_index] = []
             results[results_index].append(file_size)
 
-            size_str = MinioTools.get_justified_number(file_size, 36)
+            size_str = MinioTools._get_justified_number(file_size, 36)
 
             state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, file_size, True, 60 * 30, self.log)
 
@@ -95,7 +102,7 @@ class Benchmarks(object):
 
                 time_diff = end_time - start_time
 
-                print(f"File size: {file_size/mb} MB; Time: {time_diff} seconds")
+                print(f"File size: {Benchmarks._get_stylizes_size(file_size)}; Time: {time_diff} seconds")
 
                 # Check the integrity of the pulled parameters
                 if len(self.parameters_as_ndarrays) != len(pulled_parameters):
@@ -109,7 +116,7 @@ class Benchmarks(object):
             results_index += 1
 
         home = os.path.expanduser("~")
-        csv_file_path = os.path.join(home, "benchmarks", "mpt-75m.csv")
+        csv_file_path = os.path.join(home, "benchmarks", "mpt-1b.csv")
         with open(csv_file_path, "w") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerows(results)

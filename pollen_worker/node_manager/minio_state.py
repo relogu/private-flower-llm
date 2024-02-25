@@ -7,7 +7,7 @@ class MinioState(object):
         self,
         client: Minio,
         run_uuid: str,
-        node_manager_uuid: str,
+        endpoint_id: str, # node_manager_uuid or server id
         server_round: int,
         bucket_name: str,
         file_size: int = 1024 * 1024 * 100, # 100MB
@@ -20,7 +20,7 @@ class MinioState(object):
             raise TypeError("client is not an instance of Minio")
         if not isinstance(run_uuid, str) or len(run_uuid) != 36:
             raise TypeError("run_uuid is not a valid UUID")
-        if not isinstance(node_manager_uuid, str) or len(node_manager_uuid) != 36:
+        if not isinstance(endpoint_id, str) or len(endpoint_id) < 1:
             raise TypeError("node_manager_uuid is not a valid UUID")
         if not isinstance(server_round, int) or server_round < 0:
             raise TypeError("server_round is not a positive integer")
@@ -37,7 +37,7 @@ class MinioState(object):
 
         self.client: Minio = client
         self.run_uuid: str = run_uuid
-        self.node_manager_uuid: str = node_manager_uuid
+        self.endpoint_id: str = endpoint_id
         self.server_round: int = server_round
         self.bucket_name: str = bucket_name
         self.file_size: int = file_size
