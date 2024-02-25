@@ -222,6 +222,7 @@ class PollenServer(Server):
                     server_round=current_round, metrics=metrics_cen
                 )
 
+            # TODO: Check for changes in connected NodeManagers?
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
@@ -620,6 +621,7 @@ class PollenServer(Server):
         self.nodes_dict = {
             client_proxy.cid: (client_proxy, node) for client_proxy, node in results
         }
+        # TODO: Clean-up stats?
 
 
 ####################### NEW FUNCTIONS #######################
