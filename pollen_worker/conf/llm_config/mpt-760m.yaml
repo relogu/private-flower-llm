@@ -58,7 +58,7 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 1000ba
+  t_warmup: 100ba
   alpha_f: 0.1
   t_max: ${llm_config.max_duration}
 
