@@ -56,7 +56,7 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
     LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=80"
     LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=86" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=80" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
-    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=64" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
+    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=60" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=10 llm_config.device_eval_batch_size=64"
     LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
     LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
