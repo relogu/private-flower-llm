@@ -22,8 +22,8 @@ class MinioState(object):
             raise TypeError("run_uuid is not a valid UUID")
         if not isinstance(endpoint_id, str) or len(endpoint_id) < 1:
             raise TypeError("node_manager_uuid is not a valid UUID")
-        if not isinstance(server_round, int) or server_round < 0:
-            raise TypeError("server_round is not a positive integer")
+        if not isinstance(server_round, int) or server_round < 1:
+            raise TypeError("server_round is not a positive non-zero integer")
         if not isinstance(bucket_name, str) or len(bucket_name) < 1:
             raise TypeError("bucket_name is not a valid string")
         if not isinstance(file_size, int) or file_size < 1:

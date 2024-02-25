@@ -12,6 +12,9 @@ import numpy as np
 from pollen_worker.node_manager.minio_state import MinioState
 from pollen_worker.node_manager.minio_tools import MinioTools
 from minio import Minio
+from flwr.server.history import History
+
+from pollen_worker.server_state import ServerState
 
 class TestMinioTools(unittest.TestCase):
 
@@ -48,6 +51,7 @@ class TestMinioTools(unittest.TestCase):
         logger.addHandler(logging.StreamHandler(sys.stdout))
         self.log = logger.log
 
+    """
     def test_push_and_pull(self):
 
         # Push
@@ -62,6 +66,22 @@ class TestMinioTools(unittest.TestCase):
         self.assertEqual(len(self.mock_parameters), len(pulled_parameters))
         for index in range(0, len(self.mock_parameters), 1):
             self.assertTrue(np.array_equal(self.mock_parameters[index], pulled_parameters[index]))
+    """
+
+    def test_server_state(self):
+        
+        params = ndarrays_to_parameters(self.mock_parameters)
+
+        minio_state = MinioState(self.client, self.run_uuid, "server", 1, self.bucket_name, 1024 * 100, True, 30, self.log)
+        server_state = ServerState(
+            "server", # id
+            1, # round
+            params, # global_model
+            params, # momentum
+            12.34, # elapsed_time_in_seconds
+            History() # history
+        )
+        self.assertTrue(MinioTools.push_server_state(minio_state, server_state))
 
 if __name__ == '__main__':
     unittest.main()

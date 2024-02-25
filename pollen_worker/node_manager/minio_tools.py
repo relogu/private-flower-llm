@@ -3,6 +3,7 @@ import io
 from logging import ERROR, INFO
 import hashlib
 import binascii
+import pickle
 from re import template
 import time
 from minio import S3Error
@@ -11,9 +12,13 @@ from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays
 from pollen_worker.node_manager.minio_state import MinioState
 import json
 
+from pollen_worker.server_state import ServerState
+
 class MinioTools(object):
 
     METADATA_FILE_NAME = "metadata.json"
+    SERVER_GLOBAL_MODEL_FOLDER = "global_model"
+    SERVER_MOMENTUM_FOLDER = "momentum"
 
     @staticmethod
     def _get_full_file_path(state: MinioState, file_name: str) -> str:
@@ -194,7 +199,7 @@ class MinioTools(object):
         return push_successful
 
     @staticmethod
-    def push_parameters(state: MinioState, parameters: NDArrays | Parameters) -> bool:
+    def push_parameters(state: MinioState, parameters: NDArrays | Parameters, minio_folder_path: str | None = None) -> bool:
         if isinstance(parameters, list):
             parameters = ndarrays_to_parameters(parameters)
         else: 
@@ -225,7 +230,11 @@ class MinioTools(object):
                     "name": current_file_name,
                     "sha3_256": current_file_hash
                 })
-                full_file_path = MinioTools._get_full_file_path(state, current_file_name)
+                full_file_path: str
+                if minio_folder_path == None:
+                    full_file_path = MinioTools._get_full_file_path(state, current_file_name)
+                else:
+                    full_file_path = f"{minio_folder_path}/{current_file_name}"
 
                 result = MinioTools._push_single_file(state, full_file_path, current_file_content)
                 if not result:
@@ -263,6 +272,45 @@ class MinioTools(object):
         metadata_bytes = metadata_json_string.encode("utf-8")
 
         return MinioTools._push_single_file(state, metadata_file_path, metadata_bytes)
+
+    @staticmethod
+    def push_server_state(minio_state: MinioState, server_state: ServerState) -> bool:
+        minio_state.endpoint_id = server_state.id
+        minio_state.server_round = server_state.round
+
+        global_model_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+        result = MinioTools.push_parameters(minio_state, server_state.global_model, global_model_path)
+        if not result:
+            message = f"🚨 Failed to push global model to MinIO (round: {server_state.round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+
+        if isinstance(server_state.momentum, Parameters):
+            momentum_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_MOMENTUM_FOLDER}"
+            result = MinioTools.push_parameters(minio_state, server_state.global_model, momentum_path)
+            if not result:
+                message = f"🚨 Failed to push momentum to MinIO (round: {server_state.round})"
+                MinioTools._log_error(minio_state, message)
+                raise ConnectionError(message)
+
+        history_bytes = pickle.dumps(server_state.history)
+        history_path = f"{MinioTools._get_params_folder_path(minio_state)}/history.pkl"
+        result = MinioTools._push_single_file(minio_state, history_path, history_bytes)
+        if not result:
+            message = f"🚨 Failed to push history to MinIO (round: {server_state.round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+
+        state_bytes = server_state.toJson().encode("utf-8")
+        state_path = f"{MinioTools._get_params_folder_path(minio_state)}/state.json"
+        result = MinioTools._push_single_file(minio_state, state_path, state_bytes)
+        if not result:
+            message = f"🚨 Failed to push state to MinIO (round: {server_state.round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+
+        return True
+
 
     @staticmethod
     def _log_info(state: MinioState, message: str) -> None:
