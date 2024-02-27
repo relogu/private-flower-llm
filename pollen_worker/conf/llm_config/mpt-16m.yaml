@@ -1,11 +1,11 @@
 ---
 Reference: https://huggingface.co/google/t5-efficient-tiny/blob/main/config.json
-name: mpt-15m
+name: mpt-16m
 data_local: ./my-copy-c4
 data_remote: null  # If blank, files must be present in data_local
 max_seq_len: 1024
 global_seed: 17
-autoresume: true
+autoresume: false
 
 # Run Name
 run_name: ${run_uuid}  # If left blank, will be read from env var $RUN_NAME
@@ -39,7 +39,7 @@ train_loader:
     shuffle: true
     max_seq_len: ${llm_config.max_seq_len}
     shuffle_seed: ${llm_config.global_seed}
-    cache_limit: 10gb
+    cache_limit: null
   drop_last: true
   num_workers: 8
 
@@ -52,7 +52,7 @@ eval_loader:
     shuffle: false
     max_seq_len: ${llm_config.max_seq_len}
     shuffle_seed: ${llm_config.global_seed}
-    cache_limit: 10gb
+    cache_limit: null
   drop_last: false
   num_workers: 8
 
@@ -114,7 +114,7 @@ callbacks:
   runtime_estimator: {}
 
 loggers:
-  wandb: 
+  wandb:
     init_kwargs: ${wandb.setup}
 
 # Checkpoint to local filesystem or remote object store

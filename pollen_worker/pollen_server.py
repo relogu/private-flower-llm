@@ -97,6 +97,7 @@ class PollenServer(Server):
         ignore_failed_rounds: bool = False,
         print_failures: bool = True,
         print_intentional_failures: bool = True,
+        resume: bool = False,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -121,8 +122,6 @@ class PollenServer(Server):
         )
         self.max_workers: Optional[int] = None
         self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
-        if saving_path is None:
-            saving_path = Path(os.getcwd())
         self.saving_path = saving_path
         self.clients_training_stats: Optional[pa.Table] = None
         self.history = history
@@ -133,6 +132,7 @@ class PollenServer(Server):
         self.ignore_failed_rounds = ignore_failed_rounds
         self.print_failures = print_failures
         self.print_intentional_failures = print_intentional_failures
+        self.resume = resume
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -159,54 +159,36 @@ class PollenServer(Server):
         log(INFO, "Waiting for at least one node to connect")
         self._client_manager.wait_for_node_managers(self.num_nodes)
 
-        # Initialize parameters
-        log(INFO, "Initializing global parameters")
-        self.parameters = self._get_initial_parameters(timeout=timeout)
-        log(INFO, "Evaluating initial parameters")
-        res = self.strategy.evaluate(0, parameters=self.parameters)
-        if res is not None:
-            log(
-                INFO,
-                "initial parameters (loss, other metrics): %s, %s",
-                res[0],
-                res[1],
-            )
-            history.add_loss_centralized(server_round=0, loss=res[0])
-            history.add_metrics_centralized(server_round=0, metrics=res[1])
+        # TODO: Resume experiment if asked to
+        time_offset = .0
+        start_round = 1
+        if self.resume:
+            # Download the server state from the S3 bucket
+            # Set the downloaded state to the server
+            pass
+        else:
+            # Initialize parameters
+            log(INFO, "Initializing global parameters")
+            self.parameters = self._get_initial_parameters(timeout=timeout)
+            log(INFO, "Evaluating initial parameters")
+            res = self.strategy.evaluate(0, parameters=self.parameters)
+            if res is not None:
+                log(
+                    INFO,
+                    "initial parameters (loss, other metrics): %s, %s",
+                    res[0],
+                    res[1],
+                )
+                history.add_loss_centralized(server_round=0, loss=res[0])
+                history.add_metrics_centralized(server_round=0, metrics=res[1])
+            # TODO: Save checkpoint if asked to
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
             str(i): cast(ClientProxy, EmptyVirtualClient(cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
-        # Collect nodes' properties
-        # NOTE: Ideally, we want to get here the info about the concurrency
-        # per hardware accelerator because everything from the server-side
-        # has been launched and running, e.g. centralised evaluation (on GPU).
-        log(
-            DEBUG,
-            "Asking for nodes properties to %s NodeManagers",
-            self._client_manager.node_managers,
-        )
-        results, failures = get_nodes_properties(
-            node_managers=self._client_manager.node_managers,
-            max_workers=self.max_workers,
-        )
-        log(
-            INFO,
-            "Get nodes properties: there are %s results and %s failures",
-            len(results),
-            len(failures),
-        )
-        # This is a dictionary of the form {"node_id": Node}
-        self.nodes_dict = {
-            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
-        }
-        log(
-            INFO,
-            "Connected node managers: %s",
-            self.nodes_dict,
-        )
+
         log(
             INFO,
             "Start-up time for the server is %s",
@@ -215,59 +197,9 @@ class PollenServer(Server):
         # Run federated learning for num_rounds
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
-        for current_round in range(1, num_rounds + 1):
-            while self._client_manager.num_available_node_managers() < self.num_nodes:
-                log(
-                    INFO,
-                    "Waiting for %s nodes to connect",
-                    self.num_nodes - self._client_manager.num_available_node_managers(),
-                )
-                time.sleep(5)
-                # Check for changes in connected NodeManagers
-                dropped, new = _check_connected_node_managers(
-                    old_connected_node_managers_cid=[
-                        k for k, _ in self.nodes_dict.items()
-                    ],
-                    new_connected_node_managers_cid=[
-                        k for k, _ in self._client_manager.node_managers.items()
-                    ],
-                )
-                if len(dropped) > 0:
-                    # Handle dropped NodeManagers
-                    [self.nodes_dict.pop(k) for k in dropped]
-                if len(new) > 0:
-                    # Handle newly added NodeManagers
-                    results, failures = get_nodes_properties(
-                        node_managers={
-                            k: self._client_manager.node_managers[k] for k in new
-                        },
-                        max_workers=self.max_workers,
-                    )
-                    log(
-                        INFO,
-                        "Get nodes properties: there are %s results and %s failures",
-                        len(results),
-                        len(failures),
-                    )
-                    new_nodes_dict = {
-                        client_proxy.cid: (client_proxy, node)
-                        for client_proxy, node in results
-                    }
-                    self.nodes_dict.update(new_nodes_dict)
-            results, failures = get_nodes_properties(
-                node_managers=self._client_manager.node_managers,
-                max_workers=self.max_workers,
-            )
-            log(
-                INFO,
-                "Get nodes properties: there are %s results and %s failures",
-                len(results),
-                len(failures),
-            )
-            # This is a dictionary of the form {"node_id": Node}
-            self.nodes_dict = {
-                client_proxy.cid: (client_proxy, node) for client_proxy, node in results
-            }
+        for current_round in range(start_round, num_rounds + 1):
+            # Check for changes in connected NodeManagers
+            self.check_node_managers()
 
             # Train model and replace previous global model
             res_fit = self.fit_round(
@@ -299,6 +231,7 @@ class PollenServer(Server):
                     server_round=current_round, metrics=metrics_cen
                 )
 
+            # TODO: Check for changes in connected NodeManagers?
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
@@ -311,16 +244,11 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
 
-        # Save the statistics to a parquet file
-        if self.clients_training_stats is not None:
-            pq.write_table(
-                self.clients_training_stats,
-                str(self.saving_path / "clients_training_stats.parquet"),
-            )
+            # TODO: Save checkpoint if asked to
 
         # Bookkeeping
         end_time = timeit.default_timer()
-        elapsed = end_time - start_time
+        elapsed = end_time - start_time + time_offset
         log(INFO, "FL finished in %s", elapsed)
         return history
 
@@ -642,6 +570,62 @@ class PollenServer(Server):
             metrics_aggregated,
             (metrics_accumulator, failures, intentional_failures),
         )
+
+    def check_node_managers(
+        self,
+    ) -> None:
+        """Quick check on the availability of the NodeManagers."""
+        while self._client_manager.num_available_node_managers() < self.num_nodes:
+            log(
+                INFO,
+                "Waiting for %s nodes to connect",
+                self.num_nodes - self._client_manager.num_available_node_managers(),
+            )
+            time.sleep(5)
+            # Check for changes in connected NodeManagers
+            dropped, new = _check_connected_node_managers(
+                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
+                new_connected_node_managers_cid=[
+                    k for k, _ in self._client_manager.node_managers.items()
+                ],
+            )
+            if len(dropped) > 0:
+                # Handle dropped NodeManagers
+                [self.nodes_dict.pop(k) for k in dropped]
+            if len(new) > 0:
+                # Handle newly added NodeManagers
+                results, failures = get_nodes_properties(
+                    node_managers={
+                        k: self._client_manager.node_managers[k] for k in new
+                    },
+                    max_workers=self.max_workers,
+                )
+                log(
+                    INFO,
+                    "Get nodes properties: there are %s results and %s failures",
+                    len(results),
+                    len(failures),
+                )
+                new_nodes_dict = {
+                    client_proxy.cid: (client_proxy, node)
+                    for client_proxy, node in results
+                }
+                self.nodes_dict.update(new_nodes_dict)
+        results, failures = get_nodes_properties(
+            node_managers=self._client_manager.node_managers,
+            max_workers=self.max_workers,
+        )
+        log(
+            INFO,
+            "Get nodes properties: there are %s results and %s failures",
+            len(results),
+            len(failures),
+        )
+        # This is a dictionary of the form {"node_id": Node}
+        self.nodes_dict = {
+            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
+        }
+        # TODO: Clean-up stats?
 
 
 ####################### NEW FUNCTIONS #######################

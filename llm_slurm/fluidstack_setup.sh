@@ -34,6 +34,14 @@ else
 fi
 #! Set GPU persistence mode
 sudo nvidia-smi -pm 1
+#! Move the $HOME to the 'ephemeral storage' folder
+sudo mkdir -p /ephemeral/$USER
+sudo rsync -a $HOME/ /ephemeral/$USER
+export HOME="/ephemeral/$USER"
+echo '# Move $HOME to `ephemeral storage`' >> ~/.bashrc
+echo 'export HOME="/ephemeral/$USER"' >> ~/.bashrc
+cd
+#! Install `pyenv`
 PYENV_VER_OUTPUT=$(pyenv --version)
 if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
     echo "pyenv is already installed."
@@ -62,7 +70,7 @@ pyenv global 3.10.13
 #! Upgrade pip
 pip install --upgrade pip
 #! Monitoring utilities
-sudo apt install -y bpytop
+sudo snap install bpytop
 pip install nvitop
 #! Install poetry
 pip install poetry

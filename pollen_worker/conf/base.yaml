@@ -49,4 +49,7 @@ wandb:
     entity: null
     mode: online
     name: ${run_uuid}
+    resume: allow
+    id: ${run_uuid}
+    allow_val_change: false
   start_eval: 0

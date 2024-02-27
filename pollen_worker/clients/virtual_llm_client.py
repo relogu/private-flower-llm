@@ -56,12 +56,17 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 + str(self.cid)  # type: ignore[union-attr]
             )
             try:
-                for file in os.listdir(Path(self.cfg.save_folder)):
-                    if "latest" in file:
-                        self.cfg.load_path = self.cfg.save_folder + f"/{file}"
-                        log(INFO, "Found a checkpoint to load: %s", file)
-            except Exception:
-                log(WARNING, "The `load_path` wasn't set.")
+                local_path = Path(
+                    str(self.cfg.save_folder).replace(  # type: ignore[union-attr]
+                        "s3://checkpoints/", ""
+                    )
+                )
+                log(INFO, "Looking for a checkpoint to load in %s", local_path)
+                if os.path.exists(local_path):
+                    self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
+                    log(INFO, "Set checkpoint to load: %s", self.cfg.load_path)
+            except Exception as e:
+                log(WARNING, "The `load_path` wasn't set.", exc_info=e)
                 # log(
                 #     DEBUG,
                 #     "Error running `os.listdir` for folder %s",
@@ -69,6 +74,17 @@ class VirtualLLMClient(fl.client.NumPyClient):
                 #     exc_info=e,
                 #     stack_info=True,
                 # )
+        # Set the wandb run name
+        if self.cfg.loggers.wandb is not None:
+            # Get the server run name
+            run_name = self.cfg.loggers.wandb.init_kwargs.name
+            # Add the client id to the run name
+            new_run_name = run_name + f"_client_{self.cid}"
+            # TODO: Need resumption?
+            server_id = self.cfg.loggers.wandb.init_kwargs.id
+            self.cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{self.cid}"
+            # Set the new run name
+            self.cfg.loggers.wandb.init_kwargs.name = new_run_name
 
         transformers.logging.set_verbosity_error()
 
