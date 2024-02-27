@@ -10,6 +10,7 @@ from minio import S3Error
 from minio.helpers import ObjectWriteResult
 from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
 from pollen_worker.node_manager.minio_state import MinioState
+from flwr.server.history import History
 import json
 
 from pollen_worker.server_state import ServerState
@@ -17,8 +18,11 @@ from pollen_worker.server_state import ServerState
 class MinioTools(object):
 
     METADATA_FILE_NAME = "metadata.json"
+
     SERVER_GLOBAL_MODEL_FOLDER = "global_model"
     SERVER_MOMENTUM_FOLDER = "momentum"
+    SERVER_HISTORY_FILE = "history.pkl"
+    SERVER_STATE_FILE = "state.json"
 
     @staticmethod
     def _get_full_file_path(state: MinioState, file_name: str) -> str:
@@ -33,7 +37,7 @@ class MinioTools(object):
         return str(number).rjust(digits, "0")
 
     @staticmethod
-    def _pull_single_parameters_file(state: MinioState, file_list: list, file_index: int) -> bytes | None:
+    def _pull_single_parameters_file(state: MinioState, file_list: list, file_index: int, minio_folder_path: str | None = None) -> bytes | None:
         file_name: str
         file_hash: str
         try:
@@ -48,7 +52,13 @@ class MinioTools(object):
         if len(file_hash) != 64:
             MinioTools._value_error(state, "The metadata contain an invalid hash code")
             return None
-        full_file_path = MinioTools._get_full_file_path(state, file_name)
+        
+        full_file_path: str
+        if minio_folder_path == None:
+            full_file_path = MinioTools._get_full_file_path(state, file_name)
+        else:
+            full_file_path = f"{minio_folder_path}/{file_name}"
+
         file_bytes = MinioTools._pull_single_file(state, full_file_path)
         if not isinstance(file_bytes, bytes):
             return None
@@ -97,11 +107,17 @@ class MinioTools(object):
         return file_bytes
 
     @staticmethod
-    def pull_parameters(state: MinioState) -> NDArrays | None:
+    def pull_parameters(state: MinioState, minio_folder_path: str | None = None) -> NDArrays | None:
         tensor_type = ""
         tensor_sizes = []
         file_list = []
-        metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+
+        metadata_file_path: str
+        if minio_folder_path == None:
+            metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+        else:
+            metadata_file_path = f"{minio_folder_path}/{MinioTools.METADATA_FILE_NAME}"
+
         metadata_bytes = MinioTools._pull_single_file(state, metadata_file_path)
         if not isinstance(metadata_bytes, bytes):
             return None
@@ -127,7 +143,7 @@ class MinioTools(object):
         all_files_processed = False
         all_done = False
 
-        current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index)
+        current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index, minio_folder_path)
         if not isinstance(current_file_content, bytes):
             return None
         total_size_of_files = len(current_file_content)
@@ -150,7 +166,7 @@ class MinioTools(object):
                     current_file_index += 1
                     current_file_pointer = 0
                     if current_file_index < len(file_list):
-                        current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index)
+                        current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index, minio_folder_path)
                         if not isinstance(current_file_content, bytes):
                             return None
                         total_size_of_files += len(current_file_content)
@@ -263,18 +279,81 @@ class MinioTools(object):
                 MinioTools._value_error(state, "available_space cannot be a negative number")
         
         if total_size_of_tensors != total_size_of_files:
-            # Just a integrity check. This should never happen.
+            # Just an integrity check. This should never happen.
             MinioTools._value_error(state, "Tensor and file sizes are not the same")
 
-        metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+        metadata_file_path: str
+        if minio_folder_path == None:
+            metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
+        else:
+            metadata_file_path = f"{minio_folder_path}/{MinioTools.METADATA_FILE_NAME}"
+
         json_root = {"tensorType": parameters.tensor_type, "tensorSizes": tensor_sizes, "files": file_list}
-        metadata_json_string = json.dumps(json_root)
-        metadata_bytes = metadata_json_string.encode("utf-8")
+        metadata_bytes = json.dumps(json_root).encode("utf-8")
 
         return MinioTools._push_single_file(state, metadata_file_path, metadata_bytes)
 
     @staticmethod
+    def pull_server_state(minio_state: MinioState) -> ServerState | None:
+        state_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_STATE_FILE}"
+        result = MinioTools._pull_single_file(minio_state, state_path)
+        if not isinstance(result, bytes):
+            message = f"🚨 Failed to pull state from MinIO (round: {minio_state.server_round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+        
+        id: str
+        round: int
+        contains_momentum: bool
+        elapsed_time_in_seconds: float
+
+        try:
+            state_json_string = result.decode("utf-8")
+            json_root = json.loads(state_json_string)
+            id = json_root["id"]
+            round = int(json_root["round"])
+            contains_momentum = bool(json_root["contains_momentum"])
+            elapsed_time_in_seconds = float(json_root["elapsed_time_in_seconds"])
+        except:
+            message = f"🚨 Failed to deserialize {MinioTools.SERVER_STATE_FILE} (round: {minio_state.server_round})"
+            MinioTools._log_error(minio_state, message)
+            raise TypeError(message)
+
+        global_model_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+        global_model = MinioTools.pull_parameters(minio_state, global_model_path)
+        if not isinstance(global_model, list):
+            message = f"🚨 Failed to pull global model from MinIO (round: {minio_state.server_round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+
+        momentum: NDArrays | None = None
+        if contains_momentum:
+            momentum_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_MOMENTUM_FOLDER}"
+            momentum = MinioTools.pull_parameters(minio_state, momentum_path)
+            if not isinstance(momentum, list):
+                message = f"🚨 Failed to pull momentum from MinIO (round: {minio_state.server_round})"
+                MinioTools._log_error(minio_state, message)
+                raise ConnectionError(message)
+
+        history_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_HISTORY_FILE}"
+        history: History
+        try:
+            history_bytes = MinioTools._pull_single_file(minio_state, history_path)
+            if isinstance(history_bytes, bytes):
+                history = pickle.loads(history_bytes)
+            else:
+                raise TypeError("Failed to deserialize history")
+        except:
+            message = f"🚨 Failed to pull history from MinIO (round: {minio_state.server_round})"
+            MinioTools._log_error(minio_state, message)
+            raise ConnectionError(message)
+
+        return ServerState(id, round, global_model, momentum, elapsed_time_in_seconds, history)
+
+    @staticmethod
     def push_server_state(minio_state: MinioState, server_state: ServerState) -> bool:
+
+        # Use the server state as ground truth
         minio_state.endpoint_id = server_state.id
         minio_state.server_round = server_state.round
 
@@ -285,16 +364,16 @@ class MinioTools(object):
             MinioTools._log_error(minio_state, message)
             raise ConnectionError(message)
 
-        if isinstance(server_state.momentum, Parameters):
+        if isinstance(server_state.momentum, list):
             momentum_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_MOMENTUM_FOLDER}"
-            result = MinioTools.push_parameters(minio_state, server_state.global_model, momentum_path)
+            result = MinioTools.push_parameters(minio_state, server_state.momentum, momentum_path)
             if not result:
                 message = f"🚨 Failed to push momentum to MinIO (round: {server_state.round})"
                 MinioTools._log_error(minio_state, message)
                 raise ConnectionError(message)
 
         history_bytes = pickle.dumps(server_state.history)
-        history_path = f"{MinioTools._get_params_folder_path(minio_state)}/history.pkl"
+        history_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_HISTORY_FILE}"
         result = MinioTools._push_single_file(minio_state, history_path, history_bytes)
         if not result:
             message = f"🚨 Failed to push history to MinIO (round: {server_state.round})"
@@ -302,7 +381,7 @@ class MinioTools(object):
             raise ConnectionError(message)
 
         state_bytes = server_state.toJson().encode("utf-8")
-        state_path = f"{MinioTools._get_params_folder_path(minio_state)}/state.json"
+        state_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_STATE_FILE}"
         result = MinioTools._push_single_file(minio_state, state_path, state_bytes)
         if not result:
             message = f"🚨 Failed to push state to MinIO (round: {server_state.round})"
@@ -310,7 +389,6 @@ class MinioTools(object):
             raise ConnectionError(message)
 
         return True
-
 
     @staticmethod
     def _log_info(state: MinioState, message: str) -> None:

@@ -1,6 +1,7 @@
 import json
 from flwr.common import Parameters
 from flwr.server.history import History
+from flwr.common import NDArrays
 
 class ServerState(object):
 
@@ -8,8 +9,8 @@ class ServerState(object):
         self,
         id: str,
         round: int,
-        global_model: Parameters,
-        momentum: Parameters | None,
+        global_model: NDArrays,
+        momentum: NDArrays | None,
         elapsed_time_in_seconds: float,
         history: History
     ) -> None:
@@ -18,10 +19,10 @@ class ServerState(object):
             raise TypeError("id is not a non-empty string")
         if not isinstance(round, int) or round < 1:
             raise TypeError("server_round is not a positive non-zero integer")
-        if not isinstance(global_model, Parameters):
-            raise TypeError("global_model is not an instance of Parameters")
-        if not isinstance(momentum, Parameters) and momentum != None:
-            raise TypeError("momentum is not an instance of Parameters or None")
+        if not isinstance(global_model, list) or isinstance(global_model, Parameters):
+            raise TypeError("global_model is not an instance of NDArrays")
+        if (not isinstance(momentum, list) and momentum != None) or isinstance(global_model, Parameters):
+            raise TypeError("momentum is not an instance of NDArrays or None")
         if not isinstance(elapsed_time_in_seconds, float) and not isinstance(elapsed_time_in_seconds, int):
             raise TypeError("elapsed_time_in_seconds is not a numeric value")
         if not isinstance(history, History):
@@ -29,8 +30,8 @@ class ServerState(object):
 
         self.id: str = id
         self.round: int = round
-        self.global_model: Parameters = global_model
-        self.momentum: Parameters | None = momentum
+        self.global_model: NDArrays = global_model
+        self.momentum: NDArrays | None = momentum
         self.elapsed_time_in_seconds: float = elapsed_time_in_seconds if isinstance(elapsed_time_in_seconds, float) else float(elapsed_time_in_seconds)
         self.history: History = history
 
@@ -38,6 +39,6 @@ class ServerState(object):
         return json.dumps({
             "id": self.id,
             "round": self.round,
-            "momentum": self.momentum != None,
+            "contains_momentum": self.momentum != None,
             "elapsed_time_in_seconds": self.elapsed_time_in_seconds
         })

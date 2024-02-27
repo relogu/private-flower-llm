@@ -18,10 +18,13 @@ from pollen_worker.node_manager.minio_state import MinioState
 from pollen_worker.node_manager.minio_tools import MinioTools
 
 """
+            Add the snippet below to the VSCode's launch configuration file:
+
             "args": [
                 "llm_config=mpt-1b"
             ],
 """
+
 class Benchmarks(object):
 
     def __init__(self, parameters_as_ndarrays: NDArrays):
