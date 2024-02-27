@@ -1,7 +1,6 @@
 import logging
 import random
 import sys
-import time
 import unittest
 import os
 import configparser
@@ -84,13 +83,15 @@ class TestMinioTools(unittest.TestCase):
         server_state = ServerState(
             "server", # id
             1, # round
-            global_model_nda, # global_model
             momentum_nda, # momentum
             12.34, # elapsed_time_in_seconds
             mock_history # history
         )
 
         self.assertTrue(MinioTools.push_server_state(minio_state, server_state))
+
+        global_model_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+        self.assertTrue(MinioTools.push_parameters(minio_state, global_model_nda, global_model_path))
 
         retrieved_state = MinioTools.pull_server_state(minio_state)
 

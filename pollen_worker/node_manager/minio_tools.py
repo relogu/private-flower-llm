@@ -13,7 +13,7 @@ from pollen_worker.node_manager.minio_state import MinioState
 from flwr.server.history import History
 import json
 
-from pollen_worker.server_state import ServerState
+from pollen_worker.server_state import ServerState, ServerStateWithGlobalModel
 
 class MinioTools(object):
 
@@ -54,7 +54,7 @@ class MinioTools(object):
             return None
         
         full_file_path: str
-        if minio_folder_path == None:
+        if minio_folder_path is None:
             full_file_path = MinioTools._get_full_file_path(state, file_name)
         else:
             full_file_path = f"{minio_folder_path}/{file_name}"
@@ -107,20 +107,22 @@ class MinioTools(object):
         return file_bytes
 
     @staticmethod
-    def pull_parameters(state: MinioState, minio_folder_path: str | None = None) -> NDArrays | None:
+    def pull_parameters(state: MinioState, minio_folder_path: str | None = None) -> NDArrays:
         tensor_type = ""
         tensor_sizes = []
         file_list = []
 
         metadata_file_path: str
-        if minio_folder_path == None:
+        if minio_folder_path is None:
             metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         else:
             metadata_file_path = f"{minio_folder_path}/{MinioTools.METADATA_FILE_NAME}"
 
         metadata_bytes = MinioTools._pull_single_file(state, metadata_file_path)
         if not isinstance(metadata_bytes, bytes):
-            return None
+            message = "metadata_bytes are not of type bytes"
+            MinioTools._log_error(state, message)
+            raise TypeError(state, message)
         try:
             metadata_json_string = metadata_bytes.decode("utf-8")
             json_root = json.loads(metadata_json_string)
@@ -129,10 +131,8 @@ class MinioTools(object):
             file_list = json_root["files"]
         except:
             MinioTools._type_error(state, f"Failed to deserialize the metadata JSON file: {metadata_file_path}")
-            return None
         if len(tensor_sizes) == 0 or len(file_list) == 0:
             MinioTools._value_error(state, "Failed to retrieve values from the metadata JSON file")
-            return None
 
         tensors: list[bytes] = []
         current_file_index = 0
@@ -145,7 +145,9 @@ class MinioTools(object):
 
         current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index, minio_folder_path)
         if not isinstance(current_file_content, bytes):
-            return None
+            message = "current_file_content are not of type bytes"
+            MinioTools._log_error(state, message)
+            raise TypeError(state, message)
         total_size_of_files = len(current_file_content)
         total_size_of_tensors = 0
 
@@ -168,19 +170,23 @@ class MinioTools(object):
                     if current_file_index < len(file_list):
                         current_file_content = MinioTools._pull_single_parameters_file(state, file_list, current_file_index, minio_folder_path)
                         if not isinstance(current_file_content, bytes):
-                            return None
+                            message = "current_file_content is not of type bytes"
+                            MinioTools._log_error(state, message)
+                            raise TypeError(state, message)
                         total_size_of_files += len(current_file_content)
                 else:
                     current_tensor_content.extend(current_file_content[current_file_pointer: current_file_pointer + available_space])
                     current_file_pointer += available_space
                 all_files_processed = len(file_list) <= current_file_index
             else:
-                MinioTools._value_error(state, "available_space cannot be a negative number")
-                return None
+                message = "available_space cannot be a negative number"
+                MinioTools._log_error(state, message)
+                raise ValueError(state, message)
 
         if total_size_of_tensors != total_size_of_files:
-            MinioTools._value_error(state, "Tensor and file sizes are not the same")
-            return None
+            message = "Tensor and file sizes are not the same"
+            MinioTools._log_error(state, message)
+            raise ValueError(state, message)
 
         return parameters_to_ndarrays(Parameters(tensors, tensor_type))
 
@@ -247,7 +253,7 @@ class MinioTools(object):
                     "sha3_256": current_file_hash
                 })
                 full_file_path: str
-                if minio_folder_path == None:
+                if minio_folder_path is None:
                     full_file_path = MinioTools._get_full_file_path(state, current_file_name)
                 else:
                     full_file_path = f"{minio_folder_path}/{current_file_name}"
@@ -283,7 +289,7 @@ class MinioTools(object):
             MinioTools._value_error(state, "Tensor and file sizes are not the same")
 
         metadata_file_path: str
-        if minio_folder_path == None:
+        if minio_folder_path is None:
             metadata_file_path = MinioTools._get_full_file_path(state, MinioTools.METADATA_FILE_NAME)
         else:
             metadata_file_path = f"{minio_folder_path}/{MinioTools.METADATA_FILE_NAME}"
@@ -294,7 +300,7 @@ class MinioTools(object):
         return MinioTools._push_single_file(state, metadata_file_path, metadata_bytes)
 
     @staticmethod
-    def pull_server_state(minio_state: MinioState) -> ServerState | None:
+    def pull_server_state(minio_state: MinioState) -> ServerStateWithGlobalModel:
         state_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_STATE_FILE}"
         result = MinioTools._pull_single_file(minio_state, state_path)
         if not isinstance(result, bytes):
@@ -348,7 +354,7 @@ class MinioTools(object):
             MinioTools._log_error(minio_state, message)
             raise ConnectionError(message)
 
-        return ServerState(id, round, global_model, momentum, elapsed_time_in_seconds, history)
+        return ServerStateWithGlobalModel(id, round, global_model, momentum, elapsed_time_in_seconds, history)
 
     @staticmethod
     def push_server_state(minio_state: MinioState, server_state: ServerState) -> bool:
@@ -356,13 +362,6 @@ class MinioTools(object):
         # Use the server state as ground truth
         minio_state.endpoint_id = server_state.id
         minio_state.server_round = server_state.round
-
-        global_model_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
-        result = MinioTools.push_parameters(minio_state, server_state.global_model, global_model_path)
-        if not result:
-            message = f"🚨 Failed to push global model to MinIO (round: {server_state.round})"
-            MinioTools._log_error(minio_state, message)
-            raise ConnectionError(message)
 
         if isinstance(server_state.momentum, list):
             momentum_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_MOMENTUM_FOLDER}"

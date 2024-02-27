@@ -27,7 +27,7 @@ import uuid
 from logging import DEBUG, ERROR, INFO
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
-from typing import Any, Callable, cast, Optional
+from typing import Any, Callable, cast
 
 import cloudpickle
 import flwr as fl
@@ -94,7 +94,7 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
-        minio_state: Optional[MinioState] = None
+        minio_state: MinioState | None = None
     ) -> None:
         super().__init__()
         ## NodeManager general attributes
@@ -378,10 +378,11 @@ class NodeManager(fl.client.NumPyClient):
     def fit(
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
+
         # If applicable, override the parameters with values from MinIO
-        use_minio = isinstance(self.minio_state, MinioState)
-        if use_minio:
+        if isinstance(self.minio_state, MinioState):
             parameters = MinioTools.pull_parameters(self.minio_state)
+
         """Implement the fit step."""
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
@@ -411,9 +412,11 @@ class NodeManager(fl.client.NumPyClient):
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
-        node_train_metrics.update(
-            {"node_training_time_s": float(time.time() - start_time)}
-        )
+        node_train_metrics.update({
+            "node_training_time_s": float(time.time() - start_time),
+            # The endpoint UUID will be picked up by the server when pulling the client model from MinIO
+            "endpoint_id": self.node_manager_uuid
+        })
         log(
             DEBUG,
             "NodeManager %s: resuls have been processed. "
@@ -429,9 +432,11 @@ class NodeManager(fl.client.NumPyClient):
             sum_of_samples,
             node_train_metrics,
         )
+
         # If applicable, push the aggregated parameters to MinIO
-        if use_minio:
+        if isinstance(self.minio_state, MinioState):
             MinioTools.push_parameters(self.minio_state, aggregated_params)
+
         # Return results
         return (
             aggregated_params,
@@ -440,6 +445,11 @@ class NodeManager(fl.client.NumPyClient):
         )
 
     def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
+
+        # If applicable, override the parameters with values from MinIO
+        if isinstance(self.minio_state, MinioState):
+            parameters = MinioTools.pull_parameters(self.minio_state)
+
         """Implement the evaluation step."""
         start_time = time.time()
         # Extract assignments from config

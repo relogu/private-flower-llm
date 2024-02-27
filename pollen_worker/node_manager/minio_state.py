@@ -32,7 +32,7 @@ class MinioState(object):
             raise TypeError("throw_on_error is not a Boolean value")
         if not isinstance(timeout_in_seconds, int) or timeout_in_seconds < 1:
             raise TypeError("timeout_in_seconds is not a positive non-zero integer")
-        if not (callable(log) or log == None):
+        if not (callable(log) or log is None):
             raise TypeError("log_method is not a positive non-zero integer")
 
         self.client: Minio = client
