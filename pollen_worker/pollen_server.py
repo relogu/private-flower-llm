@@ -141,6 +141,8 @@ class PollenServer(Server):
         self.print_intentional_failures = print_intentional_failures
         self.resume = resume
         self.minio_state: MinioState | None = minio_state
+        if isinstance(self.minio_state, MinioState):
+            self.minio_state.log = log
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -170,16 +172,27 @@ class PollenServer(Server):
         history: History
         time_offset: float
         start_round: int
+
         if self.resume:
-            # If applicable, override the state with values from MinIO
             if isinstance(self.minio_state, MinioState):
-                pulled_state = MinioTools.pull_server_state(self.minio_state)
+
+                # If applicable, load the state from MinIO
+
+                #TODO: Get the most recent round if from MinIO
+                most_recent_round = 1
+
+                pulled_state = MinioTools.pull_server_state(self.minio_state, most_recent_round)
                 start_round = pulled_state.round
                 time_offset = pulled_state.elapsed_time_in_seconds
                 self.parameters = ndarrays_to_parameters(pulled_state.global_model)
                 if isinstance(self.strategy, FedNesterov):
                     self.strategy.momentum_vector = pulled_state.momentum
                 history = pulled_state.history
+            else:
+                # We can't resume the state if there is no MinIO available
+                message = f"🚨 Unable to resume the execution without MinIO"
+                log(ERROR, message)
+                raise ValueError(message)
         else:
             history = self.history if self.history is not None else History()
             time_offset = .0
@@ -203,10 +216,11 @@ class PollenServer(Server):
                 momentum: NDArrays | None = None
                 if isinstance(self.strategy, FedNesterov):
                     momentum = self.strategy.momentum_vector
-                state = ServerState(self.minio_state.endpoint_id, start_round, momentum, time_offset, history)
-                MinioTools.push_server_state(self.minio_state, state)
-                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
-                MinioTools.push_parameters(self.minio_state, self.parameters, global_model_path)
+                server_state = ServerState(self.minio_state.endpoint_id, start_round, momentum, time_offset, history)
+                MinioTools.push_server_state(self.minio_state, server_state)
+                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state, start_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+                previous_round = start_round - 1
+                MinioTools.push_parameters(self.minio_state, previous_round, self.parameters, global_model_path)
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
@@ -223,9 +237,6 @@ class PollenServer(Server):
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
         for current_round in range(start_round, num_rounds + 1):
-
-            if isinstance(self.minio_state, MinioState):
-                self.minio_state.server_round = current_round
 
             # Check for changes in connected NodeManagers
             self.check_node_managers()
@@ -245,8 +256,8 @@ class PollenServer(Server):
             
             # Push the global model to MinIO (but not the server state)
             if isinstance(self.minio_state, MinioState):
-                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
-                MinioTools.push_parameters(self.minio_state, self.parameters, global_model_path)
+                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state, current_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+                MinioTools.push_parameters(self.minio_state, current_round, self.parameters, global_model_path)
 
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
@@ -286,8 +297,8 @@ class PollenServer(Server):
                 momentum_v: NDArrays | None = None
                 if isinstance(self.strategy, FedNesterov):
                     momentum_v = self.strategy.momentum_vector
-                state = ServerState(self.minio_state.endpoint_id, start_round, momentum_v, elapsed, history)
-                MinioTools.push_server_state(self.minio_state, state)
+                server_state = ServerState(self.minio_state.endpoint_id, current_round, momentum_v, elapsed, history)
+                MinioTools.push_server_state(self.minio_state, server_state)
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -536,7 +547,7 @@ class PollenServer(Server):
         # If applicable, pull the client parameters from MinIO
         if isinstance(self.minio_state, MinioState):
             complete_results = (
-                replace_values_with_minio(self.minio_state, result) for result in complete_results
+                replace_values_with_minio(self.minio_state, server_round, result) for result in complete_results
             )
 
         try:
@@ -795,17 +806,18 @@ def _handle_finished_future_after_fit_async(
     # Not successful, client returned a result where the status code is not OK
     return (False, result)
 
-def replace_values_with_minio(minio_state: MinioState, client_result: Tuple[ClientProxy, FitRes]) -> Tuple[ClientProxy, FitRes]:
+def replace_values_with_minio(minio_state: MinioState, current_round: int, client_result: Tuple[ClientProxy, FitRes]) -> Tuple[ClientProxy, FitRes]:
     proxy, fit_res = client_result
     endpoint_id: Any
     if "endpoint_id" in fit_res.metrics:
          endpoint_id = fit_res.metrics["endpoint_id"]
+         del fit_res.metrics["endpoint_id"]
          if not isinstance(endpoint_id, str):
             raise TypeError("endpoint_id is not a string")
     else:
         raise ValueError("endpoint_id is not present in fit_res")
-    client_state = MinioState(minio_state.client, minio_state.run_uuid, endpoint_id, minio_state.server_round, minio_state.bucket_name, minio_state.file_size, minio_state.throw_on_error, minio_state.timeout_in_seconds)
-    fit_res.parameters = ndarrays_to_parameters(MinioTools.pull_parameters(client_state))
+    client_state = MinioState(minio_state.client, minio_state.run_uuid, endpoint_id, minio_state.bucket_name, minio_state.file_size, minio_state.throw_on_error, minio_state.timeout_in_seconds)
+    fit_res.parameters = ndarrays_to_parameters(MinioTools.pull_parameters(client_state, current_round))
     return (proxy, fit_res)
 
 def get_handle_success_and_failure(

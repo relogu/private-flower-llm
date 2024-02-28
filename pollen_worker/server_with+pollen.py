@@ -3,14 +3,17 @@
 Starts a Flower server which awaits connections from Pollen node managers. It supports
 using wandb for logging and hydra for exeperiment configuration.
 """
+import configparser
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict, Union
 
 import flwr as fl
 import hydra
+from minio import Minio
 import transformers
 from flwr.common import ndarrays_to_parameters
 from omegaconf import DictConfig, OmegaConf
@@ -18,6 +21,7 @@ from omegaconf import DictConfig, OmegaConf
 import wandb
 from pollen_worker.clients.empty_virtual_client import gen_client_fn
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
+from pollen_worker.node_manager.minio_state import MinioState
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.strategy.rs_nesterov import FedNesterov
@@ -80,6 +84,38 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
+
+
+        # MinIO
+        home = os.path.expanduser("~")
+        aws_file_path = os.path.join(home, ".aws", "credentials")
+        if not os.path.isfile(aws_file_path):
+            raise ValueError("Invalid aws_file_path")
+        config = configparser.ConfigParser()
+        config.read(aws_file_path)
+        access_key_id = config["default"]["aws_access_key_id"]
+        aws_secret_access_key = config["default"]["aws_secret_access_key"]
+        if not (isinstance(access_key_id, str) and len(access_key_id) > 0):
+            raise TypeError("Invalid access_key_id")
+        if not (isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0):
+            raise TypeError("Invalid aws_secret_access_key")
+        minio_client = Minio("mauao.cl.cam.ac.uk:9000",
+            access_key = access_key_id,
+            secret_key = aws_secret_access_key,
+            secure = False
+        )
+
+        minio_state = MinioState(
+            minio_client,
+            cfg.run_uuid,
+            "server",
+            "test", # TODO: Get the bucket name from hydra config
+            1024 * 1024 * 32, # 32 MB
+            False,
+            30,
+            None
+        )
+
         # Start Flower server
         hist = fl.server.start_server(
             server_address=cfg.pollen.server_address,
@@ -92,6 +128,7 @@ def main(cfg: DictConfig) -> None:
                 saving_path=Path(cfg.pollen.saving_path),
                 history=wandb_history,
                 num_nodes=cfg.pollen.n_nodes,
+                minio_state=minio_state
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,

@@ -82,6 +82,8 @@ class Benchmarks(object):
 
         results_index = 0
 
+        round = 1
+
         for file_size in file_sizes:
 
             results.append([])
@@ -90,15 +92,15 @@ class Benchmarks(object):
 
             size_str = MinioTools._get_justified_number(file_size, 36)
 
-            state = MinioState(self.client, size_str, self.node_manager_uuid, 1, self.bucket_name, file_size, True, 60 * 30, self.log)
+            state = MinioState(self.client, size_str, self.node_manager_uuid, self.bucket_name, file_size, True, 60 * 30, self.log)
 
             for attempt in range(1, 2, 1):
                 gc.collect()
                 time.sleep(1)
 
                 start_time = time.time()
-                MinioTools.push_parameters(state, self.parameters_as_ndarrays)
-                pulled_parameters = MinioTools.pull_parameters(state)
+                MinioTools.push_parameters(state, round, self.parameters_as_ndarrays)
+                pulled_parameters = MinioTools.pull_parameters(state, round)
                 if not isinstance(pulled_parameters, list):
                     raise ConnectionError("Failed to pull parameters")
                 end_time = time.time()
@@ -124,7 +126,7 @@ class Benchmarks(object):
             writer = csv.writer(csv_file)
             writer.writerows(results)
 
-        print("All done!")
+        print("✅ All done!")
 
 @hydra.main(config_path="../../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:

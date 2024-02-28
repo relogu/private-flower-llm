@@ -57,12 +57,14 @@ class TestMinioTools(unittest.TestCase):
 
     def test_push_and_pull_parameters(self):
 
+        round = 1
+
         # Push
-        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, 1, self.bucket_name, 1024 * 100, True, 30, self.log)
-        self.assertTrue(MinioTools.push_parameters(state, self.mock_parameters))
+        state = MinioState(self.client, self.run_uuid, self.node_manager_uuid, self.bucket_name, 1024 * 100, True, 30, self.log)
+        self.assertTrue(MinioTools.push_parameters(state, round, self.mock_parameters))
 
         # Pull
-        pulled_parameters = MinioTools.pull_parameters(state)
+        pulled_parameters = MinioTools.pull_parameters(state, round)
         self.assertTrue(isinstance(pulled_parameters, list))
 
         # Check the integrity of the pulled parameters
@@ -75,7 +77,7 @@ class TestMinioTools(unittest.TestCase):
         global_model_nda = self.mock_parameters
         momentum_nda = TestMinioTools.get_mock_parameters()
 
-        minio_state = MinioState(self.client, self.run_uuid, "server", 1, self.bucket_name, 1024 * 100, True, 30, self.log)
+        minio_state = MinioState(self.client, self.run_uuid, "server", self.bucket_name, 1024 * 100, True, 30, self.log)
 
         mock_history = History()
         mock_history.losses_distributed.append((12, 3.4))
@@ -90,10 +92,10 @@ class TestMinioTools(unittest.TestCase):
 
         self.assertTrue(MinioTools.push_server_state(minio_state, server_state))
 
-        global_model_path = f"{MinioTools._get_params_folder_path(minio_state)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
-        self.assertTrue(MinioTools.push_parameters(minio_state, global_model_nda, global_model_path))
+        global_model_path = f"{MinioTools._get_params_folder_path(minio_state, server_state.round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+        self.assertTrue(MinioTools.push_parameters(minio_state, server_state.round, global_model_nda, global_model_path))
 
-        retrieved_state = MinioTools.pull_server_state(minio_state)
+        retrieved_state = MinioTools.pull_server_state(minio_state, server_state.round)
 
         self.assertTrue(isinstance(retrieved_state, ServerState))
 

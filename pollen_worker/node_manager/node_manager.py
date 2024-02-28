@@ -19,8 +19,10 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
+import configparser
 import copy
 import gc
+import os
 import pickle
 import time
 import uuid
@@ -32,6 +34,7 @@ from typing import Any, Callable, cast
 import cloudpickle
 import flwr as fl
 import hydra
+from minio import Minio
 import nvsmi
 import psutil
 import torch
@@ -102,10 +105,15 @@ class NodeManager(fl.client.NumPyClient):
         self.properties: dict[str, Scalar] = {}
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
+
+        self.minio_state = minio_state
+
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
+        if isinstance(minio_state, MinioState):
+            minio_state.endpoint_id = self.node_manager_uuid
+
         self.client_fn = client_fn
         self.refresh_period = refresh_period
-        self.minio_state = minio_state
         ## Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs
@@ -379,9 +387,35 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
 
+        current_round: int
+        previous_round: int
+
+        current_round_uncasted: Any
+
+        if "server_round" in config:
+            current_round_uncasted = config["server_round"]
+        else:
+            raise ValueError("server_round not in config")
+        if isinstance(current_round_uncasted, int):
+            current_round = current_round_uncasted
+            previous_round = current_round - 1
+        else:
+            raise TypeError("server_round is not an integer")
+
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
-            parameters = MinioTools.pull_parameters(self.minio_state)
+            server_state = MinioState(
+                self.minio_state.client,
+                self.minio_state.run_uuid,
+                "server",
+                self.minio_state.bucket_name,
+                self.minio_state.file_size,
+                self.minio_state.throw_on_error,
+                self.minio_state.timeout_in_seconds,
+            )
+            global_model_path = f"{MinioTools._get_params_folder_path(server_state, previous_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+
+            parameters = MinioTools.pull_parameters(server_state, previous_round, global_model_path)
 
         """Implement the fit step."""
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
@@ -435,7 +469,7 @@ class NodeManager(fl.client.NumPyClient):
 
         # If applicable, push the aggregated parameters to MinIO
         if isinstance(self.minio_state, MinioState):
-            MinioTools.push_parameters(self.minio_state, aggregated_params)
+            MinioTools.push_parameters(self.minio_state, current_round, aggregated_params)
 
         # Return results
         return (
@@ -448,7 +482,17 @@ class NodeManager(fl.client.NumPyClient):
 
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
-            parameters = MinioTools.pull_parameters(self.minio_state)
+            current_round: int
+            current_round_uncasted: Any
+            if "server_round" in config:
+                current_round_uncasted = config["server_round"]
+            else:
+                raise ValueError("server_round not in config")
+            if isinstance(current_round_uncasted, int):
+                current_round = current_round_uncasted
+            else:
+                raise TypeError("server_round is not an integer")
+            parameters = MinioTools.pull_parameters(self.minio_state, current_round)
 
         """Implement the evaluation step."""
         start_time = time.time()
@@ -607,12 +651,44 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
+
+    # MinIO
+    home = os.path.expanduser("~")
+    aws_file_path = os.path.join(home, ".aws", "credentials")
+    if not os.path.isfile(aws_file_path):
+        raise ValueError("Invalid aws_file_path")
+    config = configparser.ConfigParser()
+    config.read(aws_file_path)
+    access_key_id = config["default"]["aws_access_key_id"]
+    aws_secret_access_key = config["default"]["aws_secret_access_key"]
+    if not (isinstance(access_key_id, str) and len(access_key_id) > 0):
+        raise TypeError("Invalid access_key_id")
+    if not (isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0):
+        raise TypeError("Invalid aws_secret_access_key")
+    minio_client = Minio("mauao.cl.cam.ac.uk:9000",
+        access_key = access_key_id,
+        secret_key = aws_secret_access_key,
+        secure = False
+    )
+
+    minio_state = MinioState(
+        minio_client,
+        cfg.run_uuid,
+        "", # NOTE: this has to be always overriden in the constructor of NodeManager
+        "test", # TODO: Get the bucket name from hydra config
+        1024 * 1024 * 32, # 32 MB
+        False,
+        30,
+        log
+    )
+
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
+        minio_state=minio_state
     )
     # Choose the type of execution
     if cfg.is_test:
