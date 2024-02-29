@@ -32,6 +32,7 @@ from typing import Any, Callable, cast
 import cloudpickle
 import flwr as fl
 import hydra
+import numpy as np
 import nvsmi
 import psutil
 import torch
@@ -40,12 +41,20 @@ from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
+from minio import Minio
 from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
+from pollen_worker.minio.minio_state import MinioState
+from pollen_worker.minio.minio_tools import (
+    SERVER_GLOBAL_MODEL_FOLDER,
+    _get_params_folder_path,
+    pull_parameters,
+    push_parameters,
+)
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
@@ -92,6 +101,7 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
+        minio_state: MinioState | None = None,
     ) -> None:
         super().__init__()
         ## NodeManager general attributes
@@ -99,7 +109,13 @@ class NodeManager(fl.client.NumPyClient):
         self.properties: dict[str, Scalar] = {}
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
+
+        self.minio_state = minio_state
+
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
+        if isinstance(minio_state, MinioState):
+            minio_state.endpoint_id = self.node_manager_uuid
+
         self.client_fn = client_fn
         self.refresh_period = refresh_period
         ## Set up Queues
@@ -375,6 +391,39 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
         """Implement the fit step."""
+        current_round: int
+        previous_round: int
+
+        current_round_uncasted: Any
+
+        if "server_round" in config:
+            current_round_uncasted = config["server_round"]
+        else:
+            raise ValueError("server_round not in config")
+        if isinstance(current_round_uncasted, int):
+            current_round = current_round_uncasted
+            previous_round = current_round - 1
+        else:
+            raise TypeError("server_round is not an integer")
+
+        # If applicable, override the parameters with values from MinIO
+        if isinstance(self.minio_state, MinioState):
+            server_state = MinioState(
+                self.minio_state.client,
+                self.minio_state.run_uuid,
+                "server",
+                self.minio_state.bucket_name,
+                self.minio_state.file_size,
+                self.minio_state.throw_on_error,
+                self.minio_state.timeout_in_seconds,
+            )
+            params_folder_path = _get_params_folder_path(server_state, previous_round)
+            parameters = pull_parameters(
+                state=server_state,
+                round=previous_round,
+                minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+            )
+
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # Restart all the worker every `self.refresh_period` rounds
@@ -404,7 +453,9 @@ class NodeManager(fl.client.NumPyClient):
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
         node_train_metrics.update(
-            {"node_training_time_s": float(time.time() - start_time)}
+            {
+                "node_training_time_s": float(time.time() - start_time),
+            }
         )
         log(
             DEBUG,
@@ -421,15 +472,48 @@ class NodeManager(fl.client.NumPyClient):
             sum_of_samples,
             node_train_metrics,
         )
-        # Return results
-        return (
-            aggregated_params,
-            int(sum_of_samples),
-            node_train_metrics,
-        )
+
+        # If applicable, push the aggregated parameters to MinIO
+        if isinstance(self.minio_state, MinioState):
+            # The endpoint UUID will be picked up by the server when pulling the
+            # client model from MinIO
+            node_train_metrics.update(
+                {
+                    "endpoint_id": self.node_manager_uuid,
+                }
+            )
+            push_parameters(self.minio_state, current_round, aggregated_params)
+
+            # Return results
+            return (
+                [np.array([[0.0], [0.0]])],
+                int(sum_of_samples),
+                node_train_metrics,
+            )
+        else:
+            # Return results
+            return (
+                aggregated_params,
+                int(sum_of_samples),
+                node_train_metrics,
+            )
 
     def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
         """Implement the evaluation step."""
+        # If applicable, override the parameters with values from MinIO
+        if isinstance(self.minio_state, MinioState):
+            current_round: int
+            current_round_uncasted: Any
+            if "server_round" in config:
+                current_round_uncasted = config["server_round"]
+            else:
+                raise ValueError("server_round not in config")
+            if isinstance(current_round_uncasted, int):
+                current_round = current_round_uncasted
+            else:
+                raise TypeError("server_round is not an integer")
+            parameters = pull_parameters(self.minio_state, current_round)
+
         start_time = time.time()
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
@@ -586,12 +670,29 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
+    # MinIO
+    minio_state: MinioState | None = None
+    if cfg.use_minio:
+        # Create the MinIO client
+        cfg.minio.minio_client.endpoint = str(cfg.minio.minio_client.endpoint).replace(
+            "http://", ""
+        )
+        minio_client = Minio(**cfg.minio.minio_client)
+        # NOTE: This MUST BE hardcoded to "server" for the server
+        cfg.minio.minio_state.endpoint_id = "server"
+        # Create the MinIO state
+        minio_state = MinioState(
+            minio_client,
+            **cfg.minio.minio_state,
+        )
+
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
+        minio_state=minio_state,
     )
     # Choose the type of execution
     if cfg.is_test:

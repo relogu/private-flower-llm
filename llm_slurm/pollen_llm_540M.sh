@@ -19,23 +19,28 @@ fi
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
-mkdir -p $SAVE_PATH
+export POLLEN_SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="s3://checkpoints"
+mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+#! AWS S3 object store settings
+aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
+aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
+MINIO_COMM_STACK_OPTIONS="use_minio=true minio.minio_client.endpoint=$S3_ENDPOINT_URL minio.minio_client.access_key=$aws_access_key_id minio.minio_client.secret_key=$aws_secret_access_key minio.minio_state.bucket_name=checkpoints"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50742' pollen.refresh_period=5 fl.n_rounds=30"
+POLLEN_CONFIG="pollen.server_address='localhost:50742' pollen.refresh_period=5 fl.n_rounds=60"
 #! Launch ServerWithPollen
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $SAVE_PATH/server.log &
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH $MINIO_COMM_STACK_OPTIONS 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 #! Launch NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log &
+CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
 #! Keep the pid and wait for it 
 BACK_PID=$!
 wait $BACK_PID

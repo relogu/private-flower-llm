@@ -13,11 +13,13 @@ import flwr as fl
 import hydra
 import transformers
 from flwr.common import ndarrays_to_parameters
+from minio import Minio
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
 from pollen_worker.clients.empty_virtual_client import gen_client_fn
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
+from pollen_worker.minio.minio_state import MinioState
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_server import PollenServer
 from pollen_worker.strategy.rs_nesterov import FedNesterov
@@ -80,6 +82,23 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
+
+        # MinIO
+        minio_state: MinioState | None = None
+        if cfg.use_minio:
+            # Create the MinIO client
+            cfg.minio.minio_client.endpoint = str(
+                cfg.minio.minio_client.endpoint
+            ).replace("http://", "")
+            minio_client = Minio(**cfg.minio.minio_client)
+            # NOTE: This MUST BE hardcoded to "server" for the server
+            cfg.minio.minio_state.endpoint_id = "server"
+            # Create the MinIO state
+            minio_state = MinioState(
+                minio_client,
+                **cfg.minio.minio_state,
+            )
+
         # Start Flower server
         hist = fl.server.start_server(
             server_address=cfg.pollen.server_address,
@@ -92,6 +111,9 @@ def main(cfg: DictConfig) -> None:
                 saving_path=Path(cfg.pollen.saving_path),
                 history=wandb_history,
                 num_nodes=cfg.pollen.n_nodes,
+                minio_state=minio_state,
+                resume=cfg.resume_options.resume,
+                resume_round=cfg.resume_options.resume_round,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,

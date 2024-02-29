@@ -24,7 +24,7 @@ def aggregate_cumulative_average(
         start_time = time.time()
         log(
             DEBUG,
-            f"Startet aggregating cid: {client_proxy.cid}",
+            f"Started aggregating cid: {client_proxy.cid}",
         )
         # Compute the new total number of samples
         new_total_samples = num_total_examples + fit_res.num_examples
