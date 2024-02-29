@@ -3523,7 +3523,7 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "fl-update"
-resolved_reference = "3f9315a03e13f085c38e6940c7ed85edb1661c80"
+resolved_reference = "ee64408a09789c1108962f33f127241c6d6b3140"
 
 [[package]]
 name = "mosaicml-cli"
