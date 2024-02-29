@@ -218,8 +218,8 @@ class PollenServer(Server):
                     momentum = self.strategy.momentum_vector
                 server_state = ServerState(self.minio_state.endpoint_id, start_round, momentum, time_offset, history)
                 MinioTools.push_server_state(self.minio_state, server_state)
-                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state, start_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
                 previous_round = start_round - 1
+                global_model_path = f"{MinioTools._get_params_folder_path(self.minio_state, previous_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
                 MinioTools.push_parameters(self.minio_state, previous_round, self.parameters, global_model_path)
 
         # NOTE: Register VirtualClients to the PollenClientManager
