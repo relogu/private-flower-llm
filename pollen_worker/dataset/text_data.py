@@ -4,10 +4,11 @@
 """Build a StreamingTextDataset dataset and dataloader for training."""
 
 import os
+from collections.abc import Callable, Mapping, Sequence
 from itertools import islice
 from logging import INFO
+from pathlib import Path
 from typing import Any, cast
-from collections.abc import Callable, Mapping, Sequence
 
 import hydra
 import numpy as np
@@ -16,6 +17,7 @@ import transformers
 from composer.core.data_spec import DataSpec
 from composer.core.types import Batch
 from flwr.common.logger import log
+from llmfoundry.utils.builders import build_tokenizer
 from llmfoundry.utils.config_utils import pop_config
 from numpy.typing import NDArray
 from omegaconf import DictConfig, OmegaConf
@@ -132,7 +134,7 @@ class StreamingTextDataset(StreamingDataset):
         sampling_granularity: int = 1,
         batching_method: str = "random",
         **kwargs: Any,
-    ):
+    ) -> None:
         group_method = kwargs.pop("group_method", None)
         if group_method is not None:
             raise NotImplementedError(
@@ -146,13 +148,16 @@ class StreamingTextDataset(StreamingDataset):
                 f"StreamingTextDataset() got an unexpected keyword argument: {kwargs}"
             )
 
-        if local is not None and (remote is None or (local == remote)):
-            if os.path.isdir(local):
-                contents = set(os.listdir(local))
-                if split not in contents:
-                    raise ValueError(
-                        f"local directory {local} does not contain split {split}"
-                    )
+        if (
+            local is not None
+            and (remote is None or (local == remote))
+            and Path.isdir(local)
+        ):
+            contents = set(os.listdir(local))
+            if split not in contents:
+                raise ValueError(
+                    f"local directory {local} does not contain split {split}"
+                )
 
         # TODO: discover where yamls are being converted incorrect, but temporary
         # workaround
@@ -232,7 +237,7 @@ class ConcatenatedSequenceCollatorWrapper:
         base_collator: Callable,
         eos_token_id: int | None = None,
         bos_token_id: int | None = None,
-    ):
+    ) -> None:
         self.base_collator = base_collator
         if (eos_token_id is None) and (bos_token_id is None):
             raise ValueError(
@@ -298,7 +303,7 @@ def build_text_dataloader(
     streams = None
     if streams_dict is not None:
         streams = []
-        for _, stream in streams_dict.items():
+        for stream in streams_dict.values():
             # stream is the streams kwargs
             # fwd all kwargs with **stream allows streaming to check args
             streams.append(Stream(**stream))
@@ -397,8 +402,6 @@ def get_tokens_per_batch_func(
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Test for the StreamingTextDataset."""
-    from llmfoundry.utils.builders import build_tokenizer
-
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)

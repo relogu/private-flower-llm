@@ -4,15 +4,10 @@ import concurrent.futures
 import sys
 import time
 import timeit
+from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import (
-    Any,
-    Literal,
-    Union,
-    cast,
-)
-from collections.abc import Callable, Generator
+from typing import Any, Literal, cast
 
 import pyarrow as pa
 from flwr.client import Client
@@ -33,18 +28,18 @@ from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
-from flwr.server.server import (
-    _handle_finished_future_after_evaluate,
-    evaluate_client,
-    fit_client,
-)
+from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: PLC2701
+from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
-from pollen_worker.utils import IntentionalClientDropout, get_table_from_pyarrow_buffer
+from pollen_worker.utils import (
+    IntentionalClientDropoutError,
+    get_table_from_pyarrow_buffer,
+)
 
 FitResultsAndFailures = tuple[
     list[tuple[ClientProxy, FitRes]],
@@ -64,10 +59,10 @@ GetPropResultsAndFailures = tuple[
     list[tuple[ClientProxy, Node] | BaseException],
 ]
 
-ClientLike = Union[Client, NumPyClient]
+ClientLike = Client | NumPyClient
 
 
-class TooManyFailures(Exception):
+class TooManyFailuresError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
@@ -452,7 +447,7 @@ class PollenServer(Server):
         # They are merely populated by the processing of the generator
         failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
 
-        # Accumulate IntentionalClientDropout exceptions
+        # Accumulate IntentionalClientDropoutError exceptions
         intentional_failures: list[BaseException] = []
 
         metrics_accumulator: list[
@@ -500,7 +495,7 @@ class PollenServer(Server):
                             cast(pa.Buffer, tmp_clients_training_stats)
                         )
                     )
-        except TooManyFailures as e:
+        except TooManyFailuresError as e:
             if self.ignore_failed_rounds:
                 log(
                     ERROR,
@@ -516,10 +511,11 @@ class PollenServer(Server):
                 )
                 return None
             else:
-                raise e
+                raise
 
         # Collect `fit` results from all NodeManagers participating in this round
-        pollen_models, correction_tables = get_pollen_models(
+        # pollen_models, correction_tables = get_pollen_models(
+        get_pollen_models(
             placement_policy=self.placement_policy,
             clients_stats=self.clients_training_stats,
             batch_size=int(self.on_fit_config(server_round)["batch_size"]),
@@ -796,14 +792,16 @@ def get_handle_success_and_failure(
             case (True, res):
                 cast_res = cast(tuple[ClientProxy, FitRes], res)
                 client_proxy, fit_res = cast_res
-                metrics_accumulator.append((
-                    client_proxy,
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        client_proxy,
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, cast_res)
-            case (False, res) if isinstance(res, IntentionalClientDropout):
+            case (False, res) if isinstance(res, IntentionalClientDropoutError):
                 intentional_failures.append(res)
                 return (False, res)
             case (False, res):
@@ -813,8 +811,10 @@ def get_handle_success_and_failure(
                     accept_failures_cnt is not None
                     and cnt_failures > accept_failures_cnt
                 ):
-                    raise TooManyFailures(f"""Unintentional failures passed
-                        the maximum: {accept_failures_cnt}""")
+                    raise TooManyFailuresError(
+                        f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}"""
+                    )
                 failures.append(cast_failure_res)
                 return (False, cast_failure_res)
         return result
@@ -823,7 +823,7 @@ def get_handle_success_and_failure(
 
 
 def _handle_finished_future_after_get_properties(
-    future: concurrent.futures.Future,  # type: ignore
+    future: concurrent.futures.Future,
     results: list[tuple[ClientProxy, Node]],
     failures: list[tuple[ClientProxy, Node] | BaseException],
 ) -> None:
@@ -845,10 +845,12 @@ def _check_strategy_for_pollen(
     if strategy.on_fit_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't"
-            " have a proper `on_fit_config_fn` attribute. The user"
-            " must define such method as type `Callable[[int], Dict]`"
-            "Currently, `on_fit_config_fn` is %s.",
+            (
+                "The strategy, %s, passed to the `PollenServer` doesn't"
+                " have a proper `on_fit_config_fn` attribute. The user"
+                " must define such method as type `Callable[[int], Dict]`"
+                "Currently, `on_fit_config_fn` is %s."
+            ),
             strategy,
             strategy.on_fit_config_fn,
         )
@@ -858,20 +860,24 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_fit_config_fn` function of the strategy passed"
-            " to the `PollenServer` must have a proper `batch_size`"
-            " key with an `int` value. The call"
-            " `strategy.on_fit_config_fn(0)` returned %s instead",
+            (
+                "The `on_fit_config_fn` function of the strategy passed"
+                " to the `PollenServer` must have a proper `batch_size`"
+                " key with an `int` value. The call"
+                " `strategy.on_fit_config_fn(0)` returned %s instead"
+            ),
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
     if strategy.on_evaluate_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't"
-            " have a proper `on_evaluate_config_fn` attribute. The user"
-            " must define such method as type `Callable[[int], Dict]`"
-            "Currently, `on_evaluate_config_fn` is %s.",
+            (
+                "The strategy, %s, passed to the `PollenServer` doesn't"
+                " have a proper `on_evaluate_config_fn` attribute. The user"
+                " must define such method as type `Callable[[int], Dict]`"
+                "Currently, `on_evaluate_config_fn` is %s."
+            ),
             strategy,
             strategy.on_evaluate_config_fn,
         )
@@ -881,10 +887,12 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_evaluate_config_fn` function of the strategy passed"
-            " to the `PollenServer` must have a proper `batch_size`"
-            " key with an `int` value. The call"
-            " `strategy.on_evaluate_config_fn(0)` returned %s instead",
+            (
+                "The `on_evaluate_config_fn` function of the strategy passed"
+                " to the `PollenServer` must have a proper `batch_size`"
+                " key with an `int` value. The call"
+                " `strategy.on_evaluate_config_fn(0)` returned %s instead"
+            ),
             strategy.on_evaluate_config_fn(0),
         )
         sys.exit(0)

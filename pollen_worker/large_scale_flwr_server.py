@@ -14,12 +14,8 @@ from flwr.common import (
 from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
-from flwr.server.server import (
-    FitResultsAndFailures,
-    Server,
-    _handle_finished_future_after_fit,
-    fit_client,
-)
+from flwr.server.server import _handle_finished_future_after_fit  # noqa: PLC2701
+from flwr.server.server import FitResultsAndFailures, Server, fit_client
 from flwr.server.strategy import FedAvg
 
 from pollen_worker.utils import aggregate, aggregate_inplace, chunks_idx
@@ -121,10 +117,12 @@ def fit_clients(
                     fit_metrics = [
                         (res.num_examples, res.metrics) for _, res in results
                     ]
-                    tmp_metrics.append((
-                        sum([num_examples for num_examples, _ in fit_metrics]),
-                        strategy.fit_metrics_aggregation_fn(fit_metrics),
-                    ))
+                    tmp_metrics.append(
+                        (
+                            sum([num_examples for num_examples, _ in fit_metrics]),
+                            strategy.fit_metrics_aggregation_fn(fit_metrics),
+                        )
+                    )
                 # Partially aggregate parameters
                 if results:
                     tmp_results.append(
@@ -158,10 +156,12 @@ def fit_clients(
         # Partially aggregate custom metrics if aggregation fn was provided
         if strategy.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            tmp_metrics.append((
-                sum([num_examples for num_examples, _ in fit_metrics]),
-                strategy.fit_metrics_aggregation_fn(fit_metrics),
-            ))
+            tmp_metrics.append(
+                (
+                    sum([num_examples for num_examples, _ in fit_metrics]),
+                    strategy.fit_metrics_aggregation_fn(fit_metrics),
+                )
+            )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
         # Partially aggregate parameters

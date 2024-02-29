@@ -3,11 +3,10 @@
 Paper: https://arxiv.org/abs/2003.00295v5
 """
 
-import os
 import pickle
 import random
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 from flwr.common import (
@@ -58,8 +57,9 @@ class FedYogiReproducibleSampling(FedYogi):
         tau: float = 1e-3,
         seed: int = 1337,
     ) -> None:
-        """Federated learning strategy using Yogi on server-side with reproducible
-        sampling.
+        """Federated learning strategy using Yogi on server-side.
+
+        It uses reproducible sampling.
 
         Implementation based on https://arxiv.org/abs/2003.00295v5
 
@@ -117,7 +117,7 @@ class FedYogiReproducibleSampling(FedYogi):
             on_fit_config_fn=on_fit_config_fn,
             on_evaluate_config_fn=on_evaluate_config_fn,
             accept_failures=accept_failures,
-            initial_parameters=initial_parameters,  # type: ignore
+            initial_parameters=initial_parameters,
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
             eta=eta,
@@ -139,21 +139,19 @@ class FedYogiReproducibleSampling(FedYogi):
         fit_ins = FitIns(parameters, config)
 
         # Sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
+        sample_size, _ = self.num_fit_clients(client_manager.num_available())
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)  # type: ignore
+        client_manager.wait_for(sample_size)
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -194,8 +192,9 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         seed: int = 1337,
         freq: int = 1,
     ) -> None:
-        """Federated learning strategy using Yogi on server-side with reproducible
-        sampling and model saving.
+        """Federated learning strategy using Yogi on server-side.
+
+        It uses reproducible sampling and model saving.
 
         Implementation based on https://arxiv.org/abs/2003.00295v5
 
@@ -266,7 +265,7 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
             seed=seed,
         )
         if saving_path is None:
-            saving_path = Path(os.getcwd())
+            saving_path = Path(Path.cwd())
         self.saving_path = saving_path
         self.freq = freq
 

@@ -9,13 +9,13 @@ baseline.
 import sys
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from copy import copy
 from inspect import signature
 from logging import DEBUG, ERROR
 from math import floor, log10
 from multiprocessing import Pool
 from typing import Any, cast
-from collections.abc import Callable
 
 import numpy as np
 import psutil
@@ -71,7 +71,7 @@ def get_placement_fn(policy: str = "rr") -> Callable:
 
 
 def pollen_learning_based_placement(
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Return the cliets' placements according to the Pollen's learning-based placement.
 
@@ -86,7 +86,7 @@ def pollen_learning_based_placement(
 
 
 def parrot_learning_based_placement(
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Return the cliets' placements according to the Parrot's learning-based placement.
 
@@ -120,9 +120,7 @@ def get_pollen_models(
     -------
         Optional[Dict[str, Any]]: A dictionary containing the trained models.
     """
-    if (
-        placement_policy == "lb" or placement_policy == "llb"
-    ) and clients_stats is not None:
+    if (placement_policy in {"lb", "llb"}) and clients_stats is not None:
         # Set up the functions to use for training the models
         fns: list[
             Callable[[Any, Any, Any], Any] | Callable[[Any, Any, Any, Any], Any]
@@ -195,7 +193,7 @@ def learning_based_placement(
     correction_tables: dict[str, pa.Table] | None = None,
     is_parrot: bool = False,
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement generic learning-based placement strategy.
 
@@ -240,13 +238,15 @@ def learning_based_placement(
         for model_name, model_params in pollen_models.items():
             if is_parrot:
                 # Parrot uses one worker per device
-                workers_assignments.append([
-                    model_params,  # Model parameters
-                    [],  # List of cids
-                    0.0,  # Device load
-                    model_name.split("_")[0],  # Node name
-                    model_name.split("_")[1],  # Device name
-                ])
+                workers_assignments.append(
+                    [
+                        model_params,  # Model parameters
+                        [],  # List of cids
+                        0.0,  # Device load
+                        model_name.split("_")[0],  # Node name
+                        model_name.split("_")[1],  # Device name
+                    ]
+                )
             else:
                 concurrency = (
                     simple_node_dict[model_name.split("_")[0]]
@@ -255,13 +255,15 @@ def learning_based_placement(
                 )
                 for _ in range(concurrency):
                     # Pollen uses `concurrency` workers per device
-                    workers_assignments.append([
-                        model_params,  # Model parameters
-                        [],  # List of cids
-                        0.0,  # Device load
-                        model_name.split("_")[0],  # Node name
-                        model_name.split("_")[1],  # Device name
-                    ])
+                    workers_assignments.append(
+                        [
+                            model_params,  # Model parameters
+                            [],  # List of cids
+                            0.0,  # Device load
+                            model_name.split("_")[0],  # Node name
+                            model_name.split("_")[1],  # Device name
+                        ]
+                    )
         # Assignment
         # Assign initially at least one client per worker
         for worker in workers_assignments:
@@ -283,7 +285,6 @@ def learning_based_placement(
                 if correction.num_rows > 0:
                     correction = correction.column("ctt_mean").to_numpy()[0]
                     # load = (load + correction) / 2
-                    load = load
             worker[2] += load
         # Assing all the rest
         while len(sampled_virtual_cids) > 0:
@@ -328,7 +329,7 @@ def learning_based_placement(
             devices_assignment[f"{node_name}_{gpu_name}"].extend(list_of_cids)
         # Build node assignments
         node_assignments = []
-        for _, (client_proxy, node) in nodes_dict.items():
+        for client_proxy, node in nodes_dict.values():
             devices_assignment_node = {
                 node_dev_name.split("_")[1]: _convert_list_of_int_to_string(
                     list_of_cids
@@ -354,7 +355,7 @@ def round_robin_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement Round-Robin placement strategy.
 
@@ -374,10 +375,12 @@ def round_robin_placement(
     # Creates equal clients splits amongst workers
     # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(cids, n_total_workers)
     # Init the device assignment and the return value
@@ -387,7 +390,7 @@ def round_robin_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:
+    while len(splits) > 0:  # noqa: PLR1702
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -423,7 +426,7 @@ def sorted_round_robin_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement Sorted Round-Robin placement strategy.
 
@@ -448,10 +451,12 @@ def sorted_round_robin_placement(
     cids: NDArray[np.int16] = np.array([x[0] for x in sorted_sampled_virtual_cids])
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     splits = [
         cids[np.arange(i, len(cids), n_total_workers)] for i in range(n_total_workers)
     ]
@@ -463,7 +468,7 @@ def sorted_round_robin_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:
+    while len(splits) > 0:  # noqa: PLR1702
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -499,7 +504,7 @@ def samples_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the number of samples.
 
@@ -521,10 +526,12 @@ def samples_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     # Assign the remaining clients iteratively to the least loaded worker
@@ -540,7 +547,7 @@ def samples_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:
+    while len(splits) > 0:  # noqa: PLR1702
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -577,7 +584,7 @@ def batches_placement(
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the number of batches.
 
@@ -599,10 +606,12 @@ def batches_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
@@ -620,7 +629,7 @@ def batches_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:
+    while len(splits) > 0:  # noqa: PLR1702
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -657,7 +666,7 @@ def log_batches_placement(
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
-    **kwargs,
+    **kwargs: dict,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the log of the number of batches.
 
@@ -679,10 +688,12 @@ def log_batches_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+        ]
+    )
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
@@ -700,7 +711,7 @@ def log_batches_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:
+    while len(splits) > 0:  # noqa: PLR1702
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -732,40 +743,42 @@ def log_batches_placement(
     return node_assignments
 
 
-def _logarithm(x, A, B):
-    y = A + B * np.log(x)
+def _logarithm(x, a, b) -> Any:  # noqa: ANN001
+    y = a + b * np.log(x)
     return y
 
 
-def _pollen_function(x, A, B, C):
-    y = A + B * np.log(x) + C * x
+def _pollen_function(x, a, b, c) -> Any:  # noqa: ANN001
+    y = a + b * np.log(x) + c * x
     return y
 
 
-def _linear(x, A, B):
-    y = A + B * x
+def _linear(x, a, b) -> Any:  # noqa: ANN001
+    y = a + b * x
     return y
 
 
-def _jacobian_logarithm(x, A, B):
-    dA = np.ones_like(x)
-    dB = np.log(x)
-    return np.hstack((dA.reshape(-1, 1), dB.reshape(-1, 1)))
+def _jacobian_logarithm(x, a, b) -> NDArray[Any]:  # noqa: ANN001
+    grad_a = np.ones_like(x)
+    grad_b = np.log(x)
+    return np.hstack((grad_a.reshape(-1, 1), grad_b.reshape(-1, 1)))
 
 
-def _jacobian_pollen_function(x, A, B, C):
-    dA = np.ones_like(x)
-    dB = np.log(x)
-    return np.hstack((dA.reshape(-1, 1), dB.reshape(-1, 1), x.reshape(-1, 1)))
+def _jacobian_pollen_function(x, a, b, c) -> NDArray[Any]:  # noqa: ANN001
+    grad_a = np.ones_like(x)
+    grad_b = np.log(x)
+    return np.hstack((grad_a.reshape(-1, 1), grad_b.reshape(-1, 1), x.reshape(-1, 1)))
 
 
-def _jacobian_linear(x, A, B):
-    dA = np.ones_like(x)
-    return np.hstack((dA.reshape(-1, 1), x.reshape(-1, 1)))
+def _jacobian_linear(x, a, b) -> NDArray:  # noqa: ANN001
+    grad_a = np.ones_like(x)
+    return np.hstack((grad_a.reshape(-1, 1), x.reshape(-1, 1)))
 
 
-def _predict_single_client(model, fn: Callable, n_samples: int, batch_size: int):
-    parameters, covariance = model
+def _predict_single_client(
+    model: tuple[any, any], fn: Callable, n_samples: int, batch_size: int
+) -> Any:
+    parameters, _ = model
     return fn(n_samples // batch_size, *parameters)
 
 
@@ -774,40 +787,42 @@ def _convert_list_of_int_to_string(list_of_int: list[int]) -> str:
 
 
 def add_n_batches_column_to_clients_stats_table(
-    input: pa.Table,
+    input_table: pa.Table,
     batch_size: int,
     cids: dict[str | int, int],
 ) -> pa.Table:
     """Add a `num_batches` column to the given Table."""
-    return input.add_column(
+    return input_table.add_column(
         0,
         "n_batches",
         cast(
             pa.Array,
-            pa.array([cids[int(cid.as_py())] // batch_size for cid in input["cid"]]),
+            pa.array(
+                [cids[int(cid.as_py())] // batch_size for cid in input_table["cid"]]
+            ),
         ),
     )
 
 
-def split_clients_training_table(input: pa.Table) -> dict[str, pa.Table]:
+def split_clients_training_table(input_table: pa.Table) -> dict[str, pa.Table]:
     """Split the training table into a list of tables, one per GPU.
 
     Args:
-        input (pa.Table): the training table.
+        input_table (pa.Table): the training table.
 
     Returns
     -------
         List[pa.Table]: a list of tables, one per GPU.
     """
     # Get the list of unique node names
-    unique_node_names = np.unique(input.column("node").to_numpy())
+    unique_node_names = np.unique(input_table.column("node").to_numpy())
     # Get the list of unique GPU names
-    unique_gpu_names = np.unique(input.column("gpu").to_numpy())
+    unique_gpu_names = np.unique(input_table.column("gpu").to_numpy())
     # Create cross product iterator
     iterator = ((a, b) for a in unique_node_names for b in unique_gpu_names)
     # Create a list of tables, one per GPU
     output = {
-        f"{a}_{b}": input.filter(pc.field("node") == pc.scalar(a)).filter(
+        f"{a}_{b}": input_table.filter(pc.field("node") == pc.scalar(a)).filter(
             pc.field("gpu") == pc.scalar(b)
         )
         for a, b in iterator
@@ -825,7 +840,7 @@ def parallel_train_models(
     # Set up the parallelisation
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -886,7 +901,7 @@ def parallel_get_models_scores(
     # Set up the parallelisation
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:

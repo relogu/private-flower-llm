@@ -43,6 +43,7 @@ from llmfoundry.utils.config_utils import (
     update_batch_size_info,
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from streaming.base.shared.memory import SharedMemory, shared_memory_list
 from transformers import PreTrainedTokenizerBase
 
 from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices
@@ -90,7 +91,7 @@ def set_n_workers_dataloaders(
     return cfg
 
 
-def validate_config(cfg: DictConfig):
+def validate_config(cfg: DictConfig) -> None:
     """Validate compatible model and dataloader selection."""
     loaders = [cfg.train_loader]
     if "eval_loader" in cfg:
@@ -108,7 +109,7 @@ def validate_config(cfg: DictConfig):
     for loader in loaders:
         if loader is not None:
             if loader.name == "text":
-                if cfg.model.name in ["hf_prefix_lm", "hf_t5"]:
+                if cfg.model.name in {"hf_prefix_lm", "hf_t5"}:
                     raise ValueError(
                         f'Model type "{cfg.model.name}" is not supported when using the'
                         '"text " dataloader. Please use the "text_denoising" dataloader'
@@ -127,9 +128,11 @@ def validate_config(cfg: DictConfig):
                 ):
                     log(
                         WARN,
-                        'Model type "hf_t5" requires `decoder_only_format` to be '
-                        "``False``. Overriding `decoder_only_format` from ``True`` "
-                        "to ``False``.",
+                        (
+                            'Model type "hf_t5" requires `decoder_only_format` to be '
+                            "``False``. Overriding `decoder_only_format` from ``True`` "
+                            "to ``False``."
+                        ),
                     )
                     loader.mixture_of_denoisers.decoder_only_format = False
                 if (
@@ -137,18 +140,19 @@ def validate_config(cfg: DictConfig):
                 ) and cfg.model.name == "hf_prefix_lm":
                     log(
                         WARN,
-                        'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
-                        "``True``. Overriding `decoder_only_format` from ``False`` to"
-                        "``True``.",
+                        (
+                            'Model type "hf_prefix_lm" requires `decoder_only_format`'
+                            " to be``True``. Overriding `decoder_only_format` from"
+                            " ``False`` to``True``."
+                        ),
                     )
                     loader.mixture_of_denoisers.decoder_only_format = True
 
-    if "icl_tasks" in cfg:
-        if cfg.model.name == "hf_t5":
-            raise ValueError(
-                "ICL evaluation does not currently support Encoder-Decoder models, such"
-                'as "hf_t5".'
-            )
+    if "icl_tasks" in cfg and cfg.model.name == "hf_t5":
+        raise ValueError(
+            "ICL evaluation does not currently support Encoder-Decoder models, such"
+            'as "hf_t5".'
+        )
 
     if (
         cfg.model.get("fc_type", "torch") != "te"
@@ -157,9 +161,11 @@ def validate_config(cfg: DictConfig):
     ):
         log(
             WARN,
-            "fp8 only supported for te.Linear layers. Either set"
-            "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-            "to enable layers using fp8 precision.",
+            (
+                "fp8 only supported for te.Linear layers. Either set"
+                "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
+                "to enable layers using fp8 precision."
+            ),
         )
 
     if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
@@ -171,19 +177,24 @@ def validate_config(cfg: DictConfig):
         if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:
             log(
                 WARN,
-                "`te.Linear` layers do not support activation_checkpointing with "
-                "`activation_checkpointing_reentrant = False`. "
-                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
+                (
+                    "`te.Linear` layers do not support activation_checkpointing with "
+                    "`activation_checkpointing_reentrant = False`. "
+                    "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True."
+                ),
             )
             cfg.fsdp_config.activation_checkpointing_reentrant = True
 
     if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
         log(
             WARN,
-            "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
-            "`torch._dynamo.config.suppress_errors = True` and falling back to eager.",
+            (
+                "`te.LayerNormMLP` requires has issues with torch._dynamo."
+                " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
+                " to eager."
+            ),
         )
-        torch._dynamo.config.suppress_errors = True  # type: ignore
+        torch._dynamo.config.suppress_errors = True
 
     if cfg.model.get("load_in_8bit", False):
         raise ValueError(
@@ -191,7 +202,9 @@ def validate_config(cfg: DictConfig):
         )
 
 
-def build_composer_model(model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase):
+def build_composer_model(
+    model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase
+) -> Any:
     """Build the Composer model gievn the config and tokenizer."""
     warnings.filterwarnings(
         action="ignore",
@@ -209,7 +222,7 @@ def build_composer_peft_model(
 ) -> ComposerHFCausalLM:
     """Build the Composer model with Lora modules (if asked for)."""
     try:
-        from peft import LoraConfig, get_peft_model
+        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
             "Error importing from peft. Please verify that peft and peft utils "
@@ -246,8 +259,10 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
             trainable_params += param.numel()
     log(
         INFO,
-        f"trainable params: {trainable_params} || all params: {all_param} || "
-        f"trainable params (%): {100 * trainable_params / all_param}",
+        (
+            f"trainable params: {trainable_params} || all params: {all_param} || "
+            f"trainable params (%): {100 * trainable_params / all_param}"
+        ),
     )
 
 
@@ -270,9 +285,9 @@ def _get_model_for_trainer(
         else:  # standard model
             model = build_composer_model(model_config, tokenizer)
 
-        if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
+        if model_config.get("master_weights_dtype") in {"bf16", "bfloat16"}:
             model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in ("f16", "float16"):
+        elif model_config.get("master_weights_dtype") in {"f16", "float16"}:
             model = model.to(dtype=torch.float16)
         print_trainable_parameters(model)  # should not be 100%
     return model
@@ -411,8 +426,10 @@ def _get_trainer_object(
         if eval_gauntlet_config is not None:
             log(
                 INFO,
-                "Use of the key `model_gauntlet` is deprecated, please use the key"
-                "`eval_gauntlet`",
+                (
+                    "Use of the key `model_gauntlet` is deprecated, please use the key"
+                    "`eval_gauntlet`"
+                ),
             )
     icl_subset_num_batches: int | None = pop_config(
         _cfg, "icl_subset_num_batches", must_exist=False, default_value=None
@@ -524,8 +541,10 @@ def _get_trainer_object(
     if _cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            "As run_name, save_folder, and save_latest_filename are set,               "
-            "  changing autoresume default to True...",
+            (
+                "As run_name, save_folder, and save_latest_filename are set,           "
+                "      changing autoresume default to True..."
+            ),
         )
 
     autoresume: bool = pop_config(
@@ -546,8 +565,10 @@ def _get_trainer_object(
         if os.environ.get("LOCAL_RANK", "0") == "0":
             log(
                 WARN,
-                "Unused parameter %s found in cfg. Please check your yaml to ensure"
-                " this parameter is necessary.",
+                (
+                    "Unused parameter %s found in cfg. Please check your yaml to ensure"
+                    " this parameter is necessary."
+                ),
                 key,
             )
 
@@ -782,7 +803,6 @@ def get_parameters_from_state(
     trainer: Trainer,
 ) -> NDArrays:
     """Implement how to get parameters."""
-    # FIXME: This might not be enough!!! Check `composer.callback.CheckpointSaver`
     return [
         val.detach().to("cpu").numpy()
         for _, val in trainer.state.model.state_dict().items()
@@ -795,7 +815,6 @@ def set_parameters_to_state(
 ) -> None:
     """Implement how to set parameters in the case of an LLM."""
     # TODO: Check if there is space for optimisation here
-    # FIXME: This might not be enough!!! Check `composer.callback.CheckpointSaver`
     keys = list(trainer.state.model.state_dict().keys())
     params_dict = zip(keys, parameters, strict=False)
     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
@@ -818,7 +837,7 @@ def llm_fit(
     # # Cleaning stale shared memory
     # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
-    trainer, eval_first, logged_cfg = _get_trainer_object(
+    trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
     )
     # log(INFO, f"Trainer config: {logged_cfg}")
@@ -834,7 +853,6 @@ def llm_fit(
     # Prevent to run any evaluator
     trainer.state.evaluators = None
     # Execute fit step for the appointed duration
-    # FIXME: Makes this keep track of the already trained samples (in previous rounds)
     try:
         trainer.fit(duration=cfg["local_steps"])
     except Exception as e:
@@ -860,8 +878,6 @@ def llm_fit(
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
-    from streaming.base.shared.memory import SharedMemory, shared_memory_list
-
     for shm in shared_memory_list:
         SharedMemory.cleanup(shm)
         atexit.unregister(SharedMemory.cleanup)
@@ -922,8 +938,6 @@ def llm_eval(
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
-    from streaming.base.shared.memory import SharedMemory, shared_memory_list
-
     for shm in shared_memory_list:
         SharedMemory.cleanup(shm)
         atexit.unregister(SharedMemory.cleanup)

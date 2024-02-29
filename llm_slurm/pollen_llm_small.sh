@@ -31,7 +31,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50735' run_uuid=fed-small-$DATETIME pollen.refresh_period=100 fl.n_rounds=176 llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.save_overwrite=true"
 #! Launch ServerWithPollen
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$POLLEN_SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$POLLEN_SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 #! Launch NodeManager

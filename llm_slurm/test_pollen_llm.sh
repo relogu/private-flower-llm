@@ -40,7 +40,7 @@ POLLEN_CONFIG="pollen.server_address='localhost:50735' run_uuid=test-fed-pollen-
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
 #! Launch ServerWithPollen
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.server_with+pollen $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 #! Launch NodeManager

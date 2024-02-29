@@ -1,7 +1,7 @@
 """Empty Flower Client for Pollen server."""
 
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
 import flwr as fl
 from flwr.common.typing import Config, NDArrays, Scalar

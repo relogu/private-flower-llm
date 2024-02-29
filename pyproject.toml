@@ -208,15 +208,15 @@ exclude = [
 target-version = "py310"
 line-length = 88
 preview = true
-select = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN",
+lint.select = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN",
 "C4", "UP", "COM", "EXE", "FA", "ISC", "ICN", "INP", "PIE", "T20", 
 "Q", "RET", "SLOT", "SIM", "TID", "ARG", "PTH", "TD", "PD", "PGH", 
 "PL", "TRY","NPY", "PERF", "FURB", "RUF" ]
-fixable = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN", 
+lint.fixable = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN", 
 "C4", "UP", "COM", "EXE", "FA", "ISC", "ICN", "INP", "PIE", "T20",
 "Q", "RET", "SLOT", "SIM", "TCH", "ARG", "PTH", "TD", "PD", "PGH",
 "PL", "TRY", "NPY", "PERF", "FURB", "RUF"]
-ignore = ["B024", "B027", "PLE1205", "PLE1206", "PLR0904",
+lint.ignore = ["B024", "B027", "PLE1205", "PLE1206", "PLR0904",
 "PLR0911" , "PLR0912", "PLR0913", "PLR0915", "PLR0916", "PERF203",
 "PERF401","PERF403", "ANN101", "ANN102", "ANN401", "PLR6301",
 "ARG002", "TRY003", "PTH123", "TD002","TD003", "ARG001",
@@ -249,5 +249,5 @@ exclude = [
 [tool.ruff.format]
 preview = true
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "numpy"

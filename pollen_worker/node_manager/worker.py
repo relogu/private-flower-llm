@@ -4,18 +4,19 @@ import gc
 import os
 import time
 import uuid
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from logging import DEBUG, ERROR
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
-from collections.abc import Callable
+from typing import Any
 
 import multiprocess as mp
 import numpy as np
 import streaming
 import torch
 import torch.distributed as dist
-from composer.cli.launcher import _patch_env
+from composer.cli.launcher import _patch_env  # noqa: PLC2701
 from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
@@ -41,7 +42,7 @@ from pollen_worker.node_manager.utils import (
 from pollen_worker.utils import partially_aggregate, partially_aggregate_metrics
 
 
-class Worker(mp.Process):  # type: ignore
+class Worker(mp.Process):
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -55,7 +56,7 @@ class Worker(mp.Process):  # type: ignore
         parameters: NDArrays,
         worker_rank: int,
     ) -> None:
-        super(Worker, self).__init__()
+        super().__init__()
         self.worker_uuid = worker_uuid
         self.client_fn: Callable[[int], VirtualLLMClient] = client_fn
         self.task_queue = task_queue
@@ -183,7 +184,8 @@ class Worker(mp.Process):  # type: ignore
         start_time = time.time_ns()
         # Loads a dict from the shared memory buffer
         # FL config shared memory
-        fl_instructions_config, fl_instructions_config_sh = get_config_shm(
+        # NOTE: We MUST keep the sh variable even if we don't use it
+        fl_instructions_config, _fl_instructions_config_sh = get_config_shm(
             config={},
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
@@ -214,12 +216,14 @@ class Worker(mp.Process):  # type: ignore
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Put the result in the result queue
-                        self.result_queue.put([
-                            int(tmp_client.cid),
-                            start_time,
-                            end_time,
-                            self.worker_uuid,
-                        ])
+                        self.result_queue.put(
+                            [
+                                int(tmp_client.cid),
+                                start_time,
+                                end_time,
+                                self.worker_uuid,
+                            ]
+                        )
                 elif action == "evaluate":
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
@@ -228,12 +232,14 @@ class Worker(mp.Process):  # type: ignore
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
-                        self.result_queue.put([
-                            int(tmp_client.cid),
-                            start_time,
-                            end_time,
-                            self.worker_uuid,
-                        ])
+                        self.result_queue.put(
+                            [
+                                int(tmp_client.cid),
+                                start_time,
+                                end_time,
+                                self.worker_uuid,
+                            ]
+                        )
             except Exception as e:
                 log(
                     ERROR,
@@ -314,7 +320,7 @@ def get_env_patcher(
     run_uuid: str,
     rank: str,
     master_port: str,
-):
+) -> Generator[None, Any, None]:
     """Yield a context manager to patch the environment variables."""
     try:
         # Trying to destroy the process group of PyTorch Distributed,
@@ -339,11 +345,14 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables patched for worker with rank %s.\n\t\t"
-                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
-                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
-                    "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
-                    "APPOINTED_CUDA_DEVICE=%s",
+                    (
+                        "Environment variables patched for worker with rank"
+                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                        " APPOINTED_CUDA_DEVICE=%s"
+                    ),
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),
@@ -376,11 +385,14 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables patched for worker with rank %s.\n\t\t"
-                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
-                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
-                    "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
-                    "APPOINTED_CUDA_DEVICE=%s",
+                    (
+                        "Environment variables patched for worker with rank"
+                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                        " APPOINTED_CUDA_DEVICE=%s"
+                    ),
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),

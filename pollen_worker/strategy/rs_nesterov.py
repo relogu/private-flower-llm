@@ -8,10 +8,9 @@ Papers:
 - https://arxiv.org/pdf/2002.02090.pdf
 """
 
-import os
+from collections.abc import Callable, Iterable
 from logging import INFO, WARNING
 from pathlib import Path
-from collections.abc import Callable, Iterable
 
 from flwr.common import (
     FitRes,
@@ -64,8 +63,9 @@ class FedNesterov(FedAvgReproducibleSampling):
         track_norms: bool = True,
         track_inplace_aggregation: bool = False,
     ) -> None:
-        """Federated Averaging with Nestorov Momentum strategy with with reproducible
-        sampling and model saving.
+        """Federated Averaging with Nestorov Momentum strategy.
+
+        It uses reproducible sampling and model saving.
 
         Parameters
         ----------
@@ -124,7 +124,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             seed=seed,
         )
         if saving_path is None:
-            saving_path = Path(os.getcwd())
+            saving_path = Path(Path.cwd())
         self.saving_path = saving_path
 
         # Default to DiLoCo values
@@ -140,8 +140,10 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         log(
             INFO,
-            "Using Nesterov Momentum with server_learning_rate=%s and"
-            " server_momentum=%s",
+            (
+                "Using Nesterov Momentum with server_learning_rate=%s and"
+                " server_momentum=%s"
+            ),
             self.server_learning_rate,
             self.server_momentum,
         )
@@ -226,9 +228,11 @@ class FedNesterov(FedAvgReproducibleSampling):
         if self.track_norms:
             log(
                 INFO,
-                "Nesterov Momentum: l1_norm(pseudo_gradient)=%s,"
-                " l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s,"
-                " l1_norm(fedavg_result)=%s",
+                (
+                    "Nesterov Momentum: l1_norm(pseudo_gradient)=%s,"
+                    " l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s,"
+                    " l1_norm(fedavg_result)=%s"
+                ),
                 l1_norm(pseudo_gradient),
                 l1_norm(self.momentum_vector),
                 l1_norm(fedavgm_result),
@@ -236,18 +240,22 @@ class FedNesterov(FedAvgReproducibleSampling):
             )
 
         if self.track_inplace_aggregation:
-            normal_result = aggregate([
-                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                for _, fit_res in results_cached
-            ])
+            normal_result = aggregate(
+                [
+                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                    for _, fit_res in results_cached
+                ]
+            )
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
                 layer_by_layer_diff += l1_norm([x - y])
 
             log(
                 INFO,
-                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s,"
-                " len_results: %s",
+                (
+                    "Inplace aggregation gap: l1_norm(normal_result -"
+                    " fedavg_result)=%s, len_results: %s"
+                ),
                 layer_by_layer_diff,
                 len(results_cached),
             )

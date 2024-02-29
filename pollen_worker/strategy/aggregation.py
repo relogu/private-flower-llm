@@ -1,14 +1,14 @@
 """Handle aggregation in-place and potentially async."""
 
 import time
-from logging import DEBUG
 from collections.abc import Iterable
+from itertools import starmap
+from logging import DEBUG
 
 import numpy as np
 from flwr.common import FitRes, NDArrays, parameters_to_ndarrays
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
-from itertools import starmap
 
 
 def aggregate_cumulative_average(

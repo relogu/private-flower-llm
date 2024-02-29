@@ -195,13 +195,12 @@ def close_all_shms(process_uuid: str) -> None:
         except Exception as e:
             if "[Errno 2] No such file or directory" in str(e):
                 continue
-            else:
-                log(
-                    ERROR,
-                    "Removing Shared Memory %s failed because of %s",
-                    shm_name,
-                    e,
-                )
+            log(
+                ERROR,
+                "Removing Shared Memory %s failed because of %s",
+                shm_name,
+                e,
+            )
 
 
 def remove_shm_from_resource_tracker() -> None:
@@ -210,14 +209,14 @@ def remove_shm_from_resource_tracker() -> None:
     More details at: https://bugs.python.org/issue38119
     """
 
-    def fix_register(name, rtype) -> None:
+    def fix_register(name: str, rtype: str) -> None:
         if rtype == "shared_memory":
             return None
         return res_track._resource_tracker.register(name, rtype)
 
     res_track.register = fix_register
 
-    def fix_unregister(name, rtype) -> None:
+    def fix_unregister(name: str, rtype: str) -> None:
         if rtype == "shared_memory":
             return None
         return res_track._resource_tracker.unregister(name, rtype)

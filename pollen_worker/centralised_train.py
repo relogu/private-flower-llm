@@ -65,7 +65,7 @@ def validate_config(cfg: DictConfig) -> None:
             loaders.append(eval_loader)
     for loader in loaders:
         if loader.name == "text":
-            if cfg.model.name in ["hf_prefix_lm", "hf_t5"]:
+            if cfg.model.name in {"hf_prefix_lm", "hf_t5"}:
                 raise ValueError(
                     f'Model type "{cfg.model.name}" is not supported when using the'
                     ' "text " dataloader. Please use the "text_denoising" dataloader to'
@@ -84,8 +84,11 @@ def validate_config(cfg: DictConfig) -> None:
             ):
                 log(
                     WARN,
-                    'Model type "hf_t5" requires `decoder_only_format` to be ``False``.'
-                    " Overriding `decoder_only_format` from ``True`` to ``False``.",
+                    (
+                        'Model type "hf_t5" requires `decoder_only_format` to be'
+                        " ``False``. Overriding `decoder_only_format` from ``True`` to"
+                        " ``False``."
+                    ),
                 )
                 loader.mixture_of_denoisers.decoder_only_format = False
             if (
@@ -93,18 +96,19 @@ def validate_config(cfg: DictConfig) -> None:
             ) and cfg.model.name == "hf_prefix_lm":
                 log(
                     WARN,
-                    'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
-                    " ``True``. Overriding `decoder_only_format` from ``False`` to"
-                    " ``True``.",
+                    (
+                        'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
+                        " ``True``. Overriding `decoder_only_format` from ``False`` to"
+                        " ``True``."
+                    ),
                 )
                 loader.mixture_of_denoisers.decoder_only_format = True
 
-    if "icl_tasks" in cfg:
-        if cfg.model.name == "hf_t5":
-            raise ValueError(
-                "ICL evaluation does not currently support Encoder-Decoder models, such"
-                ' as "hf_t5".'
-            )
+    if "icl_tasks" in cfg and cfg.model.name == "hf_t5":
+        raise ValueError(
+            "ICL evaluation does not currently support Encoder-Decoder models, such"
+            ' as "hf_t5".'
+        )
 
     if (
         cfg.model.get("fc_type", "torch") != "te"
@@ -113,9 +117,12 @@ def validate_config(cfg: DictConfig) -> None:
     ):
         log(
             WARN,
-            "fp8 only supported for te.Linear layers. Either set"
-            " `cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-            " to enable layers using fp8 precision.",
+            (
+                "fp8 only supported for te.Linear layers. Either set"
+                " `cfg.model.fc_typ='te'` or"
+                " `cfg.model.ffn_config.ffn_type='te_ln_mlp'` to enable layers using"
+                " fp8 precision."
+            ),
         )
 
     if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
@@ -127,17 +134,22 @@ def validate_config(cfg: DictConfig) -> None:
         if fsdp_config is not None and act_ckpt and not act_ckpt_reentrant:
             log(
                 WARN,
-                "`te.Linear` layers do not support activation_checkpointing with "
-                "`activation_checkpointing_reentrant = False`. "
-                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
+                (
+                    "`te.Linear` layers do not support activation_checkpointing with "
+                    "`activation_checkpointing_reentrant = False`. "
+                    "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True."
+                ),
             )
             cfg.fsdp_config.activation_checkpointing_reentrant = True
 
     if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
         log(
             WARN,
-            "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
-            " `torch._dynamo.config.suppress_errors = True` and falling back to eager.",
+            (
+                "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
+                " `torch._dynamo.config.suppress_errors = True` and falling back to"
+                " eager."
+            ),
         )
         torch._dynamo.config.suppress_errors = True
 
@@ -167,7 +179,7 @@ def build_composer_peft_model(
 ) -> ComposerHFCausalLM:
     """Build a Composer model with LoRa modules from a pretrained model and config."""
     try:
-        from peft import LoraConfig, get_peft_model
+        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
             "Error importing from peft. Please verify that peft and peft utils "
@@ -302,8 +314,10 @@ def main(_cfg: DictConfig) -> Trainer:
         if eval_gauntlet_config is not None:
             log(
                 INFO,
-                "Use of the key `model_gauntlet` is deprecated, please use the key"
-                " `eval_gauntlet`",
+                (
+                    "Use of the key `model_gauntlet` is deprecated, please use the key"
+                    " `eval_gauntlet`"
+                ),
             )
     icl_subset_num_batches: int | None = pop_config(
         cfg, "icl_subset_num_batches", must_exist=False, default_value=None
@@ -418,8 +432,10 @@ def main(_cfg: DictConfig) -> Trainer:
     if cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            "As run_name, save_folder, and save_latest_filename are set,               "
-            "  changing autoresume default to True...",
+            (
+                "As run_name, save_folder, and save_latest_filename are set,           "
+                "      changing autoresume default to True..."
+            ),
         )
 
     autoresume: bool = pop_config(
@@ -439,8 +455,10 @@ def main(_cfg: DictConfig) -> Trainer:
     for key in cfg:
         log(
             WARN,
-            "Unused parameter %s found in cfg. Please check your yaml to ensure"
-            " this parameter is necessary.",
+            (
+                "Unused parameter %s found in cfg. Please check your yaml to ensure"
+                " this parameter is necessary."
+            ),
             key,
         )
 
@@ -488,14 +506,15 @@ def main(_cfg: DictConfig) -> Trainer:
     mosaicml_logger = next(
         (logger for logger in loggers if isinstance(logger, MosaicMLLogger)), None
     )
-    if mosaicml_logger is None:
-        if os.environ.get(
-            MOSAICML_PLATFORM_ENV_VAR, "false"
-        ).lower() == "true" and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR):
-            # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
-            # access token is set, and mosaic logger wasn't previously added
-            mosaicml_logger = MosaicMLLogger()
-            loggers.append(mosaicml_logger)
+    if (
+        mosaicml_logger is None
+        and os.environ.get(MOSAICML_PLATFORM_ENV_VAR, "false").lower() == "true"
+        and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR)
+    ):
+        # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
+        # access token is set, and mosaic logger wasn't previously added
+        mosaicml_logger = MosaicMLLogger()
+        loggers.append(mosaicml_logger)
 
     if metadata is not None:
         # Flatten the metadata for logging
@@ -614,9 +633,9 @@ def main(_cfg: DictConfig) -> Trainer:
         else:  # standard model
             model = build_composer_model(model_config, tokenizer)
 
-        if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
+        if model_config.get("master_weights_dtype") in {"bf16", "bfloat16"}:
             model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in ("f16", "float16"):
+        elif model_config.get("master_weights_dtype") in {"f16", "float16"}:
             model = model.to(dtype=torch.float16)
 
     # Log number of parameters
