@@ -19,10 +19,8 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
-import configparser
 import copy
 import gc
-import os
 import pickle
 import time
 import uuid
@@ -34,7 +32,7 @@ from typing import Any, Callable, cast
 import cloudpickle
 import flwr as fl
 import hydra
-from minio import Minio
+import numpy as np
 import nvsmi
 import psutil
 import torch
@@ -43,14 +41,20 @@ from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
+from minio import Minio
 from multiprocess import Queue, set_start_method  # type: ignore
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
-from pollen_worker.node_manager.minio_state import MinioState
-from pollen_worker.node_manager.minio_tools import MinioTools
+from pollen_worker.minio.minio_state import MinioState
+from pollen_worker.minio.minio_tools import (
+    SERVER_GLOBAL_MODEL_FOLDER,
+    _get_params_folder_path,
+    pull_parameters,
+    push_parameters,
+)
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
@@ -97,7 +101,7 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
-        minio_state: MinioState | None = None
+        minio_state: MinioState | None = None,
     ) -> None:
         super().__init__()
         ## NodeManager general attributes
@@ -386,7 +390,7 @@ class NodeManager(fl.client.NumPyClient):
     def fit(
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
-
+        """Implement the fit step."""
         current_round: int
         previous_round: int
 
@@ -413,11 +417,13 @@ class NodeManager(fl.client.NumPyClient):
                 self.minio_state.throw_on_error,
                 self.minio_state.timeout_in_seconds,
             )
-            global_model_path = f"{MinioTools._get_params_folder_path(server_state, previous_round)}/{MinioTools.SERVER_GLOBAL_MODEL_FOLDER}"
+            params_folder_path = _get_params_folder_path(server_state, previous_round)
+            parameters = pull_parameters(
+                state=server_state,
+                round=previous_round,
+                minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+            )
 
-            parameters = MinioTools.pull_parameters(server_state, previous_round, global_model_path)
-
-        """Implement the fit step."""
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # Restart all the worker every `self.refresh_period` rounds
@@ -446,11 +452,14 @@ class NodeManager(fl.client.NumPyClient):
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
-        node_train_metrics.update({
-            "node_training_time_s": float(time.time() - start_time),
-            # The endpoint UUID will be picked up by the server when pulling the client model from MinIO
-            "endpoint_id": self.node_manager_uuid
-        })
+        node_train_metrics.update(
+            {
+                "node_training_time_s": float(time.time() - start_time),
+                # The endpoint UUID will be picked up by the server when pulling the
+                # client model from MinIO
+                "endpoint_id": self.node_manager_uuid,
+            }
+        )
         log(
             DEBUG,
             "NodeManager %s: resuls have been processed. "
@@ -469,17 +478,24 @@ class NodeManager(fl.client.NumPyClient):
 
         # If applicable, push the aggregated parameters to MinIO
         if isinstance(self.minio_state, MinioState):
-            MinioTools.push_parameters(self.minio_state, current_round, aggregated_params)
+            push_parameters(self.minio_state, current_round, aggregated_params)
 
-        # Return results
-        return (
-            aggregated_params,
-            int(sum_of_samples),
-            node_train_metrics,
-        )
+            # Return results
+            return (
+                [np.array([[0.0], [0.0]])],
+                int(sum_of_samples),
+                node_train_metrics,
+            )
+        else:
+            # Return results
+            return (
+                aggregated_params,
+                int(sum_of_samples),
+                node_train_metrics,
+            )
 
     def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
-
+        """Implement the evaluation step."""
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
             current_round: int
@@ -492,9 +508,8 @@ class NodeManager(fl.client.NumPyClient):
                 current_round = current_round_uncasted
             else:
                 raise TypeError("server_round is not an integer")
-            parameters = MinioTools.pull_parameters(self.minio_state, current_round)
+            parameters = pull_parameters(self.minio_state, current_round)
 
-        """Implement the evaluation step."""
         start_time = time.time()
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
@@ -651,36 +666,21 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
-
     # MinIO
-    home = os.path.expanduser("~")
-    aws_file_path = os.path.join(home, ".aws", "credentials")
-    if not os.path.isfile(aws_file_path):
-        raise ValueError("Invalid aws_file_path")
-    config = configparser.ConfigParser()
-    config.read(aws_file_path)
-    access_key_id = config["default"]["aws_access_key_id"]
-    aws_secret_access_key = config["default"]["aws_secret_access_key"]
-    if not (isinstance(access_key_id, str) and len(access_key_id) > 0):
-        raise TypeError("Invalid access_key_id")
-    if not (isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0):
-        raise TypeError("Invalid aws_secret_access_key")
-    minio_client = Minio("mauao.cl.cam.ac.uk:9000",
-        access_key = access_key_id,
-        secret_key = aws_secret_access_key,
-        secure = False
-    )
-
-    minio_state = MinioState(
-        minio_client,
-        cfg.run_uuid,
-        "", # NOTE: this has to be always overriden in the constructor of NodeManager
-        "test", # TODO: Get the bucket name from hydra config
-        1024 * 1024 * 32, # 32 MB
-        False,
-        30,
-        log
-    )
+    minio_state: MinioState | None = None
+    if cfg.use_minio:
+        # Create the MinIO client
+        cfg.minio.minio_client.endpoint = str(cfg.minio.minio_client.endpoint).replace(
+            "http://", ""
+        )
+        minio_client = Minio(**cfg.minio.minio_client)
+        # NOTE: This MUST BE hardcoded to "server" for the server
+        cfg.minio.minio_state.endpoint_id = "server"
+        # Create the MinIO state
+        minio_state = MinioState(
+            minio_client,
+            **cfg.minio.minio_state,
+        )
 
     # Create the NodeManager object
     node_manager = NodeManager(
@@ -688,7 +688,7 @@ def main(cfg: DictConfig) -> None:
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
-        minio_state=minio_state
+        minio_state=minio_state,
     )
     # Choose the type of execution
     if cfg.is_test:
