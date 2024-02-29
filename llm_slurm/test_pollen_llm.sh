@@ -36,7 +36,7 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # Default to 0 if not set
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50735' run_uuid=test-fed-pollen-$DATETIME pollen.refresh_period=100 fl.n_rounds=5 llm_config.scheduler.t_max=10000ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true"
+POLLEN_CONFIG="pollen.server_address='localhost:50735' run_uuid=test-fed-pollen-$DATETIME pollen.refresh_period=100 fl.n_clients_per_round=8 fl.n_rounds=5 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true"
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
 #! Launch ServerWithPollen
