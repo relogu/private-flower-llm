@@ -151,7 +151,7 @@ class StreamingTextDataset(StreamingDataset):
         if (
             local is not None
             and (remote is None or (local == remote))
-            and Path.isdir(local)
+            and Path.is_dir(Path(local))
         ):
             contents = set(os.listdir(local))
             if split not in contents:

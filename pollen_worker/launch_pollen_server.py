@@ -73,11 +73,11 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
-    with wandb_init(
+    with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
         **cfg.wandb.setup,
-        settings=wandb.Settings(start_method="thread"),
-        config=wandb_config,
+        settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
+        config=wandb_config,  # type: ignore[arg-type]
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
         # Start Flower server

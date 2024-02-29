@@ -214,14 +214,14 @@ def remove_shm_from_resource_tracker() -> None:
             return None
         return res_track._resource_tracker.register(name, rtype)
 
-    res_track.register = fix_register
+    res_track.register = fix_register  # type: ignore[assignment]
 
     def fix_unregister(name: str, rtype: str) -> None:
         if rtype == "shared_memory":
             return None
         return res_track._resource_tracker.unregister(name, rtype)
 
-    res_track.unregister = fix_unregister
+    res_track.unregister = fix_unregister  # type: ignore[assignment]
 
     if "shared_memory" in res_track._CLEANUP_FUNCS:  # type: ignore[attr-defined]
         del res_track._CLEANUP_FUNCS["shared_memory"]  # type: ignore[attr-defined]

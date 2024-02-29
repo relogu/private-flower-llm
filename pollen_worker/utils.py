@@ -13,7 +13,7 @@ from collections.abc import Callable, Generator, Sequence
 from functools import reduce
 from logging import ERROR, INFO
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import psutil
@@ -25,6 +25,7 @@ from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_nda
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
+from typing_extensions import Self
 
 import wandb
 
@@ -179,7 +180,7 @@ def wandb_init(
 ) -> NoOpContextManager | Any | None:
     """Initialize wandb if enabled."""
     if wandb_enabled:
-        return wandb.init(*args, **kwargs)
+        return wandb.init(*args, **kwargs)  # type: ignore[arg-type]
 
     return NoOpContextManager()
 
@@ -829,7 +830,7 @@ def get_file_names_from_file_number(fds: list[int]) -> list[str]:
     """Return a list of file names given a list of file descriptor numbers."""
     names = []
     for fd in fds:
-        names.append(Path.readlink("/proc/self/fd/%d" % fd))
+        names.append(str(Path.readlink(Path("/proc/self/fd/%d" % fd))))
     return names
 
 

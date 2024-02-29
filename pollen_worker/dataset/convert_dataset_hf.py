@@ -114,7 +114,7 @@ class DatasetConstants:
 
     chars_per_sample: int
     chars_per_token: int
-    splits = {}  # noqa: RUF012
+    splits: dict
 
     def __iter__(self) -> Generator[Any, Any, None]:
         """Iterate over splits."""
@@ -164,6 +164,7 @@ class ValXSmallConstants(DataSplitConstants):
 pileconstants = DatasetConstants(
     chars_per_sample=6212,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
+    splits={},
 )
 pileconstants.splits["train"] = DataSplitConstants(
     hf_split="train",
@@ -199,6 +200,7 @@ pileconstants.splits["val_xsmall"] = DataSplitConstants(
 c4constants = DatasetConstants(
     chars_per_sample=2163,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
+    splits={},
 )
 c4constants.splits["train"] = DataSplitConstants(
     hf_split="train",
@@ -520,7 +522,7 @@ def main(args: Namespace) -> None:
             )
             with MDSWriter(
                 columns=columns,
-                out=out_path,
+                out=str(out_path),
                 compression=args.compression,
             ) as out:
                 for j, sample in enumerate(

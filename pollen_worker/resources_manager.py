@@ -46,6 +46,51 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
 )
 
 
+@dataclass
+class Device:
+    """Device info."""
+
+    id: int
+    name: str
+    type: str
+    total_memory: float
+    allocated_memory: float
+    concurrency: int
+
+    def __init__(
+        self,
+        device_id: int,
+        name: str,
+        device_type: str,
+        total_memory: float,
+        allocated_memory: float,
+        concurrency: int,
+    ) -> None:
+        self.device_id = device_id
+        self.name = name
+        self.device_type = device_type
+        self.total_memory = total_memory
+        self.allocated_memory = allocated_memory
+        self.concurrency = concurrency
+
+    def __repr__(self) -> str:
+        """Return the string representation."""
+        return json.dumps(asdict(self))
+
+    @staticmethod
+    def from_str(d: str) -> Device:
+        """Create a Device object from a string (built with str(Device))."""
+        device_dict: dict = json.loads(d)
+        return Device(
+            device_id=int(device_dict["id"]),
+            name=device_dict["name"],
+            device_type=device_dict["type"],
+            total_memory=float(device_dict["total_memory"]),
+            allocated_memory=float(device_dict["allocated_memory"]),
+            concurrency=int(device_dict["concurrency"]),
+        )
+
+
 def merge_devices(devices: list[Device]) -> Device:
     """Merge multiple devices into a single one."""
     assert len(devices) > 0
@@ -53,9 +98,9 @@ def merge_devices(devices: list[Device]) -> Device:
         return devices[0]
     else:
         return Device(
-            id=0,
+            device_id=0,
             name="merged",
-            type="merged",
+            device_type="merged",
             total_memory=sum([d.total_memory for d in devices]),
             allocated_memory=sum([d.allocated_memory for d in devices]),
             concurrency=1,
@@ -75,9 +120,9 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
         # Get memory info
         mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
         gpus_prop[f"cuda:{dev_id}"] = Device(
-            id=dev_id,
+            device_id=dev_id,
             name=pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
-            type="cuda",
+            device_type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,
             # TODO: Discuss what to do with one worker over multiple GPUs
@@ -143,9 +188,9 @@ def get_cuda_prop(
         # NOTE: This accounts for other (external) processes running on the same GPU
         current_concurrency = int((total - used + proc_used) // proc_used)
         gpus_prop[gpu_name] = Device(
-            id=gpu.id,
+            device_id=gpu.id,
             name=gpu.name,
-            type="cuda",
+            device_type="cuda",
             total_memory=gpu.mem_total,
             allocated_memory=gpu.mem_used,
             concurrency=current_concurrency,
@@ -176,9 +221,9 @@ def get_cpu_prop(
     current_concurrency = int(monitor.cpu_ram_available // sum(monitor.pid_ram_used))
     cpu_prop = {
         f"{cpu_type}:0": Device(
-            id=0,
+            device_id=0,
             name=f"{cpu_type}:0",
-            type=f"{cpu_type}",
+            device_type=f"{cpu_type}",
             total_memory=psutil.virtual_memory().total,
             allocated_memory=psutil.virtual_memory().total
             - psutil.virtual_memory().used,
@@ -191,51 +236,6 @@ def get_cpu_prop(
         time.sleep(0.1)
     del monitor
     return cpu_prop
-
-
-@dataclass
-class Device:
-    """Device info."""
-
-    id: int
-    name: str
-    type: str
-    total_memory: float
-    allocated_memory: float
-    concurrency: int
-
-    def __init__(
-        self,
-        device_id: int,
-        name: str,
-        device_type: str,
-        total_memory: float,
-        allocated_memory: float,
-        concurrency: int,
-    ) -> None:
-        self.device_id = device_id
-        self.name = name
-        self.device_type = device_type
-        self.total_memory = total_memory
-        self.allocated_memory = allocated_memory
-        self.concurrency = concurrency
-
-    def __repr__(self) -> str:
-        """Return the string representation."""
-        return json.dumps(asdict(self))
-
-    @staticmethod
-    def from_str(d: str) -> Device:
-        """Create a Device object from a string (built with str(Device))."""
-        device_dict: dict = json.loads(d)
-        return Device(
-            device_id=int(device_dict["id"]),
-            name=device_dict["name"],
-            device_type=device_dict["type"],
-            total_memory=float(device_dict["total_memory"]),
-            allocated_memory=float(device_dict["allocated_memory"]),
-            concurrency=int(device_dict["concurrency"]),
-        )
 
 
 @dataclass

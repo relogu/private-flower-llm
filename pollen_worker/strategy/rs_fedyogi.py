@@ -117,7 +117,7 @@ class FedYogiReproducibleSampling(FedYogi):
             on_fit_config_fn=on_fit_config_fn,
             on_evaluate_config_fn=on_evaluate_config_fn,
             accept_failures=accept_failures,
-            initial_parameters=initial_parameters,
+            initial_parameters=initial_parameters,  # type: ignore[arg-type]
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
             eta=eta,
@@ -142,16 +142,17 @@ class FedYogiReproducibleSampling(FedYogi):
         sample_size, _ = self.num_fit_clients(client_manager.num_available())
 
         # Wait for the minimum number of clients to be available
-        client_manager.wait_for(sample_size)
+        # TODO: Pass the `timeout` to the `wait_for` method
+        client_manager.wait_for(sample_size)  # type: ignore[call-arg]
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)
 
         # Generate random selection of virtual clients (number of virtual clients per round)
-        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)
+        sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore[attr-defined]
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore[attr-defined]
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]

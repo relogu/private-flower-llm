@@ -111,7 +111,7 @@ class FedAvgReproducibleSampling(FedAvg):
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: SimpleClientManager,
+        client_manager: SimpleClientManager,  # type: ignore[override]
     ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}

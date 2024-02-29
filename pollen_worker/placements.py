@@ -81,7 +81,7 @@ def pollen_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_pollen_function, _jacobian_pollen_function], **kwargs
+        fns=[_pollen_function, _jacobian_pollen_function], **kwargs  # type: ignore[arg-type]
     )
 
 
@@ -96,7 +96,7 @@ def parrot_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_linear, _jacobian_linear], is_parrot=True, **kwargs
+        fns=[_linear, _jacobian_linear], is_parrot=True, **kwargs  # type: ignore[arg-type]
     )
 
 
@@ -776,7 +776,7 @@ def _jacobian_linear(x, a, b) -> NDArray:  # noqa: ANN001
 
 
 def _predict_single_client(
-    model: tuple[any, any], fn: Callable, n_samples: int, batch_size: int
+    model: tuple[Any, Any], fn: Callable, n_samples: int, batch_size: int
 ) -> Any:
     parameters, _ = model
     return fn(n_samples // batch_size, *parameters)
