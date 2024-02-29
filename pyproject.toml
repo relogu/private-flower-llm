@@ -92,6 +92,7 @@ pip = "^23.3.2"
 py3nvml = "^0.2.7"
 memray = "^1.11.0"
 objgraph = "^3.6.0"
+minio = "^7.2.4"
 watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 

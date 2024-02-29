@@ -3386,6 +3386,24 @@ lint = ["black", "check-manifest", "flake8", "isort", "mypy"]
 test = ["Cython", "greenlet", "ipython", "pytest", "pytest-cov", "pytest-textual-snapshot", "setuptools"]
 
 [[package]]
+name = "minio"
+version = "7.2.4"
+description = "MinIO Python SDK for Amazon S3 Compatible Cloud Storage"
+optional = false
+python-versions = "*"
+files = [
+    {file = "minio-7.2.4-py3-none-any.whl", hash = "sha256:91b51c21d25e3ee6d51f52eab126d6c974371add0d77951e42c322a59c5533e7"},
+    {file = "minio-7.2.4.tar.gz", hash = "sha256:d504d8464e5198fb74dd9b572cc88b185ae7997c17705e8c09f3fef2f439d984"},
+]
+
+[package.dependencies]
+argon2-cffi = "*"
+certifi = "*"
+pycryptodome = "*"
+typing-extensions = "*"
+urllib3 = "*"
+
+[[package]]
 name = "mistune"
 version = "3.0.2"
 description = "A sane and fast Markdown parser with useful plugins and renderers"
@@ -8147,4 +8165,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9.17, <=3.11.0"
-content-hash = "6f1122461094eb237f0d36ba83c5bc2196bd8bef29d34986bdaba71cbb92ba7d"
+content-hash = "9badcc1a376a82be341028f9003e66ad92e5220e1be97519e0f571dcfb31756f"
