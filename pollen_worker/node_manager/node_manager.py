@@ -455,9 +455,6 @@ class NodeManager(fl.client.NumPyClient):
         node_train_metrics.update(
             {
                 "node_training_time_s": float(time.time() - start_time),
-                # The endpoint UUID will be picked up by the server when pulling the
-                # client model from MinIO
-                "endpoint_id": self.node_manager_uuid,
             }
         )
         log(
@@ -478,6 +475,13 @@ class NodeManager(fl.client.NumPyClient):
 
         # If applicable, push the aggregated parameters to MinIO
         if isinstance(self.minio_state, MinioState):
+            # The endpoint UUID will be picked up by the server when pulling the
+            # client model from MinIO
+            node_train_metrics.update(
+                {
+                    "endpoint_id": self.node_manager_uuid,
+                }
+            )
             push_parameters(self.minio_state, current_round, aggregated_params)
 
             # Return results
