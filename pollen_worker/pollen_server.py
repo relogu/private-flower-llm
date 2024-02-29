@@ -181,7 +181,7 @@ class PollenServer(Server):
         time_offset: float
         start_round: int
 
-        if self.resume:
+        if self.resume and self.resume_round is not None:
             # If applicable, load the state from MinIO
             if isinstance(self.minio_state, MinioState):
                 # TODO: Get the most recent round if from MinIO
