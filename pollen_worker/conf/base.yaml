@@ -34,6 +34,26 @@ defaults:
 #   is_fake: ${task.is_fake}
 #   n_workers: ${task.n_workers}
 
+# MinIO
+use_minio: false
+
+minio:
+  minio_client:
+    endpoint: null
+    access_key: null
+    secret_key: null
+    session_token: null
+    secure: false
+    region: null
+    cert_check: false
+  minio_state:
+    run_uuid: ${run_uuid}
+    endpoint_id: null
+    bucket_name: null
+    file_size: 104857600  # = 1024 * 1024 * 100
+    throw_on_error: true
+    timeout_in_seconds: 3600
+
 # Weights&Biases
 use_wandb: true
 

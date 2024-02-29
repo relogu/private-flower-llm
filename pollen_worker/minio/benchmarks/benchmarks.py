@@ -1,31 +1,31 @@
+"""Module for the benchmarks."""
 import configparser
 import copy
+import csv
 import gc
 import logging
 import os
 import sys
 import time
 import uuid
+
 import hydra
-from flwr.common import NDArrays, ndarrays_to_parameters, parameters_to_ndarrays, Parameters
-from minio import Minio
 import numpy as np
-from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
+from flwr.common import NDArrays, ndarrays_to_parameters
+from minio import Minio
 from omegaconf import DictConfig, OmegaConf
-import csv
 
-from pollen_worker.node_manager.minio_state import MinioState
-from pollen_worker.node_manager.minio_tools import MinioTools
+from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
+from pollen_worker.minio.minio_state import MinioState
+from pollen_worker.minio.minio_tools import (
+    _get_justified_number,
+    pull_parameters,
+    push_parameters,
+)
 
-"""
-            Add the snippet below to the VSCode's launch configuration file:
-
-            "args": [
-                "llm_config=mpt-1b"
-            ],
-"""
 
 class Benchmarks(object):
+    """Class for the benchmarks."""
 
     def __init__(self, parameters_as_ndarrays: NDArrays):
         self.parameters_as_ndarrays = parameters_as_ndarrays
@@ -40,12 +40,15 @@ class Benchmarks(object):
         aws_secret_access_key = config["default"]["aws_secret_access_key"]
         if not (isinstance(access_key_id, str) and len(access_key_id) > 0):
             raise TypeError("Invalid access_key_id")
-        if not (isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0):
+        if not (
+            isinstance(aws_secret_access_key, str) and len(aws_secret_access_key) > 0
+        ):
             raise TypeError("Invalid aws_secret_access_key")
-        self.client = Minio("mauao.cl.cam.ac.uk:9000",
-            access_key = access_key_id,
-            secret_key = aws_secret_access_key,
-            secure = False
+        self.client = Minio(
+            "mauao.cl.cam.ac.uk:9000",
+            access_key=access_key_id,
+            secret_key=aws_secret_access_key,
+            secure=False,
         )
 
         self.bucket_name = "test"
@@ -67,7 +70,7 @@ class Benchmarks(object):
             return f"{size / 1024} kB"
 
     def minimum_file_size_vs_speed(self) -> None:
-
+        """Execute the minimum file size vs speed benchmark."""
         kb = 1024
         mb = 1024 * kb
         file_sizes = []
@@ -76,7 +79,9 @@ class Benchmarks(object):
             file_sizes.append(file_size)
             file_size *= 2
 
-        print(f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]}\n")
+        print(
+            f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]}\n"
+        )
 
         results: list[list[float]] = []
 
@@ -85,37 +90,50 @@ class Benchmarks(object):
         round = 1
 
         for file_size in file_sizes:
-
             results.append([])
             results[results_index] = []
             results[results_index].append(file_size)
 
-            size_str = MinioTools._get_justified_number(file_size, 36)
+            size_str = _get_justified_number(file_size, 36)
 
-            state = MinioState(self.client, size_str, self.node_manager_uuid, self.bucket_name, file_size, True, 60 * 30, self.log)
+            state = MinioState(
+                self.client,
+                size_str,
+                self.node_manager_uuid,
+                self.bucket_name,
+                file_size,
+                True,
+                60 * 30,
+                self.log,
+            )
 
-            for attempt in range(1, 2, 1):
+            for _attempt in range(1, 2, 1):
                 gc.collect()
                 time.sleep(1)
 
                 start_time = time.time()
-                MinioTools.push_parameters(state, round, self.parameters_as_ndarrays)
-                pulled_parameters = MinioTools.pull_parameters(state, round)
+                push_parameters(state, round, self.parameters_as_ndarrays)
+                pulled_parameters = pull_parameters(state, round)
                 if not isinstance(pulled_parameters, list):
                     raise ConnectionError("Failed to pull parameters")
                 end_time = time.time()
 
                 time_diff = end_time - start_time
 
-                print(f"File size: {Benchmarks._get_stylizes_size(file_size)}; Time: {time_diff} seconds")
+                print(
+                    f"File size: {Benchmarks._get_stylizes_size(file_size)};"
+                    f" Time: {time_diff} seconds"
+                )
 
                 # Check the integrity of the pulled parameters
                 if len(self.parameters_as_ndarrays) != len(pulled_parameters):
                     raise ValueError("Invalid parameters length")
                 for index in range(0, len(self.parameters_as_ndarrays), 1):
-                    if not np.array_equal(self.parameters_as_ndarrays[index], pulled_parameters[index]):
+                    if not np.array_equal(
+                        self.parameters_as_ndarrays[index], pulled_parameters[index]
+                    ):
                         raise ValueError("Parameter arrays are not equal")
-                    
+
                 results[results_index].append(time_diff)
 
             results_index += 1
@@ -128,8 +146,10 @@ class Benchmarks(object):
 
         print("✅ All done!")
 
+
 @hydra.main(config_path="../../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
+    """Run the benchmarks."""
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
