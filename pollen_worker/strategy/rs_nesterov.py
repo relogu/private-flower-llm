@@ -9,9 +9,9 @@ Papers:
 """
 
 import os
-from logging import DEBUG, ERROR, INFO, WARNING
+from logging import INFO, WARNING
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from collections.abc import Callable, Iterable
 
 from flwr.common import (
     FitRes,
@@ -23,10 +23,8 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
-from sympy import N
 
 from pollen_worker.strategy.aggregation import aggregate_cumulative_average
 from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
@@ -41,24 +39,25 @@ class FedNesterov(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
-        saving_path: Optional[Path] = None,
+        saving_path: Path | None = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
         min_evaluate_clients: int = 2,
         min_available_clients: int = 2,
-        evaluate_fn: Optional[
+        evaluate_fn: (
             Callable[
-                [int, NDArrays, Dict[str, Scalar]],
-                Optional[Tuple[float, Dict[str, Scalar]]],
+                [int, NDArrays, dict[str, Scalar]],
+                tuple[float, dict[str, Scalar]] | None,
             ]
-        ] = None,
-        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
+            | None
+        ) = None,
+        on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
+        on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Optional[Parameters] = None,
-        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        initial_parameters: Parameters | None = None,
+        fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
+        evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         seed: int = 1337,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
@@ -133,7 +132,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         self.server_momentum = server_momentum
 
         # Avoid translating between parameters and NDArrays every time unnecessarily
-        self.ndarray_parameters: Optional[NDArrays] = (
+        self.ndarray_parameters: NDArrays | None = (
             parameters_to_ndarrays(initial_parameters)
             if initial_parameters is not None
             else None
@@ -141,11 +140,12 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         log(
             INFO,
-            "Using Nesterov Momentum with server_learning_rate=%s and server_momentum=%s",
+            "Using Nesterov Momentum with server_learning_rate=%s and"
+            " server_momentum=%s",
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: Optional[NDArrays] = None
+        self.momentum_vector: NDArrays | None = None
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -153,27 +153,26 @@ class FedNesterov(FedAvgReproducibleSampling):
     def aggregate_fit(
         self,
         server_round: int,
-        results: Iterable[Tuple[ClientProxy, FitRes]],
-        failures: Iterable[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        results: Iterable[tuple[ClientProxy, FitRes]],
+        failures: Iterable[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
-
         assert (
             self.ndarray_parameters is not None
         ), "When using server-side optimization, model needs to be initialized."
 
-        fit_metrics: List[Tuple[int, Dict[str, Scalar]]] = []
+        fit_metrics: list[tuple[int, dict[str, Scalar]]] = []
 
         def acc_metrics(
-            result: Tuple[ClientProxy, FitRes]
-        ) -> Tuple[ClientProxy, FitRes]:
+            result: tuple[ClientProxy, FitRes]
+        ) -> tuple[ClientProxy, FitRes]:
             _, fit_res = result
             fit_metrics.append((fit_res.num_examples, fit_res.metrics))
             return result
 
         results = (acc_metrics(result) for result in results)
 
-        results_cached: List[Tuple[ClientProxy, FitRes]] = []
+        results_cached: list[tuple[ClientProxy, FitRes]] = []
 
         if self.track_inplace_aggregation:
             results_cached = list(results)
@@ -185,7 +184,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             return None, {}
 
         pseudo_gradient: NDArrays = [
-            x - y for x, y in zip(self.ndarray_parameters, fedavg_result)
+            x - y for x, y in zip(self.ndarray_parameters, fedavg_result, strict=False)
         ]
 
         if server_round > 1:
@@ -193,7 +192,7 @@ class FedNesterov(FedAvgReproducibleSampling):
 
             self.momentum_vector = [
                 self.server_momentum * v + w
-                for w, v in zip(pseudo_gradient, self.momentum_vector)
+                for w, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
             ]
         else:  # Round 1
             # Initialize server-side model
@@ -204,13 +203,13 @@ class FedNesterov(FedAvgReproducibleSampling):
         # Applying Nesterov
         pseudo_gradient = [
             g + self.server_momentum * v
-            for g, v in zip(pseudo_gradient, self.momentum_vector)
+            for g, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
         ]
 
         # Federated Averaging with Server Momentum
         fedavgm_result = [
             w - self.server_learning_rate * v
-            for w, v in zip(self.ndarray_parameters, pseudo_gradient)
+            for w, v in zip(self.ndarray_parameters, pseudo_gradient, strict=False)
         ]
 
         self.ndarray_parameters = fedavgm_result
@@ -227,7 +226,9 @@ class FedNesterov(FedAvgReproducibleSampling):
         if self.track_norms:
             log(
                 INFO,
-                "Nesterov Momentum: l1_norm(pseudo_gradient)=%s, l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s, l1_norm(fedavg_result)=%s",
+                "Nesterov Momentum: l1_norm(pseudo_gradient)=%s,"
+                " l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s,"
+                " l1_norm(fedavg_result)=%s",
                 l1_norm(pseudo_gradient),
                 l1_norm(self.momentum_vector),
                 l1_norm(fedavgm_result),
@@ -235,19 +236,18 @@ class FedNesterov(FedAvgReproducibleSampling):
             )
 
         if self.track_inplace_aggregation:
-            normal_result = aggregate(
-                [
-                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                    for _, fit_res in results_cached
-                ]
-            )
+            normal_result = aggregate([
+                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                for _, fit_res in results_cached
+            ])
             layer_by_layer_diff = 0.0
-            for x, y in zip(normal_result, fedavg_result):
+            for x, y in zip(normal_result, fedavg_result, strict=False):
                 layer_by_layer_diff += l1_norm([x - y])
 
             log(
                 INFO,
-                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s, len_results: %s",
+                "Inplace aggregation gap: l1_norm(normal_result - fedavg_result)=%s,"
+                " len_results: %s",
                 layer_by_layer_diff,
                 len(results_cached),
             )

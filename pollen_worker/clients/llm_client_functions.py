@@ -1,4 +1,5 @@
 """Provides the internal fucntions used by the LLM client."""
+
 import atexit
 import copy
 import gc
@@ -8,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
 from logging import DEBUG, ERROR, INFO, WARN
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import streaming
 import torch
@@ -203,7 +204,7 @@ def build_composer_model(model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBa
 
 def build_composer_peft_model(
     pretrained_model_name_or_path: str,
-    lora_args: Dict[str, Any],
+    lora_args: dict[str, Any],
     tokenizer: PreTrainedTokenizerBase,
 ) -> ComposerHFCausalLM:
     """Build the Composer model with Lora modules (if asked for)."""
@@ -254,7 +255,7 @@ def _get_model_for_trainer(
     init_context: _GeneratorContextManager,
     tokenizer: PreTrainedTokenizerBase,
     model_config: DictConfig,
-    lora_config: Optional[Dict[str, Any]],
+    lora_config: dict[str, Any] | None,
 ) -> ComposerModel:
     # Build Model
     # log(INFO, "Initializing model...")
@@ -285,8 +286,9 @@ def get_raw_model_parameters(
     warnings.filterwarnings(
         action="ignore",
         category=UserWarning,
-        message="torch.distributed.*_base is a private function"
-        "and will be deprecated.*",
+        message=(
+            "torch.distributed.*_base is a private functionand will be deprecated.*"
+        ),
     )
     # Check for incompatibilities between the model and data loaders
     validate_config(_cfg)
@@ -295,13 +297,13 @@ def get_raw_model_parameters(
     # Get model config
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
     # Get tokenizer config
-    tokenizer_config: Dict[str, Any] = pop_config(
+    tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
     )
     tokenizer_name = tokenizer_config["name"]
     tokenizer_kwargs = tokenizer_config.get("kwargs", {})
     # Get LoRa config
-    lora_config: Optional[Dict[str, Any]] = pop_config(
+    lora_config: dict[str, Any] | None = pop_config(
         _cfg, "lora", must_exist=False, default_value=None, convert=True
     )
     # Get model while forcing cpu to prevent any GPU allocation
@@ -318,13 +320,14 @@ def get_raw_model_parameters(
 
 def _get_trainer_object(
     _cfg: DictConfig,
-) -> Tuple[Trainer, bool, DictConfig]:
+) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
         category=UserWarning,
-        message="torch.distributed.*_base is a private function"
-        "and will be deprecated.*",
+        message=(
+            "torch.distributed.*_base is a private functionand will be deprecated.*"
+        ),
     )
 
     # Check for incompatibilities between the model and data loaders
@@ -337,7 +340,7 @@ def _get_trainer_object(
     logged_cfg: DictConfig = copy.deepcopy(_cfg)
 
     # Get max split size mb
-    max_split_size_mb: Optional[int] = _cfg.pop("max_split_size_mb", None)
+    max_split_size_mb: int | None = _cfg.pop("max_split_size_mb", None)
     if max_split_size_mb is not None:
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = f"max_split_size_mb:{max_split_size_mb}"
 
@@ -351,7 +354,7 @@ def _get_trainer_object(
     reproducibility.seed_all(seed)
 
     # Initialize pytorch distributed training process groups
-    dist_timeout: Union[int, float] = pop_config(
+    dist_timeout: int | float = pop_config(
         _cfg, "dist_timeout", must_exist=False, default_value=600.0
     )
 
@@ -372,13 +375,13 @@ def _get_trainer_object(
 
     # Mandatory model training configs
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
-    tokenizer_config: Dict[str, Any] = pop_config(
+    tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
     )
-    optimizer_config: Dict[str, Any] = pop_config(
+    optimizer_config: dict[str, Any] = pop_config(
         _cfg, "optimizer", must_exist=True, convert=True
     )
-    scheduler_config: Dict[str, Any] = pop_config(
+    scheduler_config: dict[str, Any] = pop_config(
         _cfg, "scheduler", must_exist=True, convert=True
     )
     train_loader_config: DictConfig = pop_config(
@@ -386,19 +389,19 @@ def _get_trainer_object(
     )
 
     # Optional fsdp data, fine-tuning, and eval configs
-    fsdp_config: Optional[Dict[str, Any]] = pop_config(
+    fsdp_config: dict[str, Any] | None = pop_config(
         _cfg, "fsdp_config", must_exist=False, default_value=None, convert=True
     )
-    lora_config: Optional[Dict[str, Any]] = pop_config(
+    lora_config: dict[str, Any] | None = pop_config(
         _cfg, "lora", must_exist=False, default_value=None, convert=True
     )
-    eval_loader_config: Optional[Union[DictConfig, ListConfig]] = pop_config(
+    eval_loader_config: DictConfig | ListConfig | None = pop_config(
         _cfg, "eval_loader", must_exist=False, default_value=None
     )
-    icl_tasks_config: Optional[Union[ListConfig, str]] = pop_config(
+    icl_tasks_config: ListConfig | str | None = pop_config(
         _cfg, "icl_tasks", must_exist=False, default_value=None
     )
-    eval_gauntlet_config: Optional[Union[DictConfig, str]] = pop_config(
+    eval_gauntlet_config: DictConfig | str | None = pop_config(
         _cfg, "eval_gauntlet", must_exist=False, default_value=None
     )
     if eval_gauntlet_config is None:
@@ -411,20 +414,20 @@ def _get_trainer_object(
                 "Use of the key `model_gauntlet` is deprecated, please use the key"
                 "`eval_gauntlet`",
             )
-    icl_subset_num_batches: Optional[int] = pop_config(
+    icl_subset_num_batches: int | None = pop_config(
         _cfg, "icl_subset_num_batches", must_exist=False, default_value=None
     )
-    icl_seq_len: Optional[int] = pop_config(
+    icl_seq_len: int | None = pop_config(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    logger_configs: Optional[DictConfig] = pop_config(
+    logger_configs: DictConfig | None = pop_config(
         _cfg, "loggers", must_exist=False, default_value=None
     )
-    callback_configs: Optional[DictConfig] = pop_config(
+    callback_configs: DictConfig | None = pop_config(
         _cfg, "callbacks", must_exist=False, default_value=None
     )
-    algorithm_configs: Optional[DictConfig] = pop_config(
+    algorithm_configs: DictConfig | None = pop_config(
         _cfg, "algorithms", must_exist=False, default_value=None
     )
 
@@ -435,8 +438,8 @@ def _get_trainer_object(
     device_eval_batch_size: int = pop_config(
         _cfg, "device_eval_batch_size", must_exist=True
     )
-    max_duration: Union[int, str] = pop_config(_cfg, "max_duration", must_exist=True)
-    eval_interval: Union[int, str] = pop_config(_cfg, "eval_interval", must_exist=True)
+    max_duration: int | str = pop_config(_cfg, "max_duration", must_exist=True)
+    eval_interval: int | str = pop_config(_cfg, "eval_interval", must_exist=True)
     precision: str = pop_config(_cfg, "precision", must_exist=True)
     max_seq_len: int = pop_config(_cfg, "max_seq_len", must_exist=True)
 
@@ -445,7 +448,7 @@ def _get_trainer_object(
     run_name: str = pop_config(
         _cfg, "run_name", must_exist=False, default_value=default_run_name
     )
-    save_folder: Optional[str] = pop_config(
+    save_folder: str | None = pop_config(
         _cfg, "save_folder", must_exist=False, default_value=None
     )
     save_latest_filename: str = pop_config(
@@ -466,7 +469,7 @@ def _get_trainer_object(
         must_exist=False,
         default_value="ep{epoch}-ba{batch}-rank{rank}.pt",
     )
-    save_interval: Union[str, int] = pop_config(
+    save_interval: str | int = pop_config(
         _cfg, "save_interval", must_exist=False, default_value="1000ba"
     )
     save_num_checkpoints_to_keep: int = pop_config(
@@ -478,13 +481,13 @@ def _get_trainer_object(
     log_to_console: bool = pop_config(
         _cfg, "log_to_console", must_exist=False, default_value=True
     )
-    python_log_level: Optional[str] = pop_config(
+    python_log_level: str | None = pop_config(
         _cfg, "python_log_level", must_exist=False, default_value="debug"
     )
-    console_log_interval: Union[int, str] = pop_config(
+    console_log_interval: int | str = pop_config(
         _cfg, "console_log_interval", must_exist=False, default_value="1ba"
     )
-    device_train_microbatch_size: Union[str, int] = pop_config(
+    device_train_microbatch_size: str | int = pop_config(
         _cfg, "device_train_microbatch_size", must_exist=False, default_value="auto"
     )
     eval_subset_num_batches: int = pop_config(
@@ -500,10 +503,10 @@ def _get_trainer_object(
     load_strict_model_weights: bool = pop_config(
         _cfg, "load_strict_model_weights", must_exist=False, default_value=True
     )
-    load_ignore_keys: Optional[List[str]] = pop_config(
+    load_ignore_keys: list[str] | None = pop_config(
         _cfg, "load_ignore_keys", must_exist=False, default_value=None
     )
-    compile_config: Optional[Dict[str, Any]] = pop_config(
+    compile_config: dict[str, Any] | None = pop_config(
         _cfg, "compile_config", must_exist=False, default_value=None
     )
     pop_config(_cfg, "metadata", must_exist=False, default_value=None, convert=True)
@@ -521,8 +524,8 @@ def _get_trainer_object(
     if _cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            "As run_name, save_folder, and save_latest_filename are set, \
-                changing autoresume default to True...",
+            "As run_name, save_folder, and save_latest_filename are set,               "
+            "  changing autoresume default to True...",
         )
 
     autoresume: bool = pop_config(
@@ -562,8 +565,10 @@ def _get_trainer_object(
         logging.basicConfig(
             # Example of format string
             # 2022-06-29 11:22:26,152: rank0[822018][MainThread]: INFO: Message here
-            format=f"%(asctime)s: rank{dist.get_global_rank()}[%(process)d]"
-            f"[%(threadName)s]: %(levelname)s: %(name)s: %(message)s"
+            format=(
+                f"%(asctime)s: rank{dist.get_global_rank()}[%(process)d]"
+                "[%(threadName)s]: %(levelname)s: %(name)s: %(message)s"
+            )
         )
         logging.getLogger("llmfoundry").setLevel(python_log_level.upper())
 
@@ -591,18 +596,18 @@ def _get_trainer_object(
     )
 
     # Profiling
-    profiler: Optional[Profiler] = None
-    profiler_cfg: Optional[DictConfig] = pop_config(
+    profiler: Profiler | None = None
+    profiler_cfg: DictConfig | None = pop_config(
         _cfg, "profiler", must_exist=False, convert=False, default_value=None
     )
     if profiler_cfg:
-        profiler_schedule_cfg: Dict = pop_config(
+        profiler_schedule_cfg: dict = pop_config(
             profiler_cfg, "schedule", must_exist=True, convert=True
         )
         profiler_schedule = cyclic_schedule(**profiler_schedule_cfg)
         # Only support json trace handler
-        profiler_trace_handlers: List[TraceHandler] = []
-        profiler_trace_cfg: Optional[Dict] = pop_config(
+        profiler_trace_handlers: list[TraceHandler] = []
+        profiler_trace_cfg: dict | None = pop_config(
             profiler_cfg,
             "json_trace_handler",
             must_exist=False,
@@ -618,7 +623,7 @@ def _get_trainer_object(
         )
 
     # Callbacks
-    callbacks: List[Callback] = (
+    callbacks: list[Callback] = (
         [
             build_callback(str(name), callback_cfg)
             for name, callback_cfg in callback_configs.items()
@@ -647,7 +652,7 @@ def _get_trainer_object(
             device_train_batch_size,
         )
 
-    ## Evaluation
+    # Evaluation
     # log(INFO, "Building eval loader...")
     evaluators = []
     eval_loaders = []
@@ -659,9 +664,11 @@ def _get_trainer_object(
                 eval_config, tokenizer, device_eval_batch_size
             )
             eval_loader = Evaluator(
-                label=f"eval/{eval_config.label}"  # type: ignore[union-attr]
-                if is_multi_eval
-                else "eval",
+                label=(
+                    f"eval/{eval_config.label}"  # type: ignore[union-attr]
+                    if is_multi_eval
+                    else "eval"
+                ),
                 dataloader=eval_dataloader,
                 metric_names=[],  # we will add these after model is created
             )
@@ -750,7 +757,7 @@ def _get_trainer_object(
 
 
 def get_parameters(
-    config: Dict[str, Scalar],
+    config: dict[str, Scalar],
     cfg: DictConfig,
 ) -> NDArrays:
     """Return the current local model parameters.
@@ -790,7 +797,7 @@ def set_parameters_to_state(
     # TODO: Check if there is space for optimisation here
     # FIXME: This might not be enough!!! Check `composer.callback.CheckpointSaver`
     keys = list(trainer.state.model.state_dict().keys())
-    params_dict = zip(keys, parameters)
+    params_dict = zip(keys, parameters, strict=False)
     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
     # NOTE: We may want to try strict=False
     trainer.state.model.load_state_dict(state_dict, strict=True)
@@ -800,9 +807,9 @@ def set_parameters_to_state(
 
 def llm_fit(
     parameters: NDArrays,
-    config: Dict,
+    config: dict,
     cfg: DictConfig,
-) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
+) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
@@ -876,9 +883,9 @@ def llm_fit(
 
 def llm_eval(
     parameters: NDArrays,
-    config: Dict,
+    config: dict,
     cfg: DictConfig,
-) -> tuple[float, int, Dict[str, Scalar]]:
+) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]

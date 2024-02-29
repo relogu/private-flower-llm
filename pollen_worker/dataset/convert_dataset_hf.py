@@ -9,7 +9,7 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from enum import Enum
 from logging import INFO
-from typing import Dict, Iterable, Optional, Union
+from collections.abc import Iterable
 
 import psutil
 from flwr.common.logger import log
@@ -33,8 +33,9 @@ class ConcatMode(Enum):
 def parse_args() -> Namespace:
     """Parse commandline arguments."""
     parser = ArgumentParser(
-        description="Convert dataset into MDS format, optionally concatenating and"
-        "tokenizing"
+        description=(
+            "Convert dataset into MDS format, optionally concatenating andtokenizing"
+        )
     )
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument(
@@ -102,7 +103,7 @@ class DataSplitConstants:
     hf_split: str
     folder_split: str
     raw_samples: int
-    truncated_samples: Union[int, None]
+    truncated_samples: int | None
 
 
 @dataclass
@@ -242,12 +243,12 @@ def build_hf_dataset(
     dataset_name: str,
     split: str,
     mode: ConcatMode,
-    max_length: Optional[int] = None,
+    max_length: int | None = None,
     bos_text: str = "",
     eos_text: str = "",
     no_wrap: bool = False,
     tokenizer: PreTrainedTokenizerBase = None,
-    data_subset: Union[str, None] = None,
+    data_subset: str | None = None,
 ) -> IterableDataset:
     """Build an IterableDataset over the HF C4 or pile source data.
 
@@ -322,7 +323,7 @@ def _est_progress_denominator(
 
 
 def build_dataloader(
-    dataset: Dataset, batch_size: int, num_workers: Optional[int]
+    dataset: Dataset, batch_size: int, num_workers: int | None
 ) -> DataLoader:
     """Return a DataLoader for a dataset."""
     if num_workers is None:
@@ -348,8 +349,8 @@ def build_dataloader(
 
 
 def generate_samples(
-    loader: DataLoader, truncate_num_samples: Optional[int] = None
-) -> Iterable[Dict[str, bytes]]:
+    loader: DataLoader, truncate_num_samples: int | None = None
+) -> Iterable[dict[str, bytes]]:
     """Build a Generator over samples of a dataloader.
 
     Args:

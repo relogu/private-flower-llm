@@ -1,4 +1,5 @@
 """TODO: Add description here."""
+
 import copy
 import pickle
 from logging import ERROR
@@ -116,7 +117,7 @@ def get_parameters_shm(
         shm = SharedMemory(name=name)
     params_sh: NDArrays = [
         np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
-        for x, y in zip(parameters, array_bounds)
+        for x, y in zip(parameters, array_bounds, strict=False)
     ]
     return params_sh, shm
 
@@ -211,14 +212,14 @@ def remove_shm_from_resource_tracker() -> None:
 
     def fix_register(name, rtype) -> None:
         if rtype == "shared_memory":
-            return
+            return None
         return res_track._resource_tracker.register(name, rtype)
 
     res_track.register = fix_register
 
     def fix_unregister(name, rtype) -> None:
         if rtype == "shared_memory":
-            return
+            return None
         return res_track._resource_tracker.unregister(name, rtype)
 
     res_track.unregister = fix_unregister

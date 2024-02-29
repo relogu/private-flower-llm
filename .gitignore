@@ -200,3 +200,5 @@ history.json
 # Results from Pollen's rebuttal
 gpu_results
 notebooks/*.txt
+
+checkpoints

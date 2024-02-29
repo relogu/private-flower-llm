@@ -1,7 +1,7 @@
 """Flower server accounting for using Weights&Biases."""
+
 import timeit
 from logging import INFO
-from typing import Optional
 
 from flwr.common import Parameters
 from flwr.common.logger import log
@@ -19,19 +19,19 @@ class WandbServer(LargeScaleServer):
         self,
         *,
         client_manager: ClientManager,
-        strategy: Optional[FedAvg] = None,
-        history: Optional[History] = None,
+        strategy: FedAvg | None = None,
+        history: History | None = None,
     ) -> None:
         self._client_manager: ClientManager = client_manager
         self.parameters: Parameters = Parameters(
             tensors=[], tensor_type="numpy.ndarray"
         )
         self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
-        self.max_workers: Optional[int] = None
-        self.history: Optional[History] = history
+        self.max_workers: int | None = None
+        self.history: History | None = history
 
     # pylint: disable=too-many-locals
-    def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
+    def fit(self, num_rounds: int, timeout: float | None) -> History:
         """Run federated averaging for a number of rounds."""
         history = self.history if self.history is not None else History()
 

@@ -5,11 +5,13 @@ avoids any memory or processing intensive operations in the _init_ function. As 
 virtual clients can be used to simulate a large number of clients on a single machine
 even if many are spawned at once.
 """
+
 import copy
 import os
 import time
 from logging import DEBUG, INFO, WARNING
-from typing import Any, Callable, Dict, Union
+from typing import Any
+from collections.abc import Callable
 
 import flwr as fl
 import hydra
@@ -41,7 +43,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
     def __init__(
         self,
         *,
-        cid: Union[int, str],
+        cid: int | str,
         cfg: DictConfig,
     ) -> None:
         # Set init parameters
@@ -92,7 +94,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the string representation."""
         return f"VirtualLLMClient(cid={self.cid})"
 
-    def get_properties(self, config: Config) -> Dict[str, Scalar]:
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
         return {}
 
@@ -118,8 +120,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
         return get_parameters(config, cfg)
 
     def fit(
-        self, parameters: NDArrays, config: Dict
-    ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
+        self, parameters: NDArrays, config: dict
+    ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
         """Implement the fit step."""
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
@@ -141,8 +143,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
     def evaluate(
         self,
         parameters: NDArrays,
-        config: Dict[str, Scalar],
-    ) -> tuple[float, int, Dict[str, Scalar]]:
+        config: dict[str, Scalar],
+    ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
@@ -243,7 +245,7 @@ def main(cfg: DictConfig) -> None:
             num_examples,
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
-        ## PROFILING
+        # PROFILING
         all_opened = 0
         sum_of_ram = 0
         for proc in psutil.process_iter():

@@ -1,9 +1,7 @@
 """Large-scale Flower server to solve Ray issue when submitting too many clients."""
 
-
 import concurrent.futures
 from logging import DEBUG, INFO, WARNING
-from typing import List, Optional, Tuple, Union
 
 from flwr.common import (
     FitIns,
@@ -34,20 +32,20 @@ class LargeScaleServer(Server):
         self,
         *,
         client_manager: ClientManager,
-        strategy: Optional[FedAvg] = None,
+        strategy: FedAvg | None = None,
     ) -> None:
         self._client_manager: ClientManager = client_manager
         self.parameters: Parameters = Parameters(
             tensors=[], tensor_type="numpy.ndarray"
         )
         self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
-        self.max_workers: Optional[int] = None
+        self.max_workers: int | None = None
 
     def fit_round(
         self,
         server_round: int,
-        timeout: Optional[float],
-    ) -> Optional[Tuple[Optional[Parameters], Metrics, FitResultsAndFailures]]:
+        timeout: float | None,
+    ) -> tuple[Parameters | None, Metrics, FitResultsAndFailures] | None:
         """Perform a single round of federated averaging."""
         # Get clients and their respective instructions from strategy
         client_instructions = self.strategy.configure_fit(
@@ -82,19 +80,19 @@ class LargeScaleServer(Server):
 def fit_clients(
     strategy: FedAvg,
     server_round: int,
-    client_instructions: List[Tuple[ClientProxy, FitIns]],
-    max_workers: Optional[int],
-    timeout: Optional[float],
-) -> Optional[Tuple[Optional[Parameters], Metrics, FitResultsAndFailures]]:
+    client_instructions: list[tuple[ClientProxy, FitIns]],
+    max_workers: int | None,
+    timeout: float | None,
+) -> tuple[Parameters | None, Metrics, FitResultsAndFailures] | None:
     """Refine parameters concurrently on all selected clients."""
-    finished_fs: List[concurrent.futures.Future] = []
-    results: List[Tuple[ClientProxy, FitRes]] = []
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
-    tmp_results: List[Tuple[NDArrays, int]] = []
-    tmp_metrics: List[Tuple[int, Metrics]] = []
-    empty_res_and_fail: Tuple[
-        List[Tuple[ClientProxy, FitRes]],
-        List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    finished_fs: list[concurrent.futures.Future] = []
+    results: list[tuple[ClientProxy, FitRes]] = []
+    failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
+    tmp_results: list[tuple[NDArrays, int]] = []
+    tmp_metrics: list[tuple[int, Metrics]] = []
+    empty_res_and_fail: tuple[
+        list[tuple[ClientProxy, FitRes]],
+        list[tuple[ClientProxy, FitRes] | BaseException],
     ] = ([], [])
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         indices = chunks_idx(
@@ -123,12 +121,10 @@ def fit_clients(
                     fit_metrics = [
                         (res.num_examples, res.metrics) for _, res in results
                     ]
-                    tmp_metrics.append(
-                        (
-                            sum([num_examples for num_examples, _ in fit_metrics]),
-                            strategy.fit_metrics_aggregation_fn(fit_metrics),
-                        )
-                    )
+                    tmp_metrics.append((
+                        sum([num_examples for num_examples, _ in fit_metrics]),
+                        strategy.fit_metrics_aggregation_fn(fit_metrics),
+                    ))
                 # Partially aggregate parameters
                 if results:
                     tmp_results.append(
@@ -162,12 +158,10 @@ def fit_clients(
         # Partially aggregate custom metrics if aggregation fn was provided
         if strategy.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            tmp_metrics.append(
-                (
-                    sum([num_examples for num_examples, _ in fit_metrics]),
-                    strategy.fit_metrics_aggregation_fn(fit_metrics),
-                )
-            )
+            tmp_metrics.append((
+                sum([num_examples for num_examples, _ in fit_metrics]),
+                strategy.fit_metrics_aggregation_fn(fit_metrics),
+            ))
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
         # Partially aggregate parameters
@@ -182,7 +176,7 @@ def fit_clients(
         results.clear()
         failures.clear()
     # Aggregate partial aggregations
-    parameters_aggregated: Optional[Parameters] = None
+    parameters_aggregated: Parameters | None = None
 
     metrics_aggregated = {}
     if tmp_results:

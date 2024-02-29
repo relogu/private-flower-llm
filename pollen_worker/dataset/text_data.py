@@ -6,7 +6,8 @@
 import os
 from itertools import islice
 from logging import INFO
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Union, cast
+from typing import Any, cast
+from collections.abc import Callable, Mapping, Sequence
 
 import hydra
 import numpy as np
@@ -109,24 +110,24 @@ class StreamingTextDataset(StreamingDataset):
         self,
         tokenizer: PreTrainedTokenizerBase,
         max_seq_len: int,
-        streams: Optional[Sequence[Stream]] = None,
-        remote: Optional[str] = None,
-        local: Optional[str] = None,
-        split: Optional[str] = None,
+        streams: Sequence[Stream] | None = None,
+        remote: str | None = None,
+        local: str | None = None,
+        split: str | None = None,
         download_retry: int = 2,
         download_timeout: float = 60,
-        validate_hash: Optional[str] = None,
+        validate_hash: str | None = None,
         keep_zip: bool = False,
-        epoch_size: Optional[Union[int, str]] = None,
-        predownload: Optional[int] = None,
-        cache_limit: Optional[Union[int, str]] = None,
+        epoch_size: int | str | None = None,
+        predownload: int | None = None,
+        cache_limit: int | str | None = None,
         partition_algo: str = "relaxed",
-        num_canonical_nodes: Optional[int] = None,
-        batch_size: Optional[int] = None,
+        num_canonical_nodes: int | None = None,
+        batch_size: int | None = None,
         shuffle: bool = False,
         shuffle_algo: str = "py1e",
         shuffle_seed: int = 9176,
-        shuffle_block_size: Optional[int] = None,
+        shuffle_block_size: int | None = None,
         sampling_method: str = "balanced",
         sampling_granularity: int = 1,
         batching_method: str = "random",
@@ -186,7 +187,7 @@ class StreamingTextDataset(StreamingDataset):
         self.max_seq_len = max_seq_len
 
     # How to tokenize a text sample to a token sample
-    def _tokenize(self, text_sample: Mapping) -> Dict[str, List[int]]:
+    def _tokenize(self, text_sample: Mapping) -> dict[str, list[int]]:
         if self.tokenizer._pad_token is None:
             # Some tokenizers (e.g. GPT2 tokenizer) have no padding token which
             # causes bugs
@@ -201,15 +202,15 @@ class StreamingTextDataset(StreamingDataset):
             max_length=self.max_seq_len,
         )
 
-    def _read_binary_tokenized_sample(self, sample: Dict[str, Any]) -> torch.Tensor:
+    def _read_binary_tokenized_sample(self, sample: dict[str, Any]) -> torch.Tensor:
         return torch.from_numpy(
             np.frombuffer(sample["tokens"], dtype=np.int64)[: self.max_seq_len].copy()
         )
 
     # How to process a sample
     def __getitem__(
-        self, idx: int | slice | List[int] | NDArray[np.int64]
-    ) -> Union[Dict[str, List[int]], torch.Tensor]:
+        self, idx: int | slice | list[int] | NDArray[np.int64]
+    ) -> dict[str, list[int]] | torch.Tensor:
         """Implement dataset interface."""
         sample = super().__getitem__(idx)
         if "text" in sample:
@@ -229,8 +230,8 @@ class ConcatenatedSequenceCollatorWrapper:
     def __init__(
         self,
         base_collator: Callable,
-        eos_token_id: Optional[int] = None,
-        bos_token_id: Optional[int] = None,
+        eos_token_id: int | None = None,
+        bos_token_id: int | None = None,
     ):
         self.base_collator = base_collator
         if (eos_token_id is None) and (bos_token_id is None):
@@ -252,14 +253,14 @@ class ConcatenatedSequenceCollatorWrapper:
             self.split_token_id = eos_token_id
             self.bos_mode = False
 
-    def __call__(self, examples: List[Any]) -> Dict[str, torch.Tensor]:
+    def __call__(self, examples: list[Any]) -> dict[str, torch.Tensor]:
         """Implement collator interface."""
         batch = self.base_collator(examples)
         batch["sequence_id"] = self.get_sequence_id_from_batch(batch)
         return batch
 
     def get_sequence_id_from_batch(
-        self, batch: Dict[str, torch.Tensor]
+        self, batch: dict[str, torch.Tensor]
     ) -> torch.Tensor:
         """Get sequence id from batch."""
         is_separator = torch.eq(batch["input_ids"], self.split_token_id)
@@ -422,7 +423,7 @@ def main(cfg: DictConfig) -> None:
     # Manually setting the batch size to 2
     device_batch_size = 2
     # Build tokenizer
-    tokenizer_config: Dict[str, Any] = pop_config(
+    tokenizer_config: dict[str, Any] = pop_config(
         _llm_config, "tokenizer", must_exist=True, convert=True
     )
     tokenizer_name = tokenizer_config["name"]

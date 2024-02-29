@@ -15,17 +15,10 @@ from logging import ERROR, INFO
 from pathlib import Path
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
     Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
     cast,
 )
+from collections.abc import Callable, Generator, Sequence
 
 import numpy as np
 import psutil
@@ -45,7 +38,7 @@ import wandb
 POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
 
 
-#### Server ####
+# Server ####
 def weighted_average(
     metrics: list[tuple[int, dict]],
 ) -> dict:
@@ -74,8 +67,8 @@ def weighted_average(
 
 
 def partially_aggregate(
-    current_agg: Tuple[NDArrays, int], new_results: Tuple[NDArrays, int]
-) -> Tuple[NDArrays, int]:
+    current_agg: tuple[NDArrays, int], new_results: tuple[NDArrays, int]
+) -> tuple[NDArrays, int]:
     """Aggregate partially parameters."""
     updated_agg = None
     # Assuming that the partially aggregate is empty when n_samples is 0
@@ -105,8 +98,8 @@ def partially_aggregate_metrics(
     return total_num_examples, updated_agg
 
 
-#### Client ####
-## General
+# Client ####
+# General
 def get_parameters(net: torch.nn.Module) -> NDArrays:
     """Implement generic `get_parameters` for Flower Client."""
     net.eval()
@@ -119,7 +112,7 @@ def set_parameters(
     """Implement generic `set_parameters` for Flower Client."""
     net.eval()
     keys = [k for k in net.state_dict().keys() if "bn" not in k]
-    params_dict = zip(keys, parameters)
+    params_dict = zip(keys, parameters, strict=False)
     state_dict = OrderedDict(
         {k: torch.tensor(v, device=device) for k, v in params_dict}
     )
@@ -127,20 +120,20 @@ def set_parameters(
 
 
 def invert_many_to_one_dictionary(
-    input: Dict,
-) -> Dict:
+    input: dict,
+) -> dict:
     """Invert the mapping given by a dictionary when it is many-to-one."""
-    output: Dict = defaultdict(list)
+    output: dict = defaultdict(list)
     for k, v in input.items():
         output[v] = output.get(v, []) + [k]
     return output
 
 
 def invert_one_to_many_dictionary(
-    input: Dict,
-) -> Dict:
+    input: dict,
+) -> dict:
     """Invert the mapping given by a dictionary when it is one-to-many."""
-    output: Dict = {}
+    output: dict = {}
     for k, v in input.items():
         for w in v:
             output[w] = k
@@ -155,10 +148,10 @@ def gen_on_fit_config_fn(
     weight_decay: float = 0.0,
     is_fake: bool = False,
     n_workers: int = 0,
-) -> Callable[[int], Dict[str, Scalar]]:
+) -> Callable[[int], dict[str, Scalar]]:
     """Return generic `on_fit_config_fn` for Flower Client."""
 
-    def on_fit_config_fn(server_round: int) -> Dict[str, Scalar]:
+    def on_fit_config_fn(server_round: int) -> dict[str, Scalar]:
         """Return `Config` for fit/evaluate rounds."""
         return {
             "batch_size": batch_size,
@@ -180,15 +173,13 @@ class NoOpContextManager:
 
     def __enter__(self) -> None:
         """Do nothing."""
-        return None
+        return
 
     def __exit__(self, exc_type, exc_value, traceback):
         """Do nothing."""
 
 
-def wandb_init(
-    wandb_enabled: bool, *args, **kwargs
-) -> Optional[Union[NoOpContextManager, Any]]:
+def wandb_init(wandb_enabled: bool, *args, **kwargs) -> NoOpContextManager | Any | None:
     """Initialize wandb if enabled."""
     if wandb_enabled:
         return wandb.init(*args, **kwargs)
@@ -221,7 +212,7 @@ def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any,
     """Split a list in n_chunks of equal length."""
     d, r = divmod(len(list), n_chunks)
     for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+        si = (d + 1) * (min(r, i)) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
 
@@ -241,7 +232,7 @@ def l1_norm(arrays: NDArrays) -> float:
     return sum(np.sum(np.abs(arr)) for arr in arrays)
 
 
-def aggregate_inplace(results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
+def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
     num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
@@ -261,7 +252,10 @@ def aggregate_inplace(results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
             scaling_factors[i + 1] * x
             for x in parameters_to_ndarrays(fit_res.parameters)
         )
-        params = [reduce(np.add, layer_updates) for layer_updates in zip(params, res)]
+        params = [
+            reduce(np.add, layer_updates)
+            for layer_updates in zip(params, res, strict=False)
+        ]
 
     return params
 
@@ -470,7 +464,7 @@ def get_selected_objects_types(
 
 def clean_trainer_state(trainer: Trainer) -> None:
     """Clean the state of the trainer."""
-    ## Evaluators
+    # Evaluators
     try:
         for evaluator in trainer.state._evaluators:
             iterator = evaluator.dataloader.dataloader._iterator
@@ -512,7 +506,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## State
+    # State
     # Model
     try:
         trainer.state.model.cpu()
@@ -722,7 +716,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## Engine
+    # Engine
     # Logger
     try:
         delattr(trainer.engine, "logger")
@@ -759,7 +753,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## Trainer
+    # Trainer
     # Model
     try:
         delattr(trainer, "_original_model")
@@ -829,7 +823,7 @@ def get_open_fds() -> list[int]:
     for fd in range(3, soft):
         try:
             fcntl.fcntl(fd, fcntl.F_GETFD)
-        except IOError:
+        except OSError:
             continue
         fds.append(fd)
     return fds

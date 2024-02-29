@@ -19,6 +19,7 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
+
 import copy
 import gc
 import pickle
@@ -27,7 +28,8 @@ import uuid
 from logging import DEBUG, ERROR, INFO
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
-from typing import Any, Callable, cast
+from typing import Any, cast
+from collections.abc import Callable
 
 import cloudpickle
 import flwr as fl
@@ -94,7 +96,7 @@ class NodeManager(fl.client.NumPyClient):
         refresh_period: int,
     ) -> None:
         super().__init__()
-        ## NodeManager general attributes
+        # NodeManager general attributes
         self.name: str = getfqdn()
         self.properties: dict[str, Scalar] = {}
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
@@ -102,7 +104,7 @@ class NodeManager(fl.client.NumPyClient):
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
         self.client_fn = client_fn
         self.refresh_period = refresh_period
-        ## Set up Queues
+        # Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs
         self.result_queue: QueueType = Queue()
@@ -111,14 +113,14 @@ class NodeManager(fl.client.NumPyClient):
         # Set how many processes can be run on each GPU given the properties
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # log(DEBUG, "Max processes per device: %s", max_proc_device)
-        ## Set up round parameters SharedMemory
+        # Set up round parameters SharedMemory
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=parameters,
             create=True,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Create workers
         self.workers_dict: dict[int, Worker] = {}
@@ -230,7 +232,7 @@ class NodeManager(fl.client.NumPyClient):
         fl_instructions_config, fl_instructions_config_sh = get_config_shm(
             config=config,
             create=True,
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
         set_config_shm(config, fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
@@ -305,7 +307,7 @@ class NodeManager(fl.client.NumPyClient):
             fl_instructions_config, fl_instructions_config_sh = get_config_shm(
                 config=config,
                 create=True,
-                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
             )
             set_config_shm(config, fl_instructions_config_sh)
             # Send the collaborative task to the workers
@@ -458,7 +460,7 @@ class NodeManager(fl.client.NumPyClient):
             ) = get_config_shm(
                 config=config,
                 create=True,
-                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
             )
             set_config_shm(config, self.fl_instructions_config_sh)
             # Send the collaborative task to the workers
@@ -493,12 +495,10 @@ class NodeManager(fl.client.NumPyClient):
                 # Get stuff from shared memories of the rank 0 worker
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
                 w_eval_loss, w_eval_loss_shm = get_eval_loss_shm(
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_EVAL_LOSS_SHM,  # noqa: F821
+                    name=self.workers_dict[0].worker_uuid + POLLEN_EVAL_LOSS_SHM,
                 )
                 w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+                    name=self.workers_dict[0].worker_uuid + POLLEN_N_SAMPLES_SHM,
                 )
                 w_metrics, w_metrics_shm = get_config_shm(
                     config={},

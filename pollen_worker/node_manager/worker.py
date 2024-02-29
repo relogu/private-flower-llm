@@ -1,4 +1,5 @@
 """TODO: Add description here."""
+
 import gc
 import os
 import time
@@ -7,7 +8,7 @@ from contextlib import contextmanager
 from logging import DEBUG, ERROR
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 import multiprocess as mp
 import numpy as np
@@ -113,7 +114,7 @@ class Worker(mp.Process):  # type: ignore
             ) = get_config_shm(
                 config=p_agg_metrics,
                 create=True,
-                name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
+                name=self.worker_uuid + POLLEN_METRICS_SHM,
             )
             set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
@@ -165,7 +166,7 @@ class Worker(mp.Process):  # type: ignore
             ) = get_config_shm(
                 config=p_agg_metrics,
                 create=True,
-                name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
+                name=self.worker_uuid + POLLEN_METRICS_SHM,
             )
             set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
@@ -184,7 +185,7 @@ class Worker(mp.Process):  # type: ignore
         # FL config shared memory
         fl_instructions_config, fl_instructions_config_sh = get_config_shm(
             config={},
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
         # Load client
         tmp_client = self.client_fn(client_id)
@@ -213,14 +214,12 @@ class Worker(mp.Process):  # type: ignore
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Put the result in the result queue
-                        self.result_queue.put(
-                            [
-                                int(tmp_client.cid),
-                                start_time,
-                                end_time,
-                                self.worker_uuid,
-                            ]
-                        )
+                        self.result_queue.put([
+                            int(tmp_client.cid),
+                            start_time,
+                            end_time,
+                            self.worker_uuid,
+                        ])
                 elif action == "evaluate":
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
@@ -229,14 +228,12 @@ class Worker(mp.Process):  # type: ignore
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
-                        self.result_queue.put(
-                            [
-                                int(tmp_client.cid),
-                                start_time,
-                                end_time,
-                                self.worker_uuid,
-                            ]
-                        )
+                        self.result_queue.put([
+                            int(tmp_client.cid),
+                            start_time,
+                            end_time,
+                            self.worker_uuid,
+                        ])
             except Exception as e:
                 log(
                     ERROR,
@@ -264,7 +261,7 @@ class Worker(mp.Process):  # type: ignore
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=self.parameters,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
         )
         # NOTE: This is the Worker's shared memory for the fit results.
         # NodeManager should only read this. Worker should only write this.
@@ -272,31 +269,31 @@ class Worker(mp.Process):  # type: ignore
         self.worker_parameters, self.worker_parameters_sh = get_parameters_shm(
             create=True,
             parameters=self.parameters,
-            name=self.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Number of samples shared memory
         self.worker_num_samples, self.worker_num_samples_sh = get_num_samples_shm(
             create=True,
-            name=self.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_N_SAMPLES_SHM,
         )
         set_num_samples_shm(self.worker_num_samples, 0)
         # Evaluation loss shared memory
         self.worker_eval_loss, self.worker_eval_loss_sh = get_eval_loss_shm(
             create=True,
-            name=self.worker_uuid + POLLEN_EVAL_LOSS_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_EVAL_LOSS_SHM,
         )
 
     def run(self) -> None:
         """Start the process."""
-        ## Create shared memories
+        # Create shared memories
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
         # process, the `__init__()` function does not.
         self._link_shms()
-        ## Task loop
-        task: Optional[Tuple[int, str]] = None
+        # Task loop
+        task: tuple[int, str] | None = None
         for task in iter(self.task_queue.get, None):
             cid, action = task  # type: ignore[misc]
             self.process_task(cid, action)  # type: ignore[has-type]
@@ -429,10 +426,10 @@ def get_training_results_from_workers_dict(
         if worker.is_alive():
             w_parameters, w_parameters_shm = get_parameters_shm(
                 parameters=worker.parameters,
-                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
             )
             w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,
             )
             w_metrics, w_metrics_shm = get_config_shm(
                 config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM
@@ -470,10 +467,10 @@ def get_training_results_from_worker(
     if worker.is_alive():
         w_parameters, w_parameters_shm = get_parameters_shm(
             parameters=worker.parameters,
-            name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
         )
         w_num_samples, w_num_samples_shm = get_num_samples_shm(
-            name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,
         )
         w_metrics, w_metrics_shm = get_config_shm(
             config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM

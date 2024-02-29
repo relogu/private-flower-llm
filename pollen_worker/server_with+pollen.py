@@ -3,11 +3,11 @@
 Starts a Flower server which awaits connections from Pollen node managers. It supports
 using wandb for logging and hydra for exeperiment configuration.
 """
+
 import copy
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Union
 
 import flwr as fl
 import hydra
@@ -36,7 +36,7 @@ transformers.logging.set_verbosity_error()
 def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
     # TODO: Get the list of cids
-    cid_samples_dict: Dict[Union[str, int], int] = {
+    cid_samples_dict: dict[str | int, int] = {
         k: 1 for k in range(cfg.fl.n_total_clients)
     }
     # Get initial model parameters
