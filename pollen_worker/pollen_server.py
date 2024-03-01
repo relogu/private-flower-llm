@@ -48,9 +48,12 @@ from pollen_worker.minio.minio_tools import (
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
-from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import IntentionalClientDropoutError, get_table_from_pyarrow_buffer
 from pollen_worker.server_state import ServerState
+from pollen_worker.strategy.rs_nesterov import FedNesterov
+from pollen_worker.utils import (
+    IntentionalClientDropoutError,
+    get_table_from_pyarrow_buffer,
+)
 
 FitResultsAndFailures = tuple[
     list[tuple[ClientProxy, FitRes]],
@@ -222,9 +225,11 @@ class PollenServer(Server):
                 )
                 push_parameters(
                     state=self.minio_state,
-                    round=previous_round,
+                    server_round=previous_round,
                     parameters=self.parameters,
-                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                    minio_folder_path=(
+                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
+                    ),
                 )
 
         # NOTE: Register VirtualClients to the PollenClientManager
@@ -265,9 +270,11 @@ class PollenServer(Server):
                 )
                 push_parameters(
                     state=self.minio_state,
-                    round=current_round,
+                    server_round=current_round,
                     parameters=self.parameters,
-                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                    minio_folder_path=(
+                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
+                    ),
                 )
 
             # Evaluate model using strategy implementation

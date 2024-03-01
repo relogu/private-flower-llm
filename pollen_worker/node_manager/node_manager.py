@@ -43,8 +43,8 @@ from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
-from multiprocess import Queue, set_start_method
 from minio import Minio
+from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 
@@ -422,7 +422,7 @@ class NodeManager(fl.client.NumPyClient):
             params_folder_path = _get_params_folder_path(server_state, previous_round)
             parameters = pull_parameters(
                 state=server_state,
-                round=previous_round,
+                server_round=previous_round,
                 minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
             )
 

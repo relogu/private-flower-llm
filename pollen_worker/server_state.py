@@ -5,20 +5,20 @@ from flwr.common import NDArrays, Parameters
 from flwr.server.history import History
 
 
-class ServerState(object):
+class ServerState:
     """Class for the server state without a global model."""
 
     def __init__(
         self,
-        id: str,
-        round: int,
+        server_id: str,
+        server_round: int,
         momentum: NDArrays | None,
         elapsed_time_in_seconds: float,
         history: History,
     ) -> None:
-        if (not isinstance(id, str)) or len(id) < 1:
+        if (not isinstance(server_id, str)) or len(server_id) < 1:
             raise TypeError("id is not a non-empty string")
-        if not isinstance(round, int) or round < 1:
+        if not isinstance(server_round, int) or server_round < 1:
             raise TypeError("server_round is not a positive non-zero integer")
         if (not isinstance(momentum, list) and momentum is not None) or isinstance(
             momentum, Parameters
@@ -31,8 +31,8 @@ class ServerState(object):
         if not isinstance(history, History):
             raise TypeError("history is not an instance of History")
 
-        self.id: str = id
-        self.round: int = round
+        self.id: str = server_id
+        self.round: int = server_round
         self.momentum: NDArrays | None = momentum
         self.elapsed_time_in_seconds: float = (
             elapsed_time_in_seconds
@@ -41,7 +41,7 @@ class ServerState(object):
         )
         self.history: History = history
 
-    def toJson(self) -> str:
+    def to_json(self) -> str:
         """Translate the server state to a JSON string."""
         return json.dumps(
             {
@@ -58,14 +58,16 @@ class ServerStateWithGlobalModel(ServerState):
 
     def __init__(
         self,
-        id: str,
-        round: int,
+        server_state_id: str,
+        server_round: int,
         global_model: NDArrays,
         momentum: NDArrays | None,
         elapsed_time_in_seconds: float,
         history: History,
     ) -> None:
-        super().__init__(id, round, momentum, elapsed_time_in_seconds, history)
+        super().__init__(
+            server_state_id, server_round, momentum, elapsed_time_in_seconds, history
+        )
         if not isinstance(global_model, list) or isinstance(global_model, Parameters):
             raise TypeError("global_model is not an instance of NDArrays")
         self.global_model: NDArrays = global_model

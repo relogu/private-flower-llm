@@ -1,10 +1,10 @@
 """Definition for the state of a Minio instance."""
-from typing import Callable
+from collections.abc import Callable
 
 from minio import Minio
 
 
-class MinioState(object):
+class MinioState:
     """Define the state of a Minio instance."""
 
     def __init__(
