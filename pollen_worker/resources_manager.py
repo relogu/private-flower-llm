@@ -50,9 +50,9 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
 class Device:
     """Device info."""
 
-    id: int
+    device_id: int
     name: str
-    type: str
+    device_type: str
     total_memory: float
     allocated_memory: float
     concurrency: int
@@ -82,9 +82,9 @@ class Device:
         """Create a Device object from a string (built with str(Device))."""
         device_dict: dict = json.loads(d)
         return Device(
-            device_id=int(device_dict["id"]),
+            device_id=int(device_dict["device_id"]),
             name=device_dict["name"],
-            device_type=device_dict["type"],
+            device_type=device_dict["device_type"],
             total_memory=float(device_dict["total_memory"]),
             allocated_memory=float(device_dict["allocated_memory"]),
             concurrency=int(device_dict["concurrency"]),
