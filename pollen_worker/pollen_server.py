@@ -1,7 +1,6 @@
 """Pollen server."""
 
 import concurrent.futures
-import os
 import sys
 import time
 import timeit
@@ -20,8 +19,8 @@ from typing import (
     cast,
 )
 
+import numpy as np
 import pyarrow as pa
-import pyarrow.parquet as pq
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
 from flwr.common import (
@@ -31,9 +30,11 @@ from flwr.common import (
     EvaluateRes,
     FitIns,
     FitRes,
+    NDArrays,
     Parameters,
     Scalar,
     Status,
+    ndarrays_to_parameters,
 )
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
@@ -48,9 +49,20 @@ from flwr.server.server import (
 from flwr.server.strategy import FedAvg
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
+from pollen_worker.minio.minio_state import MinioState
+from pollen_worker.minio.minio_tools import (
+    SERVER_GLOBAL_MODEL_FOLDER,
+    _get_params_folder_path,
+    pull_parameters,
+    pull_server_state,
+    push_parameters,
+    push_server_state,
+)
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
+from pollen_worker.server_state import ServerState
+from pollen_worker.strategy.rs_nesterov import FedNesterov
 from pollen_worker.utils import IntentionalClientDropout, get_table_from_pyarrow_buffer
 
 FitResultsAndFailures = Tuple[
@@ -98,6 +110,8 @@ class PollenServer(Server):
         print_failures: bool = True,
         print_intentional_failures: bool = True,
         resume: bool = False,
+        resume_round: int | None = None,
+        minio_state: MinioState | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -133,6 +147,10 @@ class PollenServer(Server):
         self.print_failures = print_failures
         self.print_intentional_failures = print_intentional_failures
         self.resume = resume
+        self.resume_round = resume_round
+        self.minio_state: MinioState | None = minio_state
+        if isinstance(self.minio_state, MinioState):
+            self.minio_state.log = log
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -153,20 +171,36 @@ class PollenServer(Server):
     def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
-        history = self.history if self.history is not None else History()
 
         # Waiting for at least one node to connect
         log(INFO, "Waiting for at least one node to connect")
         self._client_manager.wait_for_node_managers(self.num_nodes)
 
-        # TODO: Resume experiment if asked to
-        time_offset = .0
-        start_round = 1
-        if self.resume:
-            # Download the server state from the S3 bucket
-            # Set the downloaded state to the server
-            pass
+        # Resume experiment if asked to
+        history: History
+        time_offset: float
+        start_round: int
+
+        if self.resume and self.resume_round is not None:
+            # If applicable, load the state from MinIO
+            if isinstance(self.minio_state, MinioState):
+                # TODO: Get the most recent round if from MinIO
+                pulled_state = pull_server_state(self.minio_state, self.resume_round)
+                start_round = pulled_state.round
+                time_offset = pulled_state.elapsed_time_in_seconds
+                self.parameters = ndarrays_to_parameters(pulled_state.global_model)
+                if isinstance(self.strategy, FedNesterov):
+                    self.strategy.momentum_vector = pulled_state.momentum
+                history = pulled_state.history
+            else:
+                # We can't resume the state if there is no MinIO available
+                message = "🚨 Unable to resume the execution without MinIO"
+                log(ERROR, message)
+                raise ValueError(message)
         else:
+            history = self.history if self.history is not None else History()
+            time_offset = 0.0
+            start_round = 1
             # Initialize parameters
             log(INFO, "Initializing global parameters")
             self.parameters = self._get_initial_parameters(timeout=timeout)
@@ -181,7 +215,29 @@ class PollenServer(Server):
                 )
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
-            # TODO: Save checkpoint if asked to
+            # If applicable, save the checkpoint to MinIO (w/ model parameters)
+            if isinstance(self.minio_state, MinioState):
+                momentum: NDArrays | None = None
+                if isinstance(self.strategy, FedNesterov):
+                    momentum = self.strategy.momentum_vector
+                server_state = ServerState(
+                    self.minio_state.endpoint_id,
+                    start_round,
+                    momentum,
+                    time_offset,
+                    history,
+                )
+                push_server_state(self.minio_state, server_state)
+                previous_round = start_round - 1
+                params_folder_path = _get_params_folder_path(
+                    self.minio_state, previous_round
+                )
+                push_parameters(
+                    state=self.minio_state,
+                    round=previous_round,
+                    parameters=self.parameters,
+                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                )
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
@@ -214,6 +270,18 @@ class PollenServer(Server):
                     server_round=current_round, metrics=fit_metrics
                 )
 
+            # Push the global model to MinIO (but not the server state)
+            if isinstance(self.minio_state, MinioState):
+                params_folder_path = _get_params_folder_path(
+                    self.minio_state, current_round
+                )
+                push_parameters(
+                    state=self.minio_state,
+                    round=current_round,
+                    parameters=self.parameters,
+                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                )
+
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
@@ -244,7 +312,22 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
 
-            # TODO: Save checkpoint if asked to
+            end_time = timeit.default_timer()
+            elapsed = end_time - start_time + time_offset
+
+            # If applicable, save the checkpoint to MinIO (excluding the global params)
+            if isinstance(self.minio_state, MinioState):
+                momentum_v: NDArrays | None = None
+                if isinstance(self.strategy, FedNesterov):
+                    momentum_v = self.strategy.momentum_vector
+                server_state = ServerState(
+                    self.minio_state.endpoint_id,
+                    current_round,
+                    momentum_v,
+                    elapsed,
+                    history,
+                )
+                push_server_state(self.minio_state, server_state)
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -316,6 +399,19 @@ class PollenServer(Server):
                 node_evaluate_config.update(device_assignment)
 
                 # Append instruction
+            if isinstance(self.minio_state, MinioState):
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        EvaluateIns(
+                            # NOTE: We must pass a real NDArrays object,
+                            # Flower crashes otherwise
+                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                            node_evaluate_config,
+                        ),
+                    )
+                )
+            else:
                 node_instructions.append(
                     (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
                 )
@@ -437,9 +533,22 @@ class PollenServer(Server):
             node_fit_config.update(device_assignment)
 
             # Append instruction
-            node_instructions.append(
-                (client_proxy, FitIns(self.parameters, node_fit_config))
-            )
+            if isinstance(self.minio_state, MinioState):
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        FitIns(
+                            # NOTE: We must pass a real NDArrays object,
+                            # Flower crashes otherwise
+                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                            node_fit_config,
+                        ),
+                    )
+                )
+            else:
+                node_instructions.append(
+                    (client_proxy, FitIns(self.parameters, node_fit_config))
+                )
 
         log(
             DEBUG,
@@ -488,6 +597,16 @@ class PollenServer(Server):
         )
 
         results = (result for success, result in results_and_failures if success)
+        complete_results = cast(
+            Generator[Tuple[ClientProxy, FitRes], None, None], results
+        )
+
+        # If applicable, pull the client parameters from MinIO
+        if isinstance(self.minio_state, MinioState):
+            complete_results = (
+                replace_values_with_minio(self.minio_state, server_round, result)
+                for result in complete_results
+            )
 
         try:
             # Aggregate training results
@@ -495,7 +614,9 @@ class PollenServer(Server):
                 Optional[Parameters],
                 Dict[str, Scalar],
             ] = self.strategy.aggregate_fit(
-                server_round, cast(List[Tuple[ClientProxy, FitRes]], results), failures
+                server_round,
+                cast(List[Tuple[ClientProxy, FitRes]], complete_results),
+                failures,
             )
 
             # Collect statistics that Pollen uses from the FitRes of the NodeManagers
@@ -746,6 +867,36 @@ def _handle_finished_future_after_fit_async(
     return (False, result)
 
 
+def replace_values_with_minio(
+    minio_state: MinioState,
+    current_round: int,
+    client_result: Tuple[ClientProxy, FitRes],
+) -> Tuple[ClientProxy, FitRes]:
+    """Replace the parameters in the FitRes with the ones from MinIO."""
+    proxy, fit_res = client_result
+    endpoint_id: Any
+    if "endpoint_id" in fit_res.metrics:
+        endpoint_id = fit_res.metrics["endpoint_id"]
+        del fit_res.metrics["endpoint_id"]
+        if not isinstance(endpoint_id, str):
+            raise TypeError("endpoint_id is not a string")
+    else:
+        raise ValueError("endpoint_id is not present in fit_res")
+    client_state = MinioState(
+        minio_state.client,
+        minio_state.run_uuid,
+        endpoint_id,
+        minio_state.bucket_name,
+        minio_state.file_size,
+        minio_state.throw_on_error,
+        minio_state.timeout_in_seconds,
+    )
+    fit_res.parameters = ndarrays_to_parameters(
+        pull_parameters(client_state, current_round)
+    )
+    return (proxy, fit_res)
+
+
 def get_handle_success_and_failure(
     metrics_accumulator: List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]],
     failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
@@ -816,6 +967,8 @@ def get_handle_success_and_failure(
                 return (False, res)
             case (False, res):
                 cast_failure_res = cast(Tuple[ClientProxy, FitRes] | BaseException, res)
+                if isinstance(cast_failure_res, BaseException):
+                    log(ERROR, "Unintentional failure.", exc_info=cast_failure_res)
                 cnt_failures += 1
                 if (
                     accept_failures_cnt is not None
