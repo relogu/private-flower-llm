@@ -7,6 +7,7 @@ even if many are spawned at once.
 """
 
 import copy
+import os
 import time
 from collections.abc import Callable
 from logging import DEBUG, INFO, WARNING
@@ -64,7 +65,9 @@ class VirtualLLMClient(fl.client.NumPyClient):
                     )
                 )
                 log(INFO, "Looking for a checkpoint to load in %s", local_path)
-                if Path.exists(local_path):
+                # TODO: The suggested `Path.exists(local_path)` doens't work with a
+                # direct substitution. This necessitates a fix.
+                if os.path.exists(local_path):  # noqa: PTH110
                     self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
                     log(INFO, "Set checkpoint to load: %s", self.cfg.load_path)
             except Exception as e:
