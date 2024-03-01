@@ -736,6 +736,9 @@ class PollenServer(Server):
             len(results),
             len(failures),
         )
+        for failure in failures:
+            if isinstance(failure, BaseException):
+                log(ERROR, "Failure in getting nodes properties.", exc_info=failure)
         # This is a dictionary of the form {"node_id": Node}
         self.nodes_dict = {
             client_proxy.cid: (client_proxy, node) for client_proxy, node in results
