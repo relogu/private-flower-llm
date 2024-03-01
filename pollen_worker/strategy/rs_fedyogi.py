@@ -19,7 +19,7 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-from flwr.server.client_manager import ClientManager
+from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedYogi
 
@@ -129,7 +129,10 @@ class FedYogiReproducibleSampling(FedYogi):
         self.seed = seed
 
     def configure_fit(
-        self, server_round: int, parameters: Parameters, client_manager: ClientManager
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: SimpleClientManager,  # type: ignore[override]
     ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}
@@ -142,8 +145,7 @@ class FedYogiReproducibleSampling(FedYogi):
         sample_size, _ = self.num_fit_clients(client_manager.num_available())
 
         # Wait for the minimum number of clients to be available
-        # TODO: Pass the `timeout` to the `wait_for` method
-        client_manager.wait_for(sample_size)  # type: ignore[call-arg]
+        client_manager.wait_for(sample_size)
 
         # Setting seed for reproducibility of client selection
         random.seed(self.seed + server_round)

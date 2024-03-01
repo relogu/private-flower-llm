@@ -125,7 +125,6 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
             device_type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,
-            # TODO: Discuss what to do with one worker over multiple GPUs
             # NOTE: Forcing cuncurrency to one
             concurrency=1,
         )
@@ -140,6 +139,7 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
             )
     # Shutdown pynvml
     pynvml.nvmlShutdown()
+    # If `merge`, the worker runs over multiple GPUs
     if merge:
         gpus_prop = {"merged": merge_devices(list(gpus_prop.values()))}
     return gpus_prop

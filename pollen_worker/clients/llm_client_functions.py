@@ -797,7 +797,6 @@ def set_parameters_to_state(
     trainer: Trainer,
 ) -> None:
     """Implement how to set parameters in the case of an LLM."""
-    # TODO: Check if there is space for optimisation here
     keys = list(trainer.state.model.state_dict().keys())
     params_dict = zip(keys, parameters, strict=False)
     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
@@ -826,7 +825,6 @@ def llm_fit(
     # Set the parameters
     if parameters is not None:
         # log(INFO, "Initializing model...")
-        # TODO: Check if there is space for optimisation here
         set_parameters_to_state(parameters, trainer)
     # Eval first if requested
     if eval_first and trainer.state.timestamp.batch.value == 0:
@@ -840,7 +838,6 @@ def llm_fit(
     except Exception as e:
         log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
-    # TODO: Check if this contain samples from previous rounds
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
     train_metrics = {
@@ -900,7 +897,6 @@ def llm_eval(
     )
     # Set the parameters
     # log(INFO, "Initializing model...")
-    # TODO: Check if there is space for optimisation here
     set_parameters_to_state(parameters, trainer)
     gc.collect()
     torch.cuda.empty_cache()

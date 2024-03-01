@@ -84,11 +84,9 @@ def validate_config(cfg: DictConfig) -> None:
             ):
                 log(
                     WARN,
-                    (
-                        'Model type "hf_t5" requires `decoder_only_format` to be'
-                        " ``False``. Overriding `decoder_only_format` from ``True`` to"
-                        " ``False``."
-                    ),
+                    'Model type "hf_t5" requires `decoder_only_format` to be'
+                    " ``False``. Overriding `decoder_only_format` from ``True`` to"
+                    " ``False``.",
                 )
                 loader.mixture_of_denoisers.decoder_only_format = False
             if (
@@ -96,11 +94,9 @@ def validate_config(cfg: DictConfig) -> None:
             ) and cfg.model.name == "hf_prefix_lm":
                 log(
                     WARN,
-                    (
-                        'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
-                        " ``True``. Overriding `decoder_only_format` from ``False`` to"
-                        " ``True``."
-                    ),
+                    'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
+                    " ``True``. Overriding `decoder_only_format` from ``False`` to"
+                    " ``True``.",
                 )
                 loader.mixture_of_denoisers.decoder_only_format = True
 
@@ -117,12 +113,10 @@ def validate_config(cfg: DictConfig) -> None:
     ):
         log(
             WARN,
-            (
-                "fp8 only supported for te.Linear layers. Either set"
-                " `cfg.model.fc_typ='te'` or"
-                " `cfg.model.ffn_config.ffn_type='te_ln_mlp'` to enable layers using"
-                " fp8 precision."
-            ),
+            "fp8 only supported for te.Linear layers. Either set"
+            " `cfg.model.fc_typ='te'` or"
+            " `cfg.model.ffn_config.ffn_type='te_ln_mlp'` to enable layers using"
+            " fp8 precision.",
         )
 
     if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
@@ -134,22 +128,18 @@ def validate_config(cfg: DictConfig) -> None:
         if fsdp_config is not None and act_ckpt and not act_ckpt_reentrant:
             log(
                 WARN,
-                (
-                    "`te.Linear` layers do not support activation_checkpointing with "
-                    "`activation_checkpointing_reentrant = False`. "
-                    "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True."
-                ),
+                "`te.Linear` layers do not support activation_checkpointing with "
+                "`activation_checkpointing_reentrant = False`. "
+                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
             )
             cfg.fsdp_config.activation_checkpointing_reentrant = True
 
     if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
         log(
             WARN,
-            (
-                "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
-                " `torch._dynamo.config.suppress_errors = True` and falling back to"
-                " eager."
-            ),
+            "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
+            " `torch._dynamo.config.suppress_errors = True` and falling back to"
+            " eager.",
         )
         torch._dynamo.config.suppress_errors = True
 
@@ -236,7 +226,6 @@ def main(_cfg: DictConfig) -> Trainer:
     validate_config(cfg)
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(cfg)
-    # TODO: Check if this is still necessary
     OmegaConf.set_struct(cfg, False)
     log(
         INFO,
@@ -314,10 +303,8 @@ def main(_cfg: DictConfig) -> Trainer:
         if eval_gauntlet_config is not None:
             log(
                 INFO,
-                (
-                    "Use of the key `model_gauntlet` is deprecated, please use the key"
-                    " `eval_gauntlet`"
-                ),
+                "Use of the key `model_gauntlet` is deprecated, please use the key"
+                " `eval_gauntlet`",
             )
     icl_subset_num_batches: int | None = pop_config(
         cfg, "icl_subset_num_batches", must_exist=False, default_value=None
@@ -432,10 +419,8 @@ def main(_cfg: DictConfig) -> Trainer:
     if cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            (
-                "As run_name, save_folder, and save_latest_filename are set,           "
-                "      changing autoresume default to True..."
-            ),
+            "As run_name, save_folder, and save_latest_filename are set,           "
+            "      changing autoresume default to True...",
         )
 
     autoresume: bool = pop_config(
@@ -455,10 +440,8 @@ def main(_cfg: DictConfig) -> Trainer:
     for key in cfg:
         log(
             WARN,
-            (
-                "Unused parameter %s found in cfg. Please check your yaml to ensure"
-                " this parameter is necessary."
-            ),
+            "Unused parameter %s found in cfg. Please check your yaml to ensure"
+            " this parameter is necessary.",
             key,
         )
 

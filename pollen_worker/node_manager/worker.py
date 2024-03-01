@@ -216,14 +216,12 @@ class Worker(mp.Process):
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Put the result in the result queue
-                        self.result_queue.put(
-                            [
-                                int(tmp_client.cid),
-                                start_time,
-                                end_time,
-                                self.worker_uuid,
-                            ]
-                        )
+                        self.result_queue.put([
+                            int(tmp_client.cid),
+                            start_time,
+                            end_time,
+                            self.worker_uuid,
+                        ])
                 elif action == "evaluate":
                     # Lauch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
@@ -232,14 +230,12 @@ class Worker(mp.Process):
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
-                        self.result_queue.put(
-                            [
-                                int(tmp_client.cid),
-                                start_time,
-                                end_time,
-                                self.worker_uuid,
-                            ]
-                        )
+                        self.result_queue.put([
+                            int(tmp_client.cid),
+                            start_time,
+                            end_time,
+                            self.worker_uuid,
+                        ])
             except Exception as e:
                 log(
                     ERROR,
@@ -255,7 +251,7 @@ class Worker(mp.Process):
                 # Append to the task queu only if not collaborative
                 if not is_collaborative:
                     self.task_queue.put((client_id, action))
-                # TODO: Maybe not terminate the worker?
+                # Set the auto_terminate flag to True for suicide
                 self.auto_terminate = True
 
     def _link_shms(
@@ -345,14 +341,12 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    (
-                        "Environment variables patched for worker with rank"
-                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
-                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
-                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
-                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
-                        " APPOINTED_CUDA_DEVICE=%s"
-                    ),
+                    "Environment variables patched for worker with rank"
+                    " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                    " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                    " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                    " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                    " APPOINTED_CUDA_DEVICE=%s",
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),
@@ -385,14 +379,12 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    (
-                        "Environment variables patched for worker with rank"
-                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
-                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
-                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
-                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
-                        " APPOINTED_CUDA_DEVICE=%s"
-                    ),
+                    "Environment variables patched for worker with rank"
+                    " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                    " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                    " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                    " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                    " APPOINTED_CUDA_DEVICE=%s",
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),

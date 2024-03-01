@@ -21,7 +21,7 @@ import pyarrow as pa
 import ray
 import torch
 from composer import Trainer
-from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_ndarrays
+from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
@@ -134,34 +134,6 @@ def invert_one_to_many_dictionary(
         for w in v:
             output[w] = k
     return output
-
-
-def gen_on_fit_config_fn(
-    batch_size: int = 10,
-    local_epochs: int = 1,
-    learning_rate: float = 0.1,
-    momentum: float = 0.0,
-    weight_decay: float = 0.0,
-    is_fake: bool = False,
-    n_workers: int = 0,
-) -> Callable[[int], dict[str, Scalar]]:
-    """Return generic `on_fit_config_fn` for Flower Client."""
-
-    def on_fit_config_fn(server_round: int) -> dict[str, Scalar]:
-        """Return `Config` for fit/evaluate rounds."""
-        return {
-            "batch_size": batch_size,
-            "local_epochs": local_epochs,
-            "learning_rate": learning_rate,
-            "momentum": momentum,
-            "weight_decay": weight_decay,
-            "server_round": server_round,
-            "is_fake": is_fake,
-            # TODO: Brainstorm how to set this hyperparameter
-            "n_workers": n_workers,
-        }
-
-    return on_fit_config_fn
 
 
 class NoOpContextManager:
@@ -374,11 +346,9 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         # More verbose logging
         log(
             INFO,
-            (
-                "get_referenced_tensors_summary :: there are %s "
-                "referenced tensors for a total size of %s MiB "
-                "(%s MiB on GPU, %s MiB on CPU)."
-            ),
+            "get_referenced_tensors_summary :: there are %s "
+            "referenced tensors for a total size of %s MiB "
+            "(%s MiB on GPU, %s MiB on CPU).",
             # "Summary is:\n%s",
             counter,
             total_size_mb,
@@ -474,10 +444,8 @@ def clean_trainer_state(trainer: Trainer) -> None:
             except Exception as e:
                 log(
                     ERROR,
-                    (
-                        "Error running evaluator(s).dataloader.dataloader"
-                        "._iterator._shutdown_workers()."
-                    ),
+                    "Error running evaluator(s).dataloader.dataloader"
+                    "._iterator._shutdown_workers().",
                     exc_info=e,
                     stack_info=True,
                 )

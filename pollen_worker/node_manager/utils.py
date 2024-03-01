@@ -85,7 +85,6 @@ def get_config_shm(
         raise ValueError("Cannot create config without config object.")
     if create:
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
-        # TODO: Evaluate if we need to set up some margin here
         shm = SharedMemory(create=True, size=len(config_bytes), name=name)
         config_sh = config
     else:

@@ -65,7 +65,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
                     )
                 )
                 log(INFO, "Looking for a checkpoint to load in %s", local_path)
-                # TODO: The suggested `Path.exists(local_path)` doens't work with a
+                # NOTE: The suggested `Path.exists(local_path)` doens't work with a
                 # direct substitution. This necessitates a fix.
                 if os.path.exists(local_path):  # noqa: PTH110
                     self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
@@ -85,7 +85,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
             run_name = self.cfg.loggers.wandb.init_kwargs.name
             # Add the client id to the run name
             new_run_name = run_name + f"_client_{self.cid}"
-            # TODO: Need resumption?
             server_id = self.cfg.loggers.wandb.init_kwargs.id
             self.cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{self.cid}"
             # Set the new run name
@@ -271,10 +270,8 @@ def main(cfg: DictConfig) -> None:
                 pass
         log(
             DEBUG,
-            (
-                "All processes have %d opened files and %d file descriptors. "
-                "RAM occupied: %d bytes."
-            ),
+            "All processes have %d opened files and %d file descriptors. "
+            "RAM occupied: %d bytes.",
             all_opened,
             len(get_open_fds()),
             sum_of_ram,

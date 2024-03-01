@@ -294,7 +294,9 @@ class PollenServer(Server):
                     server_round=current_round, metrics=metrics_cen
                 )
 
-            # TODO: Check for changes in connected NodeManagers?
+            # Check for changes in connected NodeManagers
+            self.check_node_managers()
+
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
@@ -393,17 +395,15 @@ class PollenServer(Server):
 
                 # Append instruction
             if isinstance(self.minio_state, MinioState):
-                node_instructions.append(
-                    (
-                        client_proxy,
-                        EvaluateIns(
-                            # NOTE: We must pass a real NDArrays object,
-                            # Flower crashes otherwise
-                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                            node_evaluate_config,
-                        ),
-                    )
-                )
+                node_instructions.append((
+                    client_proxy,
+                    EvaluateIns(
+                        # NOTE: We must pass a real NDArrays object,
+                        # Flower crashes otherwise
+                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                        node_evaluate_config,
+                    ),
+                ))
             else:
                 node_instructions.append(
                     (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
@@ -527,17 +527,15 @@ class PollenServer(Server):
 
             # Append instruction
             if isinstance(self.minio_state, MinioState):
-                node_instructions.append(
-                    (
-                        client_proxy,
-                        FitIns(
-                            # NOTE: We must pass a real NDArrays object,
-                            # Flower crashes otherwise
-                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                            node_fit_config,
-                        ),
-                    )
-                )
+                node_instructions.append((
+                    client_proxy,
+                    FitIns(
+                        # NOTE: We must pass a real NDArrays object,
+                        # Flower crashes otherwise
+                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                        node_fit_config,
+                    ),
+                ))
             else:
                 node_instructions.append(
                     (client_proxy, FitIns(self.parameters, node_fit_config))
@@ -760,7 +758,7 @@ def pollen_evaluate_clients(
             executor.submit(evaluate_client, client_proxy, ins, timeout)
             for client_proxy, ins in node_instructions
         }
-        # TODO: Handle Pollen's model for the eval assignment
+        # TODO: Implement Pollen's model for the eval assignment
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
             timeout=None,  # Handled in the respective communication stack
@@ -952,14 +950,12 @@ def get_handle_success_and_failure(
             case (True, res):
                 cast_res = cast(tuple[ClientProxy, FitRes], res)
                 client_proxy, fit_res = cast_res
-                metrics_accumulator.append(
-                    (
-                        client_proxy,
-                        fit_res.metrics,
-                        fit_res.status,
-                        fit_res.num_examples,
-                    )
-                )
+                metrics_accumulator.append((
+                    client_proxy,
+                    fit_res.metrics,
+                    fit_res.status,
+                    fit_res.num_examples,
+                ))
                 return (True, cast_res)
             case (False, res) if isinstance(res, IntentionalClientDropoutError):
                 intentional_failures.append(res)
@@ -973,10 +969,8 @@ def get_handle_success_and_failure(
                     accept_failures_cnt is not None
                     and cnt_failures > accept_failures_cnt
                 ):
-                    raise TooManyFailuresError(
-                        f"""Unintentional failures passed
-                        the maximum: {accept_failures_cnt}"""
-                    )
+                    raise TooManyFailuresError(f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}""")
                 failures.append(cast_failure_res)
                 return (False, cast_failure_res)
         return result
@@ -1007,12 +1001,10 @@ def _check_strategy_for_pollen(
     if strategy.on_fit_config_fn is None:
         log(
             ERROR,
-            (
-                "The strategy, %s, passed to the `PollenServer` doesn't"
-                " have a proper `on_fit_config_fn` attribute. The user"
-                " must define such method as type `Callable[[int], Dict]`"
-                "Currently, `on_fit_config_fn` is %s."
-            ),
+            "The strategy, %s, passed to the `PollenServer` doesn't"
+            " have a proper `on_fit_config_fn` attribute. The user"
+            " must define such method as type `Callable[[int], Dict]`"
+            "Currently, `on_fit_config_fn` is %s.",
             strategy,
             strategy.on_fit_config_fn,
         )
@@ -1022,24 +1014,20 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            (
-                "The `on_fit_config_fn` function of the strategy passed"
-                " to the `PollenServer` must have a proper `batch_size`"
-                " key with an `int` value. The call"
-                " `strategy.on_fit_config_fn(0)` returned %s instead"
-            ),
+            "The `on_fit_config_fn` function of the strategy passed"
+            " to the `PollenServer` must have a proper `batch_size`"
+            " key with an `int` value. The call"
+            " `strategy.on_fit_config_fn(0)` returned %s instead",
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
     if strategy.on_evaluate_config_fn is None:
         log(
             ERROR,
-            (
-                "The strategy, %s, passed to the `PollenServer` doesn't"
-                " have a proper `on_evaluate_config_fn` attribute. The user"
-                " must define such method as type `Callable[[int], Dict]`"
-                "Currently, `on_evaluate_config_fn` is %s."
-            ),
+            "The strategy, %s, passed to the `PollenServer` doesn't"
+            " have a proper `on_evaluate_config_fn` attribute. The user"
+            " must define such method as type `Callable[[int], Dict]`"
+            "Currently, `on_evaluate_config_fn` is %s.",
             strategy,
             strategy.on_evaluate_config_fn,
         )
@@ -1049,12 +1037,10 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            (
-                "The `on_evaluate_config_fn` function of the strategy passed"
-                " to the `PollenServer` must have a proper `batch_size`"
-                " key with an `int` value. The call"
-                " `strategy.on_evaluate_config_fn(0)` returned %s instead"
-            ),
+            "The `on_evaluate_config_fn` function of the strategy passed"
+            " to the `PollenServer` must have a proper `batch_size`"
+            " key with an `int` value. The call"
+            " `strategy.on_evaluate_config_fn(0)` returned %s instead",
             strategy.on_evaluate_config_fn(0),
         )
         sys.exit(0)

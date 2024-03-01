@@ -37,7 +37,7 @@ transformers.logging.set_verbosity_error()
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
-    # TODO: Get the list of cids
+    # Get a fake list of cids
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
     )
@@ -48,8 +48,7 @@ def main(cfg: DictConfig) -> None:
     initial_parameters = ndarrays_to_parameters(
         get_raw_model_parameters(copy.deepcopy(_llm_config))
     )
-    # TODO: Instantiate the strategy
-    # No evaluation here, all lazy
+    # Instantiate the strategy
     strategy = FedNesterov(
         fraction_fit=sys.float_info.min,
         fraction_evaluate=sys.float_info.min,
