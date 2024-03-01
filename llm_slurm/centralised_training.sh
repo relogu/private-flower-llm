@@ -1,8 +1,8 @@
 #!/bin/bash
-#! Check if at least two arguments are passed
-if [[ $# -lt 2 ]]; then
+#! Check if at least one arguments are passed
+if [[ $# -lt 1 ]]; then
     echo "Illegal number of parameters."
-    echo "Usage: centralised_training.sh <llm_model_config> <max_duration>"
+    echo "Usage: centralised_training.sh <llm_model_config>"
     exit 1
 fi
 #! Moving to the project folder
@@ -41,10 +41,8 @@ mkdir -p $POLLEN_SAVE_PATH
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-#! Number of steps
-DURATION=$2
 #! Additional config
-export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID llm_config.max_duration=$DURATION llm_config.scheduler.t_max=$DURATION"
+export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $HOME/projects/pollen_worker/pollen_worker/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
