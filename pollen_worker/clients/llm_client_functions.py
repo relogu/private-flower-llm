@@ -931,5 +931,5 @@ def llm_eval(
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()
 
-    # TODO: What do we do with the first argument?
+    # Return the evaluation metrics
     return 0.0, num_samples, eval_metrics

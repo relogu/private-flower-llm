@@ -146,13 +146,13 @@ class Worker(mp.Process):
         #     eval_metrics,
         # )
         if int(os.getenv("LOCAL_RANK", "")) == 0:
-            # TODO: Worker's partial aggregation for eval_loss
             # Worker's partial aggregation for metrics
             (agg_n_samples, p_agg_metrics) = partially_aggregate_metrics(
                 (int(self.worker_num_samples[0]), self.worker_metrics),
                 (eval_num_samples, eval_metrics),
             )
             set_num_samples_shm(self.worker_num_samples, agg_n_samples)
+            # NOTE: The eval loss is not used, so we don't aggregate it
             set_eval_loss_shm(self.worker_eval_loss, eval_loss)
             # Destroy the shared memory for the metrics
             if self.worker_metrics_sh is not None:
