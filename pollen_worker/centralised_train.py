@@ -4,6 +4,7 @@ Slightly adapted from the original https://github.com/mosaicml/llm-foundry/blob/
 Copyright 2022 MosaicML LLM Foundry authors
 SPDX-License-Identifier: Apache-2.0
 """
+
 import copy
 import gc
 import logging
@@ -11,7 +12,7 @@ import os
 import time
 import warnings
 from logging import INFO, WARN
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import hydra
 import torch
@@ -56,15 +57,15 @@ def validate_config(cfg: DictConfig) -> None:
             for loader in eval_loader:
                 if loader.label is None:
                     raise ValueError(
-                        "When specifying multiple evaluation datasets, each one must \
-                            include the  `label` attribute."
+                        "When specifying multiple evaluation datasets, each one must   "
+                        "                          include the  `label` attribute."
                     )
                 loaders.append(loader)
         else:
             loaders.append(eval_loader)
     for loader in loaders:
         if loader.name == "text":
-            if cfg.model.name in ["hf_prefix_lm", "hf_t5"]:
+            if cfg.model.name in {"hf_prefix_lm", "hf_t5"}:
                 raise ValueError(
                     f'Model type "{cfg.model.name}" is not supported when using the'
                     ' "text " dataloader. Please use the "text_denoising" dataloader to'
@@ -83,8 +84,11 @@ def validate_config(cfg: DictConfig) -> None:
             ):
                 log(
                     WARN,
-                    'Model type "hf_t5" requires `decoder_only_format` to be ``False``.'
-                    " Overriding `decoder_only_format` from ``True`` to ``False``.",
+                    (
+                        'Model type "hf_t5" requires `decoder_only_format` to be'
+                        " ``False``. Overriding `decoder_only_format` from ``True`` to"
+                        " ``False``."
+                    ),
                 )
                 loader.mixture_of_denoisers.decoder_only_format = False
             if (
@@ -92,18 +96,19 @@ def validate_config(cfg: DictConfig) -> None:
             ) and cfg.model.name == "hf_prefix_lm":
                 log(
                     WARN,
-                    'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
-                    " ``True``. Overriding `decoder_only_format` from ``False`` to"
-                    " ``True``.",
+                    (
+                        'Model type "hf_prefix_lm" requires `decoder_only_format` to be'
+                        " ``True``. Overriding `decoder_only_format` from ``False`` to"
+                        " ``True``."
+                    ),
                 )
                 loader.mixture_of_denoisers.decoder_only_format = True
 
-    if "icl_tasks" in cfg:
-        if cfg.model.name == "hf_t5":
-            raise ValueError(
-                "ICL evaluation does not currently support Encoder-Decoder models, such"
-                ' as "hf_t5".'
-            )
+    if "icl_tasks" in cfg and cfg.model.name == "hf_t5":
+        raise ValueError(
+            "ICL evaluation does not currently support Encoder-Decoder models, such"
+            ' as "hf_t5".'
+        )
 
     if (
         cfg.model.get("fc_type", "torch") != "te"
@@ -112,9 +117,12 @@ def validate_config(cfg: DictConfig) -> None:
     ):
         log(
             WARN,
-            "fp8 only supported for te.Linear layers. Either set"
-            " `cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-            " to enable layers using fp8 precision.",
+            (
+                "fp8 only supported for te.Linear layers. Either set"
+                " `cfg.model.fc_typ='te'` or"
+                " `cfg.model.ffn_config.ffn_type='te_ln_mlp'` to enable layers using"
+                " fp8 precision."
+            ),
         )
 
     if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
@@ -126,17 +134,22 @@ def validate_config(cfg: DictConfig) -> None:
         if fsdp_config is not None and act_ckpt and not act_ckpt_reentrant:
             log(
                 WARN,
-                "`te.Linear` layers do not support activation_checkpointing with "
-                "`activation_checkpointing_reentrant = False`. "
-                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
+                (
+                    "`te.Linear` layers do not support activation_checkpointing with "
+                    "`activation_checkpointing_reentrant = False`. "
+                    "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True."
+                ),
             )
             cfg.fsdp_config.activation_checkpointing_reentrant = True
 
     if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
         log(
             WARN,
-            "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
-            " `torch._dynamo.config.suppress_errors = True` and falling back to eager.",
+            (
+                "`te.LayerNormMLP` requires has issues with torch._dynamo. Setting"
+                " `torch._dynamo.config.suppress_errors = True` and falling back to"
+                " eager."
+            ),
         )
         torch._dynamo.config.suppress_errors = True
 
@@ -161,12 +174,12 @@ def build_composer_model(
 
 def build_composer_peft_model(
     pretrained_model_name_or_path: str,
-    lora_args: Dict[str, Any],
+    lora_args: dict[str, Any],
     tokenizer: PreTrainedTokenizerBase,
 ) -> ComposerHFCausalLM:
     """Build a Composer model with LoRa modules from a pretrained model and config."""
     try:
-        from peft import LoraConfig, get_peft_model
+        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
             "Error importing from peft. Please verify that peft and peft utils "
@@ -241,7 +254,7 @@ def main(_cfg: DictConfig) -> Trainer:
     logged_cfg: DictConfig = copy.deepcopy(cfg)
 
     # Get max split size mb
-    max_split_size_mb: Optional[int] = cfg.pop("max_split_size_mb", None)
+    max_split_size_mb: int | None = cfg.pop("max_split_size_mb", None)
     if max_split_size_mb is not None:
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = f"max_split_size_mb:{max_split_size_mb}"
 
@@ -256,7 +269,7 @@ def main(_cfg: DictConfig) -> Trainer:
     reproducibility.seed_all(seed)
 
     # Initialize pytorch distributed training process groups
-    dist_timeout: Union[int, float] = pop_config(
+    dist_timeout: int | float = pop_config(
         cfg, "dist_timeout", must_exist=False, default_value=600.0
     )
     dist.initialize_dist(get_device(None), timeout=dist_timeout)
@@ -267,31 +280,31 @@ def main(_cfg: DictConfig) -> Trainer:
 
     # Mandatory model training configs
     model_config: DictConfig = pop_config(cfg, "model", must_exist=True)
-    tokenizer_config: Dict[str, Any] = pop_config(
+    tokenizer_config: dict[str, Any] = pop_config(
         cfg, "tokenizer", must_exist=True, convert=True
     )
-    optimizer_config: Dict[str, Any] = pop_config(
+    optimizer_config: dict[str, Any] = pop_config(
         cfg, "optimizer", must_exist=True, convert=True
     )
-    scheduler_config: Dict[str, Any] = pop_config(
+    scheduler_config: dict[str, Any] = pop_config(
         cfg, "scheduler", must_exist=True, convert=True
     )
     train_loader_config: DictConfig = pop_config(cfg, "train_loader", must_exist=True)
 
     # Optional fsdp data, fine-tuning, and eval configs
-    fsdp_config: Optional[Dict[str, Any]] = pop_config(
+    fsdp_config: dict[str, Any] | None = pop_config(
         cfg, "fsdp_config", must_exist=False, default_value=None, convert=True
     )
-    lora_config: Optional[Dict[str, Any]] = pop_config(
+    lora_config: dict[str, Any] | None = pop_config(
         cfg, "lora", must_exist=False, default_value=None, convert=True
     )
-    eval_loader_config: Optional[Union[DictConfig, ListConfig]] = pop_config(
+    eval_loader_config: DictConfig | ListConfig | None = pop_config(
         cfg, "eval_loader", must_exist=False, default_value=None
     )
-    icl_tasks_config: Optional[Union[ListConfig, str]] = pop_config(
+    icl_tasks_config: ListConfig | str | None = pop_config(
         cfg, "icl_tasks", must_exist=False, default_value=None
     )
-    eval_gauntlet_config: Optional[Union[DictConfig, str]] = pop_config(
+    eval_gauntlet_config: DictConfig | str | None = pop_config(
         cfg, "eval_gauntlet", must_exist=False, default_value=None
     )
     if eval_gauntlet_config is None:
@@ -301,23 +314,25 @@ def main(_cfg: DictConfig) -> Trainer:
         if eval_gauntlet_config is not None:
             log(
                 INFO,
-                "Use of the key `model_gauntlet` is deprecated, please use the key"
-                " `eval_gauntlet`",
+                (
+                    "Use of the key `model_gauntlet` is deprecated, please use the key"
+                    " `eval_gauntlet`"
+                ),
             )
-    icl_subset_num_batches: Optional[int] = pop_config(
+    icl_subset_num_batches: int | None = pop_config(
         cfg, "icl_subset_num_batches", must_exist=False, default_value=None
     )
-    icl_seq_len: Optional[int] = pop_config(
+    icl_seq_len: int | None = pop_config(
         cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    logger_configs: Optional[DictConfig] = pop_config(
+    logger_configs: DictConfig | None = pop_config(
         cfg, "loggers", must_exist=False, default_value=None
     )
-    callback_configs: Optional[DictConfig] = pop_config(
+    callback_configs: DictConfig | None = pop_config(
         cfg, "callbacks", must_exist=False, default_value=None
     )
-    algorithm_configs: Optional[DictConfig] = pop_config(
+    algorithm_configs: DictConfig | None = pop_config(
         cfg, "algorithms", must_exist=False, default_value=None
     )
 
@@ -328,8 +343,8 @@ def main(_cfg: DictConfig) -> Trainer:
     device_eval_batch_size: int = pop_config(
         cfg, "device_eval_batch_size", must_exist=True
     )
-    max_duration: Union[int, str] = pop_config(cfg, "max_duration", must_exist=True)
-    eval_interval: Union[int, str] = pop_config(cfg, "eval_interval", must_exist=True)
+    max_duration: int | str = pop_config(cfg, "max_duration", must_exist=True)
+    eval_interval: int | str = pop_config(cfg, "eval_interval", must_exist=True)
     precision: str = pop_config(cfg, "precision", must_exist=True)
     max_seq_len: int = pop_config(cfg, "max_seq_len", must_exist=True)
 
@@ -338,7 +353,7 @@ def main(_cfg: DictConfig) -> Trainer:
     run_name: str = pop_config(
         cfg, "run_name", must_exist=False, default_value=default_run_name
     )
-    save_folder: Optional[str] = pop_config(
+    save_folder: str | None = pop_config(
         cfg, "save_folder", must_exist=False, default_value=None
     )
     save_latest_filename: str = pop_config(
@@ -360,7 +375,7 @@ def main(_cfg: DictConfig) -> Trainer:
         must_exist=False,
         default_value="ep{epoch}-ba{batch}-rank{rank}.pt",
     )
-    save_interval: Union[str, int] = pop_config(
+    save_interval: str | int = pop_config(
         cfg, "save_interval", must_exist=False, default_value="1000ba"
     )
     save_num_checkpoints_to_keep: int = pop_config(
@@ -372,13 +387,13 @@ def main(_cfg: DictConfig) -> Trainer:
     log_to_console: bool = pop_config(
         cfg, "log_to_console", must_exist=False, default_value=True
     )
-    python_log_level: Optional[str] = pop_config(
+    python_log_level: str | None = pop_config(
         cfg, "python_log_level", must_exist=False, default_value="debug"
     )
-    console_log_interval: Union[int, str] = pop_config(
+    console_log_interval: int | str = pop_config(
         cfg, "console_log_interval", must_exist=False, default_value="1ba"
     )
-    device_train_microbatch_size: Union[str, int] = pop_config(
+    device_train_microbatch_size: str | int = pop_config(
         cfg, "device_train_microbatch_size", must_exist=False, default_value="auto"
     )
     eval_subset_num_batches: int = pop_config(
@@ -394,13 +409,13 @@ def main(_cfg: DictConfig) -> Trainer:
     load_strict_model_weights: bool = pop_config(
         cfg, "load_strict_model_weights", must_exist=False, default_value=True
     )
-    load_ignore_keys: Optional[List[str]] = pop_config(
+    load_ignore_keys: list[str] | None = pop_config(
         cfg, "load_ignore_keys", must_exist=False, default_value=None
     )
-    compile_config: Optional[Dict[str, Any]] = pop_config(
+    compile_config: dict[str, Any] | None = pop_config(
         cfg, "compile_config", must_exist=False, default_value=None
     )
-    metadata: Optional[Dict[str, str]] = pop_config(
+    metadata: dict[str, str] | None = pop_config(
         cfg, "metadata", must_exist=False, default_value=None, convert=True
     )
 
@@ -417,8 +432,10 @@ def main(_cfg: DictConfig) -> Trainer:
     if cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            "As run_name, save_folder, and save_latest_filename are set, \
-                changing autoresume default to True...",
+            (
+                "As run_name, save_folder, and save_latest_filename are set,           "
+                "      changing autoresume default to True..."
+            ),
         )
 
     autoresume: bool = pop_config(
@@ -438,8 +455,10 @@ def main(_cfg: DictConfig) -> Trainer:
     for key in cfg:
         log(
             WARN,
-            "Unused parameter %s found in cfg. Please check your yaml to ensure"
-            " this parameter is necessary.",
+            (
+                "Unused parameter %s found in cfg. Please check your yaml to ensure"
+                " this parameter is necessary."
+            ),
             key,
         )
 
@@ -453,9 +472,11 @@ def main(_cfg: DictConfig) -> Trainer:
         logging.basicConfig(
             # Example of format string
             # 2022-06-29 11:22:26,152: rank0[822018][MainThread]: INFO: Message here
-            format=f"%(asctime)s: rank{dist.get_global_rank()}"
-            f"[%(process)d][%(threadName)s]:"
-            f" %(levelname)s: %(name)s: %(message)s"
+            format=(
+                f"%(asctime)s: rank{dist.get_global_rank()}"
+                "[%(process)d][%(threadName)s]:"
+                " %(levelname)s: %(name)s: %(message)s"
+            )
         )
         logging.getLogger("llmfoundry").setLevel(python_log_level.upper())
 
@@ -485,14 +506,15 @@ def main(_cfg: DictConfig) -> Trainer:
     mosaicml_logger = next(
         (logger for logger in loggers if isinstance(logger, MosaicMLLogger)), None
     )
-    if mosaicml_logger is None:
-        if os.environ.get(
-            MOSAICML_PLATFORM_ENV_VAR, "false"
-        ).lower() == "true" and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR):
-            # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
-            # access token is set, and mosaic logger wasn't previously added
-            mosaicml_logger = MosaicMLLogger()
-            loggers.append(mosaicml_logger)
+    if (
+        mosaicml_logger is None
+        and os.environ.get(MOSAICML_PLATFORM_ENV_VAR, "false").lower() == "true"
+        and os.environ.get(MOSAICML_ACCESS_TOKEN_ENV_VAR)
+    ):
+        # Adds mosaicml logger to composer if the run was sent from Mosaic platform,
+        # access token is set, and mosaic logger wasn't previously added
+        mosaicml_logger = MosaicMLLogger()
+        loggers.append(mosaicml_logger)
 
     if metadata is not None:
         # Flatten the metadata for logging
@@ -503,18 +525,18 @@ def main(_cfg: DictConfig) -> Trainer:
             mosaicml_logger._flush_metadata(force_flush=True)
 
     # Profiling
-    profiler: Optional[Profiler] = None
-    profiler_cfg: Optional[DictConfig] = pop_config(
+    profiler: Profiler | None = None
+    profiler_cfg: DictConfig | None = pop_config(
         cfg, "profiler", must_exist=False, convert=False, default_value=None
     )
     if profiler_cfg:
-        profiler_schedule_cfg: Dict = pop_config(
+        profiler_schedule_cfg: dict = pop_config(
             profiler_cfg, "schedule", must_exist=True, convert=True
         )
         profiler_schedule = cyclic_schedule(**profiler_schedule_cfg)
         # Only support json trace handler
-        profiler_trace_handlers: List[TraceHandler] = []
-        profiler_trace_cfg: Optional[Dict] = pop_config(
+        profiler_trace_handlers: list[TraceHandler] = []
+        profiler_trace_cfg: dict | None = pop_config(
             profiler_cfg,
             "json_trace_handler",
             must_exist=False,
@@ -530,7 +552,7 @@ def main(_cfg: DictConfig) -> Trainer:
         )
 
     # Callbacks
-    callbacks: List[Callback] = (
+    callbacks: list[Callback] = (
         [
             build_callback(str(name), callback_cfg)
             for name, callback_cfg in callback_configs.items()
@@ -560,7 +582,7 @@ def main(_cfg: DictConfig) -> Trainer:
     if mosaicml_logger is not None:
         mosaicml_logger.log_metrics({"data_validated": time.time()})
 
-    ## Evaluation
+    # Evaluation
     log(INFO, "Building eval loader...")
     evaluators = []
     eval_loaders = []
@@ -611,9 +633,9 @@ def main(_cfg: DictConfig) -> Trainer:
         else:  # standard model
             model = build_composer_model(model_config, tokenizer)
 
-        if model_config.get("master_weights_dtype") in ("bf16", "bfloat16"):
+        if model_config.get("master_weights_dtype") in {"bf16", "bfloat16"}:
             model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in ("f16", "float16"):
+        elif model_config.get("master_weights_dtype") in {"f16", "float16"}:
             model = model.to(dtype=torch.float16)
 
     # Log number of parameters

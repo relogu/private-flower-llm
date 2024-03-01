@@ -2,6 +2,7 @@
 
 Handles both metric collection and GPU/CPU resources allocation to workers.
 """
+
 from __future__ import annotations
 
 import io
@@ -15,7 +16,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from logging import DEBUG, INFO
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, cast
 
 import nvsmi
 import psutil
@@ -27,14 +28,16 @@ from flwr.common import NDArrays, Scalar, log
 from pyarrow import csv
 
 NVIDIA_SMI_GET_GPUS_ALL = (
-    "nvidia-smi --query-gpu="
-    "index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version"
-    ",name,gpu_serial,display_active,display_mode,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
+    "nvidia-smi"
+    " --query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,"
+    "driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu,"
+    "power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
     " --format=csv,noheader,nounits"
 )
 NVIDIA_SMI_GET_GPUS_STATS = (
-    "nvidia-smi --query-gpu="
-    "index,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
+    "nvidia-smi"
+    " --query-gpu=index,utilization.gpu,memory.total,memory.used,memory.free,"
+    "temperature.gpu,power.draw,clocks.sm,clocks.mem,clocks.gr,timestamp"
     " --format=csv,nounits"
 )
 NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
@@ -43,26 +46,71 @@ NVIDIA_SMI_GET_GPUS_MEMORY_ONLY = (
 )
 
 
-def merge_devices(devices: List[Device]) -> Device:
+@dataclass
+class Device:
+    """Device info."""
+
+    device_id: int
+    name: str
+    device_type: str
+    total_memory: float
+    allocated_memory: float
+    concurrency: int
+
+    def __init__(
+        self,
+        device_id: int,
+        name: str,
+        device_type: str,
+        total_memory: float,
+        allocated_memory: float,
+        concurrency: int,
+    ) -> None:
+        self.device_id = device_id
+        self.name = name
+        self.device_type = device_type
+        self.total_memory = total_memory
+        self.allocated_memory = allocated_memory
+        self.concurrency = concurrency
+
+    def __repr__(self) -> str:
+        """Return the string representation."""
+        return json.dumps(asdict(self))
+
+    @staticmethod
+    def from_str(d: str) -> Device:
+        """Create a Device object from a string (built with str(Device))."""
+        device_dict: dict = json.loads(d)
+        return Device(
+            device_id=int(device_dict["device_id"]),
+            name=device_dict["name"],
+            device_type=device_dict["device_type"],
+            total_memory=float(device_dict["total_memory"]),
+            allocated_memory=float(device_dict["allocated_memory"]),
+            concurrency=int(device_dict["concurrency"]),
+        )
+
+
+def merge_devices(devices: list[Device]) -> Device:
     """Merge multiple devices into a single one."""
     assert len(devices) > 0
     if len(devices) == 1:
         return devices[0]
     else:
         return Device(
-            id=0,
+            device_id=0,
             name="merged",
-            type="merged",
+            device_type="merged",
             total_memory=sum([d.total_memory for d in devices]),
             allocated_memory=sum([d.allocated_memory for d in devices]),
             concurrency=1,
         )
 
 
-def get_gpu_prop(merge: bool = False) -> Dict[str, Device]:
+def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
     """Return the properties of the GPU in the node w/o assessing anything."""
     # Init return value
-    gpus_prop: Dict[str, Device] = {}
+    gpus_prop: dict[str, Device] = {}
     # NOTE: This is for controlling the GPU memory allocation
     pynvml.nvmlInit()
     # Loop over GPU devices
@@ -72,9 +120,9 @@ def get_gpu_prop(merge: bool = False) -> Dict[str, Device]:
         # Get memory info
         mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
         gpus_prop[f"cuda:{dev_id}"] = Device(
-            id=dev_id,
+            device_id=dev_id,
             name=pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
-            type="cuda",
+            device_type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,
             # TODO: Discuss what to do with one worker over multiple GPUs
@@ -98,8 +146,8 @@ def get_gpu_prop(merge: bool = False) -> Dict[str, Device]:
 
 
 def get_cuda_prop(
-    client: NumPyClient, params: NDArrays, config: Dict[str, Scalar]
-) -> Dict[str, Device]:
+    client: NumPyClient, params: NDArrays, config: dict[str, Scalar]
+) -> dict[str, Device]:
     """Assesses the capabilities of the CUDA resources available."""
     gpus_prop = {}
     # NOTE: This is for controlling the GPU memory allocation
@@ -140,9 +188,9 @@ def get_cuda_prop(
         # NOTE: This accounts for other (external) processes running on the same GPU
         current_concurrency = int((total - used + proc_used) // proc_used)
         gpus_prop[gpu_name] = Device(
-            id=gpu.id,
+            device_id=gpu.id,
             name=gpu.name,
-            type="cuda",
+            device_type="cuda",
             total_memory=gpu.mem_total,
             allocated_memory=gpu.mem_used,
             concurrency=current_concurrency,
@@ -156,8 +204,8 @@ def get_cpu_prop(
     cpu_type: str,
     client: NumPyClient,
     params: NDArrays,
-    config: Dict[str, Scalar],
-) -> Dict[str, Device]:
+    config: dict[str, Scalar],
+) -> dict[str, Device]:
     """Assesses the capabilities of the CPU resources available."""
     monitor = ResourcesMonitor(gpu_id=-1, list_pids=[os.getpid()])
     monitor.start()
@@ -173,9 +221,9 @@ def get_cpu_prop(
     current_concurrency = int(monitor.cpu_ram_available // sum(monitor.pid_ram_used))
     cpu_prop = {
         f"{cpu_type}:0": Device(
-            id=0,
+            device_id=0,
             name=f"{cpu_type}:0",
-            type=f"{cpu_type}",
+            device_type=f"{cpu_type}",
             total_memory=psutil.virtual_memory().total,
             allocated_memory=psutil.virtual_memory().total
             - psutil.virtual_memory().used,
@@ -191,51 +239,6 @@ def get_cpu_prop(
 
 
 @dataclass
-class Device:
-    """Device info."""
-
-    id: int
-    name: str
-    type: str
-    total_memory: float
-    allocated_memory: float
-    concurrency: int
-
-    def __init__(
-        self,
-        id: int,
-        name: str,
-        type: str,
-        total_memory: float,
-        allocated_memory: float,
-        concurrency: int,
-    ) -> None:
-        self.id = id
-        self.name = name
-        self.type = type
-        self.total_memory = total_memory
-        self.allocated_memory = allocated_memory
-        self.concurrency = concurrency
-
-    def __repr__(self) -> str:
-        """Return the string representation."""
-        return json.dumps(asdict(self))
-
-    @staticmethod
-    def from_str(d: str) -> Device:
-        """Create a Device object from a string (built with str(Device))."""
-        device_dict: Dict = json.loads(d)
-        return Device(
-            id=int(device_dict["id"]),
-            name=device_dict["name"],
-            type=device_dict["type"],
-            total_memory=float(device_dict["total_memory"]),
-            allocated_memory=float(device_dict["allocated_memory"]),
-            concurrency=int(device_dict["concurrency"]),
-        )
-
-
-@dataclass
 class Node:
     """Node info."""
 
@@ -243,7 +246,7 @@ class Node:
     cpu_num: int
     cpu_ram_total: int
     cpu_ram_available: int
-    device_info: Dict[str, Device]
+    device_info: dict[str, Device]
 
     def __init__(
         self,
@@ -251,7 +254,7 @@ class Node:
         cpu_num: int,
         cpu_ram_total: int,
         cpu_ram_available: int,
-        device_info: Dict[str, Device],
+        device_info: dict[str, Device],
     ) -> None:
         self.name = name
         self.cpu_num = cpu_num
@@ -264,9 +267,9 @@ class Node:
         return json.dumps(asdict(self))
 
     @staticmethod
-    def from_str(d: str) -> "Node":
+    def from_str(d: str) -> Node:
         """Create a Node from a string (built with str(Node))."""
-        dict_json: Dict[str, Any] = json.loads(d)
+        dict_json: dict[str, Any] = json.loads(d)
         return Node(
             name=dict_json["name"],
             cpu_num=int(dict_json["cpu_num"]),
@@ -274,7 +277,7 @@ class Node:
             cpu_ram_available=int(dict_json["cpu_ram_available"]),
             device_info={
                 str(k): Device.from_str(str(v).replace("'", '"'))
-                for k, v in cast(Dict[str, str], dict(dict_json["device_info"])).items()
+                for k, v in cast(dict[str, str], dict(dict_json["device_info"])).items()
             },
         )
 
@@ -285,7 +288,7 @@ class ResourcesMonitor(Thread):
     def __init__(
         self,
         gpu_id: int,
-        list_pids: Optional[List[int]] = None,
+        list_pids: list[int] | None = None,
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
@@ -297,10 +300,10 @@ class ResourcesMonitor(Thread):
         self.cpu_ram_total = 0.0
         self.cpu_ram_available = 0.0
         self.do_run = True
-        self.pid_ram_used: List[int] = []
+        self.pid_ram_used: list[int] = []
         self.dead = False
 
-    def _get_gpu_memory(self) -> Tuple[float, float]:
+    def _get_gpu_memory(self) -> tuple[float, float]:
         """Read the output of `nvidia-smi --query` launched as a subprocess.
 
         The GPU is selected by `self.gpu_id`. In particular, it reads the
@@ -315,7 +318,7 @@ class ResourcesMonitor(Thread):
             Tuple[float, float]: the total and allocated memory in MB.
         """
 
-        def output_to_list(x):
+        def output_to_list(x: bytes) -> list[str]:
             return x.decode("ascii").split("\n")
 
         command = NVIDIA_SMI_GET_GPUS_MEMORY_ONLY + f" -i {self.gpu_id}"
@@ -327,9 +330,7 @@ class ResourcesMonitor(Thread):
             ]  # [0] is the first line of the output, the second line is always empty
         except sp.CalledProcessError as e:
             raise RuntimeError(
-                "command '{}' return with error (code {}): {}".format(
-                    e.cmd, e.returncode, e.output
-                )
+                f"command '{e.cmd}' return with error (code {e.returncode}): {e.output}"
             ) from e
         ret_val = (0.0, 0.0)
         try:
@@ -396,17 +397,17 @@ class DaemonResourcesMonitor(Thread):
 
     def __init__(
         self,
-        gpu_ids: List[int],
+        gpu_ids: list[int],
         frequency: float = 0.1,
     ) -> None:
         Thread.__init__(self)
         self.frequency = frequency
         self.gpu_ids = gpu_ids
         self.do_run = True
-        self.gpu_stats: List[pa.Table] = []
+        self.gpu_stats: list[pa.Table] = []
 
     def _get_gpu_stats(self) -> None:
-        def output_to_list(x) -> bytes:
+        def output_to_list(x: bytes) -> bytes:
             return bytes(x)
 
         command = (

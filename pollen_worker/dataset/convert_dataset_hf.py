@@ -6,10 +6,12 @@ import json
 import os
 import platform
 from argparse import ArgumentParser, Namespace
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from logging import INFO
-from typing import Dict, Iterable, Optional, Union
+from pathlib import Path
+from typing import Any
 
 import psutil
 from flwr.common.logger import log
@@ -33,8 +35,9 @@ class ConcatMode(Enum):
 def parse_args() -> Namespace:
     """Parse commandline arguments."""
     parser = ArgumentParser(
-        description="Convert dataset into MDS format, optionally concatenating and"
-        "tokenizing"
+        description=(
+            "Convert dataset into MDS format, optionally concatenating andtokenizing"
+        )
     )
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument(
@@ -71,7 +74,7 @@ def parse_args() -> Namespace:
         parsed.tokenizer_kwargs = {}
 
     if (
-        os.path.isdir(parsed.out_root)
+        Path.is_dir(parsed.out_root)
         and len(set(os.listdir(parsed.out_root)).intersection(set(parsed.splits))) > 0
     ):
         raise ValueError(
@@ -102,7 +105,7 @@ class DataSplitConstants:
     hf_split: str
     folder_split: str
     raw_samples: int
-    truncated_samples: Union[int, None]
+    truncated_samples: int | None
 
 
 @dataclass
@@ -111,12 +114,11 @@ class DatasetConstants:
 
     chars_per_sample: int
     chars_per_token: int
-    splits = {}  # type: ignore[var-annotated]
+    splits: dict
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[Any, Any, None]:
         """Iterate over splits."""
-        for _, v in self.splits.items():
-            yield v
+        yield from self.splits.values()
 
 
 class TrainSmallConstants(DataSplitConstants):
@@ -128,7 +130,7 @@ class TrainSmallConstants(DataSplitConstants):
         folder_split: str = "train_small",
         raw_samples: int = 1000000,
         truncated_samples: int = 100000,
-    ):
+    ) -> None:
         super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
 
 
@@ -141,7 +143,7 @@ class ValSmallConstants(DataSplitConstants):
         folder_split: str = "val_small",
         raw_samples: int = 10000,
         truncated_samples: int = 10000,
-    ):
+    ) -> None:
         super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
 
 
@@ -154,7 +156,7 @@ class ValXSmallConstants(DataSplitConstants):
         folder_split: str = "val_xsmall",
         raw_samples: int = 3000,
         truncated_samples: int = 3000,
-    ):
+    ) -> None:
         super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
 
 
@@ -162,6 +164,7 @@ class ValXSmallConstants(DataSplitConstants):
 pileconstants = DatasetConstants(
     chars_per_sample=6212,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
+    splits={},
 )
 pileconstants.splits["train"] = DataSplitConstants(
     hf_split="train",
@@ -197,6 +200,7 @@ pileconstants.splits["val_xsmall"] = DataSplitConstants(
 c4constants = DatasetConstants(
     chars_per_sample=2163,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
+    splits={},
 )
 c4constants.splits["train"] = DataSplitConstants(
     hf_split="train",
@@ -242,12 +246,12 @@ def build_hf_dataset(
     dataset_name: str,
     split: str,
     mode: ConcatMode,
-    max_length: Optional[int] = None,
+    max_length: int | None = None,
     bos_text: str = "",
     eos_text: str = "",
     no_wrap: bool = False,
     tokenizer: PreTrainedTokenizerBase = None,
-    data_subset: Union[str, None] = None,
+    data_subset: str | None = None,
 ) -> IterableDataset:
     """Build an IterableDataset over the HF C4 or pile source data.
 
@@ -279,7 +283,7 @@ def build_hf_dataset(
             raise ValueError(f"{tokenizer=} must be of type PreTrainedTokenizerBase")
         if max_length is None:
             raise ValueError("max_length must be set.")
-        if bos_text + eos_text == "":
+        if bos_text + eos_text:
             test_tokens = tokenizer("test")
             if (
                 test_tokens["input_ids"][0] != tokenizer.bos_token_id
@@ -313,21 +317,23 @@ def _est_progress_denominator(
     chars_per_token: int,
     mode: ConcatMode,
     max_length: int,
-):
+) -> int | float | None:
     est_tokens_per_sample = chars_per_sample / chars_per_token
     if mode == ConcatMode.NO_CONCAT:
         return total_samples
     elif mode == ConcatMode.CONCAT_TOKENS:
         return (total_samples * est_tokens_per_sample) / max_length
+    return None
 
 
 def build_dataloader(
-    dataset: Dataset, batch_size: int, num_workers: Optional[int]
+    dataset: Dataset, batch_size: int, num_workers: int | None
 ) -> DataLoader:
     """Return a DataLoader for a dataset."""
     if num_workers is None:
         # Multiple workers is only supported on linux machines
-        if "linux" or "macos" in platform.platform().lower():
+        current_platform = platform.platform().lower()
+        if "linux" in current_platform or "macos" in current_platform:
             num_workers = max(1, psutil.cpu_count())
         else:
             num_workers = 0
@@ -348,8 +354,8 @@ def build_dataloader(
 
 
 def generate_samples(
-    loader: DataLoader, truncate_num_samples: Optional[int] = None
-) -> Iterable[Dict[str, bytes]]:
+    loader: DataLoader, truncate_num_samples: int | None = None
+) -> Iterable[dict[str, bytes]]:
     """Build a Generator over samples of a dataloader.
 
     Args:
@@ -491,8 +497,10 @@ def main(args: Namespace) -> None:
         log(INFO, f"Converting {folder_split} to MDS format...")
         log(
             INFO,
-            "Note: the progress bar is based on the dataset length before tokenization,"
-            "and may finish at a value before 100%.",
+            (
+                "Note: the progress bar is based on the dataset length before"
+                " tokenization,and may finish at a value before 100%."
+            ),
         )
         # Loop over the number of clients
         for i in range(args.num_clients):
@@ -501,9 +509,9 @@ def main(args: Namespace) -> None:
                 expected_samples_per_client += remainder
             # Set the output path given the client id
             out_path = (
-                os.path.join(args.out_root, f"client_{i}", folder_split)
+                Path(args.out_root / f"client_{i}", folder_split)
                 if args.num_clients > 1
-                else os.path.join(args.out_root, folder_split)
+                else Path(args.out_root / folder_split)
             )
             log(
                 INFO,
@@ -514,7 +522,7 @@ def main(args: Namespace) -> None:
             )
             with MDSWriter(
                 columns=columns,
-                out=out_path,
+                out=str(out_path),
                 compression=args.compression,
             ) as out:
                 for j, sample in enumerate(

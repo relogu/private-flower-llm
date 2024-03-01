@@ -4,14 +4,14 @@ import copy
 import csv
 import gc
 import logging
-import os
 import sys
 import time
 import uuid
+from pathlib import Path
 
 import hydra
 import numpy as np
-from flwr.common import NDArrays, ndarrays_to_parameters
+from flwr.common import NDArrays, log, ndarrays_to_parameters
 from minio import Minio
 from omegaconf import DictConfig, OmegaConf
 
@@ -24,15 +24,15 @@ from pollen_worker.minio.minio_tools import (
 )
 
 
-class Benchmarks(object):
+class Benchmarks:
     """Class for the benchmarks."""
 
-    def __init__(self, parameters_as_ndarrays: NDArrays):
+    def __init__(self, parameters_as_ndarrays: NDArrays) -> None:
         self.parameters_as_ndarrays = parameters_as_ndarrays
         self.parameters_as_tensors = ndarrays_to_parameters(parameters_as_ndarrays)
-        home = os.path.expanduser("~")
-        config_file_path = os.path.join(home, ".aws", "credentials")
-        if not os.path.isfile(config_file_path):
+        home = Path.expanduser(Path("~"))
+        config_file_path = home / ".aws" / "credentials"
+        if not Path.is_file(config_file_path):
             raise ValueError("Invalid config_file_path")
         config = configparser.ConfigParser()
         config.read(config_file_path)
@@ -79,15 +79,19 @@ class Benchmarks(object):
             file_sizes.append(file_size)
             file_size *= 2
 
-        print(
-            f"\nBenchmark file sizes (kB): {[int(value/kb) for value in file_sizes]}\n"
+        log(
+            logging.INFO,
+            (
+                "\nBenchmark file sizes (kB):"
+                f" {[int(value / kb) for value in file_sizes]}\n"
+            ),
         )
 
         results: list[list[float]] = []
 
         results_index = 0
 
-        round = 1
+        server_round = 1
 
         for file_size in file_sizes:
             results.append([])
@@ -107,22 +111,25 @@ class Benchmarks(object):
                 self.log,
             )
 
-            for _attempt in range(1, 2, 1):
+            for results_index, _attempt in enumerate(range(1, 2, 1)):
                 gc.collect()
                 time.sleep(1)
 
                 start_time = time.time()
-                push_parameters(state, round, self.parameters_as_ndarrays)
-                pulled_parameters = pull_parameters(state, round)
+                push_parameters(state, server_round, self.parameters_as_ndarrays)
+                pulled_parameters = pull_parameters(state, server_round)
                 if not isinstance(pulled_parameters, list):
                     raise ConnectionError("Failed to pull parameters")
                 end_time = time.time()
 
                 time_diff = end_time - start_time
 
-                print(
-                    f"File size: {Benchmarks._get_stylizes_size(file_size)};"
-                    f" Time: {time_diff} seconds"
+                log(
+                    logging.INFO,
+                    (
+                        f"File size: {Benchmarks._get_stylizes_size(file_size)};"
+                        f" Time: {time_diff} seconds"
+                    ),
                 )
 
                 # Check the integrity of the pulled parameters
@@ -136,15 +143,13 @@ class Benchmarks(object):
 
                 results[results_index].append(time_diff)
 
-            results_index += 1
-
-        home = os.path.expanduser("~")
-        csv_file_path = os.path.join(home, "benchmarks", "mpt-1b.csv")
-        with open(csv_file_path, "w") as csv_file:
+        home = Path.expanduser(Path("~"))
+        csv_file_path = home / "benchmarks" / "mpt-1b.csv"
+        with open(csv_file_path, "w", encoding="locale") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerows(results)
 
-        print("✅ All done!")
+        log(logging.INFO, "✅ All done!")
 
 
 @hydra.main(config_path="../../conf/", config_name="base", version_base=None)

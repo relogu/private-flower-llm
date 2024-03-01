@@ -1,7 +1,9 @@
 """Handle aggregation in-place and potentially async."""
+
 import time
+from collections.abc import Iterable
+from itertools import starmap
 from logging import DEBUG
-from typing import Iterable, Tuple
 
 import numpy as np
 from flwr.common import FitRes, NDArrays, parameters_to_ndarrays
@@ -10,7 +12,7 @@ from flwr.server.client_proxy import ClientProxy
 
 
 def aggregate_cumulative_average(
-    results: Iterable[Tuple[ClientProxy, FitRes]]
+    results: Iterable[tuple[ClientProxy, FitRes]]
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # Initialize params,
@@ -49,7 +51,7 @@ def aggregate_cumulative_average(
             scaled_params = (general_scaling * x for x in params)
 
             # Create new parameters
-            params = [np.add(x, y) for x, y in zip(scaled_params, res)]
+            params = list(starmap(np.add, zip(scaled_params, res, strict=False)))
 
         # Update total number of examples
         num_total_examples = new_total_samples

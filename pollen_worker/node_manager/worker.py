@@ -1,20 +1,22 @@
 """TODO: Add description here."""
+
 import gc
 import os
 import time
 import uuid
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from logging import DEBUG, ERROR
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
-from typing import Callable, Optional, Tuple
+from typing import Any
 
 import multiprocess as mp
 import numpy as np
 import streaming
 import torch
 import torch.distributed as dist
-from composer.cli.launcher import _patch_env
+from composer.cli.launcher import _patch_env  # noqa: PLC2701
 from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
@@ -40,7 +42,7 @@ from pollen_worker.node_manager.utils import (
 from pollen_worker.utils import partially_aggregate, partially_aggregate_metrics
 
 
-class Worker(mp.Process):  # type: ignore
+class Worker(mp.Process):
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -54,7 +56,7 @@ class Worker(mp.Process):  # type: ignore
         parameters: NDArrays,
         worker_rank: int,
     ) -> None:
-        super(Worker, self).__init__()
+        super().__init__()
         self.worker_uuid = worker_uuid
         self.client_fn: Callable[[int], VirtualLLMClient] = client_fn
         self.task_queue = task_queue
@@ -113,7 +115,7 @@ class Worker(mp.Process):  # type: ignore
             ) = get_config_shm(
                 config=p_agg_metrics,
                 create=True,
-                name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
+                name=self.worker_uuid + POLLEN_METRICS_SHM,
             )
             set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
@@ -165,7 +167,7 @@ class Worker(mp.Process):  # type: ignore
             ) = get_config_shm(
                 config=p_agg_metrics,
                 create=True,
-                name=self.worker_uuid + POLLEN_METRICS_SHM,  # noqa: F821
+                name=self.worker_uuid + POLLEN_METRICS_SHM,
             )
             set_config_shm(p_agg_metrics, self.worker_metrics_sh)
         # log(
@@ -182,9 +184,10 @@ class Worker(mp.Process):  # type: ignore
         start_time = time.time_ns()
         # Loads a dict from the shared memory buffer
         # FL config shared memory
-        fl_instructions_config, fl_instructions_config_sh = get_config_shm(
+        # NOTE: We MUST keep the sh variable even if we don't use it
+        fl_instructions_config, _fl_instructions_config_sh = get_config_shm(
             config={},
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
         # Load client
         tmp_client = self.client_fn(client_id)
@@ -264,7 +267,7 @@ class Worker(mp.Process):  # type: ignore
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=self.parameters,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
         )
         # NOTE: This is the Worker's shared memory for the fit results.
         # NodeManager should only read this. Worker should only write this.
@@ -272,31 +275,31 @@ class Worker(mp.Process):  # type: ignore
         self.worker_parameters, self.worker_parameters_sh = get_parameters_shm(
             create=True,
             parameters=self.parameters,
-            name=self.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Number of samples shared memory
         self.worker_num_samples, self.worker_num_samples_sh = get_num_samples_shm(
             create=True,
-            name=self.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_N_SAMPLES_SHM,
         )
         set_num_samples_shm(self.worker_num_samples, 0)
         # Evaluation loss shared memory
         self.worker_eval_loss, self.worker_eval_loss_sh = get_eval_loss_shm(
             create=True,
-            name=self.worker_uuid + POLLEN_EVAL_LOSS_SHM,  # noqa: F821
+            name=self.worker_uuid + POLLEN_EVAL_LOSS_SHM,
         )
 
     def run(self) -> None:
         """Start the process."""
-        ## Create shared memories
+        # Create shared memories
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
         # process, the `__init__()` function does not.
         self._link_shms()
-        ## Task loop
-        task: Optional[Tuple[int, str]] = None
+        # Task loop
+        task: tuple[int, str] | None = None
         for task in iter(self.task_queue.get, None):
             cid, action = task  # type: ignore[misc]
             self.process_task(cid, action)  # type: ignore[has-type]
@@ -317,7 +320,7 @@ def get_env_patcher(
     run_uuid: str,
     rank: str,
     master_port: str,
-):
+) -> Generator[None, Any, None]:
     """Yield a context manager to patch the environment variables."""
     try:
         # Trying to destroy the process group of PyTorch Distributed,
@@ -342,11 +345,14 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables patched for worker with rank %s.\n\t\t"
-                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
-                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
-                    "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
-                    "APPOINTED_CUDA_DEVICE=%s",
+                    (
+                        "Environment variables patched for worker with rank"
+                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                        " APPOINTED_CUDA_DEVICE=%s"
+                    ),
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),
@@ -379,11 +385,14 @@ def get_env_patcher(
                 streaming.base.util.clean_stale_shared_memory()
                 log(
                     DEBUG,
-                    "Environment variables patched for worker with rank %s.\n\t\t"
-                    "RANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s, LOCAL_WORLD_SIZE=%s, "
-                    "NODE_RANK=%s, MASTER_ADDR=%s, MASTER_PORT=%s, "
-                    "PYTHONUNBUFFERED=%s, NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s, "
-                    "APPOINTED_CUDA_DEVICE=%s",
+                    (
+                        "Environment variables patched for worker with rank"
+                        " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                        " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                        " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                        " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                        " APPOINTED_CUDA_DEVICE=%s"
+                    ),
                     rank,
                     os.getenv("RANK"),
                     os.getenv("WORLD_SIZE"),
@@ -429,10 +438,10 @@ def get_training_results_from_workers_dict(
         if worker.is_alive():
             w_parameters, w_parameters_shm = get_parameters_shm(
                 parameters=worker.parameters,
-                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+                name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
             )
             w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+                name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,
             )
             w_metrics, w_metrics_shm = get_config_shm(
                 config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM
@@ -470,10 +479,10 @@ def get_training_results_from_worker(
     if worker.is_alive():
         w_parameters, w_parameters_shm = get_parameters_shm(
             parameters=worker.parameters,
-            name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
         )
         w_num_samples, w_num_samples_shm = get_num_samples_shm(
-            name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+            name=worker.worker_uuid + POLLEN_N_SAMPLES_SHM,
         )
         w_metrics, w_metrics_shm = get_config_shm(
             config={}, name=worker.worker_uuid + POLLEN_METRICS_SHM

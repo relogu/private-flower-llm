@@ -6,26 +6,14 @@ They assure compatibility with the Flower and wandb APIs.
 import copy
 import fcntl
 import gc
-import os
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
+from collections.abc import Callable, Generator, Sequence
 from functools import reduce
 from logging import ERROR, INFO
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Literal, cast
 
 import numpy as np
 import psutil
@@ -37,6 +25,7 @@ from flwr.common import Config, FitRes, NDArrays, Scalar, log, parameters_to_nda
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
+from typing_extensions import Self
 
 import wandb
 
@@ -45,7 +34,7 @@ import wandb
 POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
 
 
-#### Server ####
+# Server ####
 def weighted_average(
     metrics: list[tuple[int, dict]],
 ) -> dict:
@@ -74,8 +63,8 @@ def weighted_average(
 
 
 def partially_aggregate(
-    current_agg: Tuple[NDArrays, int], new_results: Tuple[NDArrays, int]
-) -> Tuple[NDArrays, int]:
+    current_agg: tuple[NDArrays, int], new_results: tuple[NDArrays, int]
+) -> tuple[NDArrays, int]:
     """Aggregate partially parameters."""
     updated_agg = None
     # Assuming that the partially aggregate is empty when n_samples is 0
@@ -105,8 +94,8 @@ def partially_aggregate_metrics(
     return total_num_examples, updated_agg
 
 
-#### Client ####
-## General
+# Client ####
+# General
 def get_parameters(net: torch.nn.Module) -> NDArrays:
     """Implement generic `get_parameters` for Flower Client."""
     net.eval()
@@ -118,8 +107,8 @@ def set_parameters(
 ) -> None:
     """Implement generic `set_parameters` for Flower Client."""
     net.eval()
-    keys = [k for k in net.state_dict().keys() if "bn" not in k]
-    params_dict = zip(keys, parameters)
+    keys = [k for k in net.state_dict() if "bn" not in k]
+    params_dict = zip(keys, parameters, strict=False)
     state_dict = OrderedDict(
         {k: torch.tensor(v, device=device) for k, v in params_dict}
     )
@@ -127,21 +116,21 @@ def set_parameters(
 
 
 def invert_many_to_one_dictionary(
-    input: Dict,
-) -> Dict:
+    input_dict: dict,
+) -> dict:
     """Invert the mapping given by a dictionary when it is many-to-one."""
-    output: Dict = defaultdict(list)
-    for k, v in input.items():
+    output: dict = defaultdict(list)
+    for k, v in input_dict.items():
         output[v] = output.get(v, []) + [k]
     return output
 
 
 def invert_one_to_many_dictionary(
-    input: Dict,
-) -> Dict:
+    input_dict: dict,
+) -> dict:
     """Invert the mapping given by a dictionary when it is one-to-many."""
-    output: Dict = {}
-    for k, v in input.items():
+    output: dict = {}
+    for k, v in input_dict.items():
         for w in v:
             output[w] = k
     return output
@@ -155,10 +144,10 @@ def gen_on_fit_config_fn(
     weight_decay: float = 0.0,
     is_fake: bool = False,
     n_workers: int = 0,
-) -> Callable[[int], Dict[str, Scalar]]:
+) -> Callable[[int], dict[str, Scalar]]:
     """Return generic `on_fit_config_fn` for Flower Client."""
 
-    def on_fit_config_fn(server_round: int) -> Dict[str, Scalar]:
+    def on_fit_config_fn(server_round: int) -> dict[str, Scalar]:
         """Return `Config` for fit/evaluate rounds."""
         return {
             "batch_size": batch_size,
@@ -180,18 +169,18 @@ class NoOpContextManager:
 
     def __enter__(self) -> None:
         """Do nothing."""
-        return None
+        return
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         """Do nothing."""
 
 
 def wandb_init(
-    wandb_enabled: bool, *args, **kwargs
-) -> Optional[Union[NoOpContextManager, Any]]:
+    wandb_enabled: bool, *args: dict, **kwargs: dict
+) -> NoOpContextManager | Any | None:
     """Initialize wandb if enabled."""
     if wandb_enabled:
-        return wandb.init(*args, **kwargs)
+        return wandb.init(*args, **kwargs)  # type: ignore[arg-type]
 
     return NoOpContextManager()
 
@@ -199,29 +188,30 @@ def wandb_init(
 class RayContextManager:
     """A context manager for cleaning up after ray."""
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Initialize the context manager."""
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         """Cleanup the files."""
         if ray.is_initialized():
-            temp_dir = Path(
-                ray.worker._global_node.get_session_dir_path()  # type: ignore
-            )
+            temp_dir = Path(ray.worker._global_node.get_session_dir_path())
             ray.shutdown()
             directory_size = shutil.disk_usage(temp_dir).used
             shutil.rmtree(temp_dir)
-            print(
-                f"Cleaned up ray temp session: {temp_dir} with size: {directory_size}"
+            log(
+                INFO,
+                f"Cleaned up ray temp session: {temp_dir} with size:{directory_size}",
             )
 
 
-def chunks_idx(list: Sequence, n_chunks: int) -> Generator[tuple[int, int], Any, None]:
+def chunks_idx(
+    list_of_stuff: Sequence, n_chunks: int
+) -> Generator[tuple[int, int], Any, None]:
     """Split a list in n_chunks of equal length."""
-    d, r = divmod(len(list), n_chunks)
+    d, r = divmod(len(list_of_stuff), n_chunks)
     for i in range(n_chunks):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
+        si = (d + 1) * (min(r, i)) + d * (0 if i < r else i - r)
         yield si, si + (d + 1 if i < r else d)
 
 
@@ -241,7 +231,7 @@ def l1_norm(arrays: NDArrays) -> float:
     return sum(np.sum(np.abs(arr)) for arr in arrays)
 
 
-def aggregate_inplace(results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
+def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
     num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
@@ -261,7 +251,10 @@ def aggregate_inplace(results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
             scaling_factors[i + 1] * x
             for x in parameters_to_ndarrays(fit_res.parameters)
         )
-        params = [reduce(np.add, layer_updates) for layer_updates in zip(params, res)]
+        params = [
+            reduce(np.add, layer_updates)
+            for layer_updates in zip(params, res, strict=False)
+        ]
 
     return params
 
@@ -276,10 +269,7 @@ def get_device() -> device_type:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif (
-        torch.backends.mps.is_available()  # type: ignore
-        and torch.backends.mps.is_built()  # type: ignore
-    ):
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = "mps"
     return cast(device_type, device)
 
@@ -295,7 +285,7 @@ def get_n_cuda_devices() -> int:
 def get_n_cpu_cores() -> int:
     """Get the number of CPU cores available."""
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     return cpus
@@ -317,7 +307,7 @@ def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
     return ret_table
 
 
-def namestr(obj, namespace):
+def namestr(obj: object, namespace: dict) -> list:
     """Return the name of an object in the given namespace."""
     return [name for name in namespace if namespace[name] is obj]
 
@@ -339,35 +329,34 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
                 # Skip if the tensor is on CPU and `cuda_only` is True
                 if cuda_only and not obj.is_cuda:
                     continue
-                else:
-                    # Getting the memory allocation of the current object
-                    mem_alloc = obj.element_size() * obj.nelement()
-                    # Getting the referrers of the current object
-                    # NOTE: This creates a new referrer!
-                    referrers = gc.get_referrers(obj)
-                    # Building the summary for the current object:
-                    # ( type (some tensor type), size (shape)
-                    summary += f"(type{type(obj)}, {obj.size()}, "
-                    # whether it requires grad, memory allocation
-                    summary += f"r_g={obj.requires_grad}, mem={mem_alloc}, "
-                    # whether it is on GPU, the number of referrers
-                    summary += f"cuda={obj.is_cuda}, n_ref={len(referrers)}, "
-                    # referrers
-                    summary += f"refs={[r for r in referrers if type(r) is not list]}, "
-                    # # looking for names of the first referrer (DOESN'T WORK)
-                    # summary += f"{namestr(referrers[0], globals())}, "
-                    # summary += f"{namestr(referrers[0], locals())}, "
-                    # type of the referrers
-                    summary += f"type_ref={[type(r) for r in referrers]}, "
-                    # # referrers of the referrers
+                # Getting the memory allocation of the current object
+                mem_alloc = obj.element_size() * obj.nelement()
+                # Getting the referrers of the current object
+                # NOTE: This creates a new referrer!
+                referrers = gc.get_referrers(obj)
+                # Building the summary for the current object:
+                # ( type (some tensor type), size (shape)
+                summary += f"(type{type(obj)}, {obj.size()}, "
+                # whether it requires grad, memory allocation
+                summary += f"r_g={obj.requires_grad}, mem={mem_alloc}, "
+                # whether it is on GPU, the number of referrers
+                summary += f"cuda={obj.is_cuda}, n_ref={len(referrers)}, "
+                # referrers
+                summary += f"refs={[r for r in referrers if type(r) is not list]}, "
+                # # looking for names of the first referrer (DOESN'T WORK)
+                # summary += f"{namestr(referrers[0], globals())}, "
+                # summary += f"{namestr(referrers[0], locals())}, "
+                # type of the referrers
+                summary += f"type_ref={[type(r) for r in referrers]}, "
+                # # referrers of the referrers
 
-                    # summary += f"{[gc.get_referrers(referrers) for r in referrers]})"
-                    summary += "\n"
-                    # Updating the counters
-                    counter += 1
-                    total_size += mem_alloc
-                    if obj.is_cuda:
-                        gpu_size += mem_alloc
+                # summary += f"{[gc.get_referrers(referrers) for r in referrers]})"
+                summary += "\n"
+                # Updating the counters
+                counter += 1
+                total_size += mem_alloc
+                if obj.is_cuda:
+                    gpu_size += mem_alloc
         except Exception:
             # log(
             #     ERROR,
@@ -385,9 +374,11 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         # More verbose logging
         log(
             INFO,
-            "get_referenced_tensors_summary :: there are %s "
-            "referenced tensors for a total size of %s MiB "
-            "(%s MiB on GPU, %s MiB on CPU).",
+            (
+                "get_referenced_tensors_summary :: there are %s "
+                "referenced tensors for a total size of %s MiB "
+                "(%s MiB on GPU, %s MiB on CPU)."
+            ),
             # "Summary is:\n%s",
             counter,
             total_size_mb,
@@ -470,7 +461,7 @@ def get_selected_objects_types(
 
 def clean_trainer_state(trainer: Trainer) -> None:
     """Clean the state of the trainer."""
-    ## Evaluators
+    # Evaluators
     try:
         for evaluator in trainer.state._evaluators:
             iterator = evaluator.dataloader.dataloader._iterator
@@ -483,8 +474,10 @@ def clean_trainer_state(trainer: Trainer) -> None:
             except Exception as e:
                 log(
                     ERROR,
-                    "Error running evaluator(s).dataloader.dataloader"
-                    "._iterator._shutdown_workers().",
+                    (
+                        "Error running evaluator(s).dataloader.dataloader"
+                        "._iterator._shutdown_workers()."
+                    ),
                     exc_info=e,
                     stack_info=True,
                 )
@@ -512,7 +505,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## State
+    # State
     # Model
     try:
         trainer.state.model.cpu()
@@ -642,12 +635,10 @@ def clean_trainer_state(trainer: Trainer) -> None:
     # Train metrics
     try:
         if trainer.state.train_metrics is not None:
-            for _k, t_m in trainer.state.train_metrics.items():
+            for t_m in trainer.state.train_metrics.values():
                 t_m.cpu()
                 del t_m
             delattr(trainer.state, "train_metrics")
-        else:
-            raise AttributeError("trainer.state.train_metrics is None")
     except AttributeError:
         pass
     except Exception as e:
@@ -659,8 +650,8 @@ def clean_trainer_state(trainer: Trainer) -> None:
         )
     # Eval metrics
     try:
-        for _k, e_m in trainer.state.eval_metrics.items():
-            for _kk, ee_m in e_m.items():
+        for e_m in trainer.state.eval_metrics.values():
+            for ee_m in e_m.values():
                 ee_m.cpu()
                 del ee_m
             del e_m
@@ -722,7 +713,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## Engine
+    # Engine
     # Logger
     try:
         delattr(trainer.engine, "logger")
@@ -759,7 +750,7 @@ def clean_trainer_state(trainer: Trainer) -> None:
             exc_info=e,
             stack_info=True,
         )
-    ## Trainer
+    # Trainer
     # Model
     try:
         delattr(trainer, "_original_model")
@@ -829,7 +820,7 @@ def get_open_fds() -> list[int]:
     for fd in range(3, soft):
         try:
             fcntl.fcntl(fd, fcntl.F_GETFD)
-        except IOError:
+        except OSError:
             continue
         fds.append(fd)
     return fds
@@ -839,7 +830,7 @@ def get_file_names_from_file_number(fds: list[int]) -> list[str]:
     """Return a list of file names given a list of file descriptor numbers."""
     names = []
     for fd in fds:
-        names.append(os.readlink("/proc/self/fd/%d" % fd))
+        names.append(str(Path.readlink(Path("/proc/self/fd/%d" % fd))))
     return names
 
 
@@ -861,6 +852,10 @@ class Capture:
         self.captured.append(other)
         return False
 
+    def __hash__(self) -> int:
+        """Override the `__hash__` function to return the hash of the captured."""
+        return hash(self.captured)
 
-class IntentionalClientDropout(Exception):
+
+class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""

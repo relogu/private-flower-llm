@@ -5,15 +5,18 @@ avoids any memory or processing intensive operations in the _init_ function. As 
 virtual clients can be used to simulate a large number of clients on a single machine
 even if many are spawned at once.
 """
+
 import copy
 import os
 import time
+from collections.abc import Callable
 from logging import DEBUG, INFO, WARNING
-from typing import Any, Callable, Dict, Union
+from typing import Any
 
 import flwr as fl
 import hydra
 import psutil
+import streaming
 import transformers
 from anyio import Path
 from flwr.common.logger import log
@@ -41,7 +44,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
     def __init__(
         self,
         *,
-        cid: Union[int, str],
+        cid: int | str,
         cfg: DictConfig,
     ) -> None:
         # Set init parameters
@@ -62,7 +65,9 @@ class VirtualLLMClient(fl.client.NumPyClient):
                     )
                 )
                 log(INFO, "Looking for a checkpoint to load in %s", local_path)
-                if os.path.exists(local_path):
+                # TODO: The suggested `Path.exists(local_path)` doens't work with a
+                # direct substitution. This necessitates a fix.
+                if os.path.exists(local_path):  # noqa: PTH110
                     self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
                     log(INFO, "Set checkpoint to load: %s", self.cfg.load_path)
             except Exception as e:
@@ -92,7 +97,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the string representation."""
         return f"VirtualLLMClient(cid={self.cid})"
 
-    def get_properties(self, config: Config) -> Dict[str, Scalar]:
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
         return {}
 
@@ -118,8 +123,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
         return get_parameters(config, cfg)
 
     def fit(
-        self, parameters: NDArrays, config: Dict
-    ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
+        self, parameters: NDArrays, config: dict
+    ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
         """Implement the fit step."""
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
@@ -141,8 +146,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
     def evaluate(
         self,
         parameters: NDArrays,
-        config: Dict[str, Scalar],
-    ) -> tuple[float, int, Dict[str, Scalar]]:
+        config: dict[str, Scalar],
+    ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
@@ -163,7 +168,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
 
 def gen_client_fn(
     cfg: DictConfig,
-    **kwargs,
+    **kwargs: dict,
 ) -> Callable[[int], VirtualLLMClient]:
     """Return generic `client_fn` for Flower Framework."""
 
@@ -198,7 +203,6 @@ def main(cfg: DictConfig) -> None:
     # Set `max_duration` to a low value for testing
     _llm_config.max_duration = "10ba"  # type: ignore[union-attr]
     _llm_config.local_steps = "10ba"  # type: ignore[union-attr]
-    # FIXME: test
     log(
         INFO,
         "VirtualLLMClient received the following config:\n%s",
@@ -210,7 +214,6 @@ def main(cfg: DictConfig) -> None:
     )
     # Looping over two clients
     # Cleaning stale shared memory
-    import streaming
 
     streaming.base.util.clean_stale_shared_memory()
     # for i in range(2):
@@ -243,7 +246,7 @@ def main(cfg: DictConfig) -> None:
             num_examples,
         )
         log(INFO, f"VirtualLLMClient.fit :: train metrics={metrics}")
-        ## PROFILING
+        # PROFILING
         all_opened = 0
         sum_of_ram = 0
         for proc in psutil.process_iter():
@@ -268,8 +271,10 @@ def main(cfg: DictConfig) -> None:
                 pass
         log(
             DEBUG,
-            "All processes have %d opened files and %d file descriptors. "
-            "RAM occupied: %d bytes.",
+            (
+                "All processes have %d opened files and %d file descriptors. "
+                "RAM occupied: %d bytes."
+            ),
             all_opened,
             len(get_open_fds()),
             sum_of_ram,

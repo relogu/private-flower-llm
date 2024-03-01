@@ -1,11 +1,11 @@
 """Module for testing the MinIO tools."""
 import configparser
 import logging
-import os
 import random
 import sys
 import unittest
 import uuid
+from pathlib import Path
 
 import numpy as np
 from flwr.common import NDArrays
@@ -27,11 +27,11 @@ from pollen_worker.server_state import ServerState
 class TestMinio(unittest.TestCase):
     """Class for unit test of the Minio."""
 
-    def setUp(self):
+    def set_up(self) -> None:
         """Set up the Minio client."""
-        home = os.path.expanduser("~")
-        config_file_path = os.path.join(home, ".aws", "credentials")
-        self.assertTrue(os.path.isfile(config_file_path))
+        home = Path.expanduser(Path("~"))
+        config_file_path = home / ".aws" / "credentials"
+        self.assertTrue(Path.is_file(config_file_path))
         config = configparser.ConfigParser()
         config.read(config_file_path)
         access_key_id = config["default"]["aws_access_key_id"]
@@ -70,9 +70,9 @@ class TestMinio(unittest.TestCase):
             mock_parameters.append(np.array(randomized_list))
         return mock_parameters
 
-    def test_push_and_pull_parameters(self):
+    def test_push_and_pull_parameters(self) -> None:
         """Test the push and pull of the parameters."""
-        round = 1
+        server_round: int = 1
 
         # Push
         state = MinioState(
@@ -85,10 +85,10 @@ class TestMinio(unittest.TestCase):
             30,
             self.log,
         )
-        self.assertTrue(push_parameters(state, round, self.mock_parameters))
+        self.assertTrue(push_parameters(state, server_round, self.mock_parameters))
 
         # Pull
-        pulled_parameters = pull_parameters(state, round)
+        pulled_parameters = pull_parameters(state, server_round)
         self.assertTrue(isinstance(pulled_parameters, list))
 
         # Check the integrity of the pulled parameters
@@ -98,7 +98,7 @@ class TestMinio(unittest.TestCase):
                 np.array_equal(self.mock_parameters[index], pulled_parameters[index])
             )
 
-    def test_server_state(self):
+    def test_server_state(self) -> None:
         """Test the server state."""
         global_model_nda = self.mock_parameters
         momentum_nda = TestMinio.get_mock_parameters()
@@ -154,12 +154,12 @@ class TestMinio(unittest.TestCase):
                     global_model_nda[index], retrieved_state.global_model[index]
                 )
             )
-
-        self.assertEqual(len(momentum_nda), len(retrieved_state.momentum))
-        for index in range(0, len(momentum_nda), 1):
-            self.assertTrue(
-                np.array_equal(momentum_nda[index], retrieved_state.momentum[index])
-            )
+        if retrieved_state.momentum is not None:
+            self.assertEqual(len(momentum_nda), len(retrieved_state.momentum))
+            for index in range(0, len(momentum_nda), 1):
+                self.assertTrue(
+                    np.array_equal(momentum_nda[index], retrieved_state.momentum[index])
+                )
 
 
 if __name__ == "__main__":

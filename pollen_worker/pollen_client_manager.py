@@ -1,8 +1,8 @@
 """Pollen ClientManager."""
+
 import random
 import threading
 from logging import INFO
-from typing import Dict, List, Optional
 
 from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
@@ -15,9 +15,9 @@ class PollenClientManager(ClientManager):
 
     def __init__(self) -> None:
         # This contains the pool of `NodeManager`s participating the simulation
-        self.node_managers: Dict[str, ClientProxy] = {}
+        self.node_managers: dict[str, ClientProxy] = {}
         # This contains the pool of virtual clients in the federation
-        self.clients: Dict[str, ClientProxy] = {}
+        self.clients: dict[str, ClientProxy] = {}
         self._cv = threading.Condition()
 
     def __len__(self) -> int:
@@ -137,7 +137,7 @@ class PollenClientManager(ClientManager):
             with self._cv:
                 self._cv.notify_all()
 
-    def all(self) -> Dict[str, ClientProxy]:
+    def all(self) -> dict[str, ClientProxy]:
         """Return all available clients.
 
         NOTE: not changing the name of the parameters to prevent compatibility
@@ -148,9 +148,9 @@ class PollenClientManager(ClientManager):
     def sample(
         self,
         num_clients: int,
-        min_num_clients: Optional[int] = None,
-        criterion: Optional[Criterion] = None,
-    ) -> List[ClientProxy]:
+        min_num_clients: int | None = None,
+        criterion: Criterion | None = None,
+    ) -> list[ClientProxy]:
         """Sample a number of Flower ClientProxy instances.
 
         NOTE: Here, ClientProxies are virtual clients.
@@ -173,8 +173,10 @@ class PollenClientManager(ClientManager):
         if num_clients > len(available_cids):
             log(
                 INFO,
-                "Sampling failed: number of available clients"
-                " (%s) is less than number of requested clients (%s).",
+                (
+                    "Sampling failed: number of available clients"
+                    " (%s) is less than number of requested clients (%s)."
+                ),
                 len(available_cids),
                 num_clients,
             )

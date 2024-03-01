@@ -3,12 +3,11 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
-import os
 import pickle
 import random
+from collections.abc import Callable
 from logging import WARNING
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from flwr.common import (
     FitIns,
@@ -40,18 +39,19 @@ class FedAvgReproducibleSampling(FedAvg):
         min_fit_clients: int = 2,
         min_evaluate_clients: int = 2,
         min_available_clients: int = 2,
-        evaluate_fn: Optional[
+        evaluate_fn: (
             Callable[
-                [int, NDArrays, Dict[str, Scalar]],
-                Optional[Tuple[float, Dict[str, Scalar]]],
+                [int, NDArrays, dict[str, Scalar]],
+                tuple[float, dict[str, Scalar]] | None,
             ]
-        ] = None,
-        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
+            | None
+        ) = None,
+        on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
+        on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Optional[Parameters] = None,
-        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        initial_parameters: Parameters | None = None,
+        fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
+        evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         seed: int = 1337,
     ) -> None:
         """Federated Averaging strategy with reproducible sampling.
@@ -107,12 +107,12 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.seed = seed
 
-    def configure_fit(  # type: ignore[override]
+    def configure_fit(
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: SimpleClientManager,
-    ) -> List[Tuple[ClientProxy, FitIns]]:
+        client_manager: SimpleClientManager,  # type: ignore[override]
+    ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}
         if self.on_fit_config_fn is not None:
@@ -121,33 +121,38 @@ class FedAvgReproducibleSampling(FedAvg):
         fit_ins = FitIns(parameters, config)
 
         # Sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
+        sample_size, _ = self.num_fit_clients(client_manager.num_available())
 
         if sample_size > len(client_manager.clients):
             log(
                 WARNING,
-                "sample_size > len(client_manager.clients), to satisfy this condition, we will sample clients with replacement",
+                (
+                    "sample_size > len(client_manager.clients), to satisfy this"
+                    " condition, we will sample clients with replacement"
+                ),
             )
 
             # Setting seed for reproducibility of client selection
             random.seed(self.seed + server_round)
 
             # Generate random selection of virtual clients (number of virtual clients per round)
-            sampled_virtual_cids = random.choices(list(client_manager.clients), k=sample_size)  # type: ignore
+            sampled_virtual_cids = random.choices(
+                list(client_manager.clients), k=sample_size
+            )
         else:
             # Wait for the minimum number of clients to be available
-            client_manager.wait_for(sample_size)  # type: ignore
+            client_manager.wait_for(sample_size)
 
             # Setting seed for reproducibility of client selection
             random.seed(self.seed + server_round)
 
             # Generate random selection of virtual clients (number of virtual clients per round)
-            sampled_virtual_cids = random.sample(list(client_manager.clients), sample_size)  # type: ignore
+            sampled_virtual_cids = random.sample(
+                list(client_manager.clients), sample_size
+            )
 
         # Get the actual clients from the client manager
-        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]  # type: ignore
+        clients = [client_manager.clients[cid] for cid in sampled_virtual_cids]
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -161,29 +166,31 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
-        saving_path: Optional[Path] = None,
+        saving_path: Path | None = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
         min_evaluate_clients: int = 2,
         min_available_clients: int = 2,
-        evaluate_fn: Optional[
+        evaluate_fn: (
             Callable[
-                [int, NDArrays, Dict[str, Scalar]],
-                Optional[Tuple[float, Dict[str, Scalar]]],
+                [int, NDArrays, dict[str, Scalar]],
+                tuple[float, dict[str, Scalar]] | None,
             ]
-        ] = None,
-        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
+            | None
+        ) = None,
+        on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
+        on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Optional[Parameters] = None,
-        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        initial_parameters: Parameters | None = None,
+        fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
+        evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         seed: int = 1337,
         freq: int = 1,
     ) -> None:
-        """Federated Averaging strategy with with reproducible sampling and model
-        saving.
+        """Federated Averaging strategy.
+
+        It uses reproducible sampling and model saving.
 
         Implementation based on https://arxiv.org/abs/1602.05629
 
@@ -238,7 +245,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             seed=seed,
         )
         if saving_path is None:
-            saving_path = Path(os.getcwd())
+            saving_path = Path(Path.cwd())
         self.saving_path = saving_path
 
         self.freq = freq
@@ -246,9 +253,9 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
-        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        results: list[tuple[ClientProxy, FitRes]],
+        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
         if not results:
             return None, {}

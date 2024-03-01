@@ -19,15 +19,17 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
+
 import copy
 import gc
 import pickle
 import time
 import uuid
+from collections.abc import Callable
 from logging import DEBUG, ERROR, INFO
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 import cloudpickle
 import flwr as fl
@@ -42,7 +44,7 @@ from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
 from minio import Minio
-from multiprocess import Queue, set_start_method  # type: ignore
+from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 
@@ -104,7 +106,7 @@ class NodeManager(fl.client.NumPyClient):
         minio_state: MinioState | None = None,
     ) -> None:
         super().__init__()
-        ## NodeManager general attributes
+        # NodeManager general attributes
         self.name: str = getfqdn()
         self.properties: dict[str, Scalar] = {}
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
@@ -118,7 +120,7 @@ class NodeManager(fl.client.NumPyClient):
 
         self.client_fn = client_fn
         self.refresh_period = refresh_period
-        ## Set up Queues
+        # Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs
         self.result_queue: QueueType = Queue()
@@ -127,14 +129,14 @@ class NodeManager(fl.client.NumPyClient):
         # Set how many processes can be run on each GPU given the properties
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # log(DEBUG, "Max processes per device: %s", max_proc_device)
-        ## Set up round parameters SharedMemory
+        # Set up round parameters SharedMemory
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
         # Shared memory for round parameters
         self.round_parameters, self.round_parameters_sh = get_parameters_shm(
             parameters=parameters,
             create=True,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
         )
         # Create workers
         self.workers_dict: dict[int, Worker] = {}
@@ -149,7 +151,7 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         try:
-            cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+            cpus = len(psutil.Process().cpu_affinity())
         except AttributeError:
             cpus = psutil.cpu_count()
         # log(DEBUG, "NodeManager %s: device_info are %s", self.name, device_info)
@@ -216,14 +218,14 @@ class NodeManager(fl.client.NumPyClient):
         #     self.workers_dict,
         # )
         # Start the workers
-        for _, worker in self.workers_dict.items():
+        for worker in self.workers_dict.values():
             start_worker(worker)
         log(DEBUG, "NodeManager %s: all workers started.", self.name)
 
     def _close_workers(self) -> None:
         """Delete workers and close shared memories."""
         # Wait until the worker is dead
-        for _, worker in self.workers_dict.items():
+        for worker in self.workers_dict.values():
             worker.soft_shutdown()
             while worker.is_alive():
                 time.sleep(0.1)
@@ -243,10 +245,10 @@ class NodeManager(fl.client.NumPyClient):
         config["MASTER_PORT"] = ""
         config["run_uuid"] = ""
         # Update shared memories objects
-        fl_instructions_config, fl_instructions_config_sh = get_config_shm(
+        _fl_instructions_config, fl_instructions_config_sh = get_config_shm(
             config=config,
             create=True,
-            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+            name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
         set_config_shm(config, fl_instructions_config_sh)
         set_parameters_shm(self.round_parameters, parameters)
@@ -273,7 +275,7 @@ class NodeManager(fl.client.NumPyClient):
                 successes += 1
         # Get stuff from shared memories of the workers
         # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
-        w_p_s, w_s_m, w_s, w_shms = get_training_results_from_workers_dict(
+        w_p_s, w_s_m, w_s, _w_shms = get_training_results_from_workers_dict(
             self.workers_dict
         )
         # Partially aggregate training results
@@ -318,10 +320,10 @@ class NodeManager(fl.client.NumPyClient):
             # NOTE: Putting the node_manager_uuid in the config fails
             config["run_uuid"] = self.run_uuid
             # Update instruction config shared memory
-            fl_instructions_config, fl_instructions_config_sh = get_config_shm(
+            _fl_instructions_config, fl_instructions_config_sh = get_config_shm(
                 config=config,
                 create=True,
-                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
             )
             set_config_shm(config, fl_instructions_config_sh)
             # Send the collaborative task to the workers
@@ -340,7 +342,7 @@ class NodeManager(fl.client.NumPyClient):
                     #     exc_info=e,
                     #     stack_info=True,
                     # )
-                    for _, worker in self.workers_dict.items():
+                    for worker in self.workers_dict.values():
                         if not worker.is_alive():
                             current_stats = [-1, 0, 0, -1]
             log(
@@ -357,7 +359,7 @@ class NodeManager(fl.client.NumPyClient):
                 # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
                 results = get_training_results_from_worker(self.workers_dict[0])
                 if results is not None:
-                    w_p_s, w_s_m, w_s, w_shms = results
+                    w_p_s, w_s_m, w_s, _w_shms = results
                     # Partial aggregation of training results
                     (
                         aggregated_params,
@@ -420,7 +422,7 @@ class NodeManager(fl.client.NumPyClient):
             params_folder_path = _get_params_folder_path(server_state, previous_round)
             parameters = pull_parameters(
                 state=server_state,
-                round=previous_round,
+                server_round=previous_round,
                 minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
             )
 
@@ -459,8 +461,10 @@ class NodeManager(fl.client.NumPyClient):
         )
         log(
             DEBUG,
-            "NodeManager %s: resuls have been processed. "
-            "The time spent before collecting results was %s seconds.",
+            (
+                "NodeManager %s: resuls have been processed. "
+                "The time spent before collecting results was %s seconds."
+            ),
             self.name,
             time.time() - start_time,
         )
@@ -498,7 +502,9 @@ class NodeManager(fl.client.NumPyClient):
                 node_train_metrics,
             )
 
-    def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
+    def evaluate(
+        self, parameters: NDArrays, config: dict
+    ) -> tuple[float, int, dict[Any, Any]]:
         """Implement the evaluation step."""
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
@@ -542,7 +548,7 @@ class NodeManager(fl.client.NumPyClient):
             ) = get_config_shm(
                 config=config,
                 create=True,
-                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,  # noqa: F821
+                name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
             )
             set_config_shm(config, self.fl_instructions_config_sh)
             # Send the collaborative task to the workers
@@ -561,7 +567,7 @@ class NodeManager(fl.client.NumPyClient):
                     #     exc_info=e,
                     #     stack_info=True,
                     # )
-                    for _, worker in self.workers_dict.items():
+                    for worker in self.workers_dict.values():
                         if not worker.is_alive():
                             current_stats = [-1, 0, 0, -1]
             log(
@@ -576,15 +582,13 @@ class NodeManager(fl.client.NumPyClient):
                 # TODO: Collect stats
                 # Get stuff from shared memories of the rank 0 worker
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
-                w_eval_loss, w_eval_loss_shm = get_eval_loss_shm(
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_EVAL_LOSS_SHM,  # noqa: F821
+                w_eval_loss, _w_eval_loss_shm = get_eval_loss_shm(
+                    name=self.workers_dict[0].worker_uuid + POLLEN_EVAL_LOSS_SHM,
                 )
-                w_num_samples, w_num_samples_shm = get_num_samples_shm(
-                    name=self.workers_dict[0].worker_uuid
-                    + POLLEN_N_SAMPLES_SHM,  # noqa: F821
+                w_num_samples, _w_num_samples_shm = get_num_samples_shm(
+                    name=self.workers_dict[0].worker_uuid + POLLEN_N_SAMPLES_SHM,
                 )
-                w_metrics, w_metrics_shm = get_config_shm(
+                w_metrics, _w_metrics_shm = get_config_shm(
                     config={},
                     name=self.workers_dict[0].worker_uuid + POLLEN_METRICS_SHM,
                 )
@@ -616,8 +620,10 @@ class NodeManager(fl.client.NumPyClient):
         node_eval_samples = sum(clients_eval_samples)
         log(
             DEBUG,
-            "NodeManager %s: resuls have been processed. "
-            "The time spent before collecting results was %s seconds.",
+            (
+                "NodeManager %s: resuls have been processed. "
+                "The time spent before collecting results was %s seconds."
+            ),
             self.name,
             time.time() - start_time,
         )

@@ -30,21 +30,21 @@ SERVER_HISTORY_FILE = "history.pkl"
 SERVER_STATE_FILE = "state.json"
 
 
-def _get_full_file_path(state: MinioState, round: int, file_name: str) -> str:
-    return f"{_get_params_folder_path(state, round)}/{file_name}"
+def _get_full_file_path(state: MinioState, server_round: int, file_name: str) -> str:
+    return f"{_get_params_folder_path(state, server_round)}/{file_name}"
 
 
-def _get_params_folder_path(state: MinioState, round: int) -> str:
-    return f"{state.run_uuid}/{_get_justified_number(round)}/{state.endpoint_id}"
+def _get_params_folder_path(state: MinioState, server_round: int) -> str:
+    return f"{state.run_uuid}/{_get_justified_number(server_round)}/{state.endpoint_id}"
 
 
-def _get_justified_number(number: int, digits=8) -> str:
+def _get_justified_number(number: int, digits: int = 8) -> str:
     return str(number).rjust(digits, "0")
 
 
 def _pull_single_parameters_file(
     state: MinioState,
-    round: int,
+    server_round: int,
     file_list: list,
     file_index: int,
     minio_folder_path: str | None = None,
@@ -58,30 +58,32 @@ def _pull_single_parameters_file(
     except Exception:
         _value_error(state, "Failed to retrieve file_name of file_hash from the list")
         return None
-    if len(file_name) < 15:
+    if len(file_name) < 15:  # noqa: PLR2004
         _value_error(state, "The metadata contain an invalid file name")
         return None
-    if len(file_hash) != 64:
+    if len(file_hash) != 64:  # noqa: PLR2004
         _value_error(state, "The metadata contain an invalid hash code")
         return None
 
     full_file_path: str
     if minio_folder_path is None:
-        full_file_path = _get_full_file_path(state, round, file_name)
+        full_file_path = _get_full_file_path(state, server_round, file_name)
     else:
         full_file_path = f"{minio_folder_path}/{file_name}"
 
     file_bytes = _pull_single_file(state, full_file_path)
     if not isinstance(file_bytes, bytes):
         return None
-    hash = hashlib.sha3_256()
-    hash.update(file_bytes)
-    actual_file_hash = binascii.hexlify(hash.digest()).decode("utf-8")
+    real_file_hash = hashlib.sha3_256()
+    real_file_hash.update(file_bytes)
+    actual_file_hash = binascii.hexlify(real_file_hash.digest()).decode("utf-8")
     if file_hash != actual_file_hash:
         _value_error(
             state,
-            f"The computed hash code of file '{full_file_path}' differs from the"
-            " one stored in metadata.json",
+            (
+                f"The computed hash code of file '{full_file_path}' differs from the"
+                " one stored in metadata.json"
+            ),
         )
         return None
     return file_bytes
@@ -109,37 +111,42 @@ def _pull_single_file(state: MinioState, full_file_path: str) -> bytes | None:
                 f" {full_file_path}"
                 _log_error(state, message)
                 raise ValueError(message) from ex
-            else:
-                _log_error(state, f"Failed to pull the file: {full_file_path}")
+            _log_error(state, f"Failed to pull the file: {full_file_path}")
         elapsed_time = time.time() - start_time
         try_again = (not pull_successful) and (elapsed_time < state.timeout_in_seconds)
         if try_again:
             _log_info(
                 state,
-                f"Attempt #{number_of_attemts}; trying again to pull the file from"
-                f" MinIO: {full_file_path}",
+                (
+                    f"Attempt #{number_of_attemts}; trying again to pull the file from"
+                    f" MinIO: {full_file_path}"
+                ),
             )
             gc.collect()
             time.sleep(3)
     if pull_successful and number_of_attemts > 1:
         _log_info(
             state,
-            f"Successfully pulled the file from MinIO after {number_of_attemts}"
-            f" attempts: {full_file_path}",
+            (
+                f"Successfully pulled the file from MinIO after {number_of_attemts}"
+                f" attempts: {full_file_path}"
+            ),
         )
     if not pull_successful:
         _connection_error(
             state,
-            f"🚨 Timed out after {number_of_attemts} attempt(s) and"
-            f" {int(elapsed_time)} second(s). Completely failed to pull the file"
-            f" from MinIO: {full_file_path}",
+            (
+                f"🚨 Timed out after {number_of_attemts} attempt(s) and"
+                f" {int(elapsed_time)} second(s). Completely failed to pull the file"
+                f" from MinIO: {full_file_path}"
+            ),
         )
         return None
     return file_bytes
 
 
 def pull_parameters(
-    state: MinioState, round: int, minio_folder_path: str | None = None
+    state: MinioState, server_round: int, minio_folder_path: str | None = None
 ) -> NDArrays:
     """Pull model parameters from MinIO."""
     tensor_type = ""
@@ -148,7 +155,9 @@ def pull_parameters(
 
     metadata_file_path: str
     if minio_folder_path is None:
-        metadata_file_path = _get_full_file_path(state, round, METADATA_FILE_NAME)
+        metadata_file_path = _get_full_file_path(
+            state, server_round, METADATA_FILE_NAME
+        )
     else:
         metadata_file_path = f"{minio_folder_path}/{METADATA_FILE_NAME}"
 
@@ -182,7 +191,7 @@ def pull_parameters(
     all_done = False
 
     current_file_content = _pull_single_parameters_file(
-        state, round, file_list, current_file_index, minio_folder_path
+        state, server_round, file_list, current_file_index, minio_folder_path
     )
     if not isinstance(current_file_content, bytes):
         message = "current_file_content are not of type bytes"
@@ -216,7 +225,7 @@ def pull_parameters(
                 if current_file_index < len(file_list):
                     current_file_content = _pull_single_parameters_file(
                         state,
-                        round,
+                        server_round,
                         file_list,
                         current_file_index,
                         minio_folder_path,
@@ -280,42 +289,47 @@ def _push_single_file(
         if try_again:
             _log_info(
                 state,
-                f"Attempt #{number_of_attemts}; trying again to push the file to"
-                f" MinIO: {full_file_path}",
+                (
+                    f"Attempt #{number_of_attemts}; trying again to push the file to"
+                    f" MinIO: {full_file_path}"
+                ),
             )
             gc.collect()
             time.sleep(3)
     if push_successful and number_of_attemts > 1:
         _log_info(
             state,
-            f"Successfully pushed the file to MinIO after {number_of_attemts}"
-            f" attempts: {full_file_path}",
+            (
+                f"Successfully pushed the file to MinIO after {number_of_attemts}"
+                f" attempts: {full_file_path}"
+            ),
         )
     if not push_successful:
         _connection_error(
             state,
-            f"🚨 Timed out after {number_of_attemts} attempt(s) and"
-            f" {int(elapsed_time)} second(s). Completely failed to push the file to"
-            f" MinIO: {full_file_path}",
+            (
+                f"🚨 Timed out after {number_of_attemts} attempt(s) and"
+                f" {int(elapsed_time)} second(s). Completely failed to push the file to"
+                f" MinIO: {full_file_path}"
+            ),
         )
     return push_successful
 
 
 def push_parameters(
     state: MinioState,
-    round: int,
+    server_round: int,
     parameters: NDArrays | Parameters,
     minio_folder_path: str | None = None,
 ) -> bool:
     """Push model parameters to MinIO."""
     if isinstance(parameters, list):
         parameters = ndarrays_to_parameters(parameters)
-    else:
-        if not isinstance(parameters, Parameters):
-            _type_error(
-                state,
-                "parameters are not an instance of NDArrays or Parameters",
-            )
+    elif not isinstance(parameters, Parameters):
+        _type_error(
+            state,
+            "parameters are not an instance of NDArrays or Parameters",
+        )
 
     tensors = parameters.tensors
     file_list = []
@@ -334,13 +348,15 @@ def push_parameters(
         available_space = state.file_size - len(current_file_content)
         if available_space == 0 or all_tensors_processed:
             current_file_name = f"{_get_justified_number(current_file_id)}.params"
-            hash = hashlib.sha3_256()
-            hash.update(current_file_content)
-            current_file_hash = binascii.hexlify(hash.digest()).decode("utf-8")
+            file_hash = hashlib.sha3_256()
+            file_hash.update(current_file_content)
+            current_file_hash = binascii.hexlify(file_hash.digest()).decode("utf-8")
             file_list.append({"name": current_file_name, "sha3_256": current_file_hash})
             full_file_path: str
             if minio_folder_path is None:
-                full_file_path = _get_full_file_path(state, round, current_file_name)
+                full_file_path = _get_full_file_path(
+                    state, server_round, current_file_name
+                )
             else:
                 full_file_path = f"{minio_folder_path}/{current_file_name}"
 
@@ -387,7 +403,9 @@ def push_parameters(
 
     metadata_file_path: str
     if minio_folder_path is None:
-        metadata_file_path = _get_full_file_path(state, round, METADATA_FILE_NAME)
+        metadata_file_path = _get_full_file_path(
+            state, server_round, METADATA_FILE_NAME
+        )
     else:
         metadata_file_path = f"{minio_folder_path}/{METADATA_FILE_NAME}"
 
@@ -403,29 +421,29 @@ def push_parameters(
 
 
 def pull_server_state(
-    minio_state: MinioState, round: int
+    minio_state: MinioState, server_round: int
 ) -> ServerStateWithGlobalModel:
     """Pull the server state from MinIO."""
-    params_folder_path = _get_params_folder_path(minio_state, round)
+    params_folder_path = _get_params_folder_path(minio_state, server_round)
     result = _pull_single_file(
         state=minio_state,
         full_file_path=f"{params_folder_path}/{SERVER_STATE_FILE}",
     )
     if not isinstance(result, bytes):
-        message = f"🚨 Failed to pull state from MinIO (round: {round})"
+        message = f"🚨 Failed to pull state from MinIO (server_round: {server_round})"
         _log_error(minio_state, message)
         raise ConnectionError(message)
 
-    id: str
-    jsonRound: int
+    server_id: str
+    json_round: int
     contains_momentum: bool
     elapsed_time_in_seconds: float
 
     try:
         state_json_string = result.decode("utf-8")
         json_root = json.loads(state_json_string)
-        id = json_root["id"]
-        jsonRound = int(json_root["round"])
+        server_id = json_root["id"]
+        json_round = int(json_root["round"])
         contains_momentum = bool(json_root["contains_momentum"])
         elapsed_time_in_seconds = float(json_root["elapsed_time_in_seconds"])
     except Exception as ex:
@@ -434,16 +452,16 @@ def pull_server_state(
         _log_error(minio_state, message)
         raise TypeError(message) from ex
 
-    if round != jsonRound:
+    if round != json_round:
         message = f"🚨 Unexpected round number in {SERVER_STATE_FILE}"
-        f" (expected: {round}; actual: {jsonRound})"
+        f" (expected: {round}; actual: {json_round})"
         _log_error(minio_state, message)
         raise ValueError(message)
 
-    params_folder_path = _get_params_folder_path(minio_state, round)
+    params_folder_path = _get_params_folder_path(minio_state, json_round)
     global_model = pull_parameters(
         state=minio_state,
-        round=round,
+        server_round=json_round,
         minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
     )
     if not isinstance(global_model, list):
@@ -454,10 +472,10 @@ def pull_server_state(
 
     momentum: NDArrays | None = None
     if contains_momentum:
-        params_folder_path = _get_params_folder_path(minio_state, round)
+        params_folder_path = _get_params_folder_path(minio_state, json_round)
         momentum = pull_parameters(
             state=minio_state,
-            round=round,
+            server_round=json_round,
             minio_folder_path=f"{params_folder_path}/{SERVER_MOMENTUM_FOLDER}",
         )
         if not isinstance(momentum, list):
@@ -468,7 +486,7 @@ def pull_server_state(
 
     history: History
     try:
-        params_folder_path = _get_params_folder_path(minio_state, round)
+        params_folder_path = _get_params_folder_path(minio_state, json_round)
         history_bytes = _pull_single_file(
             state=minio_state,
             full_file_path=f"{params_folder_path}/{SERVER_HISTORY_FILE}",
@@ -476,14 +494,14 @@ def pull_server_state(
         if isinstance(history_bytes, bytes):
             history = pickle.loads(history_bytes)
         else:
-            raise TypeError("Failed to deserialize history")
+            raise TypeError("Failed to deserialize history")  # noqa: TRY301
     except Exception as ex:
-        message = f"🚨 Failed to pull history from MinIO (round: {round})"
+        message = f"🚨 Failed to pull history from MinIO (round: {json_round})"
         _log_error(minio_state, message)
         raise ConnectionError(message) from ex
 
     return ServerStateWithGlobalModel(
-        id, round, global_model, momentum, elapsed_time_in_seconds, history
+        server_id, json_round, global_model, momentum, elapsed_time_in_seconds, history
     )
 
 
@@ -496,7 +514,7 @@ def push_server_state(minio_state: MinioState, server_state: ServerState) -> boo
         params_folder_path = _get_params_folder_path(minio_state, server_state.round)
         result = push_parameters(
             state=minio_state,
-            round=server_state.round,
+            server_round=server_state.round,
             parameters=server_state.momentum,
             minio_folder_path=f"{params_folder_path}/{SERVER_MOMENTUM_FOLDER}",
         )
@@ -522,7 +540,7 @@ def push_server_state(minio_state: MinioState, server_state: ServerState) -> boo
     result = _push_single_file(
         state=minio_state,
         full_file_path=f"{params_folder_path}/{SERVER_STATE_FILE}",
-        file_content=server_state.toJson().encode("utf-8"),
+        file_content=server_state.to_json().encode("utf-8"),
     )
     if not result:
         message = f"🚨 Failed to push state to MinIO (round: {server_state.round})"
@@ -559,9 +577,9 @@ def _value_error(
     if state.throw_on_error:
         if callable(state.log):
             state.log(ERROR, message)
-        raise ValueError(
-            message
-        ) from parent_exception if parent_exception else ValueError(message)
+        raise ValueError(message) from (
+            parent_exception if parent_exception else ValueError(message)
+        )
 
 
 def _connection_error(state: MinioState, message: str) -> None:

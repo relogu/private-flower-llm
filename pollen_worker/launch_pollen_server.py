@@ -3,11 +3,11 @@
 Starts a Flower server which awaits connections from Pollen node managers. It supports
 using wandb for logging and hydra for exeperiment configuration.
 """
+
 import copy
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Union
 
 import flwr as fl
 import hydra
@@ -38,9 +38,9 @@ transformers.logging.set_verbosity_error()
 def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
     # TODO: Get the list of cids
-    cid_samples_dict: Dict[Union[str, int], int] = {
-        k: 1 for k in range(cfg.fl.n_total_clients)
-    }
+    cid_samples_dict: dict[str | int, int] = dict.fromkeys(
+        range(cfg.fl.n_total_clients), 1
+    )
     # Get initial model parameters
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
@@ -75,11 +75,11 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
-    with wandb_init(
+    with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
         **cfg.wandb.setup,
-        settings=wandb.Settings(start_method="thread"),
-        config=wandb_config,  # type: ignore
+        settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
+        config=wandb_config,  # type: ignore[arg-type]
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
 
@@ -119,7 +119,9 @@ def main(cfg: DictConfig) -> None:
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
         Path(cfg.pollen.saving_path).mkdir(parents=True, exist_ok=True)
-        with open(Path(cfg.pollen.saving_path) / "history.json", "x") as f:
+        with open(
+            Path(cfg.pollen.saving_path) / "history.json", "x", encoding="locale"
+        ) as f:
             json.dump(hist.__dict__, f)
 
 

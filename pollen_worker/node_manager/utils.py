@@ -1,4 +1,5 @@
 """TODO: Add description here."""
+
 import copy
 import pickle
 from logging import ERROR
@@ -116,7 +117,7 @@ def get_parameters_shm(
         shm = SharedMemory(name=name)
     params_sh: NDArrays = [
         np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
-        for x, y in zip(parameters, array_bounds)
+        for x, y in zip(parameters, array_bounds, strict=False)
     ]
     return params_sh, shm
 
@@ -194,13 +195,12 @@ def close_all_shms(process_uuid: str) -> None:
         except Exception as e:
             if "[Errno 2] No such file or directory" in str(e):
                 continue
-            else:
-                log(
-                    ERROR,
-                    "Removing Shared Memory %s failed because of %s",
-                    shm_name,
-                    e,
-                )
+            log(
+                ERROR,
+                "Removing Shared Memory %s failed because of %s",
+                shm_name,
+                e,
+            )
 
 
 def remove_shm_from_resource_tracker() -> None:
@@ -209,19 +209,19 @@ def remove_shm_from_resource_tracker() -> None:
     More details at: https://bugs.python.org/issue38119
     """
 
-    def fix_register(name, rtype) -> None:
+    def fix_register(name: str, rtype: str) -> None:
         if rtype == "shared_memory":
-            return
+            return None
         return res_track._resource_tracker.register(name, rtype)
 
-    res_track.register = fix_register
+    res_track.register = fix_register  # type: ignore[assignment]
 
-    def fix_unregister(name, rtype) -> None:
+    def fix_unregister(name: str, rtype: str) -> None:
         if rtype == "shared_memory":
-            return
+            return None
         return res_track._resource_tracker.unregister(name, rtype)
 
-    res_track.unregister = fix_unregister
+    res_track.unregister = fix_unregister  # type: ignore[assignment]
 
     if "shared_memory" in res_track._CLEANUP_FUNCS:  # type: ignore[attr-defined]
         del res_track._CLEANUP_FUNCS["shared_memory"]  # type: ignore[attr-defined]

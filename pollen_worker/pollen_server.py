@@ -4,20 +4,10 @@ import concurrent.futures
 import sys
 import time
 import timeit
+from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Literal, cast
 
 import numpy as np
 import pyarrow as pa
@@ -41,11 +31,8 @@ from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
-from flwr.server.server import (
-    _handle_finished_future_after_evaluate,
-    evaluate_client,
-    fit_client,
-)
+from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: PLC2701
+from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
@@ -63,30 +50,33 @@ from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
 from pollen_worker.server_state import ServerState
 from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import IntentionalClientDropout, get_table_from_pyarrow_buffer
+from pollen_worker.utils import (
+    IntentionalClientDropoutError,
+    get_table_from_pyarrow_buffer,
+)
 
-FitResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, FitRes]],
-    List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+FitResultsAndFailures = tuple[
+    list[tuple[ClientProxy, FitRes]],
+    list[tuple[ClientProxy, FitRes] | BaseException],
 ]
-EvaluateResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, EvaluateRes]],
-    List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
+EvaluateResultsAndFailures = tuple[
+    list[tuple[ClientProxy, EvaluateRes]],
+    list[tuple[ClientProxy, EvaluateRes] | BaseException],
 ]
-ReconnectResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, DisconnectRes]],
-    List[Union[Tuple[ClientProxy, DisconnectRes], BaseException]],
-]
-
-GetPropResultsAndFailures = Tuple[
-    List[Tuple[ClientProxy, Node]],
-    List[Union[Tuple[ClientProxy, Node], BaseException]],
+ReconnectResultsAndFailures = tuple[
+    list[tuple[ClientProxy, DisconnectRes]],
+    list[tuple[ClientProxy, DisconnectRes] | BaseException],
 ]
 
-ClientLike = Union[Client, NumPyClient]
+GetPropResultsAndFailures = tuple[
+    list[tuple[ClientProxy, Node]],
+    list[tuple[ClientProxy, Node] | BaseException],
+]
+
+ClientLike = Client | NumPyClient
 
 
-class TooManyFailures(Exception):
+class TooManyFailuresError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
@@ -97,15 +87,16 @@ class PollenServer(Server):
         self,
         *,
         client_manager: PollenClientManager,
-        cids: Dict[Union[str, int], int],
+        cids: dict[str | int, int],
         client_fn: Callable[[int], ClientLike],
-        strategy: Optional[FedAvg] = None,
+        strategy: FedAvg | None = None,
         placement_policy: str = "rr",
-        saving_path: Optional[Path] = None,
-        history: Optional[History] = None,
+        saving_path: Path | None = None,
+        history: History | None = None,
         num_nodes: int = 1,
-        accept_failures_cnt: int
-        | None = 0,  # how many failures to accept, None for infinite
+        accept_failures_cnt: (
+            int | None
+        ) = 0,  # how many failures to accept, None for infinite
         ignore_failed_rounds: bool = False,
         print_failures: bool = True,
         print_intentional_failures: bool = True,
@@ -124,24 +115,24 @@ class PollenServer(Server):
         )
         self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
         _check_strategy_for_pollen(self.strategy)
-        self.on_fit_config: Callable[[int], Dict[str, Scalar]] = (
+        self.on_fit_config: Callable[[int], dict[str, Scalar]] = (
             conf_fn
             if (conf_fn := self.strategy.on_fit_config_fn) is not None
             else lambda _: {}
         )
-        self.on_evaluate_config: Callable[[int], Dict[str, Scalar]] = (
+        self.on_evaluate_config: Callable[[int], dict[str, Scalar]] = (
             conf_fn
             if (conf_fn := self.strategy.on_evaluate_config_fn) is not None
             else lambda _: {}
         )
-        self.max_workers: Optional[int] = None
-        self.nodes_dict: Dict[str, Tuple[ClientProxy, Node]] = {}
+        self.max_workers: int | None = None
+        self.nodes_dict: dict[str, tuple[ClientProxy, Node]] = {}
         self.saving_path = saving_path
-        self.clients_training_stats: Optional[pa.Table] = None
+        self.clients_training_stats: pa.Table | None = None
         self.history = history
         self.num_nodes = num_nodes
-        self.pollen_models: Optional[Dict[str, Any]] = None
-        self.correction_tables: Optional[Dict[str, pa.Table]] = None
+        self.pollen_models: dict[str, Any] | None = None
+        self.correction_tables: dict[str, pa.Table] | None = None
         self.accept_failures_cnt = accept_failures_cnt
         self.ignore_failed_rounds = ignore_failed_rounds
         self.print_failures = print_failures
@@ -152,7 +143,7 @@ class PollenServer(Server):
         if isinstance(self.minio_state, MinioState):
             self.minio_state.log = log
 
-    def set_max_workers(self, max_workers: Optional[int]) -> None:
+    def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
         self.max_workers = max_workers
 
@@ -168,7 +159,7 @@ class PollenServer(Server):
         return self._client_manager
 
     # pylint: disable=too-many-locals
-    def fit(self, num_rounds: int, timeout: Optional[float]) -> History:
+    def fit(self, num_rounds: int, timeout: float | None) -> History:
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
@@ -234,9 +225,11 @@ class PollenServer(Server):
                 )
                 push_parameters(
                     state=self.minio_state,
-                    round=previous_round,
+                    server_round=previous_round,
                     parameters=self.parameters,
-                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                    minio_folder_path=(
+                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
+                    ),
                 )
 
         # NOTE: Register VirtualClients to the PollenClientManager
@@ -277,9 +270,11 @@ class PollenServer(Server):
                 )
                 push_parameters(
                     state=self.minio_state,
-                    round=current_round,
+                    server_round=current_round,
                     parameters=self.parameters,
-                    minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
+                    minio_folder_path=(
+                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
+                    ),
                 )
 
             # Evaluate model using strategy implementation
@@ -338,10 +333,8 @@ class PollenServer(Server):
     def evaluate_round(
         self,
         server_round: int,
-        timeout: Optional[float],
-    ) -> Optional[
-        Tuple[Optional[float], Dict[str, Scalar], EvaluateResultsAndFailures]
-    ]:
+        timeout: float | None,
+    ) -> tuple[float | None, dict[str, Scalar], EvaluateResultsAndFailures] | None:
         """Validate current global model on a number of clients."""
         # Get clients and their respective instructions from strategy
         client_instructions = self.strategy.configure_evaluate(
@@ -361,7 +354,7 @@ class PollenServer(Server):
         )
 
         # Translate `client_instruction` to `node_instructions`
-        node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
+        node_assignments: list[tuple[ClientProxy, dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[int(client.cid)])
                 for client, _ in client_instructions
@@ -453,9 +446,9 @@ class PollenServer(Server):
         )
 
         # Aggregate the evaluation results
-        aggregated_result: Tuple[
-            Optional[float],
-            Dict[str, Scalar],
+        aggregated_result: tuple[
+            float | None,
+            dict[str, Scalar],
         ] = self.strategy.aggregate_evaluate(server_round, results, failures)
 
         loss_aggregated, metrics_aggregated = aggregated_result
@@ -464,16 +457,16 @@ class PollenServer(Server):
     def fit_round(  # type: ignore[override]
         self,
         server_round: int,
-        timeout: Optional[float],
+        timeout: float | None,
     ) -> (
         None
-        | Tuple[
-            Optional[Parameters],
-            Dict[str, Scalar],
-            Tuple[
-                List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]],
-                List[Tuple[ClientProxy, FitRes] | BaseException],
-                List[BaseException],
+        | tuple[
+            Parameters | None,
+            dict[str, Scalar],
+            tuple[
+                list[tuple[ClientProxy, dict[str, Scalar], Status, int]],
+                list[tuple[ClientProxy, FitRes] | BaseException],
+                list[BaseException],
             ],
         ]
     ):
@@ -497,7 +490,7 @@ class PollenServer(Server):
         )
 
         # Translate `client_instruction` to `node_instructions`
-        node_assignments: List[Tuple[ClientProxy, Dict[str, str]]] = self.placement_fn(
+        node_assignments: list[tuple[ClientProxy, dict[str, str]]] = self.placement_fn(
             sampled_virtual_cids=[
                 (int(client.cid), self.cids[int(client.cid)])
                 for client, _ in client_instructions
@@ -567,13 +560,13 @@ class PollenServer(Server):
         # Using a generator limits us in failure/metrics accumulatiom
         # The output params are not used in the aggregation
         # They are merely populated by the processing of the generator
-        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]] = []
+        failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
 
-        # Accumulate IntentionalClientDropout exceptions
-        intentional_failures: List[BaseException] = []
+        # Accumulate IntentionalClientDropoutError exceptions
+        intentional_failures: list[BaseException] = []
 
-        metrics_accumulator: List[
-            Tuple[ClientProxy, Dict[str, Scalar], Status, int]
+        metrics_accumulator: list[
+            tuple[ClientProxy, dict[str, Scalar], Status, int]
         ] = []
         results_futures = pollen_fit_clients(
             node_instructions=node_instructions,
@@ -598,7 +591,7 @@ class PollenServer(Server):
 
         results = (result for success, result in results_and_failures if success)
         complete_results = cast(
-            Generator[Tuple[ClientProxy, FitRes], None, None], results
+            Generator[tuple[ClientProxy, FitRes], None, None], results
         )
 
         # If applicable, pull the client parameters from MinIO
@@ -610,12 +603,12 @@ class PollenServer(Server):
 
         try:
             # Aggregate training results
-            aggregated_result: Tuple[
-                Optional[Parameters],
-                Dict[str, Scalar],
+            aggregated_result: tuple[
+                Parameters | None,
+                dict[str, Scalar],
             ] = self.strategy.aggregate_fit(
                 server_round,
-                cast(List[Tuple[ClientProxy, FitRes]], complete_results),
+                cast(list[tuple[ClientProxy, FitRes]], complete_results),
                 failures,
             )
 
@@ -629,7 +622,7 @@ class PollenServer(Server):
                             cast(pa.Buffer, tmp_clients_training_stats)
                         )
                     )
-        except TooManyFailures as e:
+        except TooManyFailuresError as e:
             if self.ignore_failed_rounds:
                 log(
                     ERROR,
@@ -645,10 +638,11 @@ class PollenServer(Server):
                 )
                 return None
             else:
-                raise e
+                raise
 
         # Collect `fit` results from all NodeManagers participating in this round
-        pollen_models, correction_tables = get_pollen_models(
+        # pollen_models, correction_tables = get_pollen_models(
+        get_pollen_models(
             placement_policy=self.placement_policy,
             clients_stats=self.clients_training_stats,
             batch_size=int(self.on_fit_config(server_round)["batch_size"]),
@@ -742,6 +736,9 @@ class PollenServer(Server):
             len(results),
             len(failures),
         )
+        for failure in failures:
+            if isinstance(failure, BaseException):
+                log(ERROR, "Failure in getting nodes properties.", exc_info=failure)
         # This is a dictionary of the form {"node_id": Node}
         self.nodes_dict = {
             client_proxy.cid: (client_proxy, node) for client_proxy, node in results
@@ -749,13 +746,13 @@ class PollenServer(Server):
         # TODO: Clean-up stats?
 
 
-####################### NEW FUNCTIONS #######################
+# NEW FUNCTIONS #######################
 
 
 def pollen_evaluate_clients(
-    node_instructions: List[Tuple[ClientProxy, EvaluateIns]],
-    max_workers: Optional[int],
-    timeout: Optional[float],
+    node_instructions: list[tuple[ClientProxy, EvaluateIns]],
+    max_workers: int | None,
+    timeout: float | None,
 ) -> EvaluateResultsAndFailures:
     """Evaluate parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -770,8 +767,8 @@ def pollen_evaluate_clients(
         )
 
     # Gather results
-    results: List[Tuple[ClientProxy, EvaluateRes]] = []
-    failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]] = []
+    results: list[tuple[ClientProxy, EvaluateRes]] = []
+    failures: list[tuple[ClientProxy, EvaluateRes] | BaseException] = []
     for future in finished_fs:
         _handle_finished_future_after_evaluate(
             future=future, results=results, failures=failures
@@ -780,10 +777,10 @@ def pollen_evaluate_clients(
 
 
 def pollen_fit_clients(
-    node_instructions: List[Tuple[ClientProxy, FitIns]],
-    max_workers: Optional[int],
-    timeout: Optional[float],
-) -> Generator[concurrent.futures.Future[Tuple[ClientProxy, FitRes]], Any, None]:
+    node_instructions: list[tuple[ClientProxy, FitIns]],
+    max_workers: int | None,
+    timeout: float | None,
+) -> Generator[concurrent.futures.Future[tuple[ClientProxy, FitRes]], Any, None]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
@@ -803,9 +800,9 @@ def pollen_fit_clients(
 
 
 def get_nodes_properties(
-    node_managers: Dict[str, ClientProxy],
-    max_workers: Optional[int],
-    timeout: Optional[float] = None,
+    node_managers: dict[str, ClientProxy],
+    max_workers: int | None,
+    timeout: float | None = None,
 ) -> GetPropResultsAndFailures:
     """Get the properties of all nodes in the cluster."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -819,8 +816,8 @@ def get_nodes_properties(
         )
 
     # Gather results
-    results: List[Tuple[ClientProxy, Node]] = []
-    failures: List[Union[Tuple[ClientProxy, Node], BaseException]] = []
+    results: list[tuple[ClientProxy, Node]] = []
+    failures: list[tuple[ClientProxy, Node] | BaseException] = []
     for future in finished_fs:
         _handle_finished_future_after_get_properties(
             future=future, results=results, failures=failures
@@ -829,8 +826,8 @@ def get_nodes_properties(
 
 
 def get_properties_client(
-    client: ClientProxy, timeout: Optional[float]
-) -> Tuple[ClientProxy, Node]:
+    client: ClientProxy, timeout: float | None
+) -> tuple[ClientProxy, Node]:
     """Get properties froma a Node."""
     ins = GetPropertiesIns(config={})
     node_properties_res = client.get_properties(ins=ins, timeout=timeout)
@@ -847,8 +844,8 @@ def get_properties_client(
 def _handle_finished_future_after_fit_async(
     future: concurrent.futures.Future,
 ) -> (
-    Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-    | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
+    tuple[Literal[True], tuple[ClientProxy, FitRes]]
+    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
 ):
     """Convert finished future into either a result or a failure."""
     # Check if there was an exception
@@ -857,7 +854,7 @@ def _handle_finished_future_after_fit_async(
         return (False, failure)
 
     # Successfully received a result from a client
-    result: Tuple[ClientProxy, FitRes] = future.result()
+    result: tuple[ClientProxy, FitRes] = future.result()
     _, res = result
     # Check result status code
     if res.status.code == Code.OK:
@@ -870,8 +867,8 @@ def _handle_finished_future_after_fit_async(
 def replace_values_with_minio(
     minio_state: MinioState,
     current_round: int,
-    client_result: Tuple[ClientProxy, FitRes],
-) -> Tuple[ClientProxy, FitRes]:
+    client_result: tuple[ClientProxy, FitRes],
+) -> tuple[ClientProxy, FitRes]:
     """Replace the parameters in the FitRes with the ones from MinIO."""
     proxy, fit_res = client_result
     endpoint_id: Any
@@ -898,17 +895,17 @@ def replace_values_with_minio(
 
 
 def get_handle_success_and_failure(
-    metrics_accumulator: List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]],
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    intentional_failures: List[BaseException],
+    metrics_accumulator: list[tuple[ClientProxy, dict[str, Scalar], Status, int]],
+    failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    intentional_failures: list[BaseException],
     accept_failures_cnt: int | None,
 ) -> Callable[
     [
-        Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
+        tuple[Literal[True], tuple[ClientProxy, FitRes]]
+        | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
     ],
-    Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-    | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException],
+    tuple[Literal[True], tuple[ClientProxy, FitRes]]
+    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException],
 ]:
     """Closure to generate a function which handles client success and failure.
 
@@ -941,17 +938,19 @@ def get_handle_success_and_failure(
     """
 
     def handle_success_and_failure(
-        result: Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], (Tuple[ClientProxy, FitRes] | BaseException)]
+        result: (
+            tuple[Literal[True], tuple[ClientProxy, FitRes]]
+            | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
+        )
     ) -> (
-        Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], (Tuple[ClientProxy, FitRes] | BaseException)]
+        tuple[Literal[True], tuple[ClientProxy, FitRes]]
+        | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
     ):
         cnt_failures = 0
 
         match result:
             case (True, res):
-                cast_res = cast(Tuple[ClientProxy, FitRes], res)
+                cast_res = cast(tuple[ClientProxy, FitRes], res)
                 client_proxy, fit_res = cast_res
                 metrics_accumulator.append(
                     (
@@ -962,11 +961,11 @@ def get_handle_success_and_failure(
                     )
                 )
                 return (True, cast_res)
-            case (False, res) if isinstance(res, IntentionalClientDropout):
+            case (False, res) if isinstance(res, IntentionalClientDropoutError):
                 intentional_failures.append(res)
                 return (False, res)
             case (False, res):
-                cast_failure_res = cast(Tuple[ClientProxy, FitRes] | BaseException, res)
+                cast_failure_res = cast(tuple[ClientProxy, FitRes] | BaseException, res)
                 if isinstance(cast_failure_res, BaseException):
                     log(ERROR, "Unintentional failure.", exc_info=cast_failure_res)
                 cnt_failures += 1
@@ -974,7 +973,7 @@ def get_handle_success_and_failure(
                     accept_failures_cnt is not None
                     and cnt_failures > accept_failures_cnt
                 ):
-                    raise TooManyFailures(
+                    raise TooManyFailuresError(
                         f"""Unintentional failures passed
                         the maximum: {accept_failures_cnt}"""
                     )
@@ -986,9 +985,9 @@ def get_handle_success_and_failure(
 
 
 def _handle_finished_future_after_get_properties(
-    future: concurrent.futures.Future,  # type: ignore
-    results: List[Tuple[ClientProxy, Node]],
-    failures: List[Union[Tuple[ClientProxy, Node], BaseException]],
+    future: concurrent.futures.Future,
+    results: list[tuple[ClientProxy, Node]],
+    failures: list[tuple[ClientProxy, Node] | BaseException],
 ) -> None:
     """Convert finished future into either a result or a failure."""
     # Check if there was an exception
@@ -998,7 +997,7 @@ def _handle_finished_future_after_get_properties(
         return
 
     # Successfully received a result from a client
-    result: Tuple[ClientProxy, Node] = future.result()
+    result: tuple[ClientProxy, Node] = future.result()
     results.append(result)
 
 
@@ -1008,10 +1007,12 @@ def _check_strategy_for_pollen(
     if strategy.on_fit_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't"
-            " have a proper `on_fit_config_fn` attribute. The user"
-            " must define such method as type `Callable[[int], Dict]`"
-            "Currently, `on_fit_config_fn` is %s.",
+            (
+                "The strategy, %s, passed to the `PollenServer` doesn't"
+                " have a proper `on_fit_config_fn` attribute. The user"
+                " must define such method as type `Callable[[int], Dict]`"
+                "Currently, `on_fit_config_fn` is %s."
+            ),
             strategy,
             strategy.on_fit_config_fn,
         )
@@ -1021,20 +1022,24 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_fit_config_fn` function of the strategy passed"
-            " to the `PollenServer` must have a proper `batch_size`"
-            " key with an `int` value. The call"
-            " `strategy.on_fit_config_fn(0)` returned %s instead",
+            (
+                "The `on_fit_config_fn` function of the strategy passed"
+                " to the `PollenServer` must have a proper `batch_size`"
+                " key with an `int` value. The call"
+                " `strategy.on_fit_config_fn(0)` returned %s instead"
+            ),
             strategy.on_fit_config_fn(0),
         )
         sys.exit(0)
     if strategy.on_evaluate_config_fn is None:
         log(
             ERROR,
-            "The strategy, %s, passed to the `PollenServer` doesn't"
-            " have a proper `on_evaluate_config_fn` attribute. The user"
-            " must define such method as type `Callable[[int], Dict]`"
-            "Currently, `on_evaluate_config_fn` is %s.",
+            (
+                "The strategy, %s, passed to the `PollenServer` doesn't"
+                " have a proper `on_evaluate_config_fn` attribute. The user"
+                " must define such method as type `Callable[[int], Dict]`"
+                "Currently, `on_evaluate_config_fn` is %s."
+            ),
             strategy,
             strategy.on_evaluate_config_fn,
         )
@@ -1044,10 +1049,12 @@ def _check_strategy_for_pollen(
     ):
         log(
             ERROR,
-            "The `on_evaluate_config_fn` function of the strategy passed"
-            " to the `PollenServer` must have a proper `batch_size`"
-            " key with an `int` value. The call"
-            " `strategy.on_evaluate_config_fn(0)` returned %s instead",
+            (
+                "The `on_evaluate_config_fn` function of the strategy passed"
+                " to the `PollenServer` must have a proper `batch_size`"
+                " key with an `int` value. The call"
+                " `strategy.on_evaluate_config_fn(0)` returned %s instead"
+            ),
             strategy.on_evaluate_config_fn(0),
         )
         sys.exit(0)
@@ -1055,11 +1062,11 @@ def _check_strategy_for_pollen(
 
 
 def _check_connected_node_managers(
-    old_connected_node_managers_cid: List[str],
-    new_connected_node_managers_cid: List[str],
-) -> Tuple[List[str], List[str]]:
-    dropped: List[str] = []
-    new: List[str] = []
+    old_connected_node_managers_cid: list[str],
+    new_connected_node_managers_cid: list[str],
+) -> tuple[list[str], list[str]]:
+    dropped: list[str] = []
+    new: list[str] = []
     for old_cid in old_connected_node_managers_cid:
         if old_cid not in set(new_connected_node_managers_cid):
             dropped.append(old_cid)
