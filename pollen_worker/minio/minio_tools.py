@@ -77,7 +77,7 @@ def _pull_single_parameters_file(
     real_file_hash = hashlib.sha3_256()
     real_file_hash.update(file_bytes)
     actual_file_hash = binascii.hexlify(real_file_hash.digest()).decode("utf-8")
-    if real_file_hash != actual_file_hash:
+    if file_hash != actual_file_hash:
         _value_error(
             state,
             (
