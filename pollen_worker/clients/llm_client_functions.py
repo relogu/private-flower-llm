@@ -1,5 +1,6 @@
 """Provides the internal fucntions used by the LLM client."""
 
+import ast
 import atexit
 import copy
 import gc
@@ -128,11 +129,9 @@ def validate_config(cfg: DictConfig) -> None:
                 ):
                     log(
                         WARN,
-                        (
-                            'Model type "hf_t5" requires `decoder_only_format` to be '
-                            "``False``. Overriding `decoder_only_format` from ``True`` "
-                            "to ``False``."
-                        ),
+                        'Model type "hf_t5" requires `decoder_only_format` to be '
+                        "``False``. Overriding `decoder_only_format` from ``True`` "
+                        "to ``False``.",
                     )
                     loader.mixture_of_denoisers.decoder_only_format = False
                 if (
@@ -140,11 +139,9 @@ def validate_config(cfg: DictConfig) -> None:
                 ) and cfg.model.name == "hf_prefix_lm":
                     log(
                         WARN,
-                        (
-                            'Model type "hf_prefix_lm" requires `decoder_only_format`'
-                            " to be``True``. Overriding `decoder_only_format` from"
-                            " ``False`` to``True``."
-                        ),
+                        'Model type "hf_prefix_lm" requires `decoder_only_format`'
+                        " to be``True``. Overriding `decoder_only_format` from"
+                        " ``False`` to``True``.",
                     )
                     loader.mixture_of_denoisers.decoder_only_format = True
 
@@ -161,11 +158,9 @@ def validate_config(cfg: DictConfig) -> None:
     ):
         log(
             WARN,
-            (
-                "fp8 only supported for te.Linear layers. Either set"
-                "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-                "to enable layers using fp8 precision."
-            ),
+            "fp8 only supported for te.Linear layers. Either set"
+            "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
+            "to enable layers using fp8 precision.",
         )
 
     if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
@@ -177,22 +172,18 @@ def validate_config(cfg: DictConfig) -> None:
         if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:
             log(
                 WARN,
-                (
-                    "`te.Linear` layers do not support activation_checkpointing with "
-                    "`activation_checkpointing_reentrant = False`. "
-                    "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True."
-                ),
+                "`te.Linear` layers do not support activation_checkpointing with "
+                "`activation_checkpointing_reentrant = False`. "
+                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
             )
             cfg.fsdp_config.activation_checkpointing_reentrant = True
 
     if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
         log(
             WARN,
-            (
-                "`te.LayerNormMLP` requires has issues with torch._dynamo."
-                " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
-                " to eager."
-            ),
+            "`te.LayerNormMLP` requires has issues with torch._dynamo."
+            " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
+            " to eager.",
         )
         torch._dynamo.config.suppress_errors = True
 
@@ -259,10 +250,8 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
             trainable_params += param.numel()
     log(
         INFO,
-        (
-            f"trainable params: {trainable_params} || all params: {all_param} || "
-            f"trainable params (%): {100 * trainable_params / all_param}"
-        ),
+        f"trainable params: {trainable_params} || all params: {all_param} || "
+        f"trainable params (%): {100 * trainable_params / all_param}",
     )
 
 
@@ -377,7 +366,7 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
+    visible_devices = ast.literal_eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
     if type(visible_devices) is int:
         device = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
@@ -426,10 +415,8 @@ def _get_trainer_object(
         if eval_gauntlet_config is not None:
             log(
                 INFO,
-                (
-                    "Use of the key `model_gauntlet` is deprecated, please use the key"
-                    "`eval_gauntlet`"
-                ),
+                "Use of the key `model_gauntlet` is deprecated, please use the key"
+                "`eval_gauntlet`",
             )
     icl_subset_num_batches: int | None = pop_config(
         _cfg, "icl_subset_num_batches", must_exist=False, default_value=None
@@ -541,10 +528,8 @@ def _get_trainer_object(
     if _cfg.get("autoresume") is None and autoresume_default:
         log(
             INFO,
-            (
-                "As run_name, save_folder, and save_latest_filename are set,           "
-                "      changing autoresume default to True..."
-            ),
+            "As run_name, save_folder, and save_latest_filename are set,           "
+            "      changing autoresume default to True...",
         )
 
     autoresume: bool = pop_config(
@@ -565,10 +550,8 @@ def _get_trainer_object(
         if os.environ.get("LOCAL_RANK", "0") == "0":
             log(
                 WARN,
-                (
-                    "Unused parameter %s found in cfg. Please check your yaml to ensure"
-                    " this parameter is necessary."
-                ),
+                "Unused parameter %s found in cfg. Please check your yaml to ensure"
+                " this parameter is necessary.",
                 key,
             )
 
@@ -820,7 +803,6 @@ def set_parameters_to_state(
     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
     # NOTE: We may want to try strict=False
     trainer.state.model.load_state_dict(state_dict, strict=True)
-    # state.model.load_state_dict(state_dict, strict=False)
     del state_dict
 
 
@@ -836,8 +818,6 @@ def llm_fit(
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     # Ignoring the optimizer state if loading a checkpoint
     cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
-    # # Cleaning stale shared memory
-    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
@@ -914,8 +894,6 @@ def llm_eval(
     cfg.save_folder = None  # type: ignore[union-attr]
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
-    # # Cleaning stale shared memory
-    # streaming.base.util.clean_stale_shared_memory()
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
