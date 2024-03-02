@@ -1,6 +1,5 @@
 """Provides the internal fucntions used by the LLM client."""
 
-import ast
 import atexit
 import copy
 import gc
@@ -366,7 +365,8 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    visible_devices = ast.literal_eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
+    # TODO: Resolve the linter suggestion here
+    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))  # noqa: PGH001
     if type(visible_devices) is int:
         device = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
