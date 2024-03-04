@@ -28,12 +28,11 @@ if [[ -e $POETRY_ENV_PATH ]]; then
     fi
 else
     echo "Poetry environment doesn't exist. Installing..."
+    poetry config installer.max-workers 10
     poetry install -q
+    POETRY_ENV_PATH=$(poetry env info --path)
 fi
 . $POETRY_ENV_PATH/bin/activate
-# Adding CUDA paths to environment variables
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then

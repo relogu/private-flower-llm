@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J pollen-llm-16M
+#SBATCH -J llm-centr-125M
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A LANE-SL3-GPU
 #! How many whole nodes should be allocated?
@@ -105,4 +105,4 @@ echo -e "\nnumtasks=$numtasks, numnodes=$numnodes, mpi_tasks_per_node=$mpi_tasks
 
 echo -e "\nExecuting command:\n==================\n$CMD\n"
 
-sh $HOME/projects/pollen_worker/llm_slurm/pollen_llm_16M.sh
+sh $HOME/projects/pollen_worker/llm_slurm/series_of_centralised_trainings.sh
