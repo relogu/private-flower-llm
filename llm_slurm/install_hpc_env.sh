@@ -16,8 +16,45 @@ module load cudnn/8.9_cuda-12.1
 #! Load additional modules
 module load ceuadmin/gettext/0.20
 module load vgl/2.5.1/64
+#! Install `pyenv`
+PYENV_VER_OUTPUT=$(pyenv --version)
+if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
+    echo "pyenv is already installed."
+else
+    #! Getting `pyenv`
+    curl https://pyenv.run | bash
+fi
+if [[ $PYENV_ROOT == *"pyenv"* ]]; then
+    echo "PYENV_ROOT variable is already set."
+else
+    #! Setting up `pyenv` to execute automatically in the shell
+    echo '# Load `pyenv` automatically' >> ~/.bashrc
+    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+    export PYENV_ROOT="$HOME/.pyenv"
+    echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+    [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+    eval "$(pyenv init -)"
+    echo '# # Load pyenv-virtualenv automatically' >> ~/.bashrc
+    echo '# eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
+fi
+#! Installing python 3.10.13
+pyenv install 3.10.13
+#! Selecting this python as global
+pyenv global 3.10.13
+#! Upgrade pip
+pip install --upgrade pip
+#! Monitoring utilities
+sudo snap install bpytop
+pip install nvitop
+#! Install poetry
+pip install poetry
+#! Install cmake
+pip install cmake
 #! Entering the project folder
 cd $HOME/projects/pollen_worker
+#! Install the poetry env no matter what
+poetry install -q
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
