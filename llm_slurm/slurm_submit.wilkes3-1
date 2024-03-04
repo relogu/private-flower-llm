@@ -105,4 +105,4 @@ echo -e "\nnumtasks=$numtasks, numnodes=$numnodes, mpi_tasks_per_node=$mpi_tasks
 
 echo -e "\nExecuting command:\n==================\n$CMD\n"
 
-sh $HOME/projects/pollen_worker/llm_slurm/series_of_centralised_trainings.sh
+. $HOME/projects/pollen_worker/llm_slurm/series_of_centralised_trainings.sh
