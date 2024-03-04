@@ -13,11 +13,10 @@
 # export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-75M-20240225_010800 llm_config.load_path=s3://checkpoints/centralised-75M-20240225_010800/ep0-ba15500-rank0.pt"
 # . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "75M" "88000ba"
 
-#! Skip for now
-# unset SAVE_PATH
-# unset RUN_UUID
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M" "4800ba"
+unset SAVE_PATH
+unset RUN_UUID
+export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=4800ba llm_config.max_duration=88000ba"
+. $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M"
 
 #! Skip for now
 # unset SAVE_PATH
@@ -48,10 +47,11 @@
 # export EXTERNAL_CONFIGS="llm_config.save_overwrite=true wandb.setup.allow_val_change=true llm_config.scheduler.t_warmup=0ba wandb.setup.id=rmfap7hs llm_config.load_path=s3://checkpoints/centralised-160M-20240223_112700/ep0-ba18500-rank0.pt"
 # . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M" "88000ba"
 
-unset SAVE_PATH
-unset RUN_UUID
-export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=24000ba llm_config.max_duration=88000ba"
-. $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "1B"
+#! TBC
+# export SAVE_PATH="s3://checkpoints/centralised-1B-20240229_104204"
+# export RUN_UUID="centralised-1B-20240229_104204"
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=24000ba llm_config.max_duration=88000ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-1B-20240229_104204 llm_config.load_path=s3://checkpoints/centralised-1B-20240229_104204/ep0-ba22500-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "1B"
 
 # export SAVE_PATH="s3://checkpoints/centralised-1B-20240223_223131"
 # export RUN_UUID="centralised-1B-20240223_223131"

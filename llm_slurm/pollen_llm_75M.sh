@@ -29,7 +29,7 @@ N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50737' run_uuid=fed-75M-$DATETIME pollen.refresh_period=20 fl.n_rounds=176 llm_config.scheduler.t_max=5500ba llm_config.scheduler.t_warmup=1000ba llm_config.save_overwrite=true"
+POLLEN_CONFIG="pollen.server_address='localhost:50737' run_uuid=fed-75M-$DATETIME pollen.refresh_period=20 fl.n_rounds=176 llm_config.scheduler.t_max=5500ba llm_config.scheduler.t_warmup=100ba llm_config.optimizer.lr=2.0e-4 llm_config.save_overwrite=true"
 #! Launch ServerWithPollen
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$POLLEN_SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
