@@ -36,6 +36,10 @@
 
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_small.sh
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_16M.sh
+# export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-fed-75M-$DATETIME"
+export RUN_UUID="test-fed-75M-20240305_100328"
 bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_75M.sh
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_125M.sh
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_350M.sh
