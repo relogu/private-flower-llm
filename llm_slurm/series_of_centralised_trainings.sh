@@ -1,81 +1,115 @@
 #!/bin/bash
 
-#! This blows up
-# export SAVE_PATH="s3://checkpoints/centralised-75M-20240225_003829"
-# export RUN_UUID="centralised-75M-20240225_003829"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-75M-20240225_003829 llm_config.load_path=s3://checkpoints/centralised-75M-20240225_003829/ep0-ba4800-rank0.pt"
-# #! Note: The first experiment is run with 4800ba, so we are just extending it for another 83200ba
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "75M" "88000ba"
 
-#! This blows up
-# export SAVE_PATH="s3://checkpoints/centralised-75M-20240225_010800"
-# export RUN_UUID="centralised-75M-20240225_010800"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-75M-20240225_010800 llm_config.load_path=s3://checkpoints/centralised-75M-20240225_010800/ep0-ba15500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "75M" "88000ba"
-
-unset SAVE_PATH
-unset RUN_UUID
-export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=4800ba llm_config.max_duration=88000ba"
-. $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M"
-
-#! Skip for now
-# unset SAVE_PATH
+#! Small LM as configured by MosaicML. We definetly need to modify it to make it usable.
 # unset RUN_UUID
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M" "88000ba"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=10ba llm_config.max_duration=88000ba llm_config.optimizer.lr=6.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "small"
 
-#! This blows up
-# export SAVE_PATH="s3://checkpoints/centralised-420M-20240224_161116"
-# export RUN_UUID="centralised-420M-20240224_161116"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true wandb.setup.allow_val_change=true wandb.setup.id=centralised-420M-20240224_161116 llm_config.load_path=s3://checkpoints/centralised-420M-20240224_161116/ep0-ba2000-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "420M" "88000ba"
 
-#! This blows up
-# export SAVE_PATH="s3://checkpoints/centralised-420M-20240224_223822"
-# export RUN_UUID="centralised-420M-20240224_223822"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-420M-20240224_223822 llm_config.load_path=s3://checkpoints/centralised-420M-20240224_223822/ep0-ba16500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "420M" "88000ba"
+#! 75M LM as configured by us. We followed what's reported in DiLoCo paper.
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=2900ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "75M"
 
-#! This blows up
-# export SAVE_PATH="s3://checkpoints/centralised-160M-20240223_095752"
-# export RUN_UUID="centralised-160M-20240223_095752"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true wandb.setup.allow_val_change=true llm_config.scheduler.t_warmup=1000ba wandb.setup.id=h33305xu llm_config.load_path=s3://checkpoints/centralised-160M-20240223_095752/ep0-ba8500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M" "88000ba"
+#! 75M LM as configured by us. We followed what's reported in DiLoCo paper. Proposing reducing the minimum LR to 4.0e-6
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=2900ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.01"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "75M"
 
-# export SAVE_PATH="s3://checkpoints/centralised-160M-20240223_112700"
-# export RUN_UUID="centralised-160M-20240223_112700"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true wandb.setup.allow_val_change=true llm_config.scheduler.t_warmup=0ba wandb.setup.id=rmfap7hs llm_config.load_path=s3://checkpoints/centralised-160M-20240223_112700/ep0-ba18500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M" "88000ba"
 
-#! TBC
-# export SAVE_PATH="s3://checkpoints/centralised-1B-20240229_104204"
+#! 125M LM as configured by MosaicML.
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=4800ba llm_config.max_duration=88000ba llm_config.optimizer.lr=6.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M"
+
+#! 125M LM as configured by MosaicML. Proposed reducing the maximum LR to 4.0e-4
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=4800ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M"
+
+
+#! 160M LM as configured by us. We followed what's reported in DiLoCo paper. We added some customisations.
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=6200ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M"
+
+#! 160M LM as configured by us. We followed what's reported in DiLoCo paper. We added some customisations. Proposing reducing the minimum LR to 4.0e-6
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=6200ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.01"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M"
+
+
+#! 350M LM as configured by MosaicML.
+# export RUN_UUID="centralised-350M-20240305_191112"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=13400ba llm_config.max_duration=88000ba llm_config.optimizer.lr=3.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "350M"
+
+
+#! 420M LM as configured by us. We followed what's reported in DiLoCo paper. We added some customisations.
+# export RUN_UUID="centralised-420M-20240305_190626"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=16000ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "420M"
+
+#! 420M LM as configured by us. We followed what's reported in DiLoCo paper. We added some customisations. Proposing reducing the minimum LR to 4.0e-6
+# unset RUN_UUID
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=16000ba llm_config.max_duration=88000ba llm_config.optimizer.lr=4.0e-4 llm_config.scheduler.alpha_f=0.01"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "420M"
+
+
+#! 760M LM as configured by MosaicML.
+# export RUN_UUID="centralised-760M-20240305_190707"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=29000ba llm_config.max_duration=88000ba llm_config.optimizer.lr=2.5e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "760M"
+
+
+#! 1B LLM as configured by MosaicML.
 # export RUN_UUID="centralised-1B-20240229_104204"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=24000ba llm_config.max_duration=88000ba wandb.setup.allow_val_change=true wandb.setup.id=centralised-1B-20240229_104204 llm_config.load_path=s3://checkpoints/centralised-1B-20240229_104204/ep0-ba22500-rank0.pt"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE="22500"
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=24000ba llm_config.max_duration=88000ba llm_config.optimizer.lr=2.0e-4 llm_config.scheduler.alpha_f=0.1"
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
 # . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "1B"
 
-# export SAVE_PATH="s3://checkpoints/centralised-1B-20240223_223131"
-# export RUN_UUID="centralised-1B-20240223_223131"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true wandb.setup.allow_val_change=true llm_config.scheduler.t_warmup=100ba wandb.setup.id=87n121y2 llm_config.load_path=s3://checkpoints/centralised-1B-20240223_223131/ep0-ba4000-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "1B" "88000ba"
 
-# export SAVE_PATH="s3://checkpoints/centralised-760M-20240225_103905"
-# export RUN_UUID="centralised-760M-20240225_103905"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba wandb.setup.id=87n121y2 llm_config.load_path=s3://checkpoints/centralised-760M-20240225_103905/ep0-ba2500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "760M" "29000ba"
-
-# export SAVE_PATH="s3://checkpoints/centralised-760M-20240225_125527"
-# export RUN_UUID="centralised-760M-20240225_125527"
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba wandb.setup.id=87n121y2 llm_config.load_path=s3://checkpoints/centralised-760M-20240225_125527/ep0-ba2500-rank0.pt"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "760M" "88000ba"
-
-#! Skip for now
-# unset SAVE_PATH
+#! 3B LLM as configured by MosaicML.
 # unset RUN_UUID
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "3B" "51500ba"
+# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+# export STEPS_DONE
+# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=51500ba llm_config.max_duration=88000ba llm_config.optimizer.lr=1.6e-4 llm_config.scheduler.alpha_f=0.1"
+# # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "3B"
 
-#! Skip for now
-# unset SAVE_PATH
-# unset RUN_UUID
-# export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=0ba"
-# . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "3B" "88000ba"
