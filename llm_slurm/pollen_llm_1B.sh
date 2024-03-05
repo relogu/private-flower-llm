@@ -40,7 +40,7 @@ aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{
 aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
 MINIO_COMM_STACK_OPTIONS="use_minio_comm=true minio.minio_client.endpoint=$S3_ENDPOINT_URL minio.minio_client.access_key=$aws_access_key_id minio.minio_client.secret_key=$aws_secret_access_key minio.minio_state.bucket_name=checkpoints"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50744' run_uuid=$RUN_UUID pollen.refresh_period=5 fl.n_rounds=176 pollen.checkpoint=true llm_config.scheduler.t_max=24800ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=2.0e-4 llm_config.save_overwrite=true pollen.resume_round=0"
+POLLEN_CONFIG="pollen.server_address='localhost:50744' run_uuid=$RUN_UUID pollen.refresh_period=5 fl.n_rounds=176 pollen.checkpoint=true llm_config.scheduler.t_max=24800ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=2.0e-4 llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=0"
 #! Launch ServerWithPollen
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH $MINIO_COMM_STACK_OPTIONS 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
