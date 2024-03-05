@@ -59,7 +59,7 @@ COMPOSER_MODEL_REGISTRY = {
 }
 
 
-def set_client_save_and_load_path(cfg: DictConfig, cid: int) -> DictConfig:
+def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
@@ -73,7 +73,7 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int) -> DictConfig:
 
 
 def set_client_load_path(
-    cfg: DictConfig, server_round: int, local_steps: int
+    cfg: DictConfig, server_round: int, local_steps: str
 ) -> DictConfig:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
@@ -107,7 +107,7 @@ def set_client_load_path(
     return cfg
 
 
-def set_client_wandb_logger(cfg: DictConfig, cid: int) -> DictConfig:
+def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
     """Set the wandb logger for the client."""
     # Set the wandb run name
     if cfg.loggers.wandb is not None:
