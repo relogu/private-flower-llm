@@ -5,7 +5,6 @@ using wandb for logging and hydra for exeperiment configuration.
 """
 
 import copy
-import json
 import sys
 from pathlib import Path
 
@@ -99,7 +98,7 @@ def main(cfg: DictConfig) -> None:
             )
 
         # Start Flower server
-        hist = fl.server.start_server(
+        fl.server.start_server(
             server_address=cfg.pollen.server_address,
             server=PollenServer(
                 cids=cid_samples_dict,
@@ -118,11 +117,6 @@ def main(cfg: DictConfig) -> None:
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
-        Path(cfg.pollen.saving_path).mkdir(parents=True, exist_ok=True)
-        with open(
-            Path(cfg.pollen.saving_path) / "history.json", "x", encoding="locale"
-        ) as f:
-            json.dump(hist.__dict__, f)
 
 
 if __name__ == "__main__":
