@@ -80,10 +80,8 @@ def _pull_single_parameters_file(
     if file_hash != actual_file_hash:
         _value_error(
             state,
-            (
-                f"The computed hash code of file '{full_file_path}' differs from the"
-                " one stored in metadata.json"
-            ),
+            f"The computed hash code of file '{full_file_path}' differs from the"
+            " one stored in metadata.json",
         )
         return None
     return file_bytes
@@ -117,29 +115,23 @@ def _pull_single_file(state: MinioState, full_file_path: str) -> bytes | None:
         if try_again:
             _log_info(
                 state,
-                (
-                    f"Attempt #{number_of_attemts}; trying again to pull the file from"
-                    f" MinIO: {full_file_path}"
-                ),
+                f"Attempt #{number_of_attemts}; trying again to pull the file from"
+                f" MinIO: {full_file_path}",
             )
             gc.collect()
             time.sleep(3)
     if pull_successful and number_of_attemts > 1:
         _log_info(
             state,
-            (
-                f"Successfully pulled the file from MinIO after {number_of_attemts}"
-                f" attempts: {full_file_path}"
-            ),
+            f"Successfully pulled the file from MinIO after {number_of_attemts}"
+            f" attempts: {full_file_path}",
         )
     if not pull_successful:
         _connection_error(
             state,
-            (
-                f"🚨 Timed out after {number_of_attemts} attempt(s) and"
-                f" {int(elapsed_time)} second(s). Completely failed to pull the file"
-                f" from MinIO: {full_file_path}"
-            ),
+            f"🚨 Timed out after {number_of_attemts} attempt(s) and"
+            f" {int(elapsed_time)} second(s). Completely failed to pull the file"
+            f" from MinIO: {full_file_path}",
         )
         return None
     return file_bytes
@@ -289,29 +281,23 @@ def _push_single_file(
         if try_again:
             _log_info(
                 state,
-                (
-                    f"Attempt #{number_of_attemts}; trying again to push the file to"
-                    f" MinIO: {full_file_path}"
-                ),
+                f"Attempt #{number_of_attemts}; trying again to push the file to"
+                f" MinIO: {full_file_path}",
             )
             gc.collect()
             time.sleep(3)
     if push_successful and number_of_attemts > 1:
         _log_info(
             state,
-            (
-                f"Successfully pushed the file to MinIO after {number_of_attemts}"
-                f" attempts: {full_file_path}"
-            ),
+            f"Successfully pushed the file to MinIO after {number_of_attemts}"
+            f" attempts: {full_file_path}",
         )
     if not push_successful:
         _connection_error(
             state,
-            (
-                f"🚨 Timed out after {number_of_attemts} attempt(s) and"
-                f" {int(elapsed_time)} second(s). Completely failed to push the file to"
-                f" MinIO: {full_file_path}"
-            ),
+            f"🚨 Timed out after {number_of_attemts} attempt(s) and"
+            f" {int(elapsed_time)} second(s). Completely failed to push the file to"
+            f" MinIO: {full_file_path}",
         )
     return push_successful
 
@@ -409,13 +395,11 @@ def push_parameters(
     else:
         metadata_file_path = f"{minio_folder_path}/{METADATA_FILE_NAME}"
 
-    metadata_bytes = json.dumps(
-        {
-            "tensorType": parameters.tensor_type,
-            "tensorSizes": tensor_sizes,
-            "files": file_list,
-        }
-    ).encode("utf-8")
+    metadata_bytes = json.dumps({
+        "tensorType": parameters.tensor_type,
+        "tensorSizes": tensor_sizes,
+        "files": file_list,
+    }).encode("utf-8")
 
     return _push_single_file(state, metadata_file_path, metadata_bytes)
 
@@ -452,7 +436,7 @@ def pull_server_state(
         _log_error(minio_state, message)
         raise TypeError(message) from ex
 
-    if round != json_round:
+    if server_round != json_round:
         message = f"🚨 Unexpected round number in {SERVER_STATE_FILE}"
         f" (expected: {round}; actual: {json_round})"
         _log_error(minio_state, message)
