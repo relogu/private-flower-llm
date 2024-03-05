@@ -454,17 +454,13 @@ class NodeManager(fl.client.NumPyClient):
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
-        node_train_metrics.update(
-            {
-                "node_training_time_s": float(time.time() - start_time),
-            }
-        )
+        node_train_metrics.update({
+            "node_training_time_s": float(time.time() - start_time),
+        })
         log(
             DEBUG,
-            (
-                "NodeManager %s: resuls have been processed. "
-                "The time spent before collecting results was %s seconds."
-            ),
+            "NodeManager %s: resuls have been processed. "
+            "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
         )
@@ -481,11 +477,9 @@ class NodeManager(fl.client.NumPyClient):
         if isinstance(self.minio_state, MinioState):
             # The endpoint UUID will be picked up by the server when pulling the
             # client model from MinIO
-            node_train_metrics.update(
-                {
-                    "endpoint_id": self.node_manager_uuid,
-                }
-            )
+            node_train_metrics.update({
+                "endpoint_id": self.node_manager_uuid,
+            })
             push_parameters(self.minio_state, current_round, aggregated_params)
 
             # Return results
@@ -620,10 +614,8 @@ class NodeManager(fl.client.NumPyClient):
         node_eval_samples = sum(clients_eval_samples)
         log(
             DEBUG,
-            (
-                "NodeManager %s: resuls have been processed. "
-                "The time spent before collecting results was %s seconds."
-            ),
+            "NodeManager %s: resuls have been processed. "
+            "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
         )
@@ -678,7 +670,7 @@ def main(cfg: DictConfig) -> None:
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
     # MinIO
     minio_state: MinioState | None = None
-    if cfg.use_minio:
+    if cfg.use_minio_comm:
         # Create the MinIO client
         cfg.minio.minio_client.endpoint = str(cfg.minio.minio_client.endpoint).replace(
             "http://", ""

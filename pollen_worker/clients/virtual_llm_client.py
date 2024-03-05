@@ -7,10 +7,9 @@ even if many are spawned at once.
 """
 
 import copy
-import os
 import time
 from collections.abc import Callable
-from logging import DEBUG, INFO, WARNING
+from logging import DEBUG, INFO
 from typing import Any
 
 import flwr as fl
@@ -29,6 +28,8 @@ from pollen_worker.clients.llm_client_functions import (
     llm_eval,
     llm_fit,
     set_all_data_paths,
+    set_client_save_and_load_path,
+    set_client_wandb_logger,
 )
 from pollen_worker.utils import (
     get_file_names_from_file_number,
@@ -50,45 +51,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Set init parameters
         self.cid = cid
         self.cfg = cfg
-        # Set the save folder specifically for this client and this run
-        if self.cfg.save_folder is not None:  # type: ignore[union-attr]
-            self.cfg.save_folder = (  # type: ignore[union-attr]
-                self.cfg.save_folder
-                + f"/{self.cfg.run_name}"
-                + "/client_"  # type: ignore[union-attr]
-                + str(self.cid)  # type: ignore[union-attr]
-            )
-            try:
-                local_path = Path(
-                    str(self.cfg.save_folder).replace(  # type: ignore[union-attr]
-                        "s3://checkpoints/", ""
-                    )
-                )
-                log(INFO, "Looking for a checkpoint to load in %s", local_path)
-                # NOTE: The suggested `Path.exists(local_path)` doens't work with a
-                # direct substitution. This necessitates a fix.
-                if os.path.exists(local_path):  # noqa: PTH110
-                    self.cfg.load_path = self.cfg.save_folder + "/latest-rank{rank}.pt"
-                    log(INFO, "Set checkpoint to load: %s", self.cfg.load_path)
-            except Exception as e:
-                log(WARNING, "The `load_path` wasn't set.", exc_info=e)
-                # log(
-                #     DEBUG,
-                #     "Error running `os.listdir` for folder %s",
-                #     self.cfg.save_folder,
-                #     exc_info=e,
-                #     stack_info=True,
-                # )
-        # Set the wandb run name
-        if self.cfg.loggers.wandb is not None:
-            # Get the server run name
-            run_name = self.cfg.loggers.wandb.init_kwargs.name
-            # Add the client id to the run name
-            new_run_name = run_name + f"_client_{self.cid}"
-            server_id = self.cfg.loggers.wandb.init_kwargs.id
-            self.cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{self.cid}"
-            # Set the new run name
-            self.cfg.loggers.wandb.init_kwargs.name = new_run_name
+        self.cfg = set_client_save_and_load_path(self.cfg, self.cid)
+        self.cfg = set_client_wandb_logger(self.cfg, self.cid)
 
         transformers.logging.set_verbosity_error()
 

@@ -100,7 +100,8 @@ class PollenServer(Server):
         ignore_failed_rounds: bool = False,
         print_failures: bool = True,
         print_intentional_failures: bool = True,
-        resume: bool = False,
+        use_minio_comm: bool = False,
+        checkpoint: bool = False,
         resume_round: int | None = None,
         minio_state: MinioState | None = None,
     ) -> None:
@@ -137,7 +138,8 @@ class PollenServer(Server):
         self.ignore_failed_rounds = ignore_failed_rounds
         self.print_failures = print_failures
         self.print_intentional_failures = print_intentional_failures
-        self.resume = resume
+        self.use_minio_comm = use_minio_comm
+        self.checkpoint = checkpoint
         self.resume_round = resume_round
         self.minio_state: MinioState | None = minio_state
         if isinstance(self.minio_state, MinioState):
@@ -172,7 +174,7 @@ class PollenServer(Server):
         time_offset: float
         start_round: int
 
-        if self.resume and self.resume_round is not None:
+        if self.checkpoint and self.resume_round > 0:
             # If applicable, load the state from MinIO
             if isinstance(self.minio_state, MinioState):
                 # TODO: Get the most recent round if from MinIO
@@ -207,7 +209,9 @@ class PollenServer(Server):
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
             # If applicable, save the checkpoint to MinIO (w/ model parameters)
-            if isinstance(self.minio_state, MinioState):
+            if (self.checkpoint or self.use_minio_comm) and isinstance(
+                self.minio_state, MinioState
+            ):
                 momentum: NDArrays | None = None
                 if isinstance(self.strategy, FedNesterov):
                     momentum = self.strategy.momentum_vector
@@ -264,7 +268,9 @@ class PollenServer(Server):
                 )
 
             # Push the global model to MinIO (but not the server state)
-            if isinstance(self.minio_state, MinioState):
+            if (self.checkpoint or self.use_minio_comm) and isinstance(
+                self.minio_state, MinioState
+            ):
                 params_folder_path = _get_params_folder_path(
                     self.minio_state, current_round
                 )
@@ -313,7 +319,9 @@ class PollenServer(Server):
             elapsed = end_time - start_time + time_offset
 
             # If applicable, save the checkpoint to MinIO (excluding the global params)
-            if isinstance(self.minio_state, MinioState):
+            if (self.checkpoint or self.use_minio_comm) and isinstance(
+                self.minio_state, MinioState
+            ):
                 momentum_v: NDArrays | None = None
                 if isinstance(self.strategy, FedNesterov):
                     momentum_v = self.strategy.momentum_vector
@@ -394,20 +402,21 @@ class PollenServer(Server):
                 node_evaluate_config.update(device_assignment)
 
                 # Append instruction
-            if isinstance(self.minio_state, MinioState):
-                node_instructions.append((
-                    client_proxy,
-                    EvaluateIns(
-                        # NOTE: We must pass a real NDArrays object,
-                        # Flower crashes otherwise
-                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                        node_evaluate_config,
-                    ),
-                ))
-            else:
-                node_instructions.append(
-                    (client_proxy, EvaluateIns(self.parameters, node_evaluate_config))
-                )
+                if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+                    node_instructions.append((
+                        client_proxy,
+                        EvaluateIns(
+                            # NOTE: We must pass a real NDArrays object,
+                            # Flower crashes otherwise
+                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                            node_evaluate_config,
+                        ),
+                    ))
+                else:
+                    node_instructions.append((
+                        client_proxy,
+                        EvaluateIns(self.parameters, node_evaluate_config),
+                    ))
 
         log(
             DEBUG,
@@ -526,7 +535,7 @@ class PollenServer(Server):
             node_fit_config.update(device_assignment)
 
             # Append instruction
-            if isinstance(self.minio_state, MinioState):
+            if self.use_minio_comm and isinstance(self.minio_state, MinioState):
                 node_instructions.append((
                     client_proxy,
                     FitIns(
@@ -593,7 +602,7 @@ class PollenServer(Server):
         )
 
         # If applicable, pull the client parameters from MinIO
-        if isinstance(self.minio_state, MinioState):
+        if self.use_minio_comm and isinstance(self.minio_state, MinioState):
             complete_results = (
                 replace_values_with_minio(self.minio_state, server_round, result)
                 for result in complete_results

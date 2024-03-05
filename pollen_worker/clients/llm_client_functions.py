@@ -5,10 +5,11 @@ import copy
 import gc
 import logging
 import os
+from pathlib import Path
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
-from logging import DEBUG, ERROR, INFO, WARN
+from logging import DEBUG, ERROR, INFO, WARN, WARNING
 from typing import Any
 
 import streaming
@@ -56,6 +57,69 @@ COMPOSER_MODEL_REGISTRY = {
     "openai_causal_lm": OpenAICausalLMEvalWrapper,
     "openai_chat": OpenAIChatAPIEvalWrapper,
 }
+
+
+def set_client_save_and_load_path(cfg: DictConfig, cid: int) -> DictConfig:
+    """Set the save and load path given the server round and client id."""
+    # Set the save folder specifically for this client and this run
+    if cfg.save_folder is not None:  # type: ignore[union-attr]
+        cfg.save_folder = (  # type: ignore[union-attr]
+            cfg.save_folder
+            + f"/{cfg.run_name}"
+            + "/client_"  # type: ignore[union-attr]
+            + str(cid)  # type: ignore[union-attr]
+        )
+    return cfg
+
+
+def set_client_load_path(
+    cfg: DictConfig, server_round: int, local_steps: int
+) -> DictConfig:
+    """Set the save and load path given the server round and client id."""
+    # Set the save folder specifically for this client and this run
+    if cfg.save_folder is not None:  # type: ignore[union-attr]
+        try:
+            local_path = Path(
+                str(cfg.save_folder).replace(  # type: ignore[union-attr]
+                    "s3://checkpoints/", ""
+                )
+            )
+            log(INFO, "Looking for a checkpoint to load in %s", local_path)
+            # NOTE: The suggested `Path.exists(local_path)` doens't work with a
+            # direct substitution. This necessitates a fix.
+            if os.path.exists(local_path):  # noqa: PTH110
+                n_steps_done = int(
+                    int(local_steps.replace("ba", "")) * (server_round - 1)
+                )
+                cfg.load_path = (
+                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
+                )
+                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+        except Exception as e:
+            log(WARNING, "The `load_path` wasn't set.", exc_info=e)
+            # log(
+            #     DEBUG,
+            #     "Error running `os.listdir` for folder %s",
+            #     self.cfg.save_folder,
+            #     exc_info=e,
+            #     stack_info=True,
+            # )
+    return cfg
+
+
+def set_client_wandb_logger(cfg: DictConfig, cid: int) -> DictConfig:
+    """Set the wandb logger for the client."""
+    # Set the wandb run name
+    if cfg.loggers.wandb is not None:
+        # Get the server run name
+        run_name = cfg.loggers.wandb.init_kwargs.name
+        # Add the client id to the run name
+        new_run_name = run_name + f"_client_{cid}"
+        server_id = cfg.loggers.wandb.init_kwargs.id
+        cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
+        # Set the new run name
+        cfg.loggers.wandb.init_kwargs.name = new_run_name
+    return cfg
 
 
 def set_all_data_paths(
@@ -811,6 +875,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    # Set the loading path
+    cfg = set_client_load_path(cfg, config["server_round"], cfg["local_steps"])
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Ignoring model if loading a checkpoint

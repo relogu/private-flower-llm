@@ -12,10 +12,7 @@ pollen:
   refresh_period: 50
   fit_collaborative: false
   eval_collaborative: true
-
-# Resume
-resume_options:
-  resume: false
+  checkpoint: false
   resume_round: 0
 
 fl:
@@ -29,7 +26,7 @@ defaults:
   - llm_config: mpt-125m
 
 # MinIO
-use_minio: false
+use_minio_comm: false
 
 minio:
   minio_client:

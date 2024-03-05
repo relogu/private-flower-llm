@@ -84,7 +84,7 @@ def main(cfg: DictConfig) -> None:
 
         # MinIO
         minio_state: MinioState | None = None
-        if cfg.use_minio:
+        if cfg.use_minio_comm or cfg.pollen.checkpoint:
             # Create the MinIO client
             cfg.minio.minio_client.endpoint = str(
                 cfg.minio.minio_client.endpoint
@@ -111,8 +111,9 @@ def main(cfg: DictConfig) -> None:
                 history=wandb_history,
                 num_nodes=cfg.pollen.n_nodes,
                 minio_state=minio_state,
-                resume=cfg.resume_options.resume,
-                resume_round=cfg.resume_options.resume_round,
+                use_minio_comm=cfg.use_minio_comm,
+                checkpoint=cfg.pollen.checkpoint,
+                resume_round=cfg.pollen.resume_round,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
