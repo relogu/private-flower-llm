@@ -61,13 +61,21 @@
 # . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "160M"
 
 
-#! 350M LM as configured by MosaicML.
+#! 350M LM as configured by MosaicML. It blows up at step 16000
 # export RUN_UUID="centralised-350M-20240305_191112"
 # export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 # export STEPS_DONE
 # export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=13400ba llm_config.max_duration=88000ba llm_config.optimizer.lr=3.0e-4 llm_config.scheduler.alpha_f=0.1"
 # # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
 # . $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "350M"
+
+#! 350M LM as configured by MosaicML. Proposed reducing the minimum LR to 3.0e-6
+unset RUN_UUID
+unset SAVE_PATH
+unset STEPS_DONE
+export EXTERNAL_CONFIGS="llm_config.save_overwrite=true llm_config.scheduler.t_warmup=100ba llm_config.scheduler.t_max=13400ba llm_config.max_duration=88000ba llm_config.optimizer.lr=3.0e-4 llm_config.scheduler.alpha_f=0.01"
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS wandb.setup.allow_val_change=true wandb.setup.id=$RUN_UUID llm_config.load_path=s3://checkpoints/$RUN_UUID/ep0-ba$STEPS_DONE-rank0.pt"
+. $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "350M"
 
 
 #! 420M LM as configured by us. We followed what's reported in DiLoCo paper. We added some customisations.
