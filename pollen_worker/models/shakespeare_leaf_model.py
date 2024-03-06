@@ -2,6 +2,8 @@
 
 Originially from: LEAF: A Benchmark for Federated Settings. CoRR abs/1812.01097 (2018).
 """
+
+import torch
 from torch import nn
 
 LEAF_CHARACTERS = (
@@ -9,7 +11,7 @@ LEAF_CHARACTERS = (
 )
 
 
-class ShakespeareLeafNet(nn.Module):  # type: ignore
+class ShakespeareLeafNet(nn.Module):
     """Create Shakespeare model for LEAF baselines.
 
     Args:
@@ -22,11 +24,11 @@ class ShakespeareLeafNet(nn.Module):  # type: ignore
 
     def __init__(
         self,
-        chars=LEAF_CHARACTERS,
-        seq_len=80,
-        hidden_size=256,
-        embedding_dim=8,
-    ):
+        chars: str = LEAF_CHARACTERS,
+        seq_len: int = 80,
+        hidden_size: int = 256,
+        embedding_dim: int = 8,
+    ) -> None:
         super().__init__()
         self.dict_size = len(chars)
         self.seq_len = seq_len
@@ -41,7 +43,7 @@ class ShakespeareLeafNet(nn.Module):  # type: ignore
         )
         self.decoder = nn.Linear(self.hidden_size, self.dict_size)
 
-    def forward(self, sentence):
+    def forward(self, sentence: torch.Tensor) -> torch.Tensor:
         """Forward sentence to obtain next character.
 
         Args:

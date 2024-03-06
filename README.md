@@ -50,14 +50,14 @@ run_uuid=$(uuidgen)
 CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=$TASK_NAME task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$POLICY flwr_address=$MASTER_NODE:$PORT"
 
 echo "STARTING POLLEN SERVER at $MASTER_NODE"
-poetry run python -m pollen_worker.server_with+pollen $CUSTOM_HYDRA_ARGS &
+poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
 #! If resources are avaliable here
 echo "STARTING POLLEN NODE MANAGER at $MASTER_NODE"
-poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS &
+poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS &
 
 ############## SLAVE NODE(s) ##############
 #! Get the slave node
 SLAVE_NODE=$(hostname)
 echo "STARTING POLLEN NODE MANAGER at $SLAVE_NODE"
-poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS # Make sure the Hydra's options are the same as before
+poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS # Make sure the Hydra's options are the same as before
 ```

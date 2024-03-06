@@ -3,12 +3,21 @@
 The main function is hydra-specific and allows for a centralised evluation of a model
 from the hydra output directory using the concatenated test sets of all clients.
 """
-from typing import List, Tuple, cast
+
+import pickle
+import time
+from collections.abc import Callable
+from logging import INFO
+from pathlib import Path
+from typing import cast
 
 import hydra
+import psutil
 import torch
 import transformers
 import yaml
+from flwr.common import log, parameters_to_ndarrays
+from flwr.common.typing import Parameters
 from omegaconf import DictConfig
 from torch.nn import Module
 from torch.utils.data import DataLoader
@@ -17,13 +26,19 @@ from transformers import AlbertTokenizer
 from transformers.modeling_outputs import MaskedLMOutput
 
 import wandb
-from pollen_worker.datasets.nlp_util import mask_tokens
-from pollen_worker.utils import wandb_init
+from pollen_worker.datasets.nlp_util import get_collate_fn, mask_tokens
+from pollen_worker.pollen_utils import get_centralised_eval_set, get_device, get_model
+from pollen_worker.utils import set_parameters, wandb_init
 
 transformers.logging.set_verbosity_error()
 
 
-def get_testing_loop(name: str):
+def get_testing_loop(
+    name: str,
+) -> Callable[
+    [DataLoader, torch.device, Module, Module | AlbertTokenizer],
+    tuple[float, int, dict[str, float]],
+]:
     """Return the test loop function given the task's name."""
     if name == "reddit":
         return reddit_testing_loop
@@ -38,8 +53,7 @@ def reddit_testing_loop(
     device: torch.device,
     net: Module,
     tokenizer: AlbertTokenizer,
-    **kwargs,
-):
+) -> tuple[float, int, dict[str, float]]:
     """Implement Reddit task's test loop."""
     test_loss = 0.0
     test_len = 0
@@ -59,7 +73,7 @@ def reddit_testing_loop(
 
                 output: MaskedLMOutput = net(input_ids=data, labels=target)
                 if output.loss is None:
-                    raise Exception("Loss is None")
+                    raise ValueError("Loss is None")  # noqa: TRY301
 
                 test_loss += output.loss.item()
                 predictions = output.logits.max(2)[1]
@@ -73,7 +87,7 @@ def reddit_testing_loop(
                 )
 
             except Exception as ex:
-                print(f"Testing failed as {ex}")
+                log(INFO, f"Testing failed as {ex}")
                 break
             test_len += len(target)
 
@@ -93,11 +107,10 @@ def google_speech_testing_loop(
     device: torch.device,
     net: Module,
     criterion: Module,
-    **kwargs,
-):
+) -> tuple[float, int, dict[str, float]]:
     """Implement Google Speech task's test loop."""
     test_loss = 0.0
-    test_len = 0.0
+    test_len = 0
     num_correct = 0
 
     net.eval()
@@ -117,7 +130,7 @@ def google_speech_testing_loop(
                 loss: torch.Tensor = criterion(output, target)
                 test_loss += loss.item()
             except Exception as ex:
-                print(f"Testing failed as {ex}")
+                log(INFO, f"Testing failed as {ex}")
                 break
 
         # Number of test samples
@@ -140,11 +153,10 @@ def general_testing_loop(
     device: torch.device,
     net: Module,
     criterion: Module,
-    **kwargs,
-):
+) -> tuple[float, int, dict[str, float]]:
     """Implement Shakespeare and Open Image task's test loop."""
     test_loss = 0.0
-    test_len = 0.0
+    test_len = 0
     num_correct = 0
 
     net.eval()
@@ -162,7 +174,7 @@ def general_testing_loop(
                 loss: torch.Tensor = criterion(output, target)
                 test_loss += loss.item()
             except Exception as ex:
-                print(f"Testing failed as {ex}")
+                log(INFO, f"Testing failed as {ex}")
                 break
 
         # Number of test samples
@@ -181,8 +193,8 @@ def general_testing_loop(
 
 
 def accuracy(
-    output: torch.Tensor, target: torch.Tensor, topk: Tuple[int] = (1,)
-) -> List[torch.Tensor]:
+    output: torch.Tensor, target: torch.Tensor, topk: tuple[int] = (1,)
+) -> list[torch.Tensor]:
     """Compute the accuracy over the k top predictions for the specified values of k."""
     with torch.no_grad():
         maxk = max(topk)
@@ -202,24 +214,6 @@ def accuracy(
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Implement main function for offline evaluation."""
-    import pickle
-    import time
-    from logging import INFO
-    from pathlib import Path
-
-    import psutil
-    from flwr.common import parameters_to_ndarrays
-    from flwr.common.logger import log
-    from flwr.common.typing import Parameters
-
-    from pollen_worker.datasets.nlp_util import get_collate_fn
-    from pollen_worker.pollen_utils import (
-        get_centralised_eval_set,
-        get_device,
-        get_model,
-    )
-    from pollen_worker.utils import set_parameters
-
     device = get_device()
 
     log(
@@ -233,20 +227,20 @@ def main(cfg: DictConfig) -> None:
     root_dir = Path(cfg.output_dir)
     results_file = root_dir / "offline_eval_results.csv"
     if results_file.exists():
-        print("Already evaluated this model. Exiting...")
+        log(INFO, "Already evaluated this model. Exiting...")
         return
 
     try:
         next(root_dir.glob("parameters_aggregated_*"))
     except StopIteration:
-        print("No parameters_aggregated_*. file found. Exiting...")
+        log(INFO, "No parameters_aggregated_*. file found. Exiting...")
         return
 
     # Get test_loop fn
     test_loop = get_testing_loop(name=cfg.task.name)
     # Get number of available cpu cores
     try:
-        n_cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        n_cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         n_cpus = psutil.cpu_count()
     # Get the test set
@@ -255,7 +249,7 @@ def main(cfg: DictConfig) -> None:
     testset, tokenizer = get_centralised_eval_set(
         name=cfg.task.name, n_clients=cfg.task.n_clients, seed=cfg.seed
     )
-    log(INFO, f"Test set size: {len(testset)}")  # type: ignore
+    log(INFO, f"Test set size: {len(testset)}")
     # Instantiate the test loader
     batch_sizes = {
         "reddit": 375,  # Fills up the VRAM
@@ -268,12 +262,12 @@ def main(cfg: DictConfig) -> None:
         batch_size=batch_sizes[cfg.task.name],
         shuffle=False,
         pin_memory=True,
-        collate_fn=get_collate_fn(tokenizer=tokenizer)
-        if tokenizer is not None
-        else None,
+        collate_fn=(
+            get_collate_fn(tokenizer=tokenizer) if tokenizer is not None else None
+        ),
         num_workers=n_cpus,
     )
-    with open(root_dir / ".hydra" / "config.yaml", "r") as f:
+    with open(root_dir / ".hydra" / "config.yaml", encoding="locale") as f:
         wandb_config = yaml.safe_load(f)
 
     log(INFO, f"Time to get the eval dataloader: {time.time() - s_t}")
@@ -281,16 +275,15 @@ def main(cfg: DictConfig) -> None:
 
     net = None
     # Get the models' performance
-
-    with wandb_init(
+    with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
         **cfg.wandb.setup,
         settings=wandb.Settings(start_method="thread"),
-        config=wandb_config,  # type: ignore
+        config=wandb_config,
     ):
-        torch.backends.cudnn.benchmark = True  # type: ignore
+        torch.backends.cudnn.benchmark = True
         for i, parameters_file in enumerate(root_dir.glob("parameters_aggregated_*")):
-            round = int(parameters_file.name.split("_")[-1])
+            current_round = int(parameters_file.name.split("_")[-1])
             with open(parameters_file, "rb") as f:
                 parameters = pickle.load(f)
             if isinstance(parameters, Parameters):
@@ -300,7 +293,7 @@ def main(cfg: DictConfig) -> None:
             net.to(device=device)
             net.eval()
             criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(device=device)
-            test_res = test_loop(
+            test_res = test_loop(  # type: ignore[call-arg]
                 testloader=testloader,
                 device=device,
                 net=net,
@@ -308,7 +301,7 @@ def main(cfg: DictConfig) -> None:
                 criterion=criterion,
             )
             if i == 0:
-                with open(results_file, "w") as f:
+                with open(results_file, "w", encoding="locale") as f:
                     metrics = ",".join([f"{k}" for k, _ in test_res[2].items()])
                     f.write(f"round,test_loss,{metrics}\n")
                 log(
@@ -317,14 +310,17 @@ def main(cfg: DictConfig) -> None:
                     " the average test loss, and metrics (%s) will be written",
                     metrics,
                 )
-            with open(results_file, "a") as f:
+            with open(results_file, "a", encoding="locale") as f:
                 metrics = ",".join([f"{v}" for _, v in test_res[2].items()])
-                f.write(f"{round},{test_res[0]},{metrics}\n")
+                f.write(f"{current_round},{test_res[0]},{metrics}\n")
 
-            log(INFO, f"Round {round}, test loss: {test_res[0]}, metrics: {metrics}")
+            log(
+                INFO,
+                f"Round {current_round}, test loss: {test_res[0]}, metrics: {metrics}",
+            )
             # break
             if cfg.use_wandb:
-                wandb.log({"test_loss": test_res[0], **test_res[2]}, step=round)
+                wandb.log({"test_loss": test_res[0], **test_res[2]}, step=current_round)
 
 
 if __name__ == "__main__":

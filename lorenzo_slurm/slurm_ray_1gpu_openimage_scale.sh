@@ -13,7 +13,9 @@ timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
 cd $HOME/projects/pollen_worker
-poetry shell
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 
 # Set up the redis password
 redis_password=$(uuidgen)

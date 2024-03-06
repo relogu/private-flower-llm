@@ -3,6 +3,7 @@
 __author__ = "Yuan Xu"
 
 import random
+from typing import Any
 
 import librosa
 import numpy as np
@@ -12,18 +13,18 @@ from torch.utils.data import Dataset
 random.seed(233)
 
 
-def should_apply_transform(prob=0.5):
+def should_apply_transform(prob: float = 0.5) -> bool:
     """Transform are only randomly applied with the given probability."""
     return random.random() < prob
 
 
-class LoadAudio(object):
+class LoadAudio:
     """Loads an audio into a numpy array."""
 
-    def __init__(self, sample_rate=16000):
+    def __init__(self, sample_rate: int = 16000) -> None:
         self.sample_rate = sample_rate
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         path = data["path"]
         if path:
@@ -37,13 +38,13 @@ class LoadAudio(object):
         return data
 
 
-class FixAudioLength(object):
+class FixAudioLength:
     """Either pads or truncates an audio into a fixed length."""
 
-    def __init__(self, time=1):
+    def __init__(self, time: int = 1) -> None:
         self.time = time
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         samples = data["samples"]
         sample_rate = data["sample_rate"]
@@ -55,13 +56,13 @@ class FixAudioLength(object):
         return data
 
 
-class ChangeAmplitude(object):
+class ChangeAmplitude:
     """Changes amplitude of an audio randomly."""
 
-    def __init__(self, amplitude_range=(0.7, 1.1)):
+    def __init__(self, amplitude_range: tuple[float, float] = (0.7, 1.1)) -> None:
         self.amplitude_range = amplitude_range
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         if not should_apply_transform():
             return data
@@ -70,16 +71,16 @@ class ChangeAmplitude(object):
         return data
 
 
-class ChangeSpeedAndPitchAudio(object):
+class ChangeSpeedAndPitchAudio:
     """Change the speed of an audio.
 
     This transform also changes the pitch of the audio.
     """
 
-    def __init__(self, max_scale=0.2):
+    def __init__(self, max_scale: float = 0.2) -> None:
         self.max_scale = max_scale
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         if not should_apply_transform():
             return data
@@ -94,13 +95,13 @@ class ChangeSpeedAndPitchAudio(object):
         return data
 
 
-class StretchAudio(object):
+class StretchAudio:
     """Stretches an audio randomly."""
 
-    def __init__(self, max_scale=0.2):
+    def __init__(self, max_scale: float = 0.2) -> None:
         self.max_scale = max_scale
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         if not should_apply_transform():
             return data
@@ -110,13 +111,13 @@ class StretchAudio(object):
         return data
 
 
-class TimeshiftAudio(object):
+class TimeshiftAudio:
     """Shifts an audio randomly."""
 
-    def __init__(self, max_shift_seconds=0.2):
+    def __init__(self, max_shift_seconds: float = 0.2) -> None:
         self.max_shift_seconds = max_shift_seconds
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         if not should_apply_transform():
             return data
@@ -135,11 +136,11 @@ class TimeshiftAudio(object):
 class AddBackgroundNoise(Dataset):
     """Adds a random background noise."""
 
-    def __init__(self, bg_dataset, max_percentage=0.45):
+    def __init__(self, bg_dataset: Any, max_percentage: float = 0.45) -> None:
         self.bg_dataset = bg_dataset
         self.max_percentage = max_percentage
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         if not should_apply_transform():
             return data
@@ -151,35 +152,40 @@ class AddBackgroundNoise(Dataset):
         return data
 
 
-class ToMelSpectrogram(object):
+class ToMelSpectrogram:
     """Creates the mel spectrogram from an audio.
 
     The result is a 32x32 matrix.
     """
 
-    def __init__(self, n_mels=32):
+    def __init__(self, n_mels: int = 32) -> None:
         self.n_mels = n_mels
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> Any:
         """Implement the execution function."""
         samples = data["samples"]
         sample_rate = data["sample_rate"]
         s = librosa.feature.melspectrogram(
             y=samples, sr=sample_rate, n_mels=self.n_mels
         )
-        data["mel_spectrogram"] = librosa.power_to_db(s, ref=np.max)  # type: ignore
+        data["mel_spectrogram"] = librosa.power_to_db(s, ref=np.max)
         return data
 
 
-class ToTensor(object):
+class ToTensor:
     """Converts into a tensor."""
 
-    def __init__(self, np_name, tensor_name, normalize=None):
+    def __init__(
+        self,
+        np_name: str,
+        tensor_name: str,
+        normalize: tuple[float, float] | None = None,
+    ) -> None:
         self.np_name = np_name
         self.tensor_name = tensor_name
         self.normalize = normalize
 
-    def __call__(self, data):
+    def __call__(self, data: Any) -> torch.Tensor:
         """Implement the execution function."""
         tensor = torch.FloatTensor(data[self.np_name])
         if self.normalize is not None:

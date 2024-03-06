@@ -5,9 +5,11 @@ avoids any memory or processing intensive operations in the _init_ function. As 
 virtual clients can be used to simulate a large number of clients on a single machine
 even if many are spawned at once.
 """
+
 from collections import OrderedDict
+from collections.abc import Callable
 from logging import INFO
-from typing import Any, Callable, Dict, Optional, Union, cast
+from typing import Any, cast
 
 import flwr as fl
 import torch
@@ -37,7 +39,7 @@ class VirtualClient(fl.client.NumPyClient):
         self,
         *,
         name: str,
-        cid: Union[int, str],
+        cid: int | str,
     ) -> None:
         self.name = name
         self.cid = cid
@@ -48,11 +50,17 @@ class VirtualClient(fl.client.NumPyClient):
         """Implement the string representation."""
         return f"VirtualClient(name={self.name}, cid={self.cid})"
 
-    def get_properties(self, config: Config) -> Dict[str, Scalar]:
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
         return {}
 
-    def get_parameters(self, config, net=None, device="cpu", to_numpy=True) -> NDArrays:
+    def get_parameters(
+        self,
+        config: Config,
+        net: Module = None,
+        device: str = "cpu",
+        to_numpy: bool = True,
+    ) -> NDArrays:
         """Implement how to get parameters."""
         if net is None:
             net = get_model(name=self.name)
@@ -80,15 +88,16 @@ class VirtualClient(fl.client.NumPyClient):
     def set_parameters(
         self,
         parameters: NDArrays,
-        net: Optional[Module] = None,
-        device: Union[str, device_type] = "cpu",
+        net: Module | None = None,
+        device: str | device_type = "cpu",
     ) -> Module:
         """Implement how to set parameters."""
         if net is None:
             net = get_model(name=self.name)
         net.eval()
-        keys = [k for k in net.state_dict().keys() if "bn" not in k]
-        params_dict = zip(keys, parameters)
+        module_state_dict = net.state_dict()
+        keys = [k for k in module_state_dict if "bn" not in k]
+        params_dict = zip(keys, parameters, strict=False)
         state_dict = OrderedDict(
             {k: torch.tensor(v, device=device) for k, v in params_dict}
         )
@@ -103,7 +112,7 @@ class VirtualClient(fl.client.NumPyClient):
         optimizer: Optimizer,
         criterion: Module,
         epochs: int,
-        **kwargs,
+        **kwargs: Any,
     ) -> tuple[Module, dict[Any, Any]]:
         """Train the model on the training set of single client."""
         log(INFO, f"VirtualClient._train_loop :: FAKE with cid {self.cid}")
@@ -135,8 +144,8 @@ class VirtualClient(fl.client.NumPyClient):
         return net, {}
 
     def fit(
-        self, parameters: NDArrays, config: Dict
-    ) -> tuple[NDArrays, int, Union[Dict[str, Scalar], dict[Any, Any]]]:
+        self, parameters: NDArrays, config: dict
+    ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
         """Implement the fit step."""
         # log(INFO, f'VirtualClient.fit :: {config}')
         if "device" not in config:
@@ -163,9 +172,11 @@ class VirtualClient(fl.client.NumPyClient):
                 # the device to be used for pinning the memory
                 pin_memory_device=str(config["device"]),
                 # builds batches from samples
-                collate_fn=get_collate_fn(tokenizer=tokenizer)
-                if tokenizer is not None
-                else None,
+                collate_fn=(
+                    get_collate_fn(tokenizer=tokenizer)
+                    if tokenizer is not None
+                    else None
+                ),
                 # NOTE: Default arguments
                 # how to draw sample from the dataset
                 sampler=None,
@@ -177,7 +188,7 @@ class VirtualClient(fl.client.NumPyClient):
                 worker_init_fn=None,
                 multiprocessing_context=None,
                 # This allows to maintain the workers
-                prefetch_factor=2,
+                prefetch_factor=2 if config["n_workers"] > 0 else None,
                 # PRNG to use for random sampling
                 generator=None,
                 persistent_workers=False,
@@ -189,28 +200,28 @@ class VirtualClient(fl.client.NumPyClient):
         n_samples = (
             int(config["batch_size"] * config["local_epochs"])
             if ds is None
-            else len(ds)  # type: ignore
+            else len(ds)
         )
         # Initialize the model and set its parameters
         net = self.set_parameters(parameters=parameters, device=config["device"])
         net.to(device=config["device"])
         net.train()
         # Train the model
-        self._train_loop = (  # type: ignore[assignment]
-            get_training_loop(name=self.name)
+        self._train_loop = (  # type: ignore[method-assign]
+            get_training_loop(name=self.name)  # type: ignore[assignment]
             if not config["is_fake"]
             else self._train_loop
-        )  # type: ignore[assignment]
+        )
         optimizer = get_optimizer(name=self.name, model=net)
         criterion = torch.nn.CrossEntropyLoss(reduction="mean").to(
             device=config["device"]
         )
         net, train_metrics = self._train_loop(
-            trainloader=trainloader,  # type: ignore
+            trainloader=trainloader,
             net=net,
             device=config["device"],
             epochs=config["local_epochs"],
-            tokenizer=tokenizer,  # type: ignore
+            tokenizer=tokenizer,
             optimizer=optimizer,
             criterion=criterion,
             batch_size=config["batch_size"],
@@ -221,13 +232,15 @@ class VirtualClient(fl.client.NumPyClient):
     def evaluate(
         self,
         parameters: NDArrays,
-        config: Dict[str, Scalar],
-    ) -> tuple[float, int, Dict[str, Scalar]]:
+        config: dict[str, Scalar],
+    ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         return 0.0, 0, {"local_accuracy": 0.0}
 
 
-def gen_client_fn(name: str = "openimage", **kwargs) -> Callable[[int], NumPyClient]:
+def gen_client_fn(
+    name: str = "openimage", **kwargs: Any
+) -> Callable[[int], NumPyClient]:
     """Return generic `client_fn` for Flower Framework."""
 
     def client_fn(client_id: int) -> NumPyClient:
@@ -243,11 +256,9 @@ if __name__ == "__main__":
     client = VirtualClient(
         name="openimage",
         cid=0,
-        device=get_device(),  # type: ignore
-        n_workers=0,  # type: ignore
     )
     log(INFO, f"VirtualClient.__main__ :: created {client}")
-    config = {
+    config: Config = {
         "batch_size": 32,
         "epochs": 1,
     }

@@ -1,5 +1,7 @@
 """Training loops for the different tasks of the Pollen paper."""
-from typing import Dict, Tuple
+
+from collections.abc import Callable
+from typing import Any
 
 import torch
 from flwr.common import Scalar
@@ -12,7 +14,7 @@ from transformers.modeling_outputs import MaskedLMOutput
 from pollen_worker.datasets.nlp_util import mask_tokens
 
 
-def get_training_loop(name: str):
+def get_training_loop(name: str) -> Callable[..., tuple[Module, dict[str, Scalar]]]:
     """Return the train loop function given the task's name."""
     if name == "reddit":
         return reddit_training_loop
@@ -22,7 +24,7 @@ def get_training_loop(name: str):
         return general_training_loop
 
 
-def get_input_shapes(name: str):
+def get_input_shapes(name: str) -> tuple[int, ...]:
     """Return the input shapes given the task's name."""
     if name == "reddit":
         return (64,)
@@ -41,8 +43,8 @@ def reddit_training_loop(
     epochs: int,
     optimizer: Optimizer,
     tokenizer: AlbertTokenizer,
-    **kwargs,
-) -> Tuple[Module, Dict[str, Scalar]]:
+    **kwargs: Any,
+) -> tuple[Module, dict[str, Scalar]]:
     """Implement Reddit task's train loop."""
     current_loss = 0.0
     accuracy = 0.0
@@ -98,8 +100,8 @@ def google_speech_training_loop(
     epochs: int,
     optimizer: Optimizer,
     criterion: Module,
-    **kwargs,
-) -> Tuple[Module, Dict[str, Scalar]]:
+    **kwargs: Any,
+) -> tuple[Module, dict[str, Scalar]]:
     """Implement Google Speech task's train loop."""
     current_loss = 0.0
     accuracy = 0.0
@@ -143,8 +145,8 @@ def general_training_loop(
     epochs: int,
     optimizer: Optimizer,
     criterion: Module,
-    **kwargs,
-) -> Tuple[Module, Dict[str, Scalar]]:
+    **kwargs: Any,
+) -> tuple[Module, dict[str, Scalar]]:
     """Implement Shakespeare and Open Image task's train loop."""
     current_loss = 0.0
     accuracy = 0.0

@@ -8,6 +8,8 @@
 #SBATCH --mem=100G
 
 cd /nfs-share/aai30/projects/pollen_worker
-poetry shell
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 
 wandb agent camlsys/pollen/fqhsueci

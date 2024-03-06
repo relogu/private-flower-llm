@@ -2,18 +2,64 @@
 
 Used for the openimages task in the Pollen paper.
 """
-import math
 
+import math
+from typing import Any
+
+import torch
 from torch import nn
 from torch.hub import load_state_dict_from_url
+
+
+class BasicBlock(nn.Module):
+    """Basic block for ResNet."""
+
+    expansion = 1
+
+    def __init__(
+        self, inplanes: Any, planes: Any, stride: int = 1, downsample: Any | None = None
+    ) -> None:
+        super().__init__()
+        self.conv1 = conv3x3(inplanes, planes, stride)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3(planes, planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Implement forward pass."""
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
 
 
 class ResNet(nn.Module):
     """ResNet model from torchvision."""
 
-    def __init__(self, block, layers, num_classes=1000, in_channels=3):
+    def __init__(
+        self,
+        block: type[BasicBlock],
+        layers: list[int],
+        num_classes: int = 1000,
+        in_channels: int = 3,
+    ) -> None:
+        super().__init__()
         self.inplanes = 64
-        super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(
             in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
         )
@@ -35,7 +81,9 @@ class ResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(
+        self, block: type[BasicBlock], planes: int, blocks: int, stride: int = 1
+    ) -> nn.Sequential:
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -57,7 +105,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Implement forward pass."""
         x = self.conv1(x)
         x = self.bn1(x)
@@ -76,49 +124,14 @@ class ResNet(nn.Module):
         return x
 
 
-def conv3x3(in_planes, out_planes, stride=1):
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding."""
     return nn.Conv2d(
         in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False
     )
 
 
-class BasicBlock(nn.Module):
-    """Basic block for ResNet."""
-
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        """Implement forward pass."""
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-
-def resnet34(pretrained=False, **kwargs):
+def resnet34(pretrained: bool = False, **kwargs: Any) -> ResNet:
     """Construct a ResNet-34 model.
 
     Args:

@@ -36,6 +36,7 @@ gen_on_fit_config_fn:
 
 # Wandb configuration
 use_wandb: false
+
 wandb:
   setup:
     project: pollen

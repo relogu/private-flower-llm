@@ -4,11 +4,11 @@ Based on the implementation of FedScale: Benchmarking Model and System Performan
 Federated Learning at Scale. ICML 2022: 11814-11827 with repo:
 https://github.com/SymbioticLab/FedScale
 """
-from __future__ import print_function
 
-import os
-import os.path
+import warnings
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -26,22 +26,18 @@ OPENIMAGE_DTYPES = {
     "label_id": np.int64,
 }
 
-train_transform = transforms.Compose(
-    [
-        transforms.Resize((256, 256)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ]
-)
+train_transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
-test_transform = transforms.Compose(
-    [
-        transforms.Resize((256, 256)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ]
-)
+test_transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
 
 class OpenImage(Dataset):
@@ -49,13 +45,13 @@ class OpenImage(Dataset):
 
     def __init__(
         self,
-        root,
-        client_id=None,
-        dataset="train",
-        transform=train_transform,
-        target_transform=torch.tensor,
-        imgview=False,
-    ):
+        root: Path,
+        client_id: int | None = None,
+        dataset: str = "train",
+        transform: Callable[[Any], torch.Tensor] | None = train_transform,
+        target_transform: Callable[[Any], torch.Tensor] | None = torch.tensor,
+        imgview: bool = False,
+    ) -> None:
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
@@ -65,18 +61,18 @@ class OpenImage(Dataset):
         if not self._check_exists():
             raise RuntimeError("Dataset not found. You have to download it")
 
-        self.path = os.path.join(self.root, self.data_file)
+        self.path = self.root / self.data_file
         # load data and targets
         self.data, self.targets = self._load_file()
         self.imgview = imgview
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple[Any, Any | int]:
         """Return the sample at current `index`."""
-        imgName, target = self.data[index], int(self.targets[index])
+        img_name, target = self.data[index], int(self.targets[index])
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.open(os.path.join(self.path, imgName))
+        img = Image.open(self.path / img_name)
 
         # avoid channel error
         if img.mode != "RGB":
@@ -90,14 +86,20 @@ class OpenImage(Dataset):
 
         return img, target
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.data)
 
-    def _check_exists(self):
-        return os.path.exists(os.path.join(self.root, self.data_file))
+    def _check_exists(self) -> bool:
+        return Path.exists(self.root / self.data_file)
 
-    def _load_meta_data(self, path):
+    def _load_meta_data(self, path: Path) -> tuple[list, list]:
+        # Filter deprecation warning from incompatible pandas and pyarrow versions
+        warnings.filterwarnings(
+            action="ignore",
+            category=DeprecationWarning,
+            message="Passing a BlockManager to DataFrame*",
+        )
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -108,7 +110,7 @@ class OpenImage(Dataset):
 
         return dataframe["sample_path"].tolist(), dataframe["label_id"].tolist()
 
-    def _load_file(self):
+    def _load_file(self) -> tuple[list, list]:
         path = Path(
             self.root
             / "client_data_mapping"
@@ -121,10 +123,10 @@ class OpenImage(Dataset):
         return datas, labels
 
 
-def _dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx: int, client_ids: list[int], dataset: str) -> list:
     clients = []
     time.time()
-    for _i, client_id in enumerate(client_ids):
+    for client_id in client_ids:
         ds = OpenImage(
             root=Path("/datasets/FedScale/openImg"),
             client_id=client_id,
@@ -134,7 +136,7 @@ def _dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100) -> None:
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -150,9 +152,10 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
     cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for cnt, (begin, end) in enumerate(
+        chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs)
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
-        cnt += 1
     pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
@@ -162,25 +165,27 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
         clients.extend(out)
     log(INFO, f"Pool outputs concat length: {len(clients)}")
 
-    df = pd.DataFrame(clients, columns=["client_id", "samples"])
-    log(INFO, f"Dataframe: {df.head()}")
-    df.to_parquet(
+    clients_df = pd.DataFrame(clients, columns=["client_id", "samples"])
+    log(INFO, f"Dataframe: {clients_df.head()}")
+    clients_df.to_parquet(
         f"/datasets/FedScale/openImg/client_data_mapping/{dataset}_clients_dict.parquet"
     )
     s_t = time.time()
-    df = pd.read_parquet(
+    parquet_clients_df = pd.read_parquet(
         f"/datasets/FedScale/openImg/client_data_mapping/{dataset}_clients_dict.parquet"
     )
-    log(INFO, f"Dataframe: {df.head()}")
-    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    log(INFO, f"Dataframe: {parquet_clients_df.head()}")
+    log(INFO, f"Read parquet file in {time.time() - s_t} seconds")
     s_t = time.time()
     samples = []
     for i in client_ids:
-        samples.append(int(df[df["client_id"] == i]["samples"]))
-    log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
+        samples.append(
+            int(parquet_clients_df[parquet_clients_df["client_id"] == i]["samples"])
+        )
+    log(INFO, f"Getting all the samples took {time.time() - s_t} seconds")
 
 
-def _create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train") -> None:
     dataframe = pd.read_csv(
         Path(f"/datasets/FedScale/openImg/client_data_mapping/{dataset}.csv"),
         engine="pyarrow",
@@ -215,7 +220,7 @@ if __name__ == "__main__":
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:

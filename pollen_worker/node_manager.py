@@ -19,17 +19,19 @@ In a multinode setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
+
 import gc
 import os
 import pickle
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from logging import DEBUG, ERROR
-from multiprocessing import resource_tracker  # type: ignore[attr-defined]
+from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, cast
 
 import cloudpickle
 import flwr as fl
@@ -47,7 +49,7 @@ from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from hydra.utils import call
-from multiprocess import Queue, set_start_method  # type: ignore
+from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig
 
@@ -68,7 +70,7 @@ def allocate_shm(
     parameters: NDArrays,
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,
-) -> Tuple[NDArrays, np.ndarray, np.ndarray, np.ndarray, SharedMemory]:
+) -> tuple[NDArrays, np.ndarray, np.ndarray, np.ndarray, SharedMemory]:
     """Allocate a Shared Memory object and backed arrays."""
     # Allocate memory for parameters and num_samples
     nbytes_params = [val.nbytes for val in parameters]
@@ -86,7 +88,7 @@ def allocate_shm(
         shm = SharedMemory(name=name)
     params_sh: NDArrays = [
         np.ndarray(shape=x.shape, dtype=x.dtype, buffer=shm.buf[y[0] : y[1]])
-        for x, y in zip(parameters, array_bounds)
+        for x, y in zip(parameters, array_bounds, strict=False)
     ]
     # Create shared memory for num_samples, train loss, and train accuracy
     num_samples_sh: np.ndarray[Any, np.dtype[Any]] = np.ndarray(
@@ -124,7 +126,7 @@ def write_to_fit_result_shm(
     buffer_backed_train_accuracy[0] = new_train_accuracy
 
 
-class Worker(mp.Process):  # type: ignore
+class Worker(mp.Process):
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -137,7 +139,7 @@ class Worker(mp.Process):  # type: ignore
         run_uuid: str,
         concurrency: int,
     ) -> None:
-        super(Worker, self).__init__()
+        super().__init__()
         self.worker_id = worker_id
         self.device = device
         self.client_fn: Callable[[int], NumPyClient] = client_fn
@@ -159,9 +161,9 @@ class Worker(mp.Process):  # type: ignore
         tmp_client = self.client_fn(client_id)
 
         done = False
-        fit_trained_weights: Optional[NDArrays] = None
-        fit_num_samples: Optional[int] = None
-        train_metrics: Optional[Dict[str, Scalar]] = None
+        fit_trained_weights: NDArrays | None = None
+        fit_num_samples: int | None = None
+        train_metrics: dict[str, Scalar] | None = None
         while not done:
             try:
                 # Call fit on shared parameters
@@ -317,19 +319,19 @@ class NodeManager(fl.client.NumPyClient):
     def __init__(
         self,
         client_fn: Callable[[int], NumPyClient],
-        warm_up_config: Dict[str, Scalar],
+        warm_up_config: dict[str, Scalar],
         run_uuid: str,
         placement_policy: str,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
-        self.warm_up_config: Dict[str, Scalar] = warm_up_config
+        self.warm_up_config: dict[str, Scalar] = warm_up_config
         self.properties = None
-        self.all_gpus: List[GPU] = list(nvsmi.get_gpus())
+        self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
 
         # One task_queue per GPU make this ctypes array
-        self.task_queues: Dict[str, QueueType] = {
+        self.task_queues: dict[str, QueueType] = {
             f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus
         }
         self.result_queue: QueueType = Queue()  # One result_queue for all GPUs
@@ -367,10 +369,10 @@ class NodeManager(fl.client.NumPyClient):
         # Allocate shared memory for partial aggregation
         # and create workers
         worker_cnt = 0
-        self.workers: Dict[str, List[Worker]] = defaultdict(list)
-        self.shared_local_agg: Dict[
+        self.workers: dict[str, list[Worker]] = defaultdict(list)
+        self.shared_local_agg: dict[
             str,
-            Tuple[
+            tuple[
                 NDArrays,
                 np.ndarray[Any, np.dtype[Any]],
                 np.ndarray[Any, np.dtype[Any]],
@@ -409,8 +411,8 @@ class NodeManager(fl.client.NumPyClient):
         # Start all the workers
         self._start_workers({})
 
-    def _get_node_properties(self) -> Dict[str, Scalar]:
-        device_info: Dict[str, Device] = {}
+    def _get_node_properties(self) -> dict[str, Scalar]:
+        device_info: dict[str, Device] = {}
         # Get hardware accelerator properties
         tmp_client: NumPyClient = self.client_fn(0)
         tmp_params = tmp_client.get_parameters(config={})
@@ -419,10 +421,7 @@ class NodeManager(fl.client.NumPyClient):
                 get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
             )
-        if (
-            torch._C._is_mps_available()  # type: ignore[attr-defined]
-            and torch._C.has_mps  # type: ignore[attr-defined]
-        ):
+        if torch._C._mps_is_available() and torch._C.has_mps:
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
@@ -433,7 +432,7 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         try:
-            cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+            cpus = len(psutil.Process().cpu_affinity())
         except AttributeError:
             cpus = psutil.cpu_count()
         # Get general node properties
@@ -448,28 +447,30 @@ class NodeManager(fl.client.NumPyClient):
 
         return {"node": str(self.node)}
 
-    def get_properties(self, config: Config) -> Dict[str, Scalar]:
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
         return self.properties if self.properties else {}
 
-    def get_parameters(self, config) -> NDArrays:
+    def get_parameters(self, config: Config) -> NDArrays:
         """Implement how to get parameters."""
         tmp_client: NumPyClient = self.client_fn(0)
         return tmp_client.get_parameters(config=config)
 
-    def _start_workers(self, config) -> None:
-        for _, worker_list in self.workers.items():
+    def _start_workers(self, config: Config) -> None:
+        for worker_list in self.workers.values():
             for worker in worker_list:
                 if not worker.is_alive():
                     worker.start()
 
-    def fit(self, parameters, config) -> tuple[NDArrays, int, dict[str, Any]]:
+    def fit(
+        self, parameters: NDArrays, config: Config
+    ) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
         # TODO: Make this dropouts-ready
         # Extract assignments from config
-        assignment_config: Dict[str, str] = {}
-        for device in self.workers.keys():
-            assignment_config[device] = config.pop(device)
+        assignment_config: dict[str, str] = {}
+        for device in self.workers:
+            assignment_config[device] = str(config.pop(device))
         # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
         self.config_shm.buf[: len(config_bytes)] = config_bytes
@@ -517,9 +518,9 @@ class NodeManager(fl.client.NumPyClient):
 
         # Create cid->GPU mapping
         cid_gpu_mapping = {}
-        for device in self.workers.keys():
+        for device in self.workers:
             list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
-            cid_gpu_mapping.update({cid: device for cid in list_ids_for_this_gpu})
+            cid_gpu_mapping.update(dict.fromkeys(list_ids_for_this_gpu, device))
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
@@ -557,7 +558,7 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Prepare statistics to be sent to the server
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
-        ## Node aggregation
+        # Node aggregation
         node_trained_params = aggregate(
             [(val[0], val[1][0]) for val in self.shared_local_agg.values()]
         )
@@ -588,7 +589,9 @@ class NodeManager(fl.client.NumPyClient):
             },
         )
 
-    def evaluate(self, parameters, config) -> tuple[float, int, dict[Any, Any]]:
+    def evaluate(
+        self, parameters: NDArrays, config: Config
+    ) -> tuple[float, int, dict[Any, Any]]:
         """Implement the evaluation step."""
         return 0.0, 1, {}
 
@@ -630,9 +633,9 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Start Flower client
-    fl.client.start_numpy_client(
+    fl.client.start_client(
         server_address=cfg.flwr_address,
-        client=node_manager,
+        client=node_manager.to_client(),
     )
 
 

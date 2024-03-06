@@ -3,15 +3,15 @@
 Starts a Flower server which awaits connections from Pollen node managers. It supports
 using wandb for logging and hydra for exeperiment configuration.
 """
+
 import json
+import time
 from logging import DEBUG, INFO
 from pathlib import Path
-from typing import Dict, Union
 
 import flwr as fl
 import hydra
 import transformers
-from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from hydra.utils import call, instantiate
@@ -42,10 +42,9 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Get the list of cids
-    import time
 
     s_t = time.time()
-    cid_samples_dict: Dict[Union[str, int], int]
+    cid_samples_dict: dict[str | int, int]
     try:
         cid_samples_dict = get_clients_population_dict(
             name=cfg.task.name,
@@ -61,7 +60,7 @@ def main(cfg: DictConfig) -> None:
 
     def get_client_fn(
         cid: int,
-    ) -> ClientLike:
+    ) -> VirtualClient:
         return VirtualClient(
             name=cfg.task.name,
             cid=cid,
@@ -69,7 +68,7 @@ def main(cfg: DictConfig) -> None:
 
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
     # Storing the parameters to the hydra output directory
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     strategy = instantiate(
         cfg.task.strategy,
         saving_path=Path(hydra_cfg["runtime"]["output_dir"]),  # type: ignore[index]
@@ -78,7 +77,10 @@ def main(cfg: DictConfig) -> None:
         fraction_fit=(1.0 / n_total_clients),
         on_fit_config_fn=on_fit_config_fn,
         initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
+            VirtualClient(
+                name=cfg.task.name,
+                cid=0,
+            ).get_parameters(config={}, net=None)
         ),
         fit_metrics_aggregation_fn=weighted_average,
         freq=cfg.save_freq,
@@ -88,11 +90,11 @@ def main(cfg: DictConfig) -> None:
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # start simulation
-    with wandb_init(
+    with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
         **cfg.wandb.setup,
         settings=wandb.Settings(start_method="thread"),
-        config=wandb_config,  # type: ignore
+        config=wandb_config,
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
         saving_path = Path(hydra_cfg["runtime"]["output_dir"])  # type: ignore[index]
@@ -101,7 +103,7 @@ def main(cfg: DictConfig) -> None:
             server_address=cfg.flwr_address,
             server=PollenServer(
                 cids=cid_samples_dict,
-                client_fn=get_client_fn,
+                client_fn=lambda x: get_client_fn(x).to_client(),
                 strategy=strategy,
                 client_manager=PollenClientManager(),
                 placement_policy=cfg.placement_policy,
@@ -111,7 +113,7 @@ def main(cfg: DictConfig) -> None:
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
         )
-        with open(saving_path / "history.json", "w") as f:
+        with open(saving_path / "history.json", "w", encoding="locale") as f:
             json.dump(hist.__dict__, f)
 
 

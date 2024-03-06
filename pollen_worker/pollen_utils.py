@@ -3,13 +3,15 @@
 It contains both task-independent utility functions and task-specific ones for the
 Pollen paper.
 """
+
 # TODO: split the codebase into task-specific and task-independent units.
 from argparse import ArgumentTypeError
+from collections.abc import Callable
 from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, cast
 
 import pandas as pd
 import psutil
@@ -22,12 +24,15 @@ from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
-from transformers import AlbertTokenizer
+from torchvision import models
+from transformers import AlbertForMaskedLM, AlbertTokenizer
 
-from pollen_worker.datasets.google_speech import SPEECH
+from pollen_worker.datasets.google_speech import Speech
 from pollen_worker.datasets.nlp_util import TextDataset
 from pollen_worker.datasets.openimage import OpenImage
-from pollen_worker.datasets.shakespeare import SHAKESPEARE, SHAKESPEARE_LOADED
+from pollen_worker.datasets.shakespeare import Shakespeare, ShakespeareLoaded
+from pollen_worker.models.resnet_util import resnet34
+from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 from pollen_worker.utils import chunks_idx
 
 
@@ -41,10 +46,7 @@ def get_device() -> device_type:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif (
-        torch.backends.mps.is_available()  # type: ignore
-        and torch.backends.mps.is_built()  # type: ignore
-    ):
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = "mps"
     return cast(device_type, device)
 
@@ -66,8 +68,8 @@ def get_table_from_pyarrow_buffer(buffer: pa.Buffer) -> pa.Table:
 
 
 def aggregate_pytorch_tensor(
-    results: List[Tuple[List[torch.Tensor], int]]
-) -> List[torch.Tensor]:
+    results: list[tuple[list[torch.Tensor], int]],
+) -> list[torch.Tensor]:
     """Compute weighted average using PyTorch Tensors."""
     # Calculate the total number of examples used during training
     num_examples_total = sum([num_examples for _, num_examples in results])
@@ -82,17 +84,17 @@ def aggregate_pytorch_tensor(
     # RuntimeError: Expected all tensors to be on the same device,
     # but found at least two devices, cuda:0 and cuda:1!
     # We have to deal with the worker controlling multiple GPUs
-    weights_prime: List[torch.Tensor] = [
+    weights_prime: list[torch.Tensor] = [
         reduce(torch.add, layer_updates) / num_examples_total
-        for layer_updates in zip(*weighted_weights)
+        for layer_updates in zip(*weighted_weights, strict=False)
     ]
     return weights_prime
 
 
 def partial_aggregation_pytorch_tensor(
-    old_result: Tuple[List[torch.Tensor], int],
-    new_result: Tuple[List[torch.Tensor], int],
-) -> Tuple[List[torch.Tensor], int]:
+    old_result: tuple[list[torch.Tensor], int],
+    new_result: tuple[list[torch.Tensor], int],
+) -> tuple[list[torch.Tensor], int]:
     """Compute partial aggregatated FL results through weighted average."""
     # Calculate the total number of examples used during training
     if old_result[0]:  # Not empty
@@ -106,10 +108,10 @@ def partial_aggregation_pytorch_tensor(
     return old_result
 
 
-def partial_aggregation_NDArrays(
-    old_result: Tuple[NDArrays, int],
-    new_result: Tuple[NDArrays, int],
-) -> Tuple[NDArrays, int]:
+def partial_aggregation_ndarrays(
+    old_result: tuple[NDArrays, int],
+    new_result: tuple[NDArrays, int],
+) -> tuple[NDArrays, int]:
     """Compute partial aggregatated FL results through weighted average."""
     # Calculate the total number of examples used during training
     if old_result[0]:  # Not empty
@@ -146,23 +148,18 @@ def get_model(name: str) -> Module:
     """Return the model given the task's name."""
     # NOTE: we may want to load this once and then deepcopying it when needed
     if name == "shakespeare":
-        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "shakespeare_memory":
-        from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 
         return ShakespeareLeafNet()
     if name == "reddit":
-        from transformers import AlbertForMaskedLM
 
-        return AlbertForMaskedLM.from_pretrained("albert-base-v2")  # type: ignore
+        return AlbertForMaskedLM.from_pretrained("albert-base-v2")
     if name == "google_speech":
-        from pollen_worker.models.resnet_util import resnet34
 
         return resnet34(num_classes=35, in_channels=1)
     if name == "openimage":
-        from torchvision import models
 
         return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
 
@@ -174,16 +171,16 @@ def get_client_ds(
     dataset_root: Path = Path("/datasets/FedScale/"),
     name: str = "openimage",
     dataset: str = "train",
-) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
+) -> tuple[Dataset, AlbertTokenizer | None]:
     """Return the dataset object given the task's name."""
     if name == "shakespeare":
-        ds = SHAKESPEARE(
+        ds = Shakespeare(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
         return ds, None
 
     if name == "shakespeare_memory":
-        ds = SHAKESPEARE_LOADED(
+        ds = ShakespeareLoaded(
             dataset_root / "leaf_shakespeare", client_id=cid, dataset=dataset
         )
         return ds, None
@@ -192,7 +189,7 @@ def get_client_ds(
         tokenizer = AlbertTokenizer.from_pretrained("albert-base-v2")
         ds = TextDataset(
             model="albert-base-v2",
-            root_dir=dataset_root / "reddit" / "reddit",  # type: ignore
+            root_dir=dataset_root / "reddit" / "reddit",
             tokenizer=tokenizer,
             examples=None,
             n_jobs=100,
@@ -204,7 +201,7 @@ def get_client_ds(
         return ds, tokenizer
 
     if name == "google_speech":
-        ds = SPEECH(
+        ds = Speech(
             root=dataset_root / "google_speech" / "google_speech",
             client_id=cid,
             dataset=dataset,
@@ -222,10 +219,10 @@ def get_client_ds_fn(
     dataset_root: Path = Path("/datasets/FedScale/"),
     name: str = "openimage",
     dataset: str = "train",
-) -> Callable[[int], Tuple[Dataset, Optional[AlbertTokenizer]]]:
+) -> Callable[[int], tuple[Dataset, AlbertTokenizer | None]]:
     """Return the function that returns the dataset given the task's name."""
 
-    def get_ds_fn(client_id: int) -> Tuple[Dataset[Any], Optional[AlbertTokenizer]]:
+    def get_ds_fn(client_id: int) -> tuple[Dataset[Any], AlbertTokenizer | None]:
         return get_client_ds(
             cid=client_id,
             dataset_root=dataset_root,
@@ -240,7 +237,7 @@ def get_optimizer(name: str, model: Module) -> Optimizer:
     """Return the optimiser object given the task's name."""
     optimizer = None
     lr = 0.05
-    if name == "shakespeare" or name == "shakespeare_memory":
+    if name in {"shakespeare", "shakespeare_memory"}:
         lr = 0.8
     elif name == "reddit":
         lr = 4e-5
@@ -281,7 +278,7 @@ def get_clients_population_dict(
     seed: int,
     dataset: str = "train",
     batch_size: int = 20,
-) -> Dict[Union[str, int], int]:
+) -> dict[str | int, int]:
     """Return the client-samples mapping given the task's name."""
     dataframe = pd.read_parquet(
         _get_dataset_root(name)
@@ -302,7 +299,7 @@ def get_clients_population_dict(
 def _get_dataset_root(name: str) -> Path:
     if name == "reddit":
         return Path("/datasets/FedScale/reddit/reddit")
-    if name == "shakespeare" or name == "shakespeare_memory":
+    if name in {"shakespeare", "shakespeare_memory"}:
         return Path("/datasets/FedScale/leaf_shakespeare")
     if name == "google_speech":
         return Path("/datasets/FedScale/google_speech/google_speech")
@@ -313,8 +310,8 @@ def _get_dataset_root(name: str) -> Path:
 
 
 def _get_list_of_clients_ds(
-    name: str, cids: List[int], dataset: str
-) -> tuple[list[Any], Union[AlbertTokenizer, None]]:
+    name: str, cids: list[int], dataset: str
+) -> tuple[list[Any], AlbertTokenizer | None]:
     clients_test_sets = []
     tokenizer = None
     for cid in cids:
@@ -326,8 +323,8 @@ def _get_list_of_clients_ds(
 def get_centralised_eval_set(
     name: str,
     seed: int,
-    n_clients: Union[int, float],
-) -> Tuple[Dataset, Optional[AlbertTokenizer]]:
+    n_clients: int | float,
+) -> tuple[Dataset, AlbertTokenizer | None]:
     """Return the centralised evaluation dataset given the task's name."""
     # Get the list of cids
     cid_samples_dict = get_clients_population_dict(
@@ -339,12 +336,11 @@ def get_centralised_eval_set(
     # Set up the parallelisation
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
         n_jobs = cpus
-    clients_test_sets = []
     pool_inputs = []
     pool = Pool(n_jobs)
     if isinstance(n_clients, int):
@@ -362,7 +358,7 @@ def get_centralised_eval_set(
         else:
             raise ValueError("n_clients percentage must be greater than 0")
     else:
-        raise ValueError("n_clients must be either an int or a float")
+        raise TypeError("n_clients must be either an int or a float")
 
     # Split the clients in chunks
     for begin, end in chunks_idx(range(len(client_ids)), n_jobs):
@@ -371,9 +367,9 @@ def get_centralised_eval_set(
     pool.close()
     pool.join()
     # Retrieve the results fro the pool
+    clients_test_sets = []
     for x in pool_outputs:
-        for a in x[0]:
-            clients_test_sets.append(a)
+        clients_test_sets.extend(x[0])
     tokenizer = pool_outputs[0][1]
     # Concatenate the clients test sets
     testset = ConcatDataset(clients_test_sets)

@@ -4,12 +4,17 @@ Based on the implementation of FedScale: Benchmarking Model and System Performan
 Federated Learning at Scale. ICML 2022: 11814-11827 with repo:
 https://github.com/SymbioticLab/FedScale
 """
+
 import os
+import warnings
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import librosa
 import numpy as np
 import pandas as pd
+import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -82,28 +87,34 @@ GOOGLE_SPEECH_DTYPES = {
 class BackgroundNoiseDataset:
     """Dataset for silence / background noise."""
 
-    def __init__(self, folder, transform=None, sample_rate=16000, sample_length=1):
+    def __init__(
+        self,
+        folder: Path,
+        transform: Callable[[Any], torch.Tensor] | None = None,
+        sample_rate: int = 16000,
+        sample_length: int = 1,
+    ) -> None:
         audio_files = [d for d in os.listdir(folder) if d.endswith(".wav")]
         samples = []
         for f in audio_files:
-            path = os.path.join(folder, f)
-            s, sr = librosa.load(path, sr=sample_rate)
+            path = folder / f
+            s, _sr = librosa.load(path, sr=sample_rate)
             samples.append(s)
 
-        samples = np.hstack(samples)
+        hstacked_samples = np.hstack(samples)
         c = int(sample_rate * sample_length)
-        r = len(samples) // c
-        self.samples = samples[: r * c].reshape(-1, c)
+        r = len(hstacked_samples) // c
+        self.samples = hstacked_samples[: r * c].reshape(-1, c)
         self.sample_rate = sample_rate
         self.classes = CLASSES
         self.transform = transform
         self.path = folder
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.samples)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> Any | dict[str, Any]:
         """Return the sample at current `index`."""
         data = {
             "samples": self.samples[index],
@@ -118,18 +129,18 @@ class BackgroundNoiseDataset:
         return data
 
 
-class SPEECH(Dataset):
+class Speech(Dataset):
     """Google Speech dataset object."""
 
     def __init__(
         self,
-        root,
-        client_id=None,
-        dataset="train",
-        transform=None,
-        target_transform=None,
-        classes=CLASSES,
-    ):
+        root: Path,
+        client_id: int | None = None,
+        dataset: str = "train",
+        transform: Callable[[Any], torch.Tensor] | None = None,
+        target_transform: Callable[[Any], torch.Tensor] | None = None,
+        classes: list[str] = CLASSES,
+    ) -> None:
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
@@ -145,24 +156,30 @@ class SPEECH(Dataset):
 
         self.data_dir = self.root / self.data_file
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple:
         """Return the sample at current `index`."""
         path, target = self.data[index], int(self.targets[index])
-        data = {"path": os.path.join(self.data_dir, path), "target": target}
+        data = {"path": self.data_dir / path, "target": target}
 
         if self.transform is not None:
             data = self.transform(data)
 
         return data["input"], data["target"]
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.data)
 
-    def _check_exists(self):
-        return os.path.exists(os.path.join(self.root, self.data_file))
+    def _check_exists(self) -> bool:
+        return Path.exists(self.root / self.data_file)
 
-    def _load_meta_data(self, path):
+    def _load_meta_data(self, path: Path) -> tuple[list, list]:
+        # Filter deprecation warning from incompatible pandas and pyarrow versions
+        warnings.filterwarnings(
+            action="ignore",
+            category=DeprecationWarning,
+            message="Passing a BlockManager to DataFrame*",
+        )
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -177,8 +194,7 @@ class SPEECH(Dataset):
 
         return dataframe["sample_path"].tolist(), dataframe["label_name"].tolist()
 
-    def _load_file(self):
-        sample_paths, label_names = [], []
+    def _load_file(self) -> tuple[list, list]:
         filename = Path(
             self.root
             / "client_data_mapping"
@@ -190,31 +206,25 @@ class SPEECH(Dataset):
 
         return sample_paths, label_names
 
-    def _set_default_transform(self):
+    def _set_default_transform(self) -> None:
         if self.data_file == "train":
             bkg = "_background_noise_"
-            data_aug_transform = transforms.Compose(
-                [
-                    ChangeAmplitude(),
-                    ChangeSpeedAndPitchAudio(),
-                    FixAudioLength(),
-                    ToSTFT(),
-                    StretchAudioOnSTFT(),
-                    TimeshiftAudioOnSTFT(),
-                    FixSTFTDimension(),
-                ]
-            )
-            bg_dataset = BackgroundNoiseDataset(
-                os.path.join(self.root, bkg), data_aug_transform
-            )
+            data_aug_transform = transforms.Compose([
+                ChangeAmplitude(),
+                ChangeSpeedAndPitchAudio(),
+                FixAudioLength(),
+                ToSTFT(),
+                StretchAudioOnSTFT(),
+                TimeshiftAudioOnSTFT(),
+                FixSTFTDimension(),
+            ])
+            bg_dataset = BackgroundNoiseDataset((self.root / bkg), data_aug_transform)
             add_bg_noise = AddBackgroundNoiseOnSTFT(bg_dataset)
-            train_feature_transform = transforms.Compose(
-                [
-                    ToMelSpectrogramFromSTFT(n_mels=32),
-                    DeleteSTFT(),
-                    ToTensor("mel_spectrogram", "input"),
-                ]
-            )
+            train_feature_transform = transforms.Compose([
+                ToMelSpectrogramFromSTFT(n_mels=32),
+                DeleteSTFT(),
+                ToTensor("mel_spectrogram", "input"),
+            ])
             self.transform = transforms.Compose(
                 [LoadAudio(), data_aug_transform, add_bg_noise, train_feature_transform]
             )
@@ -227,11 +237,11 @@ class SPEECH(Dataset):
             )
 
 
-def _dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx: int, client_ids: list[int], dataset: str) -> list:
     clients = []
     time.time()
-    for _i, client_id in enumerate(client_ids):
-        ds = SPEECH(
+    for client_id in client_ids:
+        ds = Speech(
             root=Path("/datasets/FedScale/google_speech/google_speech"),
             client_id=client_id,
             dataset=dataset,
@@ -240,7 +250,7 @@ def _dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100) -> None:
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -257,10 +267,10 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool_inputs = []
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
-    cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for cnt, (begin, end) in enumerate(
+        chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs)
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
-        cnt += 1
     pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
@@ -270,25 +280,27 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
         clients.extend(out)
     log(INFO, f"Pool outputs concat length: {len(clients)}")
 
-    df = pd.DataFrame(clients, columns=["client_id", "samples"])
-    log(INFO, f"Dataframe: {df.head()}")
-    df.to_parquet(
+    clients_df = pd.DataFrame(clients, columns=["client_id", "samples"])
+    log(INFO, f"Dataframe: {clients_df.head()}")
+    clients_df.to_parquet(
         f"/datasets/FedScale/google_speech/google_speech/client_data_mapping/{dataset}_clients_dict.parquet"
     )
     s_t = time.time()
-    df = pd.read_parquet(
+    parquet_clients_df = pd.read_parquet(
         f"/datasets/FedScale/google_speech/google_speech/client_data_mapping/{dataset}_clients_dict.parquet"
     )
-    log(INFO, f"Dataframe: {df.head()}")
-    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    log(INFO, f"Dataframe: {parquet_clients_df.head()}")
+    log(INFO, f"Read parquet file in {time.time() - s_t} seconds")
     s_t = time.time()
     samples = []
     for i in client_ids:
-        samples.append(int(df[df["client_id"] == i]["samples"]))
-    log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
+        samples.append(
+            int(parquet_clients_df[parquet_clients_df["client_id"] == i]["samples"])
+        )
+    log(INFO, f"Getting all the samples took {time.time() - s_t} seconds")
 
 
-def _create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train") -> None:
     dataframe = pd.read_csv(
         Path(
             f"/datasets/FedScale/google_speech/google_speech/client_data_mapping/{dataset}.csv"
@@ -325,7 +337,7 @@ if __name__ == "__main__":
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:

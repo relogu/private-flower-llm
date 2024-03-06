@@ -7,12 +7,15 @@ Federated Settings. CoRR abs/1812.01097 (2018).
 """
 
 import csv
-import os
 import pickle
+import warnings
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+import torch
 from torch.utils.data import Dataset
 
 from pollen_worker.utils import chunks_idx
@@ -29,17 +32,17 @@ SHAKESPEARE_DTYPES = {
 }
 
 
-class SHAKESPEARE(Dataset):
+class Shakespeare(Dataset):
     """Shakespeare dataset object."""
 
     def __init__(
         self,
         root: Path,
-        client_id=None,
-        dataset="train",
-        transform=None,
-        target_transform=None,
-    ):
+        client_id: int | None = None,
+        dataset: str = "train",
+        transform: Callable[[Any], torch.Tensor] | None = None,
+        target_transform: Callable[[Any], torch.Tensor] | None = None,
+    ) -> None:
         self.characters = LEAF_CHARACTERS
         self.num_letters = len(self.characters)  # 80
 
@@ -54,7 +57,7 @@ class SHAKESPEARE(Dataset):
         # load data and targets
         self.data, self.targets = self._load_file()
 
-    def _word_to_indices(self, word):
+    def _word_to_indices(self, word: str) -> list[int]:
         """Convert a sequence of characters into position indices.
 
         The reference string `self.characters` is used.
@@ -69,7 +72,7 @@ class SHAKESPEARE(Dataset):
         indices = [self.characters.find(c) for c in word]
         return indices
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
         """Return the sample at current `index`."""
         with open(self.path_to_data / self.name / self.data.iloc[index], "rb") as f:
             d = pickle.load(f)
@@ -81,28 +84,28 @@ class SHAKESPEARE(Dataset):
 
         return sentence_indices, next_word_index
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.data)
 
-    def _check_exists(self):
-        return os.path.exists(self.path_to_data)
+    def _check_exists(self) -> bool:
+        return Path.exists(self.path_to_data)
 
-    def _old__load_meta_data(self, path):
+    def _old__load_meta_data(self, path: Path) -> tuple[list, list]:
         data, labels = [], []
 
-        with open(path) as csv_file:
+        with open(path, encoding="locale") as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=",")
             line_count = 0
-            for row in csv_reader:
+            for line_count, row in enumerate(csv_reader):
                 if line_count != 0:
-                    data.append((row[1]))
+                    data.append(row[1])
                     labels.append(row[-1])
                 line_count += 1
 
         return data, labels
 
-    def _load_meta_data(self, path):
+    def _load_meta_data(self, path: Path) -> tuple[pd.Series, pd.Series]:
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -113,7 +116,7 @@ class SHAKESPEARE(Dataset):
 
         return dataframe["sample_path"], dataframe["label"]
 
-    def _load_file(self):
+    def _load_file(self) -> tuple[pd.Series, pd.Series]:
         path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
         # Load meta file to get samples path and labels
         data, labels = self._load_meta_data(path)
@@ -121,17 +124,17 @@ class SHAKESPEARE(Dataset):
         return data, labels
 
 
-class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
+class ShakespeareLoaded(Dataset):
     """Shakespeare dataset object stored in the RAM."""
 
     def __init__(
         self,
         root: Path,
-        client_id=None,
-        dataset="train",
-        transform=None,
-        target_transform=None,
-    ):
+        client_id: int | None = None,
+        dataset: str = "train",
+        transform: Callable[[Any], torch.Tensor] | None = None,
+        target_transform: Callable[[Any], torch.Tensor] | None = None,
+    ) -> None:
         self.characters = LEAF_CHARACTERS
         self.num_letters = len(self.characters)  # 80
 
@@ -146,7 +149,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         # load data and targets
         self.data, self.targets = self._load_file()
 
-    def _word_to_indices(self, word):
+    def _word_to_indices(self, word: str) -> list[int]:
         """Convert a sequence of characters into position indices.
 
         The reference string `self.characters` is used.
@@ -161,7 +164,7 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         indices = [self.characters.find(c) for c in word]
         return indices
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
         """Return the sample at current `index`."""
         x = self.data[index]
         # y = self.data[index+1][0]
@@ -172,28 +175,32 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
 
         return sentence_indices, next_word_index
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.data)
 
-    def _check_exists(self):
-        return os.path.exists(self.path_to_data)
+    def _check_exists(self) -> bool:
+        return Path.exists(self.path_to_data)
 
-    def _old__load_meta_data(self, path):
+    def _old__load_meta_data(self, path: Path) -> tuple[list, list]:
         data, labels = [], []
 
-        with open(path) as csv_file:
+        with open(path, encoding="locale") as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=",")
-            line_count = 0
-            for row in csv_reader:
+            for line_count, row in enumerate(csv_reader):
                 if line_count != 0:
-                    data.append((row[1]))
+                    data.append(row[1])
                     labels.append(row[-1])
-                line_count += 1
 
         return data, labels
 
-    def _load_meta_data(self, path):
+    def _load_meta_data(self, path: Path) -> tuple[pd.Series, pd.Series]:
+        # Filter deprecation warning from incompatible pandas and pyarrow versions
+        warnings.filterwarnings(
+            action="ignore",
+            category=DeprecationWarning,
+            message="Passing a BlockManager to DataFrame*",
+        )
         dataframe = pd.read_parquet(
             path,
             engine="pyarrow",
@@ -204,13 +211,13 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
 
         return dataframe["sample_path"], dataframe["label"]
 
-    def _load_file(self):
+    def _load_file(self) -> tuple[list, list]:
         path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
         # Load meta file to get samples path and labels
         samples, labels = self._load_meta_data(path)
         data = []
         labels = []
-        for _i, sample in enumerate(samples):
+        for sample in samples:
             sample_path = self.path_to_data / self.name / sample
             with open(sample_path, "rb") as f:
                 d = pickle.load(f)
@@ -220,11 +227,11 @@ class SHAKESPEARE_LOADED(Dataset):  # NOSONAR
         return data, labels
 
 
-def _dump_info(worker_idx, client_ids, dataset):
+def _dump_info(worker_idx: int, client_ids: list[int], dataset: str) -> list:
     clients = []
     time.time()
-    for _i, client_id in enumerate(client_ids):
-        ds = SHAKESPEARE_LOADED(
+    for client_id in client_ids:
+        ds = ShakespeareLoaded(
             root=Path("/datasets/FedScale/leaf_shakespeare"),
             client_id=client_id,
             dataset=dataset,
@@ -233,7 +240,7 @@ def _dump_info(worker_idx, client_ids, dataset):
     return clients
 
 
-def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
+def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100) -> None:
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     dataframe = pd.read_csv(
@@ -248,10 +255,10 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
     pool_inputs = []
     pool = Pool(n_jobs)
     client_ids = pd.unique(dataframe["client_id"])
-    cnt = 0
-    for begin, end in chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs):
+    for cnt, (begin, end) in enumerate(
+        chunks_idx(range(len(pd.unique(dataframe["client_id"]))), n_jobs)
+    ):
         pool_inputs.append([cnt, client_ids[begin:end], dataset])
-        cnt += 1
     pool_outputs = pool.starmap(_dump_info, pool_inputs)
     pool.close()
     pool.join()
@@ -261,25 +268,27 @@ def _create_parquet_clients_dict(dataset: str = "train", n_jobs: int = 100):
         clients.extend(out)
     log(INFO, f"Pool outputs concat length: {len(clients)}")
 
-    df = pd.DataFrame(clients, columns=["client_id", "samples"])
-    log(INFO, f"Dataframe: {df.head()}")
-    df.to_parquet(
+    clients_df = pd.DataFrame(clients, columns=["client_id", "samples"])
+    log(INFO, f"Dataframe: {clients_df.head()}")
+    clients_df.to_parquet(
         f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}_clients_dict.parquet"
     )
     s_t = time.time()
-    df = pd.read_parquet(
+    parquet_client_df = pd.read_parquet(
         f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}_clients_dict.parquet"
     )
-    log(INFO, f"Dataframe: {df.head()}")
-    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    log(INFO, f"Dataframe: {parquet_client_df.head()}")
+    log(INFO, f"Read parquet file in {time.time() - s_t} seconds")
     s_t = time.time()
     samples = []
     for i in client_ids:
-        samples.append(int(df[df["client_id"] == i]["samples"]))
-    log(INFO, f"Getting all the samples took {time.time()-s_t} seconds")
+        samples.append(
+            int(parquet_client_df[parquet_client_df["client_id"] == i]["samples"])
+        )
+    log(INFO, f"Getting all the samples took {time.time() - s_t} seconds")
 
 
-def _create_parquet_client_samples_map(dataset: str = "train"):
+def _create_parquet_client_samples_map(dataset: str = "train") -> None:
     dataframe = pd.read_csv(
         Path(f"/datasets/FedScale/leaf_shakespeare/client_data_mapping/{dataset}.csv"),
         engine="pyarrow",
@@ -315,7 +324,7 @@ if __name__ == "__main__":
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:

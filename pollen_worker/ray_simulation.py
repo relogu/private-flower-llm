@@ -3,19 +3,20 @@
 Serves as a baseline for the Pollen paper. It supports using wandb for logging and hydra
 for exeperiment configuration.
 """
+
 import json
 import os
 import warnings
+from collections.abc import Iterable
 from logging import INFO
 from pathlib import Path
-from typing import Iterable, cast
+from typing import cast
 
 import flwr as fl
 import hydra
 import nvsmi
 import torch
 import transformers
-from flwr.client import ClientLike
 from flwr.common import ndarrays_to_parameters
 from flwr.common.logger import log
 from flwr.server.client_manager import SimpleClientManager
@@ -45,7 +46,7 @@ def get_n_worker_gpu_type(name: str = "openimage") -> dict[str, int]:
             "NVIDIA A40": 13,
             "NVIDIA GeForce RTX 2080 Ti": 3,
         }
-    if name == "shakespeare" or name == "shakespeare_memory":
+    if name in {"shakespeare", "shakespeare_memory"}:
         return {
             "NVIDIA A40": 36,
             "NVIDIA GeForce RTX 2080 Ti": 10,
@@ -113,7 +114,7 @@ def main(cfg: DictConfig) -> None:
 
     def get_client_fn(
         cid: str,
-    ) -> ClientLike:
+    ) -> VirtualClient:
         return VirtualClient(
             name=cfg.task.name,
             cid=int(cid),
@@ -122,7 +123,7 @@ def main(cfg: DictConfig) -> None:
     on_fit_config_fn = call(cfg.gen_on_fit_config_fn)
 
     # Configure the strategy
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()  # type: ignore
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     saving_path = Path(hydra_cfg["runtime"]["output_dir"])  # type: ignore[index]
     strategy = instantiate(
         cfg.task.strategy,
@@ -132,7 +133,10 @@ def main(cfg: DictConfig) -> None:
         fraction_fit=(1.0 / n_total_clients),
         on_fit_config_fn=on_fit_config_fn,
         initial_parameters=ndarrays_to_parameters(
-            get_client_fn(cid=0).get_parameters(config={}, net=None)  # type: ignore
+            VirtualClient(
+                name=cfg.task.name,
+                cid=0,
+            ).get_parameters(config={}, net=None)
         ),
         fit_metrics_aggregation_fn=weighted_average,
         freq=cfg.save_freq,
@@ -153,11 +157,11 @@ def main(cfg: DictConfig) -> None:
 
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Start simulation
-    with wandb_init(
+    with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
         **cfg.wandb.setup,
         settings=wandb.Settings(start_method="thread"),
-        config=wandb_config,  # type: ignore
+        config=wandb_config,
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
         server = WandbServer(
@@ -167,14 +171,14 @@ def main(cfg: DictConfig) -> None:
         )
         with RayContextManager() as _:
             hist = fl.simulation.start_simulation(
-                client_fn=get_client_fn,
+                client_fn=lambda x: get_client_fn(x).to_client(),
                 clients_ids=list(cast(Iterable, cid_samples_dict.keys())),
                 client_resources=client_resources,
                 server=server,
                 config=fl.server.ServerConfig(num_rounds=cfg.task.num_rounds),
                 ray_init_args=ray_init_args,
             )
-            with open(saving_path / "history.json", "w") as f:
+            with open(saving_path / "history.json", "w", encoding="locale") as f:
                 json.dump(hist.__dict__, f)
 
 

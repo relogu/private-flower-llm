@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -27,10 +26,11 @@ import gc
 import os
 import pickle
 import time
+from collections.abc import Callable
 from logging import ERROR, INFO
 from multiprocessing import Pool
 from pathlib import Path
-from typing import List, Optional, Tuple, cast
+from typing import Any, cast
 
 import hydra
 import numpy as np
@@ -41,7 +41,7 @@ from flwr.common.logger import log
 from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizer
+from transformers import AlbertTokenizer, AutoTokenizer, PreTrainedTokenizer
 
 from pollen_worker.utils import chunks_idx
 
@@ -53,10 +53,10 @@ REDDIT_DTYPES = {
 }
 
 
-def get_collate_fn(tokenizer: PreTrainedTokenizer):
+def get_collate_fn(tokenizer: PreTrainedTokenizer) -> Callable[..., Any]:
     """Return the collate function for this dataset."""
 
-    def collate_fn(examples):
+    def collate_fn(examples: torch.Tensor) -> torch.Tensor:
         if tokenizer._pad_token is None or tokenizer.pad_token_id is None:
             return pad_sequence(examples, batch_first=True)
 
@@ -68,30 +68,27 @@ def get_collate_fn(tokenizer: PreTrainedTokenizer):
 
 
 def _feature_creation_worker(
-    indices: List[int],
-    files: List[str],
+    indices: list[int],
+    files: list[Path],
     tokenizer: PreTrainedTokenizer,
     block_size: int,
     worker_idx: int,
-    file_path: str,
+    file_path: Path,
     model: str,
-):
+) -> None:
     time.time()
-    for i, (idx, file) in enumerate(zip(indices, files)):
-        _cached_features_file = (
-            Path(file_path) / f"{model}_cached_lm_{str(block_size)}_{str(idx)}"
-        )
+    for i, (idx, file) in enumerate(zip(indices, files, strict=False)):
+        _cached_features_file = file_path / f"{model}_cached_lm_{block_size!s}_{idx!s}"
         if not _cached_features_file.exists():
             try:
                 # Read text file, one file per `user_id``, apparently
-                with open(file, encoding="utf-8", errors="ignore") as f:
-                    text = f.read()
+                text = file.read_text(encoding="utf-8", errors="ignore")
                 # Tokenize the text to tokens
                 tokenized_text = tokenizer.convert_tokens_to_ids(
                     tokenizer.tokenize(text)
                 )
                 if isinstance(tokenized_text, int):
-                    raise ValueError(
+                    raise TypeError(  # noqa: TRY301
                         "Expected tokenized text to be a list of integers"
                         f" instead of {tokenized_text}"
                     )
@@ -121,26 +118,26 @@ class TextDataset(Dataset):
         self,
         model: str,
         tokenizer: PreTrainedTokenizer,
-        root_dir: str,
-        examples: Optional[List[List[int]]],
+        root_dir: Path,
+        examples: list[list[int]] | None,
         n_jobs: int = 1,
         overwrite_cache: bool = False,
         block_size: int = 64,
         client_id: int = 0,
         dataset: str = "train",
-    ):
+    ) -> None:
         # Correct the block size for building sequences of tokens
         block_size = block_size - (
             tokenizer.model_max_length - tokenizer.max_len_single_sentence
         )
         # Create the cached features file
-        file_path = os.path.join(root_dir, dataset)
-        self.cached_features_file = os.path.join(
-            file_path, model + "_cached_lm_" + str(block_size) + "_" + str(client_id)
+        file_path = root_dir / dataset
+        self.cached_features_file = file_path / (
+            model + "_cached_lm_" + str(block_size) + "_" + str(client_id)
         )
         # Set the number of jobs
         try:
-            cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+            cpus = len(psutil.Process().cpu_affinity())
         except AttributeError:
             cpus = psutil.cpu_count()
         if n_jobs > cpus:
@@ -149,7 +146,7 @@ class TextDataset(Dataset):
         if examples is not None:
             # If the features are passed as parameter, use them
             self.examples = examples
-        elif os.path.exists(self.cached_features_file) and not overwrite_cache:
+        elif Path.exists(self.cached_features_file) and not overwrite_cache:
             # If the features are stored, load them
             # log(
             #     INFO,
@@ -163,22 +160,21 @@ class TextDataset(Dataset):
         else:
             # Otherwise, create them
             log(INFO, "Requested features file doesn't exist")
-            ## Tokenisation
+            # Tokenisation
             # Get the list of files containing raw data (excluding the cached files)
-            files = [
+            files_str = [
                 entry.name
                 for entry in os.scandir(file_path)
                 if "_cached_lm_" not in entry.name
             ]
             # Make sure files are ordered
-            files = [os.path.join(file_path, x) for x in sorted(files)]
+            files = [(file_path / x) for x in sorted(files_str)]
             if client_id < 0:
                 # NOTE: Setting this to zero to prevent a runtime error when
                 # using this clause for the tokenisation of the entire dataset
                 client_id = 0
-                self.cached_features_file = os.path.join(
-                    file_path,
-                    model + "_cached_lm_" + str(block_size) + "_" + str(client_id),
+                self.cached_features_file = file_path / (
+                    model + "_cached_lm_" + str(block_size) + "_" + str(client_id)
                 )
                 log(
                     INFO,
@@ -192,20 +188,18 @@ class TextDataset(Dataset):
                 # Parallelise entire dataset tokenisation
                 pool_inputs = []
                 pool = Pool(n_jobs)
-                worker_cnt = 0
-                for begin, end in chunks_idx(range(len(files)), n_jobs):
-                    pool_inputs.append(
-                        [
-                            list(range(len(files)))[begin:end],
-                            files[begin:end],
-                            tokenizer,
-                            block_size,
-                            worker_cnt,
-                            file_path,
-                            model,
-                        ]
-                    )
-                    worker_cnt += 1
+                for worker_cnt, (begin, end) in enumerate(
+                    chunks_idx(range(len(files)), n_jobs)
+                ):
+                    pool_inputs.append([
+                        list(range(len(files)))[begin:end],
+                        files[begin:end],
+                        tokenizer,
+                        block_size,
+                        worker_cnt,
+                        file_path,
+                        model,
+                    ])
                 pool.starmap(_feature_creation_worker, pool_inputs)
                 pool.close()
                 pool.join()
@@ -236,23 +230,23 @@ class TextDataset(Dataset):
 
         self.targets = [0] * len(self.examples)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the dataset."""
         return len(self.examples)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> torch.Tensor:
         """Return the sample at current `index`."""
         return torch.tensor(self.examples[item], dtype=torch.long)
 
 
 def load_and_cache_examples(
     model: str,
-    root_dir: str,
+    root_dir: Path,
     tokenizer: PreTrainedTokenizer,
     n_jobs: int = 1,
     block_size: int = 64,
     dataset: str = "train",
-):
+) -> TextDataset:
     """Perform the tokenisation and caching of the entire dataset."""
     return TextDataset(
         model,
@@ -272,7 +266,7 @@ def mask_tokens(
     tokenizer: PreTrainedTokenizer,
     mlm_probability: float,
     device: str = "cpu",
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Prepare masked tokens inputs/labels for masked language modeling.
 
     The tokens are splitted as follow: 80% MASK, 10% random, 10% original.
@@ -298,7 +292,7 @@ def mask_tokens(
     indices_replaced = (torch.bernoulli(torch.full(labels.shape, 0.8)) == 1).to(
         device=device
     ) & masked_indices
-    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(  # type: ignore
+    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(
         tokenizer.mask_token,
     )
 
@@ -318,14 +312,21 @@ def mask_tokens(
     return inputs, labels, masked_indices
 
 
-def _dump_info(worker_idx, client_ids, dataset, model, tokenizer, block_size):
+def _dump_info(
+    worker_idx: int,
+    client_ids: list[int],
+    dataset: str,
+    model: str,
+    tokenizer: AlbertTokenizer,
+    block_size: int,
+) -> list:
     clients = []
     time.time()
-    for _i, client_id in enumerate(client_ids):
+    for client_id in client_ids:
         ds = TextDataset(
             model=model,
             tokenizer=tokenizer,
-            root_dir=cast(str, Path("/datasets/FedScale/reddit/reddit")),
+            root_dir=Path("/datasets/FedScale/reddit/reddit"),
             examples=None,
             n_jobs=1,
             overwrite_cache=False,
@@ -341,9 +342,9 @@ def _create_parquet_clients_dict(
     dataset: str = "train",
     n_jobs: int = 100,
     model: str = "albert",
-    tokenizer: Optional[PreTrainedTokenizer] = None,
+    tokenizer: PreTrainedTokenizer | None = None,
     block_size: int = 64,
-):
+) -> None:
     log(INFO, f"Creating client data mapping for {dataset} dataset")
 
     file_path = Path("/datasets/FedScale/reddit/reddit") / dataset
@@ -360,19 +361,15 @@ def _create_parquet_clients_dict(
 
         pool_inputs = []
         pool = Pool(n_jobs)
-        cnt = 0
-        for begin, end in chunks_idx(range(len(files)), n_jobs):
-            pool_inputs.append(
-                [
-                    cnt,
-                    list(range(len(files)))[begin:end],
-                    dataset,
-                    model,
-                    tokenizer,
-                    block_size,
-                ]
-            )
-            cnt += 1
+        for cnt, (begin, end) in enumerate(chunks_idx(range(len(files)), n_jobs)):
+            pool_inputs.append([
+                cnt,
+                list(range(len(files)))[begin:end],
+                dataset,
+                model,
+                tokenizer,
+                block_size,
+            ])
         pool_outputs = pool.starmap(_dump_info, pool_inputs)
         pool.close()
         pool.join()
@@ -382,42 +379,39 @@ def _create_parquet_clients_dict(
             clients.extend(out)
         log(INFO, f"Pool outputs concat length: {len(clients)}")
 
-        df = pd.DataFrame(clients, columns=["client_id", "samples"])
-        log(INFO, f"Dataframe: {df.head()}")
-        df.to_parquet(
+        clients_df = pd.DataFrame(clients, columns=["client_id", "samples"])
+        log(INFO, f"Dataframe: {clients_df.head()}")
+        clients_df.to_parquet(
             f"/datasets/FedScale/reddit/reddit/client_data_mapping/{dataset}_clients_dict.parquet"
         )
     s_t = time.time()
-    df = pd.read_parquet(
+    parquet_clients_df = pd.read_parquet(
         f"/datasets/FedScale/reddit/reddit/client_data_mapping/{dataset}_clients_dict.parquet"
     )
-    log(INFO, f"Dataframe: {df.head()}")
-    log(INFO, f"Read parquet file in {time.time()-s_t} seconds")
+    log(INFO, f"Dataframe: {parquet_clients_df.head()}")
+    log(INFO, f"Read parquet file in {time.time() - s_t} seconds")
     log(
         INFO,
         "This dataset has %s clients of which %s are empty",
-        len(df),
-        len(df[df["samples"] == 0]),
+        len(parquet_clients_df),
+        len(parquet_clients_df[parquet_clients_df["samples"] == 0]),
     )
     s_t = time.time()
     samples = []
-    for i in list(range(len(df)))[:1000]:
-        samples.append(int(df[df["client_id"] == i]["samples"]))  # type: ignore
-    log(INFO, f"Getting 1K samples took {time.time()-s_t} seconds")
+    for i in list(range(len(parquet_clients_df)))[:1000]:
+        samples.append(
+            int(parquet_clients_df[parquet_clients_df["client_id"] == i]["samples"])
+        )
+    log(INFO, f"Getting 1K samples took {time.time() - s_t} seconds")
 
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Implement main function for creating useful files."""
-    from pathlib import Path
-
-    import psutil
-    from transformers import AlbertTokenizer, AutoTokenizer
-
     # Set the number of jobs
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())  # type: ignore
+        cpus = len(psutil.Process().cpu_affinity())
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -439,7 +433,7 @@ def main(cfg: DictConfig) -> None:
         load_and_cache_examples(
             model=cfg.task.model,
             tokenizer=tokenizer,
-            root_dir=cast(str, Path("/datasets/FedScale/reddit/reddit")),
+            root_dir=Path("/datasets/FedScale/reddit/reddit"),
             n_jobs=n_jobs,
             block_size=cfg.task.block_size,
             dataset=dataset,

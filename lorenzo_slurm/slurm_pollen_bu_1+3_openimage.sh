@@ -18,7 +18,9 @@ timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # activate the environment and go to the pollen_worker directory
 cd $HOME/projects/pollen_worker
-poetry shell
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
@@ -28,15 +30,15 @@ for policy in "bu"; do
     CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=$ip:6380"
 
     echo "STARTING POLLEN SERVER at $node_1"
-    poetry run python -m pollen_worker.server_with+pollen $CUSTOM_HYDRA_ARGS &
+    poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
 
     echo "STARTING POLLEN NODE MANAGER at $node_1"
     srun --nodes=1 --ntasks=1 -w "$node_1" --gres=gpu:1 -c 24 \
-        poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS &
+        poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS &
 
     echo "STARTING POLLEN NODE MANAGER at $node_2"
     srun --nodes=1 --ntasks=1 -w "$node_2" \
-        poetry run python -m pollen_worker.pure_sh_node_manager $CUSTOM_HYDRA_ARGS
+        poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS
 done
 
 

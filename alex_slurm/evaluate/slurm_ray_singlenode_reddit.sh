@@ -10,7 +10,9 @@ timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
 cd /nfs-share/aai30/projects/pollen_worker
-poetry shell
+#! Activate Poetry environment
+POETRY_ENV_PATH=$(poetry env info --path)
+. $POETRY_ENV_PATH/bin/activate
 
 # Clean the shared memory objects
   
