@@ -187,6 +187,12 @@ results/*
 # Checkpoints
 checkpoints/*
 
+# History objects
+*history.json
+
+# PyTorch bins
+*.pt
+
 # llmfoundry scripts symlinked
 llm-foundry-scripts
 
