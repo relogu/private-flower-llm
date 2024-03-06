@@ -19,8 +19,7 @@ from pollen_worker.models.layers import (
 def _replace_child(
     root: nn.Module, child_name: str, converter: Callable[[nn.Module], nn.Module]
 ) -> None:
-    """
-    Convert a sub-module to a new module.
+    """Convert a sub-module to a new module.
 
     Given a helper function, the root module and a string representing the name of the
     submodule to be replaced.
@@ -72,12 +71,12 @@ def _batchnorm_to_groupnorm(module: nn.modules.batchnorm._BatchNorm) -> nn.Modul
 
 def _batchnorm_to_freeze_batchnorm(
     module: nn.modules.batchnorm._BatchNorm,
-) -> nn.Module:
+) -> nn.Module | None:
     """Convert a BatchNorm module to the corresponding FrozenBatchNorm module.
 
-    This is useful for private finetuning models with BatchNorm module since
-    we do not want to collect training data statistics for updating BatchNorm
-    parameters. Instead, the statistics of FrozenBatchNorm is never updated.
+    This is useful for private finetuning models with BatchNorm module since we do not
+    want to collect training data statistics for updating BatchNorm parameters. Instead,
+    the statistics of FrozenBatchNorm is never updated.
     """
 
     def _match_dim() -> nn.Module | None:
@@ -89,13 +88,16 @@ def _batchnorm_to_freeze_batchnorm(
             return FrozenBatchNorm3D
         return None
 
-    return _match_dim()(
-        num_features=module.num_features,
-        eps=module.eps,
-        momentum=module.momentum,
-        affine=module.affine,
-        track_running_stats=module.track_running_stats,
-    )
+    module_with_dim = _match_dim()
+    if module_with_dim is not None:
+        return module_with_dim(
+            num_features=module.num_features,
+            eps=module.eps,
+            momentum=module.momentum,
+            affine=module.affine,
+            track_running_stats=module.track_running_stats,
+        )
+    return None
 
 
 def validate_no_batchnorm(module: nn.Module) -> Any | Literal[True]:

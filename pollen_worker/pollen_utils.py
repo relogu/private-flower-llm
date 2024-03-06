@@ -31,9 +31,9 @@ from pollen_worker.datasets.google_speech import Speech
 from pollen_worker.datasets.nlp_util import TextDataset
 from pollen_worker.datasets.openimage import OpenImage
 from pollen_worker.datasets.shakespeare import Shakespeare, ShakespeareLoaded
+from pollen_worker.models.pfl_cnns import simple_cnn
 from pollen_worker.models.resnet_util import resnet34
 from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
-from pollen_worker.models.pfl_cnns import MultiLabelCNN, simple_cnn
 from pollen_worker.utils import chunks_idx
 
 
@@ -164,12 +164,21 @@ def get_model(name: str) -> Module:
 
         return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
 
-    if name == "flair":
-        # TODO: Set defaults
-        return MultiLabelCNN()
+    # if name == "flair":
+    #     # TODO: Set defaults, some of which are taken by the ds.
+    #     return MultiLabelCNN(
+    #         torchvision_model_type="resnet18",
+    #         num_outputs=None,
+    #         channel_mean=None,
+    #         channel_stddevs=None,
+    #         pretrained=True,
+    #     )
 
     if name == "cifar10":
-        return simple_cnn()
+        return simple_cnn(
+            input_shape=(32, 32, 3),
+            num_outputs=10,
+        )
 
     raise ValueError("No model for the requested dataset")
 

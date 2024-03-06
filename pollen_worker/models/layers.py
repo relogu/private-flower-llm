@@ -7,8 +7,8 @@ The script has been slightly modified from: TODO: add link to original script
 from abc import ABC
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.nn.modules.batchnorm import _NormBase  # noqa: PLC2701
 
 
@@ -51,7 +51,9 @@ class FrozenBatchNorm1D(_FrozenBatchNorm):
 
     def _check_input_dim(self, input_tensor: torch.Tensor) -> None:
         if input_tensor.dim() != 2 and input_tensor.dim() != 3:  # noqa: PLR2004
-            raise ValueError(f"expected 2D or 3D input (got {input.dim()}D input)")
+            raise ValueError(
+                f"expected 2D or 3D input (got {input_tensor.dim()}D input)"
+            )
 
 
 class FrozenBatchNorm2D(_FrozenBatchNorm):

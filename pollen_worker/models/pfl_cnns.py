@@ -5,11 +5,11 @@ The script has been slightly modified from: TODO: add link to original script
 
 # Copyright © 2023-2024 Apple Inc.
 import torch
-from torch import nn
 import torchvision.models
+from torch import nn
 from torchvision import transforms
-from pollen_worker.models.layers import Transpose2D
 
+from pollen_worker.models.layers import Transpose2D
 from pollen_worker.models.module_modifications import (
     convert_batchnorm_modules,
     freeze_batchnorm_modules,
@@ -20,8 +20,7 @@ torchvision_models = torchvision.models.__dict__
 
 
 class MultiLabelCNN(nn.Module):
-    """
-    Wrapper of torchvision.models used for PFL training.
+    """Wrapper of torchvision.models used for PFL training.
 
     The task is multi-label classification, e.g. on FLAIR dataset.
     """
