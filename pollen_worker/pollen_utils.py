@@ -33,6 +33,7 @@ from pollen_worker.datasets.openimage import OpenImage
 from pollen_worker.datasets.shakespeare import Shakespeare, ShakespeareLoaded
 from pollen_worker.models.resnet_util import resnet34
 from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
+from pollen_worker.models.pfl_cnns import MultiLabelCNN, simple_cnn
 from pollen_worker.utils import chunks_idx
 
 
@@ -162,6 +163,13 @@ def get_model(name: str) -> Module:
     if name == "openimage":
 
         return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
+
+    if name == "flair":
+        # TODO: Set defaults
+        return MultiLabelCNN()
+
+    if name == "cifar10":
+        return simple_cnn()
 
     raise ValueError("No model for the requested dataset")
 
