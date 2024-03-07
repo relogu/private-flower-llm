@@ -41,7 +41,7 @@ minio:
     run_uuid: ${run_uuid}
     endpoint_id: null
     bucket_name: null
-    file_size: 104857600  # = 1024 * 1024 * 100
+    file_size: 1073741824  # = 1024 * 1024 * 1024
     throw_on_error: true
     timeout_in_seconds: 3600
 
