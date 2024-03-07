@@ -62,5 +62,5 @@ wandb:
     name: ${run_uuid}
     resume: allow
     id: ${run_uuid}
-    allow_val_change: false
+    allow_val_change: true
   start_eval: 0
