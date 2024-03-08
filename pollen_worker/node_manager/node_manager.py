@@ -22,6 +22,7 @@ to the simulation server.
 
 import copy
 import gc
+from pathlib import Path
 import pickle
 import time
 import uuid
@@ -40,23 +41,24 @@ import psutil
 import torch
 import transformers
 from composer.utils.misc import get_free_tcp_port
-from flwr.common import Config, NDArrays, Scalar
+from flwr.common import (
+    Config,
+    NDArrays,
+    Scalar,
+    parameters_to_ndarrays,
+    ndarrays_to_parameters,
+)
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
 from minio import Minio
 from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
+from composer.loggers import RemoteUploaderDownloader
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
 from pollen_worker.minio.minio_state import MinioState
-from pollen_worker.minio.minio_tools import (
-    SERVER_GLOBAL_MODEL_FOLDER,
-    _get_params_folder_path,
-    pull_parameters,
-    push_parameters,
-)
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
@@ -113,8 +115,30 @@ class NodeManager(fl.client.NumPyClient):
         self.run_uuid = run_uuid
 
         self.minio_state = minio_state
-
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
+
+        if isinstance(self.minio_state, MinioState):
+            self.remote_up_down = RemoteUploaderDownloader(
+                # TODO: Don't hardcode
+                bucket_uri="s3://checkpoints",
+                backend_kwargs={
+                    "bucket": "checkpoints",
+                    "prefix": f"{self.minio_state.run_uuid}/server",
+                    "region_name": None,
+                    "endpoint_url": None,  # Will be read from env var
+                    "aws_access_key_id": None,  # Will be read from config file
+                    "aws_secret_access_key": None,  # Will be read from config file
+                    "aws_session_token": None,  # Will be automatically geberated
+                    "client_config": None,
+                    "transfer_config": None,
+                },
+                file_path_format_string="{remote_file_name}",
+                num_concurrent_uploads=1,
+                upload_staging_folder=None,
+                use_procs=True,
+                num_attempts=3,
+            )
+            self.remote_up_down.init(run_name=self.minio_state.run_uuid)
         if isinstance(minio_state, MinioState):
             minio_state.endpoint_id = self.node_manager_uuid
 
@@ -393,43 +417,40 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
         """Implement the fit step."""
-        current_round: int
-        previous_round: int
-
-        current_round_uncasted: Any
-
-        if "server_round" in config:
-            current_round_uncasted = config["server_round"]
-        else:
-            raise ValueError("server_round not in config")
-        if isinstance(current_round_uncasted, int):
-            current_round = current_round_uncasted
-            previous_round = current_round - 1
-        else:
-            raise TypeError("server_round is not an integer")
-
+        # Get the server round
+        server_round = int(config["server_round"])
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
-            server_state = MinioState(
-                self.minio_state.client,
-                self.minio_state.run_uuid,
-                "server",
-                self.minio_state.bucket_name,
-                self.minio_state.file_size,
-                self.minio_state.throw_on_error,
-                self.minio_state.timeout_in_seconds,
-            )
-            params_folder_path = _get_params_folder_path(server_state, previous_round)
-            parameters = pull_parameters(
-                state=server_state,
-                server_round=previous_round,
-                minio_folder_path=f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}",
-            )
+            log(DEBUG, "NodeManager %s: pulling parameters from MinIO", self.name)
+            # TODO: Use tmp files
+            file_found = False
+            while not file_found:
+                try:
+                    self.remote_up_down.download_file(
+                        remote_file_name=(
+                            f"{int(server_round - 1)}/current_server_parameters.bin"
+                        ),
+                        destination=str(
+                            Path.cwd()
+                            / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                        ),
+                        overwrite=True,
+                    )
+                    file_found = True
+                except FileNotFoundError:
+                    pass
+            log(INFO, "Read server parameters from disk")
+            with open(
+                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin",
+                "rb",
+            ) as f:
+                parameters = parameters_to_ndarrays(pickle.load(f))
+            log(INFO, "Server parameters have been read from disk")
 
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # Restart all the worker every `self.refresh_period` rounds
-        if config["server_round"] % self.refresh_period == 0:
+        if server_round % self.refresh_period == 0:
             # Close and remove the workers
             self._close_workers()
             # Re-create and start the workers
@@ -475,12 +496,25 @@ class NodeManager(fl.client.NumPyClient):
 
         # If applicable, push the aggregated parameters to MinIO
         if isinstance(self.minio_state, MinioState):
-            # The endpoint UUID will be picked up by the server when pulling the
-            # client model from MinIO
+            log(INFO, "Dump node parameters to disk")
+            with open(
+                Path.cwd() / f"{self.node_manager_uuid}_parameters.bin", "wb"
+            ) as f:
+                pickle.dump(ndarrays_to_parameters(aggregated_params), f)
+            log(DEBUG, "NodeManager %s: pushing parameters to MinIO", self.name)
+            # TODO: Use tmp files
+            self.remote_up_down.upload_file(
+                None,
+                remote_file_name=(
+                    f"{server_round}/{self.node_manager_uuid}/parameters.bin"
+                ),
+                file_path=Path.cwd() / f"{self.node_manager_uuid}_parameters.bin",
+                overwrite=True,
+            )
+            log(INFO, "Node parameters have been pushed to disk")
             node_train_metrics.update({
                 "endpoint_id": self.node_manager_uuid,
             })
-            push_parameters(self.minio_state, current_round, aggregated_params)
 
             # Return results
             return (
@@ -500,19 +534,35 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: dict
     ) -> tuple[float, int, dict[Any, Any]]:
         """Implement the evaluation step."""
+        # Get the server round
+        server_round = config["server_round"]
         # If applicable, override the parameters with values from MinIO
         if isinstance(self.minio_state, MinioState):
-            current_round: int
-            current_round_uncasted: Any
-            if "server_round" in config:
-                current_round_uncasted = config["server_round"]
-            else:
-                raise ValueError("server_round not in config")
-            if isinstance(current_round_uncasted, int):
-                current_round = current_round_uncasted
-            else:
-                raise TypeError("server_round is not an integer")
-            parameters = pull_parameters(self.minio_state, current_round)
+            log(DEBUG, "NodeManager %s: pulling parameters from MinIO", self.name)
+            # TODO: Use tmp files
+            file_found = False
+            while not file_found:
+                try:
+                    self.remote_up_down.download_file(
+                        remote_file_name=(
+                            f"{int(server_round)}/current_server_parameters.bin"
+                        ),
+                        destination=str(
+                            Path.cwd()
+                            / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                        ),
+                        overwrite=True,
+                    )
+                    file_found = True
+                except FileNotFoundError:
+                    pass
+            log(INFO, "Read server parameters from disk")
+            with open(
+                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin",
+                "rb",
+            ) as f:
+                parameters = parameters_to_ndarrays(pickle.load(f))
+            log(INFO, "Server parameters have been read from disk")
 
         start_time = time.time()
         # Extract assignments from config

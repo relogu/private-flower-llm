@@ -1,6 +1,7 @@
 """Pollen server."""
 
 import concurrent.futures
+import pickle
 import sys
 import time
 import timeit
@@ -20,7 +21,6 @@ from flwr.common import (
     EvaluateRes,
     FitIns,
     FitRes,
-    NDArrays,
     Parameters,
     Scalar,
     Status,
@@ -34,21 +34,13 @@ from flwr.server.history import History
 from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: PLC2701
 from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
+from composer.loggers import RemoteUploaderDownloader
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
 from pollen_worker.minio.minio_state import MinioState
-from pollen_worker.minio.minio_tools import (
-    SERVER_GLOBAL_MODEL_FOLDER,
-    _get_params_folder_path,
-    pull_parameters,
-    pull_server_state,
-    push_parameters,
-    push_server_state,
-)
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
-from pollen_worker.server_state import ServerState
 from pollen_worker.strategy.rs_nesterov import FedNesterov
 from pollen_worker.utils import (
     IntentionalClientDropoutError,
@@ -144,6 +136,28 @@ class PollenServer(Server):
         self.minio_state: MinioState | None = minio_state
         if isinstance(self.minio_state, MinioState):
             self.minio_state.log = log
+        if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+            self.remote_up_down = RemoteUploaderDownloader(
+                # TODO: Don't hardcode
+                bucket_uri="s3://checkpoints",
+                backend_kwargs={
+                    "bucket": "checkpoints",
+                    "prefix": f"{self.minio_state.run_uuid}/server",
+                    "region_name": None,
+                    "endpoint_url": None,  # Will be read from env var
+                    "aws_access_key_id": None,  # Will be read from config file
+                    "aws_secret_access_key": None,  # Will be read from config file
+                    "aws_session_token": None,  # Will be automatically geberated
+                    "client_config": None,
+                    "transfer_config": None,
+                },
+                file_path_format_string="{remote_file_name}",
+                num_concurrent_uploads=1,
+                upload_staging_folder=None,
+                use_procs=True,
+                num_attempts=3,
+            )
+            self.remote_up_down.init(run_name=self.minio_state.run_uuid)
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -171,29 +185,51 @@ class PollenServer(Server):
 
         # Resume experiment if asked to
         history: History
-        time_offset: float
         start_round: int
 
-        if self.checkpoint and self.resume_round and self.resume_round > 0:
-            # If applicable, load the state from MinIO
-            if isinstance(self.minio_state, MinioState):
-                # TODO: Get the most recent round if from MinIO
-                pulled_state = pull_server_state(self.minio_state, self.resume_round)
-                start_round = pulled_state.round
-                time_offset = pulled_state.elapsed_time_in_seconds
-                self.parameters = ndarrays_to_parameters(pulled_state.global_model)
+        if (
+            self.checkpoint
+            and self.resume_round
+            and self.resume_round > 0
+            and isinstance(self.minio_state, MinioState)
+        ):
+            try:
+                log(INFO, "Resuming from checkpoint")
+                # Donwload the server state from MinIO
+                # TODO: Use tmp files
+                self.remote_up_down.download_file(
+                    remote_file_name=f"{self.resume_round}/state.bin",
+                    destination=str(Path.cwd() / "current_server_state.bin"),
+                    overwrite=True,
+                )
+                self.remote_up_down.download_file(
+                    remote_file_name=(
+                        f"{self.resume_round}/current_server_parameters.bin"
+                    ),
+                    destination=str(Path.cwd() / "current_server_parameters.bin"),
+                    overwrite=True,
+                )
+                log(INFO, "Read server state from disk")
+                with open(Path.cwd() / "current_server_state.bin", "rb") as f:
+                    server_state = pickle.load(f)
+                with open(Path.cwd() / "current_server_parameters.bin", "rb") as f:
+                    self.parameters = pickle.load(f)
+                start_round = server_state["server_round"]
+                # start_round = self.resume_round
+                assert (
+                    start_round == self.resume_round
+                ), "Server round mismatch with checkpoint"
+                history = server_state["history"]
                 if isinstance(self.strategy, FedNesterov):
-                    self.strategy.momentum_vector = pulled_state.momentum
-                history = pulled_state.history
-            else:
-                # We can't resume the state if there is no MinIO available
-                message = "🚨 Unable to resume the execution without MinIO"
-                log(ERROR, message)
-                raise ValueError(message)
+                    log(INFO, "Get momentum vector from server state")
+                    self.strategy.momentum_vector = server_state["momentum"]
+                log(INFO, "Server state has been read from disk")
+            except Exception as e:
+                log(ERROR, "Failed to resume from checkpoint: %s", e)
+                sys.exit(1)
         else:
             history = self.history if self.history is not None else History()
-            time_offset = 0.0
-            start_round = 1
+            start_round = 0
             # Initialize parameters
             log(INFO, "Initializing global parameters")
             self.parameters = self._get_initial_parameters(timeout=timeout)
@@ -212,28 +248,35 @@ class PollenServer(Server):
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
-                momentum: NDArrays | None = None
+                log(INFO, "Create momentum vector to server state")
+                current_server_state = {
+                    "server_round": 0,
+                    "history": history,
+                }
                 if isinstance(self.strategy, FedNesterov):
-                    momentum = self.strategy.momentum_vector
-                server_state = ServerState(
-                    self.minio_state.endpoint_id,
-                    start_round,
-                    momentum,
-                    time_offset,
-                    history,
+                    log(INFO, "Add momentum vector to server state")
+                    current_server_state.update(
+                        {"momentum": self.strategy.momentum_vector}
+                    )
+                log(INFO, "Dump server state to disk")
+                # TODO: Use tmp files
+                with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+                    pickle.dump(current_server_state, f)
+                with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
+                    pickle.dump(self.parameters, f)
+                log(INFO, "Push server state to S3")
+                # Checkpoint and push the state to MinIO
+                self.remote_up_down.upload_file(
+                    None,
+                    remote_file_name="0/state.bin",
+                    file_path=Path.cwd() / "current_server_state.bin",
+                    overwrite=True,
                 )
-                push_server_state(self.minio_state, server_state)
-                previous_round = start_round - 1
-                params_folder_path = _get_params_folder_path(
-                    self.minio_state, previous_round
-                )
-                push_parameters(
-                    state=self.minio_state,
-                    server_round=previous_round,
-                    parameters=self.parameters,
-                    minio_folder_path=(
-                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
-                    ),
+                self.remote_up_down.upload_file(
+                    None,
+                    remote_file_name="0/current_server_parameters.bin",
+                    file_path=Path.cwd() / "current_server_parameters.bin",
+                    overwrite=True,
                 )
 
         # NOTE: Register VirtualClients to the PollenClientManager
@@ -248,9 +291,9 @@ class PollenServer(Server):
             timeit.default_timer() - self.start_up_time,
         )
         # Run federated learning for num_rounds
-        log(INFO, "FL starting")
+        log(INFO, "FL starting from round %s", start_round)
         start_time = timeit.default_timer()
-        for current_round in range(start_round, num_rounds + 1):
+        for current_round in range(start_round + 1, num_rounds + 1):
             # Check for changes in connected NodeManagers
             self.check_node_managers()
 
@@ -271,17 +314,19 @@ class PollenServer(Server):
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
-                params_folder_path = _get_params_folder_path(
-                    self.minio_state, current_round
+                log(INFO, "Dump server parameters to disk")
+                # TODO: Use tmp files
+                with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
+                    pickle.dump(self.parameters, f)
+                log(INFO, "Push server parameters to S3")
+                # Checkpoint and push the state to MinIO
+                self.remote_up_down.upload_file(
+                    None,
+                    remote_file_name=f"{current_round}/current_server_parameters.bin",
+                    file_path=Path.cwd() / "current_server_parameters.bin",
+                    overwrite=True,
                 )
-                push_parameters(
-                    state=self.minio_state,
-                    server_round=current_round,
-                    parameters=self.parameters,
-                    minio_folder_path=(
-                        f"{params_folder_path}/{SERVER_GLOBAL_MODEL_FOLDER}"
-                    ),
-                )
+                log(INFO, "Server parameters have been pushed to S3")
 
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
@@ -315,28 +360,38 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
 
-            end_time = timeit.default_timer()
-            elapsed = end_time - start_time + time_offset
-
             # If applicable, save the checkpoint to MinIO (excluding the global params)
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
-                momentum_v: NDArrays | None = None
+                log(INFO, "Create momentum vector to server state")
+                current_server_state = {
+                    "server_round": current_round,
+                    "history": history,
+                }
                 if isinstance(self.strategy, FedNesterov):
-                    momentum_v = self.strategy.momentum_vector
-                server_state = ServerState(
-                    self.minio_state.endpoint_id,
-                    current_round,
-                    momentum_v,
-                    elapsed,
-                    history,
+                    log(INFO, "Add momentum vector to server state")
+                    current_server_state.update(
+                        {"momentum": self.strategy.momentum_vector}
+                    )
+                log(INFO, "Dump server state to disk")
+                # TODO: Use tmp files
+                with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+                    pickle.dump(current_server_state, f)
+                log(INFO, "Push server state to S3")
+                # Checkpoint and push the state to MinIO
+                self.remote_up_down.upload_file(
+                    None,
+                    remote_file_name=f"{current_round}/state.bin",
+                    file_path=Path.cwd() / "current_server_state.bin",
+                    overwrite=True,
                 )
-                push_server_state(self.minio_state, server_state)
+                log(INFO, "Server state has been pushed to S3")
 
         # Bookkeeping
         end_time = timeit.default_timer()
-        elapsed = end_time - start_time + time_offset
+        # TODO: Maybe checkpoint time as well?
+        elapsed = end_time - start_time
         log(INFO, "FL finished in %s", elapsed)
         return history
 
@@ -604,7 +659,9 @@ class PollenServer(Server):
         # If applicable, pull the client parameters from MinIO
         if self.use_minio_comm and isinstance(self.minio_state, MinioState):
             complete_results = (
-                replace_values_with_minio(self.minio_state, server_round, result)
+                replace_values_with_minio(
+                    self.remote_up_down, self.minio_state, server_round, result
+                )
                 for result in complete_results
             )
 
@@ -872,6 +929,7 @@ def _handle_finished_future_after_fit_async(
 
 
 def replace_values_with_minio(
+    remote_uploader_downloader: RemoteUploaderDownloader,
     minio_state: MinioState,
     current_round: int,
     client_result: tuple[ClientProxy, FitRes],
@@ -886,18 +944,29 @@ def replace_values_with_minio(
             raise TypeError("endpoint_id is not a string")
     else:
         raise ValueError("endpoint_id is not present in fit_res")
-    client_state = MinioState(
-        minio_state.client,
-        minio_state.run_uuid,
+
+    log(DEBUG, "Pull Node %s parameters from MinIO", endpoint_id)
+    # TODO: Use tmp files
+    file_found = False
+    while not file_found:
+        try:
+            remote_uploader_downloader.download_file(
+                remote_file_name=f"{current_round}/{endpoint_id}/parameters.bin",
+                destination=str(Path.cwd() / f"{endpoint_id}_parameters.bin"),
+                overwrite=True,
+            )
+            file_found = True
+        except FileNotFoundError:
+            pass
+    log(INFO, "Read server parameters from disk")
+    with open(Path.cwd() / f"{endpoint_id}_parameters.bin", "rb") as f:
+        fit_res.parameters = pickle.load(f)
+    log(
+        INFO,
+        "Node %s parameters have been read from disk and assigned to fir_res",
         endpoint_id,
-        minio_state.bucket_name,
-        minio_state.file_size,
-        minio_state.throw_on_error,
-        minio_state.timeout_in_seconds,
     )
-    fit_res.parameters = ndarrays_to_parameters(
-        pull_parameters(client_state, current_round)
-    )
+
     return (proxy, fit_res)
 
 
@@ -948,7 +1017,7 @@ def get_handle_success_and_failure(
         result: (
             tuple[Literal[True], tuple[ClientProxy, FitRes]]
             | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
-        )
+        ),
     ) -> (
         tuple[Literal[True], tuple[ClientProxy, FitRes]]
         | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
