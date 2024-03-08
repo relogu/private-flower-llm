@@ -22,6 +22,7 @@
 # bash $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "125M"
 # bash $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "1B"
 
+unset RUN_UUID
 bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "small"
 # bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "125M"
 # bash $HOME/projects/pollen_worker/llm_slurm/test_pollen_llm.sh "1B"
