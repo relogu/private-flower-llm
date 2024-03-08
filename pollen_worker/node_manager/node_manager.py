@@ -124,13 +124,13 @@ class NodeManager(fl.client.NumPyClient):
                 backend_kwargs={
                     "bucket": "checkpoints",
                     "prefix": f"{self.minio_state.run_uuid}/server",
-                    "region_name": None,
+                    "region_name": None,  # Not necessary
                     "endpoint_url": None,  # Will be read from env var
                     "aws_access_key_id": None,  # Will be read from config file
                     "aws_secret_access_key": None,  # Will be read from config file
                     "aws_session_token": None,  # Will be automatically geberated
-                    "client_config": None,
-                    "transfer_config": None,
+                    "client_config": None,  # Use defaults
+                    "transfer_config": None,  # Use defaults
                 },
                 file_path_format_string="{remote_file_name}",
                 num_concurrent_uploads=1,
