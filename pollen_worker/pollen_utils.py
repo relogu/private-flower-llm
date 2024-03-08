@@ -26,12 +26,13 @@ from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from torchvision import models
 from transformers import AlbertForMaskedLM, AlbertTokenizer
+from pollen_worker.datasets.flair import FLAIRDataset, get_metadata
 
 from pollen_worker.datasets.google_speech import Speech
 from pollen_worker.datasets.nlp_util import TextDataset
 from pollen_worker.datasets.openimage import OpenImage
 from pollen_worker.datasets.shakespeare import Shakespeare, ShakespeareLoaded
-from pollen_worker.models.pfl_cnns import simple_cnn
+from pollen_worker.models.pfl_cnns import MultiLabelCNN, simple_cnn
 from pollen_worker.models.resnet_util import resnet34
 from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
 from pollen_worker.utils import chunks_idx
@@ -164,15 +165,18 @@ def get_model(name: str) -> Module:
 
         return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
 
-    # if name == "flair":
-    #     # TODO: Set defaults, some of which are taken by the ds.
-    #     return MultiLabelCNN(
-    #         torchvision_model_type="resnet18",
-    #         num_outputs=None,
-    #         channel_mean=None,
-    #         channel_stddevs=None,
-    #         pretrained=True,
-    #     )
+    if name == "flair":
+        metadata = get_metadata(
+            _get_dataset_root("flair") / "flair_federated.hdf5",
+            True,
+        )
+        return MultiLabelCNN(
+            torchvision_model_type="resnet18",
+            num_outputs=len(metadata["label_mapping"]),
+            channel_mean=metadata["channel_mean"],
+            channel_stddevs=metadata["channel_stddevs"],
+            pretrained=True,
+        )
 
     if name == "cifar10":
         return simple_cnn(
@@ -229,6 +233,20 @@ def get_client_ds(
         ds = OpenImage(root=dataset_root / "openImg", client_id=cid, dataset=dataset)
         return ds, None
 
+    if name == "flair":
+        ds = FLAIRDataset(
+            # TODO: Remove hardcoded path
+            hdf5_path=Path("/datasets/flair/flair_federated.hdf5"),
+            user_id=cid,
+            partition=dataset,
+            use_fine_grained_labels=True,
+            # TODO: Eventually hardcode to satisfy PFL benchmarks
+            max_num_user_images=None,
+        )
+        return ds, None
+
+    # TODO: Add CIFAR10 dataset
+
     raise ValueError("No dataset for the requested dataset name")
 
 
@@ -254,10 +272,21 @@ def get_optimizer(name: str, model: Module) -> Optimizer:
     """Return the optimiser object given the task's name."""
     optimizer = None
     lr = 0.05
+    momentum = 0.9
+    weight_decay = 5e-4
     if name in {"shakespeare", "shakespeare_memory"}:
         lr = 0.8
     elif name == "reddit":
         lr = 4e-5
+        weight_decay = 0.005
+    elif name == "cifar10":
+        lr = 0.1
+        momentum = 0.0
+        weight_decay = 0.0
+    elif name == "flair":
+        lr = 0.01
+        momentum = 0.0
+        weight_decay = 0.0
 
     if name == "reddit":
         no_decay = ["bias", "LayerNorm.weight"]
@@ -268,7 +297,7 @@ def get_optimizer(name: str, model: Module) -> Optimizer:
                     for n, p in model.named_parameters()
                     if not any(nd in n for nd in no_decay)
                 ],
-                "weight_decay": 0.005,
+                "weight_decay": weight_decay,
             },
             {
                 "params": [
@@ -281,11 +310,13 @@ def get_optimizer(name: str, model: Module) -> Optimizer:
         ]
         # Bert pre-training setup
         optimizer = torch.optim.Adam(
-            optimizer_grouped_parameters, lr=lr, weight_decay=1e-2
+            optimizer_grouped_parameters,
+            lr=lr,
+            weight_decay=1e-2,
         )
     else:
         optimizer = torch.optim.SGD(
-            model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4
+            model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay
         )
     return optimizer
 
@@ -322,6 +353,10 @@ def _get_dataset_root(name: str) -> Path:
         return Path("/datasets/FedScale/google_speech/google_speech")
     if name == "openimage":
         return Path("/datasets/FedScale/openImg")
+    if name == "flair":
+        return Path("/datasets/flair")
+    if name == "cifar10":
+        return Path("/datasets/cifar10")
 
     raise ValueError("No dataset for the requested dataset name")
 

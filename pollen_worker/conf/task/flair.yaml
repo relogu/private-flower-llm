@@ -1,0 +1,16 @@
+---
+name: flair
+data_root: /datasets/flair
+learning_rate: 0.01
+num_rounds: 100
+n_clients_per_round: 100
+batch_size: 20
+momentum: .0
+weight_decay: .0
+n_workers: 1
+
+strategy:
+  _target_: pollen_worker.rs_fedavg.FedAvgRSModel
+
+is_fake: false
+n_clients: -1

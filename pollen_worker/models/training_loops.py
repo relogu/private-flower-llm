@@ -20,8 +20,14 @@ def get_training_loop(name: str) -> Callable[..., tuple[Module, dict[str, Scalar
         return reddit_training_loop
     elif name == "google_speech":
         return google_speech_training_loop
-    else:
+    elif name in {"shakespeare", "shakespeare_memory", "openimage"}:
         return general_training_loop
+    elif name == "flair":
+        return flair_training_loop
+    elif name == "cifar10":
+        return general_training_loop
+    else:
+        raise ValueError(f"Unknown task: {name}")
 
 
 def get_input_shapes(name: str) -> tuple[int, ...]:
@@ -32,8 +38,58 @@ def get_input_shapes(name: str) -> tuple[int, ...]:
         return (1, 32, 32)
     elif "shakespeare" in name:
         return (80,)
-    else:
+    elif name == "flair":
         return (3, 256, 256)
+    elif name == "cifar10":
+        return (3, 32, 32)
+    elif name == "openimage":
+        return (3, 256, 256)
+    else:
+        raise ValueError(f"Unknown task: {name}")
+
+
+def flair_training_loop(
+    trainloader: DataLoader,
+    net: Module,
+    device: torch.device,
+    epochs: int,
+    optimizer: Optimizer,
+    **kwargs: Any,
+) -> tuple[Module, dict[str, Scalar]]:
+    """Implement FLAIR task's train loop."""
+    current_loss = 0.0
+    accuracy = 0.0
+    criterion = torch.nn.BCEWithLogitsLoss()
+    for _ in range(epochs):
+        current_loss = 0.0
+        num_samples = 0
+        num_correct = 0
+        for batch in trainloader:
+            # TODO: handle steps instead of epochs?
+
+            # ========= Pre-processing + placement ===========
+            data: torch.Tensor = batch[0]
+            target: torch.Tensor = batch[1]
+
+            data = data.to(device=device)
+            target = target.to(device=device)
+            num_samples += len(target)
+            optimizer.zero_grad()
+
+            # ========= Define the forward pass ==============
+            output: torch.Tensor = net(data)
+            loss: torch.Tensor = criterion(output, target)
+            current_loss += loss.item()
+            num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
+
+            # ========= Define the backward pass ==============
+            loss.backward()
+            optimizer.step()
+        accuracy = num_correct / num_samples
+    return net, {
+        "train_loss": current_loss / len(trainloader),
+        "accuracy": accuracy,
+    }
 
 
 def reddit_training_loop(
