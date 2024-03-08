@@ -26,8 +26,12 @@ shift
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
-export SAVE_PATH="s3://checkpoints"
 mkdir -p $POLLEN_SAVE_PATH
+#! If RUN_UUID hasn't been set, set it to the default value
+if [ -z "$RUN_UUID" ]; then
+    export RUN_UUID="test-fed-pollen-$DATETIME"
+fi
+export SAVE_PATH="s3://checkpoints"
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
@@ -36,7 +40,8 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # Default to 0 if not set
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50735' run_uuid=test-fed-pollen-$DATETIME pollen.refresh_period=5 fl.n_clients_per_round=8 fl.n_rounds=10 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true pollen.checkpoint=true"
+POLLEN_CONFIG="pollen.server_address='localhost:50635' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_clients_per_round=8 fl.n_rounds=10 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true pollen.checkpoint=true"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=5"
 #! Additional settings specific for the current testing
 aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
 aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
