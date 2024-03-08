@@ -41,7 +41,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50635' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_clients_per_round=8 fl.n_rounds=10 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true pollen.checkpoint=true"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=5"
+# POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=5"
 #! Additional settings specific for the current testing
 aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
 aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
