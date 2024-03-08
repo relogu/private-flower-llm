@@ -184,8 +184,8 @@ class PollenServer(Server):
         self._client_manager.wait_for_node_managers(self.num_nodes)
 
         # Resume experiment if asked to
-        history: History
-        start_round: int
+        start_round = 0
+        time_offset = 0.0
 
         if (
             self.checkpoint
@@ -219,7 +219,8 @@ class PollenServer(Server):
                 assert (
                     start_round == self.resume_round
                 ), "Server round mismatch with checkpoint"
-                history = server_state["history"]
+                history: History = server_state["history"]
+                time_offset = server_state["time_offset"]
                 if isinstance(self.strategy, FedNesterov):
                     log(INFO, "Get momentum vector from server state")
                     self.strategy.momentum_vector = server_state["momentum"]
@@ -229,7 +230,6 @@ class PollenServer(Server):
                 sys.exit(1)
         else:
             history = self.history if self.history is not None else History()
-            start_round = 0
             # Initialize parameters
             log(INFO, "Initializing global parameters")
             self.parameters = self._get_initial_parameters(timeout=timeout)
@@ -250,8 +250,9 @@ class PollenServer(Server):
             ):
                 log(INFO, "Create momentum vector to server state")
                 current_server_state = {
-                    "server_round": 0,
+                    "server_round": start_round,
                     "history": history,
+                    "time_offset": time_offset,
                 }
                 if isinstance(self.strategy, FedNesterov):
                     log(INFO, "Add momentum vector to server state")
@@ -368,6 +369,7 @@ class PollenServer(Server):
                 current_server_state = {
                     "server_round": current_round,
                     "history": history,
+                    "time_offset": timeit.default_timer() - start_time + time_offset,
                 }
                 if isinstance(self.strategy, FedNesterov):
                     log(INFO, "Add momentum vector to server state")
@@ -391,7 +393,7 @@ class PollenServer(Server):
         # Bookkeeping
         end_time = timeit.default_timer()
         # TODO: Maybe checkpoint time as well?
-        elapsed = end_time - start_time
+        elapsed = end_time - start_time + time_offset
         log(INFO, "FL finished in %s", elapsed)
         return history
 
