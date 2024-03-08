@@ -543,6 +543,9 @@ def _get_trainer_object(
     save_num_checkpoints_to_keep: int = pop_config(
         _cfg, "save_num_checkpoints_to_keep", must_exist=False, default_value=-1
     )
+    save_ignore_keys: list[str] | None = pop_config(
+        _cfg, "save_ignore_keys", must_exist=False, default_value=None
+    )
     progress_bar = pop_config(
         _cfg, "progress_bar", must_exist=False, default_value=False
     )
@@ -804,6 +807,7 @@ def _get_trainer_object(
         device_train_microbatch_size=device_train_microbatch_size,
         fsdp_config=fsdp_config,
         save_folder=save_folder,
+        save_ignore_keys=save_ignore_keys,
         save_filename=save_filename,
         save_latest_filename=save_latest_filename,
         save_interval=save_interval,
@@ -883,6 +887,10 @@ def llm_fit(
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     # Ignoring the optimizer state if loading a checkpoint
     cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
+    # Ignoring model when saving a checkpoint
+    cfg.save_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+    # Ignoring the optimizer state when saving a checkpoint
+    cfg.save_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
