@@ -190,18 +190,20 @@ class PollenServer(Server):
         if (
             self.checkpoint
             and self.resume_round
-            and self.resume_round > 0
+            and self.resume_round >= 0
             and isinstance(self.minio_state, MinioState)
         ):
             try:
                 log(INFO, "Resuming from checkpoint")
                 # Donwload the server state from MinIO
                 # TODO: Use tmp files
+                self.remote_up_down._check_workers()
                 self.remote_up_down.download_file(
                     remote_file_name=f"{self.resume_round}/state.bin",
                     destination=str(Path.cwd() / "current_server_state.bin"),
                     overwrite=True,
                 )
+                self.remote_up_down._check_workers()
                 self.remote_up_down.download_file(
                     remote_file_name=(
                         f"{self.resume_round}/current_server_parameters.bin"
@@ -267,12 +269,14 @@ class PollenServer(Server):
                     pickle.dump(self.parameters, f)
                 log(INFO, "Push server state to S3")
                 # Checkpoint and push the state to MinIO
+                self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
                     remote_file_name="0/state.bin",
                     file_path=Path.cwd() / "current_server_state.bin",
                     overwrite=True,
                 )
+                self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
                     remote_file_name="0/current_server_parameters.bin",
@@ -321,6 +325,7 @@ class PollenServer(Server):
                     pickle.dump(self.parameters, f)
                 log(INFO, "Push server parameters to S3")
                 # Checkpoint and push the state to MinIO
+                self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
                     remote_file_name=f"{current_round}/current_server_parameters.bin",
@@ -382,6 +387,7 @@ class PollenServer(Server):
                     pickle.dump(current_server_state, f)
                 log(INFO, "Push server state to S3")
                 # Checkpoint and push the state to MinIO
+                self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
                     remote_file_name=f"{current_round}/state.bin",
@@ -659,6 +665,7 @@ class PollenServer(Server):
 
         # If applicable, pull the client parameters from MinIO
         if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+            self.remote_up_down._check_workers()
             complete_results = (
                 replace_values_with_minio(
                     self.remote_up_down, self.minio_state, server_round, result
@@ -951,6 +958,7 @@ def replace_values_with_minio(
     file_found = False
     while not file_found:
         try:
+            remote_uploader_downloader._check_workers()
             remote_uploader_downloader.download_file(
                 remote_file_name=f"{current_round}/{endpoint_id}/parameters.bin",
                 destination=str(Path.cwd() / f"{endpoint_id}_parameters.bin"),
