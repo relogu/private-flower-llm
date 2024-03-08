@@ -392,7 +392,6 @@ class PollenServer(Server):
 
         # Bookkeeping
         end_time = timeit.default_timer()
-        # TODO: Maybe checkpoint time as well?
         elapsed = end_time - start_time + time_offset
         log(INFO, "FL finished in %s", elapsed)
         return history
