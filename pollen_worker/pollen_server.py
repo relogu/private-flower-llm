@@ -222,7 +222,8 @@ class PollenServer(Server):
                     start_round == self.resume_round
                 ), "Server round mismatch with checkpoint"
                 history: History = server_state["history"]
-                time_offset = server_state["time_offset"]
+                if "time_offset" in server_state:
+                    time_offset = server_state["time_offset"]
                 if isinstance(self.strategy, FedNesterov):
                     log(INFO, "Get momentum vector from server state")
                     self.strategy.momentum_vector = server_state["momentum"]
