@@ -5,7 +5,6 @@ import copy
 import gc
 import logging
 import os
-from pathlib import Path
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
@@ -18,6 +17,7 @@ from composer import Callback, ComposerModel, Evaluator, Trainer
 from composer.devices import DeviceGPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility
+from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
@@ -74,22 +74,33 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig
 
 def set_client_load_path(
     cfg: DictConfig, server_round: int, local_steps: str
-) -> DictConfig:
+) -> tuple[DictConfig, bool]:
     """Set the save and load path given the server round and client id."""
+    # Falg to notify whther to skip this iteration or not
+    skip_iteration = False
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         try:
-            local_path = Path(
-                str(cfg.save_folder).replace(  # type: ignore[union-attr]
-                    "s3://checkpoints/", ""
+            log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
+            if validate_given_remote_path(cfg.save_folder):
+                n_steps_done = int(
+                    int(local_steps.replace("ba", "")) * (server_round - 1)
                 )
-            )
-            log(INFO, "Looking for a checkpoint to load in %s", local_path)
-            n_steps_done = int(int(local_steps.replace("ba", "")) * (server_round - 1))
-            cfg.load_path = (
-                cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
-            )
-            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+                cfg.load_path = (
+                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
+                )
+                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+            log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
+            n_steps = int(int(local_steps.replace("ba", "")) * (server_round))
+            path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
+            skip_iteration = validate_given_remote_path(path_to_check)
+            if skip_iteration:
+                cfg.load_path = cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank{rank}.pt"
+                log(
+                    INFO,
+                    "Skipping training iteration as checkpoint %s already exists.",
+                    cfg.load_path,
+                )
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e)
             # log(
@@ -99,7 +110,7 @@ def set_client_load_path(
             #     exc_info=e,
             #     stack_info=True,
             # )
-    return cfg
+    return cfg, skip_iteration
 
 
 def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
@@ -875,17 +886,19 @@ def llm_fit(
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
     # Set the loading path
-    cfg = set_client_load_path(cfg, config["server_round"], cfg["local_steps"])
+    cfg, skip_iteration = set_client_load_path(
+        cfg, config["server_round"], cfg["local_steps"]
+    )
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Ignoring model if loading a checkpoint
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     # Ignoring the optimizer state if loading a checkpoint
     cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
-    # Ignoring model when saving a checkpoint
-    cfg.save_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
+    # # Ignoring model when saving a checkpoint
+    # cfg.save_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     # Ignoring the optimizer state when saving a checkpoint
-    cfg.save_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
+    cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
@@ -902,10 +915,11 @@ def llm_fit(
     # Prevent to run any evaluator
     trainer.state.evaluators = None
     # Execute fit step for the appointed duration
-    try:
-        trainer.fit(duration=cfg["local_steps"])
-    except Exception as e:
-        log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
+    if not skip_iteration:
+        try:
+            trainer.fit(duration=cfg["local_steps"])
+        except Exception as e:
+            log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
     n_samples_trained = trainer.state.timestamp.sample.value
     # Retrieve training metrics
