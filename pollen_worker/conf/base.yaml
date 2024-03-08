@@ -13,7 +13,7 @@ pollen:
   fit_collaborative: false
   eval_collaborative: true
   checkpoint: false
-  resume_round: 0
+  resume_round: -1
 
 fl:
   n_total_clients: 8
