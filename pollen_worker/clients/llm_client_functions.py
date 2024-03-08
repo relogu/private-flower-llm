@@ -85,16 +85,11 @@ def set_client_load_path(
                 )
             )
             log(INFO, "Looking for a checkpoint to load in %s", local_path)
-            # NOTE: The suggested `Path.exists(local_path)` doens't work with a
-            # direct substitution. This necessitates a fix.
-            if os.path.exists(local_path):  # noqa: PTH110
-                n_steps_done = int(
-                    int(local_steps.replace("ba", "")) * (server_round - 1)
-                )
-                cfg.load_path = (
-                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
-                )
-                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+            n_steps_done = int(int(local_steps.replace("ba", "")) * (server_round - 1))
+            cfg.load_path = (
+                cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
+            )
+            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e)
             # log(
