@@ -426,6 +426,7 @@ class NodeManager(fl.client.NumPyClient):
             file_found = False
             while not file_found:
                 try:
+                    self.remote_up_down._check_workers()
                     self.remote_up_down.download_file(
                         remote_file_name=(
                             f"{int(server_round - 1)}/current_server_parameters.bin"
@@ -503,6 +504,7 @@ class NodeManager(fl.client.NumPyClient):
                 pickle.dump(ndarrays_to_parameters(aggregated_params), f)
             log(DEBUG, "NodeManager %s: pushing parameters to MinIO", self.name)
             # TODO: Use tmp files
+            self.remote_up_down._check_workers()
             self.remote_up_down.upload_file(
                 None,
                 remote_file_name=(
@@ -543,6 +545,7 @@ class NodeManager(fl.client.NumPyClient):
             file_found = False
             while not file_found:
                 try:
+                    self.remote_up_down._check_workers()
                     self.remote_up_down.download_file(
                         remote_file_name=(
                             f"{int(server_round)}/current_server_parameters.bin"
