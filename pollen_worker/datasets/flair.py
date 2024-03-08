@@ -243,13 +243,14 @@ class FLAIRDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         hdf5_path: Path,
+        user_ids: list[str],
         user_id: int,
         partition: str,
         use_fine_grained_labels: bool,
         max_num_user_images: int | None = None,
     ) -> None:
         self._hdf5_path = hdf5_path
-        self._user_id = user_id
+        self._user_id = user_ids[user_id]
         self._partition = partition
         self._use_fine_grained_labels = use_fine_grained_labels
         self._num_classes = len(

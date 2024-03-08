@@ -9,7 +9,7 @@ even if many are spawned at once.
 from collections import OrderedDict
 from collections.abc import Callable
 from logging import INFO
-from typing import Any, cast
+from typing import Any
 
 import flwr as fl
 import torch
@@ -152,7 +152,7 @@ class VirtualClient(fl.client.NumPyClient):
             config["device"] = get_device()
         # Load client's dataset
         ds, tokenizer = (
-            get_client_ds(name=self.name, cid=cast(int, self.cid))
+            get_client_ds(name=self.name, cid=int(self.cid))
             if not config["is_fake"]
             else (None, None)
         )

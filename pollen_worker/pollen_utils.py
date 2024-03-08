@@ -12,6 +12,7 @@ from logging import DEBUG, INFO
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any, cast
+import pyarrow.parquet as pq
 
 import pandas as pd
 import psutil
@@ -26,7 +27,11 @@ from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from torchvision import models
 from transformers import AlbertForMaskedLM, AlbertTokenizer
-from pollen_worker.datasets.flair import FLAIRDataset, get_metadata
+from pollen_worker.datasets.flair import (
+    FLAIRDataset,
+    _create_parquet_client_samples_dict,
+    get_metadata,
+)
 
 from pollen_worker.datasets.google_speech import Speech
 from pollen_worker.datasets.nlp_util import TextDataset
@@ -234,9 +239,18 @@ def get_client_ds(
         return ds, None
 
     if name == "flair":
+        mapping_path = Path(
+            f"/datasets/flair/client_data_mapping/{dataset}_clients_dict.parquet"
+        )
+        if not mapping_path.exists():
+            _create_parquet_client_samples_dict(
+                Path("/datasets/flair/flair_federated.hdf5"), dataset
+            )
+
         ds = FLAIRDataset(
             # TODO: Remove hardcoded path
             hdf5_path=Path("/datasets/flair/flair_federated.hdf5"),
+            user_ids=cast(list[str], pq.read_table(str(mapping_path))["client_id"]),
             user_id=cid,
             partition=dataset,
             use_fine_grained_labels=True,
@@ -333,7 +347,13 @@ def get_clients_population_dict(
         / "client_data_mapping"
         / f"{dataset}_clients_dict.parquet"
     )
-    dataframe = dataframe.set_index("client_id")
+    # Try to convert the "client_id" column to numeric
+    dataframe["client_id"] = pd.to_numeric(dataframe["client_id"], errors="coerce")
+
+    # Check if there are any NaN values in the "client_id" column
+    if dataframe["client_id"].isna().any():
+        # If there are, replace the "client_id" column with the DataFrame's index
+        dataframe["client_id"] = dataframe.index
     dataframe.samples = dataframe.samples.astype(int)
     dataframe = dataframe.sort_values(by=["samples"], ascending=False)
     log(DEBUG, f"Length of cids list before filtering {len(dataframe)}")

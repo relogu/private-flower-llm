@@ -80,7 +80,7 @@ def flair_training_loop(
             output: torch.Tensor = net(data)
             loss: torch.Tensor = criterion(output, target)
             current_loss += loss.item()
-            num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
+            # num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
 
             # ========= Define the backward pass ==============
             loss.backward()

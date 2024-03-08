@@ -11,7 +11,7 @@
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-cd $HOME/projects/pollen_worker
+# cd $HOME/projects/pollen_worker
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
