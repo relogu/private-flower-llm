@@ -5,13 +5,15 @@ using wandb for logging and hydra for exeperiment configuration.
 """
 
 import copy
+from logging import INFO
+import pickle
 import sys
 from pathlib import Path
 
 import flwr as fl
 import hydra
 import transformers
-from flwr.common import ndarrays_to_parameters
+from flwr.common import ndarrays_to_parameters, log
 from minio import Minio
 from omegaconf import DictConfig, OmegaConf
 
@@ -44,9 +46,22 @@ def main(cfg: DictConfig) -> None:
     _llm_config = cfg.llm_config
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
-    initial_parameters = ndarrays_to_parameters(
-        get_raw_model_parameters(copy.deepcopy(_llm_config))
-    )
+    if cfg.pretrained_model_path:
+        log(
+            INFO,
+            "FL server is loading pretrained model from %s",
+            cfg.pretrained_model_path,
+        )
+        with open(Path(cfg.pretrained_model_path), "rb") as f:
+            initial_parameters = ndarrays_to_parameters(pickle.load(f))
+    else:
+        log(
+            INFO,
+            "FL server initializes model with random parameters.",
+        )
+        initial_parameters = ndarrays_to_parameters(
+            get_raw_model_parameters(copy.deepcopy(_llm_config))
+        )
     # Instantiate the strategy
     strategy = FedNesterov(
         fraction_fit=sys.float_info.min,
