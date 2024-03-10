@@ -20,7 +20,7 @@ POETRY_ENV_PATH=$(poetry env info --path)
 # for policy in "lb" "llb" "rr"; do
 for policy in "lb"; do
     echo "Using policy $policy"
-    CUSTOM_HYDRA_ARGS="num_nodes=1 run_uuid=$run_uuid task=flair task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=127.0.0.1:6480"
+    CUSTOM_HYDRA_ARGS="num_nodes=1 run_uuid=$run_uuid task=flair placement_policy=$policy flwr_address=127.0.0.1:6481"
 
     # Launch the server.
     poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
