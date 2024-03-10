@@ -419,9 +419,13 @@ class NodeManager(fl.client.NumPyClient):
         """Implement the fit step."""
         # Get the server round
         server_round = int(config["server_round"])
-        # If applicable, override the parameters with values from MinIO
+        # If applicable, override the parameters with values from S3 Object Store
         if isinstance(self.minio_state, MinioState):
-            log(DEBUG, "NodeManager %s: pulling parameters from MinIO", self.name)
+            log(
+                DEBUG,
+                "NodeManager %s: pulling parameters from S3 Object Store",
+                self.name,
+            )
             # TODO: Use tmp files
             file_found = False
             while not file_found:
@@ -495,14 +499,18 @@ class NodeManager(fl.client.NumPyClient):
             node_train_metrics,
         )
 
-        # If applicable, push the aggregated parameters to MinIO
+        # If applicable, push the aggregated parameters to S3 Object Store
         if isinstance(self.minio_state, MinioState):
             log(INFO, "Dump node parameters to disk")
             with open(
                 Path.cwd() / f"{self.node_manager_uuid}_parameters.bin", "wb"
             ) as f:
                 pickle.dump(ndarrays_to_parameters(aggregated_params), f)
-            log(DEBUG, "NodeManager %s: pushing parameters to MinIO", self.name)
+            log(
+                DEBUG,
+                "NodeManager %s: pushing parameters to S3 Object Store",
+                self.name,
+            )
             # TODO: Use tmp files
             self.remote_up_down._check_workers()
             self.remote_up_down.upload_file(
@@ -513,7 +521,7 @@ class NodeManager(fl.client.NumPyClient):
                 file_path=Path.cwd() / f"{self.node_manager_uuid}_parameters.bin",
                 overwrite=True,
             )
-            log(INFO, "Node parameters have been pushed to disk")
+            log(INFO, "Node parameters have been pushed to S3 Object Store")
             node_train_metrics.update({
                 "endpoint_id": self.node_manager_uuid,
             })
@@ -538,9 +546,13 @@ class NodeManager(fl.client.NumPyClient):
         """Implement the evaluation step."""
         # Get the server round
         server_round = config["server_round"]
-        # If applicable, override the parameters with values from MinIO
+        # If applicable, override the parameters with values from S3 Object Store
         if isinstance(self.minio_state, MinioState):
-            log(DEBUG, "NodeManager %s: pulling parameters from MinIO", self.name)
+            log(
+                DEBUG,
+                "NodeManager %s: pulling parameters from S3 Object Store",
+                self.name,
+            )
             # TODO: Use tmp files
             file_found = False
             while not file_found:
@@ -721,17 +733,17 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
-    # MinIO
+    # S3 Object Store
     minio_state: MinioState | None = None
     if cfg.use_minio_comm:
-        # Create the MinIO client
+        # Create the S3 Object Store client
         cfg.minio.minio_client.endpoint = str(cfg.minio.minio_client.endpoint).replace(
             "http://", ""
         )
         minio_client = Minio(**cfg.minio.minio_client)
         # NOTE: This MUST BE hardcoded to "server" for the server
         cfg.minio.minio_state.endpoint_id = "server"
-        # Create the MinIO state
+        # Create the S3 Object Store state
         minio_state = MinioState(
             minio_client,
             **cfg.minio.minio_state,

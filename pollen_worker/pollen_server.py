@@ -195,7 +195,7 @@ class PollenServer(Server):
         ):
             try:
                 log(INFO, "Resuming from checkpoint")
-                # Donwload the server state from MinIO
+                # Donwload the server state from S3 Object Store
                 # TODO: Use tmp files
                 self.remote_up_down._check_workers()
                 self.remote_up_down.download_file(
@@ -247,7 +247,7 @@ class PollenServer(Server):
                 )
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
-            # If applicable, save the checkpoint to MinIO (w/ model parameters)
+            # If applicable, save the chkpt to S3 Object Store (w/ model parameters)
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
@@ -269,7 +269,7 @@ class PollenServer(Server):
                 with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
                     pickle.dump(self.parameters, f)
                 log(INFO, "Push server state to S3")
-                # Checkpoint and push the state to MinIO
+                # Checkpoint and push the state to S3 Object Store
                 self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
@@ -316,7 +316,7 @@ class PollenServer(Server):
                     server_round=current_round, metrics=fit_metrics
                 )
 
-            # Push the global model to MinIO (but not the server state)
+            # Push the global model to S3 Object Store (but not the server state)
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
@@ -325,7 +325,7 @@ class PollenServer(Server):
                 with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
                     pickle.dump(self.parameters, f)
                 log(INFO, "Push server parameters to S3")
-                # Checkpoint and push the state to MinIO
+                # Checkpoint and push the state to S3 Object Store
                 self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
@@ -367,7 +367,7 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
 
-            # If applicable, save the checkpoint to MinIO (excluding the global params)
+            # If applicable, save the chkpt to S3 Object Store (w/o the global params)
             if (self.checkpoint or self.use_minio_comm) and isinstance(
                 self.minio_state, MinioState
             ):
@@ -387,7 +387,7 @@ class PollenServer(Server):
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
                 log(INFO, "Push server state to S3")
-                # Checkpoint and push the state to MinIO
+                # Checkpoint and push the state to S3 Object Store
                 self.remote_up_down._check_workers()
                 self.remote_up_down.upload_file(
                     None,
@@ -664,7 +664,7 @@ class PollenServer(Server):
             Generator[tuple[ClientProxy, FitRes], None, None], results
         )
 
-        # If applicable, pull the client parameters from MinIO
+        # If applicable, pull the client parameters from S3 Object Store
         if self.use_minio_comm and isinstance(self.minio_state, MinioState):
             self.remote_up_down._check_workers()
             complete_results = (
@@ -943,7 +943,7 @@ def replace_values_with_minio(
     current_round: int,
     client_result: tuple[ClientProxy, FitRes],
 ) -> tuple[ClientProxy, FitRes]:
-    """Replace the parameters in the FitRes with the ones from MinIO."""
+    """Replace the parameters in the FitRes with the ones from S3 Object Store."""
     proxy, fit_res = client_result
     endpoint_id: Any
     if "endpoint_id" in fit_res.metrics:
@@ -954,7 +954,7 @@ def replace_values_with_minio(
     else:
         raise ValueError("endpoint_id is not present in fit_res")
 
-    log(DEBUG, "Pull Node %s parameters from MinIO", endpoint_id)
+    log(DEBUG, "Pull Node %s parameters from S3 Object Store", endpoint_id)
     # TODO: Use tmp files
     file_found = False
     while not file_found:
@@ -973,7 +973,7 @@ def replace_values_with_minio(
         fit_res.parameters = pickle.load(f)
     log(
         INFO,
-        "Node %s parameters have been read from disk and assigned to fir_res",
+        "Node %s parameters have been read from disk and assigned to fit_res",
         endpoint_id,
     )
 
