@@ -88,6 +88,7 @@ from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     get_n_cuda_devices,
+    l1_norm,
     weighted_average,
 )
 
@@ -393,6 +394,14 @@ class NodeManager(fl.client.NumPyClient):
                         (aggregated_params, sum_of_samples, node_train_metrics),
                         (w_p_s[0], w_s[0], w_s_m[1]),
                     )
+                    if sum_of_samples > 0:
+                        node_clients_pairwise_delta = sum(
+                            l1_norm([x - y])
+                            for x, y in zip(aggregated_params, w_p_s[0], strict=False)
+                        )
+                        node_train_metrics |= {
+                            "node_clients_pairwise_delta": node_clients_pairwise_delta
+                        }
                     # Zero out the n_samples shared memories
                     set_num_samples_shm(w_s, 0)
                 else:
