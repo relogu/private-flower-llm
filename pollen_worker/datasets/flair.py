@@ -251,6 +251,8 @@ class FLAIRDataset(torch.utils.data.Dataset):
     ) -> None:
         self._hdf5_path = hdf5_path
         self._user_id = user_ids[user_id]
+        # Added for compatibility with other tasks
+        self.client_id = self._user_id
         self._partition = partition
         self._use_fine_grained_labels = use_fine_grained_labels
         self._num_classes = len(
