@@ -20,6 +20,7 @@ a node-manager which communicates
 to the simulation server.
 """
 
+import ast
 import pickle
 import time
 from collections import defaultdict
@@ -53,10 +54,12 @@ from pollen_worker.pollen_utils import (
     POLLEN_PARAMETERS_SHM,
     POLLEN_WORKER_SHM,
     allocate_shm,
+    get_client_ds_fn,
     get_pyarrow_buffer_from_table,
     write_to_fit_result_shm,
 )
 from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
+from pollen_worker.virtual_client import VirtualClient
 from pollen_worker.worker import Worker
 
 pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
@@ -69,7 +72,7 @@ class NodeManager(fl.client.NumPyClient):
 
     def __init__(
         self,
-        client_fn: Callable[[int], NumPyClient],
+        client_fn: Callable[[int], VirtualClient],
         warm_up_config: dict[str, Scalar],
         run_uuid: str,
         placement_policy: str,
@@ -93,7 +96,7 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Allocate shared memory for round parameters
         self.client_fn = client_fn
-        tmp_client: NumPyClient = client_fn(0)
+        tmp_client: VirtualClient = client_fn(0)
         (
             self.round_parameters,
             self.round_num_samples,
@@ -105,6 +108,8 @@ class NodeManager(fl.client.NumPyClient):
             create=True,
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
+
+        self.dataset_name = tmp_client.name
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
@@ -150,6 +155,9 @@ class NodeManager(fl.client.NumPyClient):
                 self.workers[device].append(
                     Worker(
                         client_fn=client_fn,
+                        dataset_generator=lambda cid: get_client_ds_fn(
+                            name=self.dataset_name
+                        )(cid)[0],
                         device=device,
                         worker_id=worker_id,
                         task_queue=self.task_queues[device],
@@ -239,7 +247,10 @@ class NodeManager(fl.client.NumPyClient):
         # Send parameters to shared memory
         num_total_virtual_clients = 0
         for device, workers in self.workers.items():
-            list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
+            # list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
+            list_ids_for_this_gpu: list[list[int]] = ast.literal_eval(
+                assignment_config[device]
+            )
             num_total_virtual_clients += len(list_ids_for_this_gpu)
 
             # Close useless workers, one by one
@@ -266,12 +277,6 @@ class NodeManager(fl.client.NumPyClient):
             # Put the client ids in the queue
             for cid in list_ids_for_this_gpu:
                 self.task_queues[device].put(cid)
-
-        # Create cid->GPU mapping
-        cid_gpu_mapping = {}
-        for device in self.workers:
-            list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
-            cid_gpu_mapping.update(dict.fromkeys(list_ids_for_this_gpu, device))
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0

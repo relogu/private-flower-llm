@@ -315,21 +315,19 @@ def learning_based_placement(
         #     [w[2] for w in workers_assignments],
         # )
         # Merge workers assignments
-        devices_assignment: dict[str, list[int]] = defaultdict(list)
+        devices_assignment: dict[str, list[list[int]]] = defaultdict(list)
         for worker in workers_assignments:
             # log(
             #     DEBUG,
             #     f"Pollen-MLStrategy :: worker assignments {worker}",
             # )
             _, list_of_cids, _, node_name, gpu_name = worker
-            devices_assignment[f"{node_name}_{gpu_name}"].extend(list_of_cids)
+            devices_assignment[f"{node_name}_{gpu_name}"].append(list_of_cids)
         # Build node assignments
         node_assignments = []
         for client_proxy, node in nodes_dict.values():
             devices_assignment_node = {
-                node_dev_name.split("_")[1]: _convert_list_of_int_to_string(
-                    list_of_cids
-                )
+                node_dev_name.split("_")[1]: str(list_of_cids)
                 for node_dev_name, list_of_cids in devices_assignment.items()
                 if node_dev_name.split("_")[0] == node.name
             }
@@ -341,7 +339,7 @@ def learning_based_placement(
         if verbose:
             log(
                 DEBUG,
-                "Pollen-MLStrategy placement :: tuple(node, device assignements) %s",
+                "Pollen-MLStrategy placement :: tuple(node, device assignments) %s",
                 node_assignments,
             )
         return node_assignments
@@ -378,7 +376,7 @@ def round_robin_placement(
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(cids, n_total_workers)
     # Init the device assignment and the return value
-    device_assignment: dict[str, list[int]] = defaultdict(list)
+    device_assignment: dict[str, list[list[int]]] = defaultdict(list)
     tmp_node_assignments = [
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
@@ -394,16 +392,12 @@ def round_robin_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
-    # Covert list of int to string
+                        device_assignment[device_id].append(current_split.tolist())
+    # Covert list of int to string``
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
-            {
-                k: _convert_list_of_int_to_string(v)
-                for k, v in device_assignment.items()
-            },
+            {k: str(v) for k, v in device_assignment.items()},
         )
         for c_p, device_assignment in tmp_node_assignments
     ]
@@ -770,6 +764,17 @@ def _predict_single_client(
 
 def _convert_list_of_int_to_string(list_of_int: list[int]) -> str:
     return ",".join([str(i) for i in list_of_int])
+
+
+def _convert_list_of_lists_of_int_to_string(
+    list_of_lists_of_int: list[list[int]],
+) -> str:
+    return str(list_of_lists_of_int)
+    # tmp_list: list[str] = []
+    # for list_of_int in list_of_lists_of_int:
+    #     tmp_tmp_list = _convert_list_of_int_to_string(list_of_int)
+    #     tmp_list.append(f"[{tmp_tmp_list}]")
+    # return ",".join([str(i) for i in tmp_list])
 
 
 def add_n_batches_column_to_clients_stats_table(
