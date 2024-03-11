@@ -50,7 +50,7 @@ def get_cuda_prop(
     client: NumPyClient,
     params: NDArrays,
     config: dict[str, Scalar],
-    cap_workers: bool = True,
+    cap_workers: int = 0,
 ) -> dict[str, Device]:
     """Assesses the capabilities of the CUDA resources available."""
     gpus_prop = {}
@@ -88,17 +88,11 @@ def get_cuda_prop(
                         mem.free,
                     )
     p.shutdown(wait=False)
-    n_cpus: int
-    try:
-        n_cpus = len(psutil.Process().cpu_affinity())
-    except AttributeError:
-        n_cpus = psutil.cpu_count()
-    n_cpus_per_gpu = n_cpus // len(gpus_available)
     for gpu_name, (gpu, proc_used, total, used, _free) in monitors.items():
         # NOTE: This accounts for other (external) processes running on the same GPU
         if cap_workers:
             current_concurrency = min(
-                int((total - used + proc_used) // proc_used), n_cpus_per_gpu
+                int((total - used + proc_used) // proc_used), cap_workers
             )
         else:
             current_concurrency = int((total - used + proc_used) // proc_used)
