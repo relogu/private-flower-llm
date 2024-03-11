@@ -64,7 +64,7 @@ def flair_training_loop(
         current_loss = 0.0
         num_samples = 0
         num_correct = 0
-        for batch in trainloader:
+        for i, batch in enumerate(trainloader):
             # TODO: handle steps instead of epochs?
 
             # ========= Pre-processing + placement ===========
@@ -85,6 +85,8 @@ def flair_training_loop(
             # ========= Define the backward pass ==============
             loss.backward()
             optimizer.step()
+            if i >= 512:  # noqa: PLR2004
+                break
         accuracy = num_correct / num_samples
     return net, {
         "train_loss": current_loss / len(trainloader),
