@@ -937,10 +937,13 @@ def llm_fit(
     model_parameters = get_parameters_from_state({}, trainer)
 
     # Compute the norm of the pseudo-gradient
-    norm_of_pseudo_gradient: float = sum(
+    per_layer_norm_of_pseudo_gradient = [
         l1_norm([x - y]) for x, y in zip(parameters, model_parameters, strict=False)
-    )
-    train_metrics |= {"norm_of_pseudo_gradient": norm_of_pseudo_gradient}
+    ]
+    for i, plnopg in enumerate(per_layer_norm_of_pseudo_gradient):
+        train_metrics |= {f"client/l1_norm_of_pseudo_gradient_l{i}": plnopg}
+    norm_of_pseudo_gradient: float = sum(per_layer_norm_of_pseudo_gradient)
+    train_metrics |= {"client/l1_norm_pseudo_gradient": norm_of_pseudo_gradient}
 
     # Close the trainer
     trainer.close()
