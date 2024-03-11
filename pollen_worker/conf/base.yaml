@@ -3,6 +3,8 @@ run_uuid: chiappe
 seed: 1337
 is_test: false
 pretrained_model_path: null
+store_init_model: false
+store_final_model: false
 
 # Pollen specific settings
 pollen:

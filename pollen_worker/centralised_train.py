@@ -9,6 +9,7 @@ import copy
 import gc
 import logging
 import os
+import pickle
 import time
 import warnings
 from logging import INFO, WARN
@@ -46,6 +47,8 @@ from llmfoundry.utils.config_utils import (
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from transformers import PreTrainedTokenizerBase
+
+from pollen_worker.clients.llm_client_functions import get_parameters_from_state
 
 
 def validate_config(cfg: DictConfig) -> None:
@@ -687,8 +690,22 @@ def main(_cfg: DictConfig) -> Trainer:
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
 
+    # Dump model parameters to file
+    if cfg.store_init_model:
+        model_parameters = get_parameters_from_state({}, trainer)
+        n_steps = trainer.state.timestamp.batch.value
+        with open(f"{cfg.run_uuid}-{n_steps}-checkpoint.bin", "wb") as f:
+            pickle.dump(model_parameters, f)
+
     log(INFO, "Starting training...")
     trainer.fit()
+
+    # Dump model parameters to file
+    if cfg.store_final_model:
+        model_parameters = get_parameters_from_state({}, trainer)
+        n_steps = trainer.state.timestamp.batch.value
+        with open(f"{cfg.run_uuid}-{n_steps}-checkpoint.bin", "wb") as f:
+            pickle.dump(model_parameters, f)
 
     log(INFO, "Done.")
     return trainer
