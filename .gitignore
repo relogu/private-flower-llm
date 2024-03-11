@@ -201,3 +201,6 @@ llm-foundry-scripts
 
 # Other results
 notebooks/*.txt
+
+# Temporary model parameters
+*.bin
