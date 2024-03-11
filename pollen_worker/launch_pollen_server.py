@@ -48,7 +48,7 @@ def main(cfg: DictConfig) -> None:
     try:
         cid_samples_dict = get_clients_population_dict(
             name=cfg.task.name,
-            batch_size=cfg.task.batch_size,
+            batch_size=1 if cfg.task.name == "flair" else cfg.task.batch_size,
             seed=cfg.seed,
         )
     except Exception as e:
