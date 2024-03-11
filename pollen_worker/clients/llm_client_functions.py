@@ -47,7 +47,7 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices
+from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices, l1_norm
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -935,6 +935,12 @@ def llm_fit(
             train_metrics.update({f"lr-{name}/group{idx}": lr})
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
+
+    # Compute the norm of the pseudo-gradient
+    norm_of_pseudo_gradient: float = sum(
+        l1_norm([x - y]) for x, y in zip(parameters, model_parameters, strict=False)
+    )
+    train_metrics |= {"norm_of_pseudo_gradient": norm_of_pseudo_gradient}
 
     # Close the trainer
     trainer.close()
