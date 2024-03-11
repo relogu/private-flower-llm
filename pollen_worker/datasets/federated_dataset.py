@@ -16,7 +16,7 @@ class FederatedDataset(Dataset):
     def __init__(
         self,
         dataset_generator: Callable[[int], Dataset],
-        list_of_clients: list[int | str],
+        list_of_clients: list[int] | list[str],
         verbose: bool = False,
     ) -> None:
         self.dataset_generator = dataset_generator
@@ -58,7 +58,7 @@ if __name__ == "__main__":
             "google_speech",
             "reddit",
         ],
-        [10, 1, 20, 10, 20, 20],
+        [11, 1, 20, 11, 20, 20],
         strict=False,
     ):
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
             batch_size=batch_size,
             seed=51550,
         )
-        list_of_cids = list(cid_samples_dict.keys())[:n_clients_to_sample]
+        list_of_cids = [int(x) for x in cid_samples_dict][:n_clients_to_sample]
         dataset = FederatedDataset(
             dataset_generator=_dataset_generator,
             list_of_clients=list_of_cids,
