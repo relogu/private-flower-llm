@@ -20,7 +20,7 @@ from flwr.common.typing import Config, NDArrays, Scalar
 from torch import device as device_type
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from pollen_worker.datasets.nlp_util import get_collate_fn
 from pollen_worker.models.training_loops import get_input_shapes, get_training_loop
@@ -43,6 +43,7 @@ class VirtualClient(fl.client.NumPyClient):
     ) -> None:
         self.name = name
         self.cid = cid
+        self.client_dataset: Dataset
         transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualClient.__init__ :: cid {self.cid}')
 
@@ -151,11 +152,15 @@ class VirtualClient(fl.client.NumPyClient):
         if "device" not in config:
             config["device"] = get_device()
         # Load client's dataset
-        ds, tokenizer = (
-            get_client_ds(name=self.name, cid=int(self.cid))
-            if not config["is_fake"]
-            else (None, None)
-        )
+        if self.client_dataset is None:
+            ds, tokenizer = (
+                get_client_ds(name=self.name, cid=int(self.cid))
+                if not config["is_fake"]
+                else (None, None)
+            )
+        if hasattr(self.client_dataset, "tokenizer"):
+            tokenizer = self.client_dataset.tokenizer  # type: ignore[union-attr]
+        ds = self.client_dataset
 
         # Instantiate the trainloader
         trainloader = (

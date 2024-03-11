@@ -126,9 +126,10 @@ class TextDataset(Dataset):
         client_id: int = 0,
         dataset: str = "train",
     ) -> None:
+        self.tokenizer = tokenizer
         # Correct the block size for building sequences of tokens
         block_size = block_size - (
-            tokenizer.model_max_length - tokenizer.max_len_single_sentence
+            self.tokenizer.model_max_length - self.tokenizer.max_len_single_sentence
         )
         # Create the cached features file
         file_path = root_dir / dataset
@@ -182,7 +183,7 @@ class TextDataset(Dataset):
                     " params are model: %s, tokenizer: %s, block_size: %s",
                     file_path,
                     model,
-                    tokenizer,
+                    self.tokenizer,
                     block_size,
                 )
                 # Parallelise entire dataset tokenisation
@@ -194,7 +195,7 @@ class TextDataset(Dataset):
                     pool_inputs.append([
                         list(range(len(files)))[begin:end],
                         files[begin:end],
-                        tokenizer,
+                        self.tokenizer,
                         block_size,
                         worker_cnt,
                         file_path,
@@ -216,7 +217,7 @@ class TextDataset(Dataset):
                 _feature_creation_worker(
                     [client_id],
                     [files[client_id]],
-                    tokenizer,
+                    self.tokenizer,
                     block_size,
                     0,
                     file_path,
