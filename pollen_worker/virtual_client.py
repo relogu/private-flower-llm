@@ -43,7 +43,7 @@ class VirtualClient(fl.client.NumPyClient):
     ) -> None:
         self.name = name
         self.cid = cid
-        self.client_dataset: Dataset
+        self.client_dataset: Dataset | None = None
         transformers.logging.set_verbosity_error()
         # log(INFO, f'VirtualClient.__init__ :: cid {self.cid}')
 
@@ -158,9 +158,11 @@ class VirtualClient(fl.client.NumPyClient):
                 if not config["is_fake"]
                 else (None, None)
             )
-        if hasattr(self.client_dataset, "tokenizer"):
-            tokenizer = self.client_dataset.tokenizer  # type: ignore[union-attr]
-        ds = self.client_dataset
+        else:
+            ds = self.client_dataset
+            tokenizer = None
+            if hasattr(self.client_dataset, "tokenizer"):
+                tokenizer = self.client_dataset.tokenizer  # type: ignore[union-attr]
 
         # Instantiate the trainloader
         trainloader = (
