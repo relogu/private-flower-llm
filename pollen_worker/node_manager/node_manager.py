@@ -410,6 +410,8 @@ class NodeManager(fl.client.NumPyClient):
             else:
                 # If the training was not successful, put the cid back in the list
                 list_of_cids_to_train.append(str(current_cid))
+                # Close all workers to refresh the state
+                self._close_workers()
             # Close the config shared memory
             fl_instructions_config_sh.close()
             fl_instructions_config_sh.unlink()
