@@ -299,7 +299,7 @@ class PollenServer(Server):
             timeit.default_timer() - self.start_up_time,
         )
         # Run federated learning for num_rounds
-        log(INFO, "FL starting from round %s", start_round)
+        log(INFO, "FL starting from round %s", start_round + 1)
         start_time = timeit.default_timer()
         for current_round in range(start_round + 1, num_rounds + 1):
             # Check for changes in connected NodeManagers
