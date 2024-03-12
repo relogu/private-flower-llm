@@ -901,18 +901,18 @@ def llm_fit(
         _cfg=cfg,
     )
     # log(INFO, f"Trainer config: {logged_cfg}")
-    # Set the parameters
-    if parameters is not None:
-        # log(INFO, "Initializing model...")
-        set_parameters_to_state(parameters, trainer)
-    # Eval first if requested
-    if eval_first and trainer.state.timestamp.batch.value == 0:
-        trainer.eval()
-    # log(INFO, "Starting training...")
-    # Prevent to run any evaluator
-    trainer.state.evaluators = None
-    # Execute fit step for the appointed duration
     if not skip_iteration:
+        # Set the parameters
+        if parameters is not None:
+            # log(INFO, "Initializing model...")
+            set_parameters_to_state(parameters, trainer)
+        # Eval first if requested
+        if eval_first and trainer.state.timestamp.batch.value == 0:
+            trainer.eval()
+        # log(INFO, "Starting training...")
+        # Prevent to run any evaluator
+        trainer.state.evaluators = None
+        # Execute fit step for the appointed duration
         try:
             trainer.fit(duration=cfg["local_steps"])
         except Exception as e:
