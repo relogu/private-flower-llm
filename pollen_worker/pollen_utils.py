@@ -413,13 +413,14 @@ def get_clients_population_dict(
         / "client_data_mapping"
         / f"{dataset}_clients_dict.parquet"
     )
-    # Try to convert the "client_id" column to numeric
-    dataframe["client_id"] = pd.to_numeric(dataframe["client_id"], errors="coerce")
-
     # Check if there are any NaN values in the "client_id" column
-    if dataframe["client_id"].isna().any():
+    if name == "flair":
+        # Try to convert the "client_id" column to numeric
+        dataframe["client_id"] = pd.to_numeric(dataframe["client_id"], errors="coerce")
         # If there are, replace the "client_id" column with the DataFrame's index
         dataframe["client_id"] = dataframe.index
+    else:
+        dataframe = dataframe.set_index("client_id")
     dataframe.samples = dataframe.samples.astype(int)
     dataframe = dataframe.sort_values(by=["samples"], ascending=False)
     log(DEBUG, f"Length of cids list before filtering {len(dataframe)}")
