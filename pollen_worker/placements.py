@@ -133,6 +133,10 @@ def get_pollen_models(
         clients_stats = add_n_batches_column_to_clients_stats_table(
             clients_stats, batch_size, cids
         )
+        # Add n_samples column to clients_stats table
+        clients_stats = add_n_samples_column_to_clients_stats_table(
+            clients_stats, batch_size, cids
+        )
         # Split clients_stats table into a list of tables, one per client
         splitted_clients_stats: dict[str, pa.Table] = split_clients_training_table(
             clients_stats
@@ -147,6 +151,8 @@ def get_pollen_models(
             y1 = np.array(filtered_client_stats.column("end_time").flatten())
             y0 = np.array(filtered_client_stats.column("start_time").flatten())
             ctt = (y1 - y0) * 1e-9
+            # Replace zero values with a small number
+            ctt[ctt == 0] = 1e-9
             filtered_client_stats = filtered_client_stats.add_column(
                 0,
                 "ctt",
@@ -156,9 +162,13 @@ def get_pollen_models(
                 ["n_batches"]
             ).aggregate([("ctt", "mean")])
         # Train models
-        pollen_models: dict[str, Any] = sequential_train_models(
-            fns, splitted_clients_stats
-        )
+        try:
+            pollen_models: dict[str, Any] = sequential_train_models(
+                fns, splitted_clients_stats
+            )
+        except Exception as e:
+            log(ERROR, "Failed to train models.", exc_info=e, stack_info=True)
+            return None, None
         # Order models from the fastest to the slowest according to the prediction
         # This is a dictionary {'model_name': (trained_model)}
         pollen_models = dict(
@@ -795,6 +805,22 @@ def add_n_batches_column_to_clients_stats_table(
     )
 
 
+def add_n_samples_column_to_clients_stats_table(
+    input_table: pa.Table,
+    batch_size: int,
+    cids: dict[str | int, int],
+) -> pa.Table:
+    """Add a `num_batches` column to the given Table."""
+    return input_table.add_column(
+        0,
+        "n_samples",
+        cast(
+            pa.Array,
+            pa.array([cids[int(cid.as_py())] for cid in input_table["cid"]]),
+        ),
+    )
+
+
 def split_clients_training_table(input_table: pa.Table) -> dict[str, pa.Table]:
     """Split the training table into a list of tables, one per GPU.
 
@@ -863,7 +889,8 @@ def sequential_train_models(
 def _train_model(
     fns: list[Callable], model_name: str, data: pa.Table
 ) -> dict[str, Any]:
-    x = data.column("n_batches").to_numpy()
+    # x = data.column("n_batches").to_numpy()
+    x = data.column("n_samples").to_numpy()
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
@@ -925,7 +952,8 @@ def _get_model_score(
     fn: Callable, model_name: str, model: Any, data: pa.Table
 ) -> dict[str, float]:
     parameters, _ = model
-    x = data.column("n_batches").to_numpy()
+    # x = data.column("n_batches").to_numpy()
+    x = data.column("n_samples").to_numpy()
     y1 = data.column("end_time").to_numpy()
     y0 = data.column("start_time").to_numpy()
     delta = (y1 - y0) * 1e-9
