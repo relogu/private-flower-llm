@@ -173,11 +173,13 @@ class NodeManager(fl.client.NumPyClient):
     def _get_node_properties(self) -> dict[str, Scalar]:
         device_info: dict[str, Device] = {}
         # Get hardware accelerator properties
-        tmp_client: NumPyClient = self.client_fn(0)
+        tmp_client: VirtualClient = self.client_fn(0)
         tmp_params = tmp_client.get_parameters(config={})
         if torch.cuda.is_available():
             device_info = dict(
-                get_cuda_prop(tmp_client, tmp_params, config=self.warm_up_config),
+                get_cuda_prop(
+                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=1
+                ),
                 **device_info,
             )
         if torch._C._mps_is_available() and torch._C.has_mps:
@@ -251,7 +253,7 @@ class NodeManager(fl.client.NumPyClient):
             list_ids_for_this_gpu: list[list[int]] = ast.literal_eval(
                 assignment_config[device]
             )
-            num_total_virtual_clients += len(list_ids_for_this_gpu)
+            num_total_virtual_clients += sum(len(_l) for _l in list_ids_for_this_gpu)
 
             # Close useless workers, one by one
             while len(list_ids_for_this_gpu) < len(workers):
