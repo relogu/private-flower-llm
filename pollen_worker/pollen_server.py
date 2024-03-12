@@ -968,6 +968,7 @@ def replace_values_with_minio(
             file_found = True
         except FileNotFoundError:
             pass
+        time.sleep(1)
     log(INFO, "Read server parameters from disk")
     with open(Path.cwd() / f"{endpoint_id}_parameters.bin", "rb") as f:
         fit_res.parameters = pickle.load(f)

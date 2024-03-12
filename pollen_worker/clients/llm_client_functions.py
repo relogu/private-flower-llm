@@ -931,7 +931,7 @@ def llm_fit(
         lrs = [group["lr"] for group in optimizer.param_groups]
         name = optimizer.__class__.__name__
         for idx, lr in enumerate(lrs):
-            train_metrics.update({f"lr-{name}/group{idx}": lr})
+            train_metrics.update({f"client/lr-{name}/group{idx}": lr})
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
 
@@ -940,7 +940,7 @@ def llm_fit(
         l1_norm([x - y]) for x, y in zip(parameters, model_parameters, strict=False)
     ]
     for i, plnopg in enumerate(per_layer_norm_of_pseudo_gradient):
-        train_metrics |= {f"client/l1_norm_of_pseudo_gradient_l{i}": plnopg}
+        train_metrics |= {f"client/layer_{i}/l1_norm_of_pseudo_gradient": plnopg}
     norm_of_pseudo_gradient: float = sum(per_layer_norm_of_pseudo_gradient)
     train_metrics |= {"client/l1_norm_pseudo_gradient": norm_of_pseudo_gradient}
 
