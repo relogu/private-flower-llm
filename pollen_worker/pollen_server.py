@@ -136,7 +136,9 @@ class PollenServer(Server):
         self.minio_state: MinioState | None = minio_state
         if isinstance(self.minio_state, MinioState):
             self.minio_state.log = log
-        if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+        if (self.checkpoint or self.use_minio_comm) and isinstance(
+            self.minio_state, MinioState
+        ):
             self.remote_up_down = RemoteUploaderDownloader(
                 # TODO: Don't hardcode
                 bucket_uri="s3://checkpoints",
