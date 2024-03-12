@@ -74,6 +74,7 @@ def main(cfg: DictConfig) -> None:
             "server_round": x,
             "batch_size": 32,
             "collaborative": cfg.pollen.fit_collaborative,
+            "reset_optimizer": cfg.fl.reset_optimizer,
         },
         on_evaluate_config_fn=lambda x: {
             "server_round": x,

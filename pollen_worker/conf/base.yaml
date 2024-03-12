@@ -22,6 +22,7 @@ fl:
   n_total_clients: 8
   n_clients_per_round: 8
   n_rounds: 200
+  reset_optimizer: true
 
 # Defaults
 defaults:

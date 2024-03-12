@@ -893,12 +893,11 @@ def llm_fit(
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Ignoring model if loading a checkpoint
     cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
-    # Ignoring the optimizer state if loading a checkpoint
-    cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
-    # # Ignoring model when saving a checkpoint
-    # cfg.save_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
-    # Ignoring the optimizer state when saving a checkpoint
-    cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
+    if config["reset_optimizer"]:
+        # Ignoring the optimizer state if loading a checkpoint
+        cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
+        # Ignoring the optimizer state when saving a checkpoint
+        cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
