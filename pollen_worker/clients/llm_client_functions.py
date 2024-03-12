@@ -891,8 +891,6 @@ def llm_fit(
     )
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
-    # Ignoring model if loading a checkpoint
-    cfg.load_ignore_keys = ["state/model/*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
         # Ignoring the optimizer state if loading a checkpoint
         cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
