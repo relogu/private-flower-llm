@@ -50,7 +50,7 @@ class Worker(mp.Process):
         concurrency: int,
         dataset_generator: Callable[[int], Dataset],
         client_prefetch_num_workers: int = 1,
-        client_prefetch_factor: int = 2,
+        client_prefetch_factor: int | None = 100,
     ) -> None:
         super().__init__()
         self.worker_id = worker_id
