@@ -50,7 +50,7 @@ class Worker(mp.Process):
         concurrency: int,
         dataset_generator: Callable[[int], Dataset],
         client_prefetch_num_workers: int = 1,
-        client_prefetch_factor: int = 1,
+        client_prefetch_factor: int = 2,
     ) -> None:
         super().__init__()
         self.worker_id = worker_id
@@ -69,8 +69,6 @@ class Worker(mp.Process):
 
     def process_task(self, client_ids: list[int]) -> None:
         """Process the received task."""
-        # Take the timestamp before training a single client
-        start_time = time.time_ns()
         # Loads a dict from the shared memory buffer
         config = pickle.loads(self.config_shm.buf)
         config["device"] = self.device
@@ -88,6 +86,8 @@ class Worker(mp.Process):
             ),
             strict=True,
         ):
+            # Take the timestamp before training a single client
+            start_time = time.time_ns()
             # Load client
             tmp_client = self.client_fn(client_id)
             tmp_client.client_dataset = tmp_client_dataset
