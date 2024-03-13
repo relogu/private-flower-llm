@@ -23,6 +23,11 @@ from pollen_worker.datasets.pfl_datasets_common import (
 )
 
 
+def numpy_to_tensor(x: Any) -> Any:
+    """Identity."""
+    return x
+
+
 def load_and_preprocess(
     pickle_file_path: Path,
     channel_means: np.ndarray | None = None,
@@ -56,7 +61,6 @@ def make_federated_dataset(
     images: np.ndarray,
     labels: np.ndarray,
     user_dataset_len_sampler: Callable,
-    numpy_to_tensor: Callable = lambda x: x,
     alpha: float = 0.1,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
     """
@@ -83,7 +87,6 @@ def make_iid_federated_dataset(
     images: np.ndarray,
     labels: np.ndarray,
     user_dataset_len_sampler: Callable,
-    numpy_to_tensor: Callable = lambda x: x,
 ) -> dict[int, tuple[np.ndarray, np.ndarray]]:
     """
     Create a federated dataset with IID users from the CIFAR10 dataset.
@@ -95,8 +98,8 @@ def make_iid_federated_dataset(
     data_order = np.random.permutation(len(images))
     images, labels = images[data_order], labels[data_order]
     # Make the numpy arrays into tensors.
-    images = numpy_to_tensor(images)
-    labels = numpy_to_tensor(labels)
+    images = torch.tensor(images)
+    labels = torch.tensor(labels)
     # Mapping from user_id to (images, labels) for each user.
     users_to_data: dict = {}
     # Build the partitions for each user
@@ -114,7 +117,6 @@ def make_iid_federated_dataset(
 def make_cifar10_datasets(
     data_dir: Path,
     user_dataset_len_sampler: Callable,
-    numpy_to_tensor: Callable,
     alpha: float = 0.1,
 ) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[tuple[np.ndarray, np.ndarray]]]:
     """Create the CIFAR10 federated datasets with non-IID users."""
@@ -133,14 +135,12 @@ def make_cifar10_datasets(
         train_images,
         train_labels,
         user_dataset_len_sampler,
-        numpy_to_tensor,
         alpha,
     )
     val_federated_dataset = make_federated_dataset(
         val_images,
         val_labels,
         user_dataset_len_sampler,
-        numpy_to_tensor,
         alpha,
     )
 
@@ -148,7 +148,7 @@ def make_cifar10_datasets(
 
 
 def make_cifar10_iid_datasets(
-    data_dir: Path, user_dataset_len_sampler: Callable, numpy_to_tensor: Callable
+    data_dir: Path, user_dataset_len_sampler: Callable
 ) -> tuple[
     dict[int, tuple[np.ndarray, np.ndarray]], dict[int, tuple[np.ndarray, np.ndarray]]
 ]:
@@ -165,13 +165,18 @@ def make_cifar10_iid_datasets(
     # create artificial federated training and val datasets
     # from central training and val data.
     training_federated_dataset = make_iid_federated_dataset(
-        train_images, train_labels, user_dataset_len_sampler, numpy_to_tensor
+        train_images, train_labels, user_dataset_len_sampler
     )
     val_federated_dataset = make_iid_federated_dataset(
-        val_images, val_labels, user_dataset_len_sampler, numpy_to_tensor
+        val_images, val_labels, user_dataset_len_sampler
     )
 
     return training_federated_dataset, val_federated_dataset
+
+
+def static_user_datalen_sampler() -> int:
+    """Sample 50 samples per user."""
+    return 50
 
 
 class Cifar10(Dataset):
@@ -182,7 +187,7 @@ class Cifar10(Dataset):
         data_dir: Path,
         client_id: int | None = None,
         dataset: str = "train",
-        user_dataset_len_sampler: Callable = lambda: 50,
+        user_dataset_len_sampler: Callable = static_user_datalen_sampler,
         alpha: float | None = None,
     ) -> None:
         self.data_dir = data_dir
@@ -208,12 +213,11 @@ class Cifar10(Dataset):
                 self.images,
                 self.labels,
                 self.user_dataset_len_sampler,
-                torch.tensor,
                 self.alpha,
             )
         else:
             self.data = make_iid_federated_dataset(
-                self.images, self.labels, self.user_dataset_len_sampler, torch.tensor
+                self.images, self.labels, self.user_dataset_len_sampler
             )
 
     def __len__(self) -> int:
@@ -243,12 +247,9 @@ if __name__ == "__main__":
         50,
     )
 
-    def _numpy_to_tensor(x: Any) -> Any:
-        return x
-
     start_time = time.time()
     training_fed_dataset, val_fed_dataset = make_cifar10_datasets(
-        data_dir, user_dataset_len_sampler, _numpy_to_tensor, alpha
+        data_dir, user_dataset_len_sampler, alpha
     )
     log(INFO, f"Time to create datasets: {time.time() - start_time:.2f} seconds")
     log(INFO, training_fed_dataset[0][0].shape)
@@ -260,7 +261,7 @@ if __name__ == "__main__":
     log(INFO, training_fed_dataset[1][1].shape)
     log(INFO, len(training_fed_dataset[1][1]))
     training_fed_dataset_iid, val_fed_dataset_iid = make_cifar10_iid_datasets(
-        data_dir, user_dataset_len_sampler, _numpy_to_tensor
+        data_dir, user_dataset_len_sampler
     )
     start_time = time.time()
     log(INFO, f"Time to create iid datasets: {time.time() - start_time:.2f} seconds")

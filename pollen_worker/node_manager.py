@@ -54,7 +54,6 @@ from pollen_worker.pollen_utils import (
     POLLEN_PARAMETERS_SHM,
     POLLEN_WORKER_SHM,
     allocate_shm,
-    get_client_ds_fn,
     get_pyarrow_buffer_from_table,
     write_to_fit_result_shm,
 )
@@ -136,6 +135,7 @@ class NodeManager(fl.client.NumPyClient):
                 SharedMemory,
             ],
         ] = {}
+        dataset_name = self.dataset_name
         for device, num_proc in max_proc_device:
             for _ in range(num_proc):
                 worker_id = self.run_uuid + POLLEN_WORKER_SHM + f"{worker_cnt}"
@@ -155,9 +155,7 @@ class NodeManager(fl.client.NumPyClient):
                 self.workers[device].append(
                     Worker(
                         client_fn=client_fn,
-                        dataset_generator=lambda cid: get_client_ds_fn(
-                            name=self.dataset_name
-                        )(cid)[0],
+                        dataset_name=dataset_name,
                         device=device,
                         worker_id=worker_id,
                         task_queue=self.task_queues[device],

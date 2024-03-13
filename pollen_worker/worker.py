@@ -9,6 +9,8 @@ from logging import ERROR
 from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
+from typing import Any
+from torch.utils.data import Dataset
 
 import cloudpickle
 import multiprocess as mp
@@ -23,11 +25,12 @@ from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
     allocate_shm,
+    get_client_ds_fn,
     write_to_fit_result_shm,
 )
 from pollen_worker.utils import partially_aggregate_with_metrics
 from pollen_worker.datasets.federated_dataset import FederatedDataset
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
 from pollen_worker.virtual_client import VirtualClient
 
@@ -48,7 +51,7 @@ class Worker(mp.Process):
         result_queue: QueueType,
         run_uuid: str,
         concurrency: int,
-        dataset_generator: Callable[[int], Dataset],
+        dataset_name: str,
         client_prefetch_num_workers: int = 1,
         client_prefetch_factor: int | None = 100,
     ) -> None:
@@ -61,9 +64,8 @@ class Worker(mp.Process):
         self.run_uuid = run_uuid
         self.current_round: int = 0
         self.concurrency = concurrency
-        self.federated_dataset = FederatedDataset(
-            dataset_generator=dataset_generator, list_of_clients=[]
-        )
+        self.dataset_name = dataset_name
+        self.federated_dataset: FederatedDataset | None = None
         self.client_prefetch_num_workers = client_prefetch_num_workers
         self.client_prefetch_factor = client_prefetch_factor
 
@@ -72,6 +74,19 @@ class Worker(mp.Process):
         # Loads a dict from the shared memory buffer
         config = pickle.loads(self.config_shm.buf)
         config["device"] = self.device
+
+        if self.federated_dataset is None:
+            dataset_name = self.dataset_name
+
+            def dataset_generator(cid: int) -> Dataset[Any]:
+                """Return the dataset for the client."""
+                return get_client_ds_fn(name=dataset_name)(cid)[0]
+
+            self.federated_dataset = FederatedDataset(
+                dataset_generator=dataset_generator,
+                list_of_clients=[],
+            )
+
         self.federated_dataset.list_of_clients = client_ids
 
         for client_id, tmp_client_dataset in zip(
@@ -225,6 +240,7 @@ class Worker(mp.Process):
         pynvml.nvmlInit()
         # Task loop
         task: list[int]
+
         for task in iter(self.task_queue.get, None):
             self.process_task(task)
         # Put the closing task's results in the result queue
