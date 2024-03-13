@@ -101,6 +101,8 @@ def set_client_load_path(
                     "Skipping training iteration as checkpoint %s already exists.",
                     cfg.load_path,
                 )
+                # NOTE: Don't re-save the checkpoint when resuming mid-round
+                cfg.save_folder = None
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e)
             # log(
@@ -901,9 +903,10 @@ def llm_fit(
         _cfg=cfg,
     )
     # log(INFO, f"Trainer config: {logged_cfg}")
+    # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the parameters
-        if parameters is not None:
+        if parameters is not None and not skip_iteration:
             # log(INFO, "Initializing model...")
             set_parameters_to_state(parameters, trainer)
         # Eval first if requested
@@ -914,22 +917,28 @@ def llm_fit(
         trainer.state.evaluators = None
         # Execute fit step for the appointed duration
         try:
-            trainer.fit(duration=cfg["local_steps"])
+            trainer.fit(duration=0 if skip_iteration else cfg["local_steps"])
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
-    n_samples_trained = trainer.state.timestamp.sample.value
-    # Retrieve training metrics
-    train_metrics = {
-        k: v.detach().cpu().item()  # type: ignore[attr-defined]
-        for k, v in trainer.state.train_metric_values.items()
-    }
-    # Extract LR
-    for optimizer in trainer.state.optimizers:
-        lrs = [group["lr"] for group in optimizer.param_groups]
-        name = optimizer.__class__.__name__
-        for idx, lr in enumerate(lrs):
-            train_metrics.update({f"client/lr-{name}/group{idx}": lr})
+    # NOTE: We assume all the clients train with the same batch size,
+    # so we just consider the number of local steps
+    n_samples_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+    # TODO: Allow to recover the client metrics
+    train_metrics: dict[str, Scalar] = {}
+    if not skip_iteration:
+        # Retrieve training metrics
+        train_metrics |= {
+            k: v.detach().cpu().item()  # type: ignore[attr-defined]
+            for k, v in trainer.state.train_metric_values.items()
+        }
+        # TODO: Correct this in case of loading a checkpoint Extract LR
+        for optimizer in trainer.state.optimizers:
+            lrs = [group["lr"] for group in optimizer.param_groups]
+            name = optimizer.__class__.__name__
+            for idx, lr in enumerate(lrs):
+                train_metrics |= {f"client/lr-{name}/group{idx}": lr}
+    log(INFO, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
 
