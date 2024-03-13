@@ -117,9 +117,7 @@ class NodeManager(fl.client.NumPyClient):
 
         self.minio_state = minio_state
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
-
-        if isinstance(self.minio_state, MinioState):
-            self._create_remote_up_down()
+        self._create_remote_up_down()
         if isinstance(minio_state, MinioState):
             minio_state.endpoint_id = self.node_manager_uuid
 
@@ -182,27 +180,31 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_remote_up_down(self) -> None:
         """Create the remote uploader/downloader."""
-        self.remote_up_down = RemoteUploaderDownloader(
-            # TODO: Don't hardcode
-            bucket_uri="s3://checkpoints",
-            backend_kwargs={
-                "bucket": "checkpoints",
-                "prefix": f"{self.minio_state.run_uuid}/server",
-                "region_name": None,  # Not necessary
-                "endpoint_url": None,  # Will be read from env var
-                "aws_access_key_id": None,  # Will be read from config file
-                "aws_secret_access_key": None,  # Will be read from config file
-                "aws_session_token": None,  # Will be automatically geberated
-                "client_config": None,  # Use defaults
-                "transfer_config": None,  # Use defaults
-            },
-            file_path_format_string="{remote_file_name}",
-            num_concurrent_uploads=1,
-            upload_staging_folder=None,
-            use_procs=True,
-            num_attempts=3,
-        )
-        self.remote_up_down.init(run_name=self.minio_state.run_uuid)
+        if isinstance(self.minio_state, MinioState):
+            self.remote_up_down = RemoteUploaderDownloader(
+                # TODO: Don't hardcode
+                bucket_uri="s3://checkpoints",
+                backend_kwargs={
+                    "bucket": "checkpoints",
+                    "prefix": f"{self.minio_state.run_uuid}/server",
+                    "region_name": None,  # Not necessary
+                    "endpoint_url": None,  # Will be read from env var
+                    "aws_access_key_id": None,  # Will be read from config file
+                    "aws_secret_access_key": None,  # Will be read from config file
+                    "aws_session_token": None,  # Will be automatically geberated
+                    "client_config": {
+                        "connect_timeout": 3600,
+                        "read_timeout": 3600,
+                    },
+                    "transfer_config": None,  # Use defaults
+                },
+                file_path_format_string="{remote_file_name}",
+                num_concurrent_uploads=1,
+                upload_staging_folder=None,
+                use_procs=True,
+                num_attempts=3,
+            )
+            self.remote_up_down.init(run_name=self.minio_state.run_uuid)
 
     def _check_workers_health(self) -> None:
         """Check if workers are alive and restart them if not."""
@@ -462,12 +464,12 @@ class NodeManager(fl.client.NumPyClient):
                 except RuntimeError as e:
                     log(
                         ERROR,
-                        "NodeManager %s: error while pulling parameters from S3 Object Store. Refreshing the connection.",
+                        "NodeManager %s: error while pulling parameters from S3 Object"
+                        " Store. Refreshing the connection.",
                         self.name,
                         exc_info=e,
                         stack_info=True,
                     )
-                    self.remote_up_down.close()
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
             log(INFO, "Read server parameters from disk")
@@ -543,12 +545,12 @@ class NodeManager(fl.client.NumPyClient):
             except RuntimeError as e:
                 log(
                     ERROR,
-                    "NodeManager %s: error while pulling parameters from S3 Object Store. Refreshing the connection.",
+                    "NodeManager %s: error while pulling parameters from S3 Object"
+                    " Store. Refreshing the connection.",
                     self.name,
                     exc_info=e,
                     stack_info=True,
                 )
-                self.remote_up_down.close()
                 self.remote_up_down.post_close()
                 self._create_remote_up_down()
             self.remote_up_down.upload_file(
@@ -612,12 +614,12 @@ class NodeManager(fl.client.NumPyClient):
                 except RuntimeError as e:
                     log(
                         ERROR,
-                        "NodeManager %s: error while pulling parameters from S3 Object Store. Refreshing the connection.",
+                        "NodeManager %s: error while pulling parameters from S3 Object"
+                        " Store. Refreshing the connection.",
                         self.name,
                         exc_info=e,
                         stack_info=True,
                     )
-                    self.remote_up_down.close()
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
             log(INFO, "Read server parameters from disk")
