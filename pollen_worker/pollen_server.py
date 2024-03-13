@@ -361,9 +361,10 @@ class PollenServer(Server):
             node_fit_config.update(device_assignment)
 
             # Append instruction
-            node_instructions.append(
-                (client_proxy, FitIns(self.parameters, node_fit_config))
-            )
+            node_instructions.append((
+                client_proxy,
+                FitIns(self.parameters, node_fit_config),
+            ))
 
         # log(
         #     DEBUG,

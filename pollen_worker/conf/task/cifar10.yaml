@@ -1,0 +1,16 @@
+---
+name: cifar10
+data_root: /datasets/cifar10
+learning_rate: 1.0
+num_rounds: 1500
+n_clients_per_round: 50
+batch_size: 10
+momentum: .0
+weight_decay: .0
+n_workers: 0
+
+strategy:
+  _target_: pollen_worker.rs_fedavg.FedAvgRSModel
+
+is_fake: false
+n_clients: -1

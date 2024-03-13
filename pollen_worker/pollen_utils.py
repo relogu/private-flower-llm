@@ -29,6 +29,7 @@ from torch.optim import Optimizer
 from torch.utils.data import ConcatDataset, Dataset
 from torchvision import models
 from transformers import AlbertForMaskedLM, AlbertTokenizer
+from pollen_worker.datasets.cifar10 import Cifar10
 from pollen_worker.datasets.flair import (
     FLAIRDataset,
     _create_parquet_client_samples_dict,
@@ -221,19 +222,14 @@ def get_model(name: str) -> Module:
     """Return the model given the task's name."""
     # NOTE: we may want to load this once and then deepcopying it when needed
     if name == "shakespeare":
-
         return ShakespeareLeafNet()
     if name == "shakespeare_memory":
-
         return ShakespeareLeafNet()
     if name == "reddit":
-
         return AlbertForMaskedLM.from_pretrained("albert-base-v2")
     if name == "google_speech":
-
         return resnet34(num_classes=35, in_channels=1)
     if name == "openimage":
-
         return models.__dict__["shufflenet_v2_x2_0"](num_classes=596)
 
     if name == "flair":
@@ -324,10 +320,16 @@ def get_client_ds(
             max_num_user_images=None,
         )
         return ds, None
+    if name == "cifar10":
+        # TODO: remove hardcoded path
+        ds = Cifar10(
+            data_dir=Path("/datasets/cifar10"),
+            client_id=cid,
+            dataset=dataset,
+        )
+        return ds, None
 
-    # TODO: Add CIFAR10 dataset
-
-    raise ValueError("No dataset for the requested dataset name")
+    raise ValueError(f"No dataset for the requested dataset name {name}")
 
 
 def get_client_ds_fn(

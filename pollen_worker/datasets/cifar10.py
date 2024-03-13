@@ -38,9 +38,9 @@ def load_and_preprocess(
 
     # Normalize per-channel.
     if channel_means is None:
-        channel_means = images.mean(axis=(0, 1, 2), dtype="float64")
+        channel_means = images.mean(axis=(0, 1, 2), dtype="float64").astype(np.float32)
     if channel_stddevs is None:
-        channel_stddevs = images.std(axis=(0, 1, 2), dtype="float64")
+        channel_stddevs = images.std(axis=(0, 1, 2), dtype="float64").astype(np.float32)
     images = (images - channel_means) / channel_stddevs
 
     if exclude_classes is not None:
@@ -218,20 +218,20 @@ class Cifar10(Dataset):
 
     def __len__(self) -> int:
         """Return the length of the dataset."""
-        if self.client_id:
+        if self.client_id is not None:
             return len(self.data[self.client_id][0])
         else:
             return len(self.data[0])
 
     def __getitem__(self, index: int) -> tuple[Any, Any | int]:
         """Return the sample at current `index`."""
-        if self.client_id:
+        if self.client_id is not None:
             return (
                 self.data[self.client_id][0][index],
-                self.data[self.client_id][1][index],
+                self.data[self.client_id][1][index][0],
             )
         else:
-            return self.data[0][index], self.data[1][index]
+            return self.data[0][index], self.data[1][index][0]
 
 
 if __name__ == "__main__":
@@ -255,6 +255,20 @@ if __name__ == "__main__":
     log(INFO, len(training_fed_dataset[0][0]))
     log(INFO, training_fed_dataset[0][1].shape)
     log(INFO, len(training_fed_dataset[0][1]))
+    log(INFO, training_fed_dataset[1][0].shape)
+    log(INFO, len(training_fed_dataset[1][0]))
+    log(INFO, training_fed_dataset[1][1].shape)
+    log(INFO, len(training_fed_dataset[1][1]))
     training_fed_dataset_iid, val_fed_dataset_iid = make_cifar10_iid_datasets(
         data_dir, user_dataset_len_sampler, _numpy_to_tensor
     )
+    start_time = time.time()
+    log(INFO, f"Time to create iid datasets: {time.time() - start_time:.2f} seconds")
+    log(INFO, training_fed_dataset[0][0].shape)
+    log(INFO, len(training_fed_dataset[0][0]))
+    log(INFO, training_fed_dataset[0][1].shape)
+    log(INFO, len(training_fed_dataset[0][1]))
+    log(INFO, training_fed_dataset[1][0].shape)
+    log(INFO, len(training_fed_dataset[1][0]))
+    log(INFO, training_fed_dataset[1][1].shape)
+    log(INFO, len(training_fed_dataset[1][1]))
