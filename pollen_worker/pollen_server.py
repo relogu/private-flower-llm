@@ -181,10 +181,6 @@ class PollenServer(Server):
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
-        # Waiting for at least one node to connect
-        log(INFO, "Waiting for at least one node to connect")
-        self._client_manager.wait_for_node_managers(self.num_nodes)
-
         # Resume experiment if asked to
         start_round = 0
         time_offset = 0.0
@@ -292,6 +288,10 @@ class PollenServer(Server):
             str(i): cast(ClientProxy, EmptyVirtualClient(cid=str(k)))
             for i, (k, _) in enumerate(self.cids.items())
         }
+
+        # Waiting for at least one node to connect
+        log(INFO, "Waiting for at least one node to connect")
+        self._client_manager.wait_for_node_managers(self.num_nodes)
 
         log(
             INFO,
