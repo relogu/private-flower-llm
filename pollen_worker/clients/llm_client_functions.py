@@ -822,6 +822,7 @@ def _get_trainer_object(
         save_num_checkpoints_to_keep=save_num_checkpoints_to_keep,
         save_overwrite=save_overwrite,
         save_weights_only=save_weights_only,
+        save_metrics=True,
         load_path=load_path,
         load_weights_only=load_weights_only,
         load_strict_model_weights=load_strict_model_weights,
@@ -924,20 +925,12 @@ def llm_fit(
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
     n_samples_trained = int(str(cfg["local_steps"]).replace("ba", ""))
-    # TODO: Allow to recover the client metrics
     train_metrics: dict[str, Scalar] = {}
-    if not skip_iteration:
-        # Retrieve training metrics
-        train_metrics |= {
-            k: v.detach().cpu().item()  # type: ignore[attr-defined]
-            for k, v in trainer.state.train_metric_values.items()
-        }
-        # TODO: Correct this in case of loading a checkpoint Extract LR
-        for optimizer in trainer.state.optimizers:
-            lrs = [group["lr"] for group in optimizer.param_groups]
-            name = optimizer.__class__.__name__
-            for idx, lr in enumerate(lrs):
-                train_metrics |= {f"client/lr-{name}/group{idx}": lr}
+    # Retrieve training metrics
+    train_metrics |= {
+        k: v.detach().cpu().item()  # type: ignore[attr-defined]
+        for k, v in trainer.state.train_metric_values.items()
+    }
     log(INFO, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
     model_parameters = get_parameters_from_state({}, trainer)
