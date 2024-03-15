@@ -25,6 +25,7 @@ from flwr.common import (
     Scalar,
     Status,
     ndarrays_to_parameters,
+    parameters_to_ndarrays,
 )
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
@@ -213,7 +214,12 @@ class PollenServer(Server):
                 with open(Path.cwd() / "current_server_state.bin", "rb") as f:
                     server_state = pickle.load(f)
                 with open(Path.cwd() / "current_server_parameters.bin", "rb") as f:
-                    self.parameters = pickle.load(f)
+                    chkpt_parameters: Parameters = pickle.load(f)
+                self.parameters = chkpt_parameters
+                if isinstance(self.strategy, FedNesterov):
+                    self.strategy.ndarray_parameters = parameters_to_ndarrays(
+                        chkpt_parameters
+                    )
                 start_round = server_state["server_round"]
                 # start_round = self.resume_round
                 assert (
