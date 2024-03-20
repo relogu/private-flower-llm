@@ -96,7 +96,7 @@ def main(cfg: DictConfig) -> None:
         config=wandb_config,  # type: ignore[arg-type]
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
-
+        restore_run_uuid_round_and_step: tuple[str, int, int] | None = None
         # MinIO
         minio_state: MinioState | None = None
         if cfg.use_minio_comm or cfg.pollen.checkpoint:
@@ -112,6 +112,15 @@ def main(cfg: DictConfig) -> None:
                 minio_client,
                 **cfg.minio.minio_state,
             )
+            if cfg.pollen.restore_run_uuid is not None and cfg.pollen.resume_round >= 0:
+                restore_run_uuid_round_and_step = (
+                    cfg.pollen.restore_run_uuid,
+                    int(cfg.pollen.resume_round),
+                    int(
+                        int(cfg.llm_config.local_steps.replace("ba", ""))
+                        * cfg.pollen.resume_round
+                    ),
+                )
 
         # Start Flower server
         fl.server.start_server(
@@ -129,6 +138,7 @@ def main(cfg: DictConfig) -> None:
                 use_minio_comm=cfg.use_minio_comm,
                 checkpoint=cfg.pollen.checkpoint,
                 resume_round=cfg.pollen.resume_round,
+                restore_run_uuid_round_and_step=restore_run_uuid_round_and_step,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
