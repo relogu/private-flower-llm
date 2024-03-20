@@ -38,6 +38,7 @@ from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
+from pollen_worker.clients.llm_client_functions import copy_old_checkpoints_to_new_run
 from pollen_worker.minio.minio_state import MinioState
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
@@ -97,6 +98,7 @@ class PollenServer(Server):
         checkpoint: bool = False,
         resume_round: int | None = None,
         minio_state: MinioState | None = None,
+        restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager
@@ -134,15 +136,18 @@ class PollenServer(Server):
         self.use_minio_comm = use_minio_comm
         self.checkpoint = checkpoint
         self.resume_round = resume_round
+        self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
         self.minio_state: MinioState | None = minio_state
         if isinstance(self.minio_state, MinioState):
             self.minio_state.log = log
+
         if (self.checkpoint or self.use_minio_comm) and isinstance(
             self.minio_state, MinioState
         ):
+            bucket_uri = r"s3://checkpoints"
             self.remote_up_down = RemoteUploaderDownloader(
                 # TODO: Don't hardcode
-                bucket_uri="s3://checkpoints",
+                bucket_uri=bucket_uri,
                 backend_kwargs={
                     "bucket": "checkpoints",
                     "prefix": f"{self.minio_state.run_uuid}/server",
@@ -161,6 +166,20 @@ class PollenServer(Server):
                 num_attempts=3,
             )
             self.remote_up_down.init(run_name=self.minio_state.run_uuid)
+
+            if self.restore_run_uuid_and_step is not None:
+                restore_run_uuid, restore_run_round, restore_run_step = (
+                    self.restore_run_uuid_and_step
+                )
+                copy_old_checkpoints_to_new_run(
+                    remote_up_down=self.remote_up_down,
+                    bucket_uri=bucket_uri,
+                    run_uuid=self.minio_state.run_uuid,
+                    restore_run_uuid=restore_run_uuid,
+                    restore_run_round=restore_run_round,
+                    restore_run_step=restore_run_step,
+                    n_total_clients=len(self.cids),
+                )
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -617,9 +636,10 @@ class PollenServer(Server):
                     ),
                 ))
             else:
-                node_instructions.append(
-                    (client_proxy, FitIns(self.parameters, node_fit_config))
-                )
+                node_instructions.append((
+                    client_proxy,
+                    FitIns(self.parameters, node_fit_config),
+                ))
 
         log(
             DEBUG,

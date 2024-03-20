@@ -16,6 +16,8 @@ pollen:
   fit_collaborative: false
   eval_collaborative: true
   checkpoint: false
+  # Set to null to only restore from the current run
+  restore_run_uuid: null
   resume_round: -1
 
 fl:

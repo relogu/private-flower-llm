@@ -5,6 +5,7 @@ import copy
 import gc
 import logging
 import os
+import re
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
@@ -47,6 +48,11 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
 from transformers import PreTrainedTokenizerBase
 
+from composer.loggers import RemoteUploaderDownloader
+from composer.utils import S3ObjectStore
+from composer.utils.file_helpers import list_remote_objects
+
+
 from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices, l1_norm
 
 COMPOSER_MODEL_REGISTRY = {
@@ -59,6 +65,82 @@ COMPOSER_MODEL_REGISTRY = {
 }
 
 
+def copy_old_checkpoints_to_new_run(
+    remote_up_down: RemoteUploaderDownloader,
+    bucket_uri: str,
+    run_uuid: str,
+    restore_run_uuid: str,
+    restore_run_round: int,
+    restore_run_step: int,
+    n_total_clients: int,
+) -> None:
+    """Copy old checkpoints to the new run folder.
+
+    Parameters
+    ----------
+        remote_up_down (RemoteUploaderDownloader): The remote uploader and downloader.
+        bucket_uri (str): The bucket URI.
+        run_uuid (str): The run UUID.
+        restore_run_uuid (str): The restore run UUID.
+        restore_run_round (int): The restore run round.
+        restore_run_step (int): The restore run step.
+        n_total_clients (int): The total number of clients.
+
+    Returns
+    -------
+        None
+
+    Raises
+    ------
+        NotImplementedError: If the backend is not an S3ObjectStore.
+        ValueError: If the old run folder or the new run folder is not found.
+    """
+    backend = remote_up_down.remote_backend
+    if not isinstance(backend, S3ObjectStore):
+        raise NotImplementedError(
+            "Support for resuming from non-S3 backends is not yet implemented."
+        )
+
+    new_run_folder = bucket_uri + f"/{run_uuid}"
+    old_run_folder = bucket_uri + f"/{restore_run_uuid}"
+    if (old_run_val := validate_given_remote_path(old_run_folder)) and (
+        _new_run_val := validate_given_remote_path(new_run_folder)
+    ):
+        state_bin = restore_run_uuid + f"/server/{restore_run_round}/state.bin"
+        parameters = (
+            restore_run_uuid
+            + f"/server/{restore_run_round}/current_server_parameters.bin"
+        )
+        client_paths = [
+            client_path
+            for client_path in list_remote_objects(old_run_folder)
+            if re.match(
+                f"{restore_run_uuid}/client_.*/ep0-ba{restore_run_step}", client_path
+            )
+        ]
+        if (found_clients := len(client_paths)) != n_total_clients:
+            raise ValueError(
+                f"Found {found_clients} clients in the old run folder {old_run_folder},"
+                f" but expected {n_total_clients}."
+            )
+
+        paths_to_copy = [state_bin, parameters] + client_paths
+        for path in paths_to_copy:
+            copy_source = {"Bucket": backend.bucket, "Key": path}
+            target_key = path.replace(restore_run_uuid, run_uuid)
+            backend.client.copy(copy_source, backend.bucket, target_key)
+
+    else:
+        if not old_run_val:
+            raise ValueError(
+                f"Could not find the old run folder {old_run_folder} to copy"
+                " checkpoints."
+            )
+        raise ValueError(
+            f"Could not find the new run folder {new_run_folder} to copy checkpoints."
+        )
+
+
 def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
@@ -69,6 +151,7 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig
             + "/client_"  # type: ignore[union-attr]
             + str(cid)  # type: ignore[union-attr]
         )
+
     return cfg
 
 
