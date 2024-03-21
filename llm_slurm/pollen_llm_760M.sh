@@ -28,10 +28,8 @@ mkdir -p $POLLEN_SAVE_PATH
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-#! AWS S3 object store settings
-aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
-aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
-MINIO_COMM_STACK_OPTIONS="use_minio=true minio.minio_client.endpoint=$S3_ENDPOINT_URL minio.minio_client.access_key=$aws_access_key_id minio.minio_client.secret_key=$aws_secret_access_key minio.minio_state.bucket_name=checkpoints"
+#! S3 communication stack settings
+MINIO_COMM_STACK_OPTIONS="use_minio=true s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50743' pollen.refresh_period=5 fl.n_rounds=60"
 #! Launch ServerWithPollen

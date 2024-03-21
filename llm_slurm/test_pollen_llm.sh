@@ -45,7 +45,7 @@ POLLEN_CONFIG="pollen.server_address='localhost:50635' run_uuid=$RUN_UUID pollen
 #! Additional settings specific for the current testing
 aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
 aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
-TESTING_OPTIONS="use_minio_comm=true minio.minio_client.endpoint=$S3_ENDPOINT_URL minio.minio_client.access_key=$aws_access_key_id minio.minio_client.secret_key=$aws_secret_access_key minio.minio_state.bucket_name=test"
+TESTING_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=test"
 #! Launch ServerWithPollen
 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $TESTING_OPTIONS pollen.saving_path=$SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
