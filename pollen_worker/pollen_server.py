@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
+from omegaconf import DictConfig, OmegaConf
 import pyarrow as pa
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
@@ -36,17 +37,21 @@ from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: P
 from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
+from composer.utils.file_helpers import validate_given_remote_path
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
 from pollen_worker.clients.llm_client_functions import copy_old_checkpoints_to_new_run
-from pollen_worker.minio.minio_state import MinioState
 from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
 from pollen_worker.strategy.rs_nesterov import FedNesterov
 from pollen_worker.utils import (
     IntentionalClientDropoutError,
+    download_file_from_s3,
+    dump_model_parameters_to_file,
     get_table_from_pyarrow_buffer,
+    load_model_parameters_from_file,
+    upload_file_to_s3,
 )
 
 FitResultsAndFailures = tuple[
@@ -80,6 +85,7 @@ class PollenServer(Server):
     def __init__(
         self,
         *,
+        run_uuid: str,
         client_manager: PollenClientManager,
         cids: dict[str | int, int],
         client_fn: Callable[[int], ClientLike],
@@ -94,10 +100,10 @@ class PollenServer(Server):
         ignore_failed_rounds: bool = False,
         print_failures: bool = True,
         print_intentional_failures: bool = True,
-        use_minio_comm: bool = False,
+        use_s3_comm: bool = False,
+        s3_comm_config: DictConfig | None = None,
         checkpoint: bool = False,
         resume_round: int | None = None,
-        minio_state: MinioState | None = None,
         restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
@@ -133,53 +139,39 @@ class PollenServer(Server):
         self.ignore_failed_rounds = ignore_failed_rounds
         self.print_failures = print_failures
         self.print_intentional_failures = print_intentional_failures
-        self.use_minio_comm = use_minio_comm
+        self.use_s3_comm = use_s3_comm
+        self.s3_comm_config = s3_comm_config
         self.checkpoint = checkpoint
         self.resume_round = resume_round
         self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
-        self.minio_state: MinioState | None = minio_state
-        if isinstance(self.minio_state, MinioState):
-            self.minio_state.log = log
+        self.run_uuid = run_uuid
 
-        if (self.checkpoint or self.use_minio_comm) and isinstance(
-            self.minio_state, MinioState
-        ):
-            bucket_uri = r"s3://checkpoints"
+        if self.checkpoint or self.use_s3_comm:
+            bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
             self.remote_up_down = RemoteUploaderDownloader(
                 # TODO: Don't hardcode
                 bucket_uri=bucket_uri,
                 backend_kwargs={
-                    "bucket": "checkpoints",
-                    "prefix": f"{self.minio_state.run_uuid}/server",
-                    "region_name": None,
+                    "bucket": self.s3_comm_config.bucket_name,  # type: ignore[union-attr]
+                    "prefix": f"{self.run_uuid}/server",  # Don't touch
+                    "region_name": None,  # Not necessary
                     "endpoint_url": None,  # Will be read from env var
                     "aws_access_key_id": None,  # Will be read from config file
                     "aws_secret_access_key": None,  # Will be read from config file
-                    "aws_session_token": None,  # Will be automatically geberated
-                    "client_config": None,
-                    "transfer_config": None,
+                    "aws_session_token": None,  # Will be automatically generated
+                    "client_config": OmegaConf.to_container(
+                        self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
+                    ),  # And using defaults
+                    "transfer_config": None,  # Using defaults
                 },
-                file_path_format_string="{remote_file_name}",
+                file_path_format_string="{remote_file_name}",  # Don't touch
+                # TODO: Think about this in relation with the checkpointing
                 num_concurrent_uploads=1,
-                upload_staging_folder=None,
-                use_procs=True,
-                num_attempts=3,
+                upload_staging_folder=None,  # Don't touch, it's /tmp by default
+                use_procs=True,  # Don't touch
+                num_attempts=self.s3_comm_config.num_attempts,  # type: ignore[union-attr]
             )
-            self.remote_up_down.init(run_name=self.minio_state.run_uuid)
-
-            if self.restore_run_uuid_and_step is not None:
-                restore_run_uuid, restore_run_round, restore_run_step = (
-                    self.restore_run_uuid_and_step
-                )
-                copy_old_checkpoints_to_new_run(
-                    remote_up_down=self.remote_up_down,
-                    bucket_uri=bucket_uri,
-                    run_uuid=self.minio_state.run_uuid,
-                    restore_run_uuid=restore_run_uuid,
-                    restore_run_round=restore_run_round,
-                    restore_run_step=restore_run_step,
-                    n_total_clients=len(self.cids),
-                )
+            self.remote_up_down.init(run_name=self.run_uuid)
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -201,46 +193,74 @@ class PollenServer(Server):
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
+        # Import previous checkpoints if asked to
+        if (
+            self.checkpoint or self.use_s3_comm
+        ) and self.restore_run_uuid_and_step is not None:
+            restore_run_uuid, restore_run_round, restore_run_step = (
+                self.restore_run_uuid_and_step
+            )
+            copy_old_checkpoints_to_new_run(
+                remote_up_down=self.remote_up_down,
+                bucket_uri=f"s3://{self.s3_comm_config.bucket_name}",  # type: ignore[union-attr]
+                run_uuid=self.run_uuid,
+                restore_run_uuid=restore_run_uuid,
+                restore_run_round=restore_run_round,
+                restore_run_step=restore_run_step,
+                n_total_clients=len(self.cids),
+            )
+
         # Resume experiment if asked to
         start_round = 0
         time_offset = 0.0
 
-        if (
-            self.checkpoint
-            and self.resume_round
-            and self.resume_round >= 0
-            and isinstance(self.minio_state, MinioState)
-        ):
+        if self.checkpoint and self.resume_round and self.resume_round >= 0:
             try:
                 log(INFO, "Resuming from checkpoint")
-                # Donwload the server state from S3 Object Store
-                # TODO: Use tmp files
-                self.remote_up_down._check_workers()
-                self.remote_up_down.download_file(
-                    remote_file_name=f"{self.resume_round}/state.bin",
-                    destination=str(Path.cwd() / "current_server_state.bin"),
-                    overwrite=True,
+                # Check whether the server parameters exist
+                file_found = False
+                remote_file_name_no_ext = (
+                    f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr]
+                    f"{self.run_uuid}/server/"
+                    f"{self.resume_round}/current_server_parameters"
                 )
-                self.remote_up_down._check_workers()
-                self.remote_up_down.download_file(
-                    remote_file_name=(
-                        f"{self.resume_round}/current_server_parameters.bin"
-                    ),
-                    destination=str(Path.cwd() / "current_server_parameters.bin"),
-                    overwrite=True,
+                while not file_found:
+                    file_found = validate_given_remote_path(
+                        remote_file_name_no_ext + ".bin"
+                    ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+                    time.sleep(0.5)
+                # Set the file names depending on the extension found
+                remote_file_name = (
+                    f"{self.resume_round}/current_server_parameters.bin"
+                    if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                    else f"{self.resume_round}/current_server_parameters.npz"
+                )
+                local_file_name = (
+                    Path.cwd() / "current_server_parameters.bin"
+                    if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                    else Path.cwd() / "current_server_parameters.npz"
+                )
+                log(INFO, "Pull server parameters from S3 Object Store")
+                # Download the parameters
+                download_file_from_s3(
+                    self.remote_up_down, remote_file_name, local_file_name
+                )
+                log(INFO, "Read server parameters from disk")
+                checkpoint_parameters = load_model_parameters_from_file(local_file_name)
+                self.parameters = ndarrays_to_parameters(checkpoint_parameters)
+                if isinstance(self.strategy, FedNesterov):
+                    self.strategy.ndarray_parameters = checkpoint_parameters
+                log(INFO, "Pull server state from S3 Object Store")
+                # Download the server state from S3 Object Store
+                download_file_from_s3(
+                    self.remote_up_down,
+                    f"{self.resume_round}/state.bin",
+                    str(Path.cwd() / "current_server_state.bin"),
                 )
                 log(INFO, "Read server state from disk")
                 with open(Path.cwd() / "current_server_state.bin", "rb") as f:
                     server_state = pickle.load(f)
-                with open(Path.cwd() / "current_server_parameters.bin", "rb") as f:
-                    chkpt_parameters: Parameters = pickle.load(f)
-                self.parameters = chkpt_parameters
-                if isinstance(self.strategy, FedNesterov):
-                    self.strategy.ndarray_parameters = parameters_to_ndarrays(
-                        chkpt_parameters
-                    )
                 start_round = server_state["server_round"]
-                # start_round = self.resume_round
                 assert (
                     start_round == self.resume_round
                 ), "Server round mismatch with checkpoint"
@@ -248,8 +268,23 @@ class PollenServer(Server):
                 if "time_offset" in server_state:
                     time_offset = server_state["time_offset"]
                 if isinstance(self.strategy, FedNesterov):
-                    log(INFO, "Get momentum vector from server state")
-                    self.strategy.momentum_vector = server_state["momentum"]
+                    if "momentum" in server_state:
+                        log(INFO, "Get momentum vector from server state")
+                        self.strategy.momentum_vector = server_state["momentum"]
+                    else:
+                        log(INFO, "Pull momentum from S3 Object Store")
+                        # Set the file names depending on the extension found
+                        remote_file_name = (
+                            f"{self.resume_round}/current_momentum_vector.npz"
+                        )
+                        local_file_name = Path.cwd() / "current_momentum_vector.npz"
+                        # Download the parameters
+                        download_file_from_s3(
+                            self.remote_up_down, remote_file_name, local_file_name
+                        )
+                        self.strategy.momentum_vector = load_model_parameters_from_file(
+                            local_file_name
+                        )
                 log(INFO, "Server state has been read from disk")
             except Exception as e:
                 log(ERROR, "Failed to resume from checkpoint: %s", e)
@@ -270,42 +305,48 @@ class PollenServer(Server):
                 )
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
-            # If applicable, save the chkpt to S3 Object Store (w/ model parameters)
-            if (self.checkpoint or self.use_minio_comm) and isinstance(
-                self.minio_state, MinioState
-            ):
-                log(INFO, "Create momentum vector to server state")
+            # Save the checkpoint to S3 Object Store (w/ model parameters)
+            if self.checkpoint or self.use_s3_comm:
+                log(INFO, "Create server state (server_round, history, time_offset)")
                 current_server_state = {
                     "server_round": start_round,
                     "history": history,
                     "time_offset": time_offset,
                 }
-                if isinstance(self.strategy, FedNesterov):
-                    log(INFO, "Add momentum vector to server state")
-                    current_server_state.update(
-                        {"momentum": self.strategy.momentum_vector}
-                    )
                 log(INFO, "Dump server state to disk")
-                # TODO: Use tmp files
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
-                with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
-                    pickle.dump(self.parameters, f)
                 log(INFO, "Push server state to S3")
-                # Checkpoint and push the state to S3 Object Store
-                self.remote_up_down._check_workers()
-                self.remote_up_down.upload_file(
-                    None,
-                    remote_file_name="0/state.bin",
-                    file_path=Path.cwd() / "current_server_state.bin",
-                    overwrite=True,
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{start_round}/state.bin",
+                    Path.cwd() / "current_server_state.bin",
                 )
-                self.remote_up_down._check_workers()
-                self.remote_up_down.upload_file(
-                    None,
-                    remote_file_name="0/current_server_parameters.bin",
-                    file_path=Path.cwd() / "current_server_parameters.bin",
-                    overwrite=True,
+                if (
+                    isinstance(self.strategy, FedNesterov)
+                    and self.strategy.momentum_vector is not None
+                ):
+                    log(INFO, "Dump momentum vector to disk")
+                    dump_model_parameters_to_file(
+                        Path.cwd() / "current_momentum_vector.npz",
+                        self.strategy.momentum_vector,
+                    )
+                    log(INFO, "Push momentum vector to S3 Object Store")
+                    upload_file_to_s3(
+                        self.remote_up_down,
+                        f"{start_round}/current_momentum_vector.npz",
+                        Path.cwd() / "current_momentum_vector.npz",
+                    )
+                log(INFO, "Dump server parameters to disk")
+                dump_model_parameters_to_file(
+                    Path.cwd() / "current_server_parameters.npz",
+                    parameters_to_ndarrays(self.parameters),
+                )
+                log(INFO, "Push parameters to S3 Object Store")
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{start_round}/current_server_parameters.npz",
+                    Path.cwd() / "current_server_parameters.npz",
                 )
 
         # NOTE: Register VirtualClients to the PollenClientManager
@@ -344,23 +385,18 @@ class PollenServer(Server):
                 )
 
             # Push the global model to S3 Object Store (but not the server state)
-            if (self.checkpoint or self.use_minio_comm) and isinstance(
-                self.minio_state, MinioState
-            ):
+            if self.checkpoint or self.use_s3_comm:
                 log(INFO, "Dump server parameters to disk")
-                # TODO: Use tmp files
-                with open(Path.cwd() / "current_server_parameters.bin", "wb") as f:
-                    pickle.dump(self.parameters, f)
-                log(INFO, "Push server parameters to S3")
-                # Checkpoint and push the state to S3 Object Store
-                self.remote_up_down._check_workers()
-                self.remote_up_down.upload_file(
-                    None,
-                    remote_file_name=f"{current_round}/current_server_parameters.bin",
-                    file_path=Path.cwd() / "current_server_parameters.bin",
-                    overwrite=True,
+                dump_model_parameters_to_file(
+                    Path.cwd() / "current_server_parameters.npz",
+                    parameters_to_ndarrays(self.parameters),
                 )
-                log(INFO, "Server parameters have been pushed to S3")
+                log(INFO, "Push parameters to S3 Object Store")
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{current_round}/current_server_parameters.npz",
+                    Path.cwd() / "current_server_parameters.npz",
+                )
 
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
@@ -394,35 +430,38 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
 
-            # If applicable, save the chkpt to S3 Object Store (w/o the global params)
-            if (self.checkpoint or self.use_minio_comm) and isinstance(
-                self.minio_state, MinioState
-            ):
-                log(INFO, "Create momentum vector to server state")
+            # Save the checkpoint to S3 Object Store (w/o the global parameters)
+            if self.checkpoint or self.use_s3_comm:
+                log(INFO, "Create server state (server_round, history, time_offset)")
                 current_server_state = {
                     "server_round": current_round,
                     "history": history,
-                    "time_offset": timeit.default_timer() - start_time + time_offset,
+                    "time_offset": time_offset,
                 }
-                if isinstance(self.strategy, FedNesterov):
-                    log(INFO, "Add momentum vector to server state")
-                    current_server_state.update(
-                        {"momentum": self.strategy.momentum_vector}
-                    )
                 log(INFO, "Dump server state to disk")
-                # TODO: Use tmp files
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
                 log(INFO, "Push server state to S3")
-                # Checkpoint and push the state to S3 Object Store
-                self.remote_up_down._check_workers()
-                self.remote_up_down.upload_file(
-                    None,
-                    remote_file_name=f"{current_round}/state.bin",
-                    file_path=Path.cwd() / "current_server_state.bin",
-                    overwrite=True,
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{current_round}/state.bin",
+                    Path.cwd() / "current_server_state.bin",
                 )
-                log(INFO, "Server state has been pushed to S3")
+                if (
+                    isinstance(self.strategy, FedNesterov)
+                    and self.strategy.momentum_vector is not None
+                ):
+                    log(INFO, "Dump momentum vector to disk")
+                    dump_model_parameters_to_file(
+                        Path.cwd() / "current_momentum_vector.npz",
+                        self.strategy.momentum_vector,
+                    )
+                    log(INFO, "Push momentum vector to S3 Object Store")
+                    upload_file_to_s3(
+                        self.remote_up_down,
+                        f"{current_round}/current_momentum_vector.npz",
+                        Path.cwd() / "current_momentum_vector.npz",
+                    )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -475,7 +514,7 @@ class PollenServer(Server):
         )
         node_instructions = []
         for client_proxy, device_assignment in node_assignments:
-            # Skip if the device_assigment is empty
+            # Skip if the device_assignment is empty
             if len(device_assignment) > 0:
                 # Get the `fit_config` for the virtual clients
                 node_evaluate_config = self.on_evaluate_config(server_round)
@@ -492,7 +531,7 @@ class PollenServer(Server):
                 node_evaluate_config.update(device_assignment)
 
                 # Append instruction
-                if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+                if self.use_s3_comm:
                     node_instructions.append((
                         client_proxy,
                         EvaluateIns(
@@ -625,7 +664,7 @@ class PollenServer(Server):
             node_fit_config.update(device_assignment)
 
             # Append instruction
-            if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+            if self.use_s3_comm:
                 node_instructions.append((
                     client_proxy,
                     FitIns(
@@ -655,7 +694,7 @@ class PollenServer(Server):
             len(node_instructions),
         )
 
-        # Using a generator limits us in failure/metrics accumulatiom
+        # Using a generator limits us in failure/metrics accumulation
         # The output params are not used in the aggregation
         # They are merely populated by the processing of the generator
         failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
@@ -693,11 +732,11 @@ class PollenServer(Server):
         )
 
         # If applicable, pull the client parameters from S3 Object Store
-        if self.use_minio_comm and isinstance(self.minio_state, MinioState):
+        if self.use_s3_comm:
             self.remote_up_down._check_workers()
             complete_results = (
-                replace_values_with_minio(
-                    self.remote_up_down, self.minio_state, server_round, result
+                replace_clients_updates_with_remote(
+                    self.remote_up_down, server_round, result
                 )
                 for result in complete_results
             )
@@ -929,7 +968,7 @@ def get_nodes_properties(
 def get_properties_client(
     client: ClientProxy, timeout: float | None
 ) -> tuple[ClientProxy, Node]:
-    """Get properties froma a Node."""
+    """Get properties from a Node."""
     ins = GetPropertiesIns(config={})
     node_properties_res = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties
@@ -965,9 +1004,8 @@ def _handle_finished_future_after_fit_async(
     return (False, result)
 
 
-def replace_values_with_minio(
+def replace_clients_updates_with_remote(
     remote_uploader_downloader: RemoteUploaderDownloader,
-    minio_state: MinioState,
     current_round: int,
     client_result: tuple[ClientProxy, FitRes],
 ) -> tuple[ClientProxy, FitRes]:
@@ -981,25 +1019,51 @@ def replace_values_with_minio(
             raise TypeError("endpoint_id is not a string")
     else:
         raise ValueError("endpoint_id is not present in fit_res")
-
-    log(DEBUG, "Pull Node %s parameters from S3 Object Store", endpoint_id)
-    # TODO: Use tmp files
+    # Check whether the server has uploaded the parameters
     file_found = False
+    remote_file_name_no_ext = (
+        f"s3://{remote_uploader_downloader.remote_bucket_name}/"  # type: ignore[union-attr]
+        f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
+        f"{current_round}/{endpoint_id}/parameters"
+    )
+
+    log(
+        DEBUG,
+        "Wait for NodeManager %s parameters to be in S3 Object Store at %s",
+        endpoint_id,
+        remote_file_name_no_ext,
+    )
+
     while not file_found:
-        try:
-            remote_uploader_downloader._check_workers()
-            remote_uploader_downloader.download_file(
-                remote_file_name=f"{current_round}/{endpoint_id}/parameters.bin",
-                destination=str(Path.cwd() / f"{endpoint_id}_parameters.bin"),
-                overwrite=True,
-            )
-            file_found = True
-        except FileNotFoundError:
-            pass
-        time.sleep(1)
+        file_found = validate_given_remote_path(
+            remote_file_name_no_ext + ".bin"
+        ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+        time.sleep(0.5)
+
+    # Set the file names depending on the extension found
+    remote_file_name = (
+        f"{current_round}/{endpoint_id}/parameters.bin"
+        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+        else f"{current_round}/{endpoint_id}/parameters.npz"
+    )
+    local_file_name = (
+        Path.cwd() / f"{endpoint_id}_current_server_parameters.bin"
+        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+        else Path.cwd() / f"{endpoint_id}_current_server_parameters.npz"
+    )
+    log(
+        DEBUG,
+        "Pull Node %s parameters from S3 Object Store: %s -> %s",
+        endpoint_id,
+        remote_file_name,
+        local_file_name,
+    )
+    download_file_from_s3(remote_uploader_downloader, remote_file_name, local_file_name)
     log(INFO, "Read server parameters from disk")
-    with open(Path.cwd() / f"{endpoint_id}_parameters.bin", "rb") as f:
-        fit_res.parameters = pickle.load(f)
+    fit_res.parameters = ndarrays_to_parameters(
+        load_model_parameters_from_file(local_file_name)
+    )
+
     log(
         INFO,
         "Node %s parameters have been read from disk and assigned to fit_res",

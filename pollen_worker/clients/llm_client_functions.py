@@ -107,15 +107,26 @@ def copy_old_checkpoints_to_new_run(
         _new_run_val := validate_given_remote_path(new_run_folder)
     ):
         state_bin = restore_run_uuid + f"/server/{restore_run_round}/state.bin"
-        parameters = (
-            restore_run_uuid
-            + f"/server/{restore_run_round}/current_server_parameters.bin"
+
+        momentum_vec = (
+            old_run_folder + f"/server/{restore_run_round}/current_momentum_vector.npz"
         )
+
+        parameters_no_ext = (
+            old_run_folder + f"/server/{restore_run_round}/current_server_parameters"
+        )
+        parameters = (
+            parameters_no_ext.replace(bucket_uri + "/", "") + ".bin"
+            if validate_given_remote_path(parameters_no_ext + ".bin")
+            else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
+        )
+        old_run_folder_no_prefix = old_run_folder.replace(bucket_uri + "/", "")
         client_paths = [
             client_path
             for client_path in list_remote_objects(old_run_folder)
             if re.match(
-                f"{restore_run_uuid}/client_.*/ep0-ba{restore_run_step}", client_path
+                f"{old_run_folder_no_prefix}/client_.*/ep0-ba{restore_run_step}",
+                client_path,
             )
         ]
         if (found_clients := len(client_paths)) != n_total_clients:
@@ -124,7 +135,18 @@ def copy_old_checkpoints_to_new_run(
                 f" but expected {n_total_clients}."
             )
 
-        paths_to_copy = [state_bin, parameters] + client_paths
+        paths_to_copy = [state_bin, parameters]
+
+        if validate_given_remote_path(momentum_vec):
+            paths_to_copy.append(momentum_vec)
+        else:
+            log(
+                logging.INFO,
+                f"Could not find momentum vector to copy from {momentum_vec}",
+            )
+
+        paths_to_copy.extend(client_paths)
+
         for path in paths_to_copy:
             copy_source = {"Bucket": backend.bucket, "Key": path}
             target_key = path.replace(restore_run_uuid, run_uuid)

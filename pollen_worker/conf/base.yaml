@@ -31,25 +31,16 @@ defaults:
   - _self_
   - llm_config: mpt-125m
 
-# MinIO
-use_minio_comm: false
+# S3 communication stack
+use_s3_comm: false
 
-minio:
-  minio_client:
-    endpoint: null
-    access_key: null
-    secret_key: null
-    session_token: null
-    secure: false
-    region: null
-    cert_check: false
-  minio_state:
-    run_uuid: ${run_uuid}
-    endpoint_id: null
-    bucket_name: null
-    file_size: 1073741824  # = 1024 * 1024 * 1024
-    throw_on_error: true
-    timeout_in_seconds: 3600
+s3_comm_config:
+  bucket_name: checkpoints
+  num_attempts: 3
+  backend_kwargs:
+    client_config:
+      connect_timeout: 3600
+      read_timeout: 3600
 
 # Weights&Biases
 use_wandb: true

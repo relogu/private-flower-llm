@@ -5,17 +5,17 @@ The workers are distributed over the available hardware devices
 in an N:M mapping with N>=M.
 The number of workers depends on:
 - how many resources each client needs
-- the resources availabe for a given device
+- the resources available for a given device
 - the parallelism supported by the system.
 
 In order to minimize data movement and unnecessary allocations+copies
 the node-manager uses a statically-assigned shared memory
 to host the memory of the workers and clients.
 
-In a singlenode setting, the node-manager
+In a single node setting, the node-manager
 is the only process that runs on the node and
 is only conceptually separate from the server.
-In a multinode setting, each node hosts
+In a multi node setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
@@ -45,20 +45,17 @@ from flwr.common import (
     Config,
     NDArrays,
     Scalar,
-    parameters_to_ndarrays,
-    ndarrays_to_parameters,
 )
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
-from minio import Minio
 from multiprocess import Queue, set_start_method
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
+from composer.utils.file_helpers import validate_given_remote_path
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
-from pollen_worker.minio.minio_state import MinioState
 from pollen_worker.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
@@ -87,8 +84,12 @@ from pollen_worker.node_manager.worker import (
 from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
+    download_file_from_s3,
+    dump_model_parameters_to_file,
     get_n_cuda_devices,
     l1_norm,
+    load_model_parameters_from_file,
+    upload_file_to_s3,
     weighted_average,
 )
 
@@ -106,7 +107,8 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
-        minio_state: MinioState | None = None,
+        use_s3_comm: bool = False,
+        s3_comm_config: DictConfig | None = None,
     ) -> None:
         super().__init__()
         # NodeManager general attributes
@@ -115,11 +117,10 @@ class NodeManager(fl.client.NumPyClient):
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
 
-        self.minio_state = minio_state
+        self.use_s3_comm = use_s3_comm
+        self.s3_comm_config = s3_comm_config
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
         self._create_remote_up_down()
-        if isinstance(minio_state, MinioState):
-            minio_state.endpoint_id = self.node_manager_uuid
 
         self.client_fn = client_fn
         self.refresh_period = refresh_period
@@ -180,31 +181,30 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_remote_up_down(self) -> None:
         """Create the remote uploader/downloader."""
-        if isinstance(self.minio_state, MinioState):
+        if self.use_s3_comm:
+            bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
             self.remote_up_down = RemoteUploaderDownloader(
-                # TODO: Don't hardcode
-                bucket_uri="s3://checkpoints",
+                bucket_uri=bucket_uri,
                 backend_kwargs={
-                    "bucket": "checkpoints",
-                    "prefix": f"{self.minio_state.run_uuid}/server",
+                    "bucket": self.s3_comm_config.bucket_name,  # type: ignore[union-attr]
+                    "prefix": f"{self.run_uuid}/server",  # Don't touch
                     "region_name": None,  # Not necessary
                     "endpoint_url": None,  # Will be read from env var
                     "aws_access_key_id": None,  # Will be read from config file
                     "aws_secret_access_key": None,  # Will be read from config file
-                    "aws_session_token": None,  # Will be automatically geberated
-                    "client_config": {
-                        "connect_timeout": 3600,
-                        "read_timeout": 3600,
-                    },
-                    "transfer_config": None,  # Use defaults
+                    "aws_session_token": None,  # Will be automatically generated
+                    "client_config": OmegaConf.to_container(
+                        self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
+                    ),  # And using defaults
+                    "transfer_config": None,  # Using defaults
                 },
-                file_path_format_string="{remote_file_name}",
+                file_path_format_string="{remote_file_name}",  # Don't touch
                 num_concurrent_uploads=1,
-                upload_staging_folder=None,
-                use_procs=True,
-                num_attempts=3,
+                upload_staging_folder=None,  # Don't touch, it's /tmp by default
+                use_procs=True,  # Don't touch
+                num_attempts=self.s3_comm_config.num_attempts,  # type: ignore[union-attr]
             )
-            self.remote_up_down.init(run_name=self.minio_state.run_uuid)
+            self.remote_up_down.init(run_name=self.run_uuid)
 
     def _check_workers_health(self) -> None:
         """Check if workers are alive and restart them if not."""
@@ -334,7 +334,7 @@ class NodeManager(fl.client.NumPyClient):
     def _collaborative_fit(
         self, config: Config, list_of_cids_to_train: list[str], parameters: NDArrays
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
-        # Update paramters shared memory
+        # Update parameters shared memory
         set_parameters_shm(self.round_parameters, parameters)
         # Initialise partial aggregation variables
         aggregated_params: NDArrays = []
@@ -437,30 +437,46 @@ class NodeManager(fl.client.NumPyClient):
         # Get the server round
         server_round = int(config["server_round"])
         # If applicable, override the parameters with values from S3 Object Store
-        if isinstance(self.minio_state, MinioState):
+        if self.use_s3_comm:
             log(
                 DEBUG,
                 "NodeManager %s: pulling parameters from S3 Object Store",
                 self.name,
             )
-            # TODO: Use tmp files
+            # Check whether the server has uploaded the parameters
             file_found = False
+            remote_file_name_no_ext = (
+                f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr]
+                f"{self.run_uuid}/server/"
+                f"{int(server_round) - 1}/current_server_parameters"
+            )
             while not file_found:
+                file_found = validate_given_remote_path(
+                    remote_file_name_no_ext + ".bin"
+                ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+                time.sleep(0.5)
+            # Set the file names depending on the extension found
+            remote_file_name = (
+                f"{int(server_round) - 1}/current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else f"{int(server_round) - 1}/current_server_parameters.npz"
+            )
+            local_file_name = (
+                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else Path.cwd()
+                / f"{self.node_manager_uuid}_current_server_parameters.npz"
+            )
+            # Download the parameters
+            file_downloaded = False
+            while not file_downloaded:
                 try:
-                    self.remote_up_down._check_workers()
-                    self.remote_up_down.download_file(
-                        remote_file_name=(
-                            f"{int(server_round - 1)}/current_server_parameters.bin"
-                        ),
-                        destination=str(
-                            Path.cwd()
-                            / f"{self.node_manager_uuid}_current_server_parameters.bin"
-                        ),
-                        overwrite=True,
+                    download_file_from_s3(
+                        self.remote_up_down, remote_file_name, local_file_name
                     )
-                    file_found = True
+                    file_downloaded = True
                 except FileNotFoundError:
-                    pass
+                    time.sleep(0.5)
                 except RuntimeError as e:
                     log(
                         ERROR,
@@ -473,11 +489,7 @@ class NodeManager(fl.client.NumPyClient):
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
             log(INFO, "Read server parameters from disk")
-            with open(
-                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin",
-                "rb",
-            ) as f:
-                parameters = parameters_to_ndarrays(pickle.load(f))
+            parameters = load_model_parameters_from_file(local_file_name)
             log(INFO, "Server parameters have been read from disk")
 
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
@@ -513,7 +525,7 @@ class NodeManager(fl.client.NumPyClient):
         })
         log(
             DEBUG,
-            "NodeManager %s: resuls have been processed. "
+            "NodeManager %s: results have been processed. "
             "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
@@ -528,24 +540,26 @@ class NodeManager(fl.client.NumPyClient):
         )
 
         # If applicable, push the aggregated parameters to S3 Object Store
-        if isinstance(self.minio_state, MinioState):
+        if self.use_s3_comm:
+            # Set the file names
+            remote_file_name = f"{server_round}/{self.node_manager_uuid}/parameters.npz"
+            local_file_name = Path.cwd() / f"{self.node_manager_uuid}_parameters.npz"
             log(INFO, "Dump node parameters to disk")
-            with open(
-                Path.cwd() / f"{self.node_manager_uuid}_parameters.bin", "wb"
-            ) as f:
-                pickle.dump(ndarrays_to_parameters(aggregated_params), f)
+            dump_model_parameters_to_file(local_file_name, aggregated_params)
             log(
                 DEBUG,
                 "NodeManager %s: pushing parameters to S3 Object Store",
                 self.name,
             )
-            # TODO: Use tmp files
+            # Upload the parameters to S3 Object Store
             try:
-                self.remote_up_down._check_workers()
+                upload_file_to_s3(
+                    self.remote_up_down, remote_file_name, local_file_name
+                )
             except RuntimeError as e:
                 log(
                     ERROR,
-                    "NodeManager %s: error while pulling parameters from S3 Object"
+                    "NodeManager %s: error while pushing parameters from S3 Object"
                     " Store. Refreshing the connection.",
                     self.name,
                     exc_info=e,
@@ -553,14 +567,6 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 self.remote_up_down.post_close()
                 self._create_remote_up_down()
-            self.remote_up_down.upload_file(
-                None,
-                remote_file_name=(
-                    f"{server_round}/{self.node_manager_uuid}/parameters.bin"
-                ),
-                file_path=Path.cwd() / f"{self.node_manager_uuid}_parameters.bin",
-                overwrite=True,
-            )
             log(INFO, "Node parameters have been pushed to S3 Object Store")
             node_train_metrics.update({
                 "endpoint_id": self.node_manager_uuid,
@@ -587,30 +593,46 @@ class NodeManager(fl.client.NumPyClient):
         # Get the server round
         server_round = config["server_round"]
         # If applicable, override the parameters with values from S3 Object Store
-        if isinstance(self.minio_state, MinioState):
+        if self.use_s3_comm:
             log(
                 DEBUG,
                 "NodeManager %s: pulling parameters from S3 Object Store",
                 self.name,
             )
-            # TODO: Use tmp files
+            # Check whether the server has uploaded the parameters
             file_found = False
+            remote_file_name_no_ext = (
+                f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr]
+                f"{self.run_uuid}/server/"
+                f"{int(server_round)}/current_server_parameters"
+            )
             while not file_found:
+                file_found = validate_given_remote_path(
+                    remote_file_name_no_ext + ".bin"
+                ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+                time.sleep(0.5)
+            # Set the file names depending on the extension found
+            remote_file_name = (
+                f"{int(server_round)}/current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else f"{int(server_round)}/current_server_parameters.npz"
+            )
+            local_file_name = (
+                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else Path.cwd()
+                / f"{self.node_manager_uuid}_current_server_parameters.npz"
+            )
+            # Download the parameters
+            file_downloaded = False
+            while not file_downloaded:
                 try:
-                    self.remote_up_down._check_workers()
-                    self.remote_up_down.download_file(
-                        remote_file_name=(
-                            f"{int(server_round)}/current_server_parameters.bin"
-                        ),
-                        destination=str(
-                            Path.cwd()
-                            / f"{self.node_manager_uuid}_current_server_parameters.bin"
-                        ),
-                        overwrite=True,
+                    download_file_from_s3(
+                        self.remote_up_down, remote_file_name, local_file_name
                     )
-                    file_found = True
+                    file_downloaded = True
                 except FileNotFoundError:
-                    pass
+                    time.sleep(0.5)
                 except RuntimeError as e:
                     log(
                         ERROR,
@@ -623,11 +645,7 @@ class NodeManager(fl.client.NumPyClient):
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
             log(INFO, "Read server parameters from disk")
-            with open(
-                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin",
-                "rb",
-            ) as f:
-                parameters = parameters_to_ndarrays(pickle.load(f))
+            parameters = load_model_parameters_from_file(local_file_name)
             log(INFO, "Server parameters have been read from disk")
 
         start_time = time.time()
@@ -730,7 +748,7 @@ class NodeManager(fl.client.NumPyClient):
         node_eval_samples = sum(clients_eval_samples)
         log(
             DEBUG,
-            "NodeManager %s: resuls have been processed. "
+            "NodeManager %s: results have been processed. "
             "The time spent before collecting results was %s seconds.",
             self.name,
             time.time() - start_time,
@@ -784,29 +802,14 @@ def main(cfg: DictConfig) -> None:
     )
     # Get initial model parameters
     parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
-    # S3 Object Store
-    minio_state: MinioState | None = None
-    if cfg.use_minio_comm:
-        # Create the S3 Object Store client
-        cfg.minio.minio_client.endpoint = str(cfg.minio.minio_client.endpoint).replace(
-            "http://", ""
-        )
-        minio_client = Minio(**cfg.minio.minio_client)
-        # NOTE: This MUST BE hardcoded to "server" for the server
-        cfg.minio.minio_state.endpoint_id = "server"
-        # Create the S3 Object Store state
-        minio_state = MinioState(
-            minio_client,
-            **cfg.minio.minio_state,
-        )
-
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
-        minio_state=minio_state,
+        use_s3_comm=cfg.use_s3_comm,
+        s3_comm_config=cfg.s3_comm_config,
     )
     # Choose the type of execution
     if cfg.is_test:

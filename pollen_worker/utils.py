@@ -6,6 +6,7 @@ They assure compatibility with the Flower and wandb APIs.
 import copy
 import fcntl
 import gc
+import pickle
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
@@ -21,6 +22,7 @@ import pyarrow as pa
 import ray
 import torch
 from composer import Trainer
+from composer.loggers import RemoteUploaderDownloader
 from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
@@ -32,6 +34,59 @@ import wandb
 # NOTE: Setting the maximum value according to the documentation
 # https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
 POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
+
+
+def download_file_from_s3(
+    remote_up_down: RemoteUploaderDownloader,
+    remote_file_name: str,
+    local_file_name: Path | str,
+) -> None:
+    """Download a file from S3."""
+    remote_up_down._check_workers()
+    remote_up_down.download_file(
+        remote_file_name=remote_file_name,
+        destination=str(local_file_name),
+        overwrite=True,
+    )
+
+
+def upload_file_to_s3(
+    remote_up_down: RemoteUploaderDownloader,
+    remote_file_name: str,
+    local_file_name: Path,
+) -> None:
+    """Download a file from S3."""
+    remote_up_down._check_workers()
+    remote_up_down.upload_file(
+        state=None,
+        remote_file_name=remote_file_name,
+        file_path=local_file_name,
+        overwrite=True,
+    )
+
+
+def load_model_parameters_from_file(file_path: Path) -> NDArrays:
+    """Load model parameters from a file."""
+    if file_path.suffix == ".npz":
+        with np.load(file_path) as data:
+            return [data[key] for key in data.files]
+    elif file_path.suffix == ".bin":
+        with open(file_path, "rb") as file:
+            return parameters_to_ndarrays(pickle.load(file))
+    else:
+        raise ValueError(f"Unsupported file format: {file_path.suffix}")
+
+
+def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -> None:
+    """Load model parameters from a file."""
+    if file_path.suffix == ".npz":
+        with open(file_path, "wb") as file:
+            np.savez_compressed(file, *model_parameters)
+    elif file_path.suffix == ".bin":
+        with open(file_path, "wb") as file:
+            pickle.dump(model_parameters, file)
+    else:
+        raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 
 # Server ####
