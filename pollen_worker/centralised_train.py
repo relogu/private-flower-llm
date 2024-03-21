@@ -9,13 +9,13 @@ import copy
 import gc
 import logging
 import os
-import pickle
 import time
 import warnings
 from logging import INFO, WARN
 from typing import Any
 
 import hydra
+import numpy as np
 import torch
 from composer import Trainer
 from composer.core import Evaluator
@@ -691,21 +691,27 @@ def main(_cfg: DictConfig) -> Trainer:
         trainer.eval()
 
     # Dump model parameters to file
-    if cfg.store_init_model:
+    if _cfg.store_init_model:
+        # Get model parameters from trainer object
         model_parameters = get_parameters_from_state({}, trainer)
+        # Get number of steps executed
         n_steps = trainer.state.timestamp.batch.value
-        with open(f"{cfg.run_uuid}-{n_steps}-checkpoint.bin", "wb") as f:
-            pickle.dump(model_parameters, f)
+        # Dump the compressed model parameters to file
+        with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
+            np.savez_compressed(f, *model_parameters)
 
     log(INFO, "Starting training...")
     trainer.fit()
 
     # Dump model parameters to file
-    if cfg.store_final_model:
+    if _cfg.store_final_model:
+        # Get model parameters from trainer object
         model_parameters = get_parameters_from_state({}, trainer)
+        # Get number of steps executed
         n_steps = trainer.state.timestamp.batch.value
-        with open(f"{cfg.run_uuid}-{n_steps}-checkpoint.bin", "wb") as f:
-            pickle.dump(model_parameters, f)
+        # Dump the compressed model parameters to file
+        with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
+            np.savez_compressed(f, *model_parameters)
 
     log(INFO, "Done.")
     return trainer
