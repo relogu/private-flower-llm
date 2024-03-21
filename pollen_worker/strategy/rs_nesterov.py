@@ -231,11 +231,15 @@ class FedNesterov(FedAvgReproducibleSampling):
                 "server/l1_norm_fedavg_result": l1_norm(fedavg_result),
             }
             for i, plnpg in enumerate([l1_norm([layer]) for layer in pseudo_gradient]):
-                metrics_aggregated |= {f"server/layer_{i}/l1_norm_pseudo_gradient": plnpg}
+                metrics_aggregated |= {
+                    f"server/layer_{i}/l1_norm_pseudo_gradient": plnpg
+                }
             for i, plnpg in enumerate(
                 [l1_norm([layer]) for layer in self.momentum_vector]
             ):
-                metrics_aggregated |= {f"server/layer_{i}/l1_norm_momentum_vector": plnpg}
+                metrics_aggregated |= {
+                    f"server/layer_{i}/l1_norm_momentum_vector": plnpg
+                }
             for i, plnpg in enumerate([l1_norm([layer]) for layer in fedavgm_result]):
                 metrics_aggregated |= {f"server/layer_{i}/l1_norm_model": plnpg}
             for i, plnpg in enumerate([l1_norm([layer]) for layer in fedavg_result]):

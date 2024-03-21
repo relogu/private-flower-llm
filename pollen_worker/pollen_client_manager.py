@@ -173,10 +173,8 @@ class PollenClientManager(ClientManager):
         if num_clients > len(available_cids):
             log(
                 INFO,
-                (
-                    "Sampling failed: number of available clients"
-                    " (%s) is less than number of requested clients (%s)."
-                ),
+                "Sampling failed: number of available clients"
+                " (%s) is less than number of requested clients (%s).",
                 len(available_cids),
                 num_clients,
             )

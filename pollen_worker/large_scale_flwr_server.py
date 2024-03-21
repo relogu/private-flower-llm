@@ -117,12 +117,10 @@ def fit_clients(
                     fit_metrics = [
                         (res.num_examples, res.metrics) for _, res in results
                     ]
-                    tmp_metrics.append(
-                        (
-                            sum([num_examples for num_examples, _ in fit_metrics]),
-                            strategy.fit_metrics_aggregation_fn(fit_metrics),
-                        )
-                    )
+                    tmp_metrics.append((
+                        sum([num_examples for num_examples, _ in fit_metrics]),
+                        strategy.fit_metrics_aggregation_fn(fit_metrics),
+                    ))
                 # Partially aggregate parameters
                 if results:
                     tmp_results.append(
@@ -156,12 +154,10 @@ def fit_clients(
         # Partially aggregate custom metrics if aggregation fn was provided
         if strategy.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            tmp_metrics.append(
-                (
-                    sum([num_examples for num_examples, _ in fit_metrics]),
-                    strategy.fit_metrics_aggregation_fn(fit_metrics),
-                )
-            )
+            tmp_metrics.append((
+                sum([num_examples for num_examples, _ in fit_metrics]),
+                strategy.fit_metrics_aggregation_fn(fit_metrics),
+            ))
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
         # Partially aggregate parameters

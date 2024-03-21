@@ -497,10 +497,8 @@ def main(args: Namespace) -> None:
         log(INFO, f"Converting {folder_split} to MDS format...")
         log(
             INFO,
-            (
-                "Note: the progress bar is based on the dataset length before"
-                " tokenization,and may finish at a value before 100%."
-            ),
+            "Note: the progress bar is based on the dataset length before"
+            " tokenization,and may finish at a value before 100%.",
         )
         # Loop over the number of clients
         for i in range(args.num_clients):

@@ -238,15 +238,13 @@ def learning_based_placement(
         for model_name, model_params in pollen_models.items():
             if is_parrot:
                 # Parrot uses one worker per device
-                workers_assignments.append(
-                    [
-                        model_params,  # Model parameters
-                        [],  # List of cids
-                        0.0,  # Device load
-                        model_name.split("_")[0],  # Node name
-                        model_name.split("_")[1],  # Device name
-                    ]
-                )
+                workers_assignments.append([
+                    model_params,  # Model parameters
+                    [],  # List of cids
+                    0.0,  # Device load
+                    model_name.split("_")[0],  # Node name
+                    model_name.split("_")[1],  # Device name
+                ])
             else:
                 concurrency = (
                     simple_node_dict[model_name.split("_")[0]]
@@ -255,15 +253,13 @@ def learning_based_placement(
                 )
                 for _ in range(concurrency):
                     # Pollen uses `concurrency` workers per device
-                    workers_assignments.append(
-                        [
-                            model_params,  # Model parameters
-                            [],  # List of cids
-                            0.0,  # Device load
-                            model_name.split("_")[0],  # Node name
-                            model_name.split("_")[1],  # Device name
-                        ]
-                    )
+                    workers_assignments.append([
+                        model_params,  # Model parameters
+                        [],  # List of cids
+                        0.0,  # Device load
+                        model_name.split("_")[0],  # Node name
+                        model_name.split("_")[1],  # Device name
+                    ])
         # Assignment
         # Assign initially at least one client per worker
         for worker in workers_assignments:
@@ -375,12 +371,10 @@ def round_robin_placement(
     # Creates equal clients splits amongst workers
     # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
-    n_total_workers = np.sum(
-        [
-            np.sum([device.concurrency for _, device in node.device_info.items()])
-            for _, (_, node) in nodes_dict.items()
-        ]
-    )
+    n_total_workers = np.sum([
+        np.sum([device.concurrency for _, device in node.device_info.items()])
+        for _, (_, node) in nodes_dict.items()
+    ])
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(cids, n_total_workers)
     # Init the device assignment and the return value
@@ -390,7 +384,7 @@ def round_robin_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:  # noqa: PLR1702
+    while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -451,12 +445,10 @@ def sorted_round_robin_placement(
     cids: NDArray[np.int16] = np.array([x[0] for x in sorted_sampled_virtual_cids])
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
-    n_total_workers = np.sum(
-        [
-            np.sum([device.concurrency for _, device in node.device_info.items()])
-            for _, (_, node) in nodes_dict.items()
-        ]
-    )
+    n_total_workers = np.sum([
+        np.sum([device.concurrency for _, device in node.device_info.items()])
+        for _, (_, node) in nodes_dict.items()
+    ])
     splits = [
         cids[np.arange(i, len(cids), n_total_workers)] for i in range(n_total_workers)
     ]
@@ -468,7 +460,7 @@ def sorted_round_robin_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:  # noqa: PLR1702
+    while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -526,12 +518,10 @@ def samples_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum(
-        [
-            np.sum([device.concurrency for _, device in node.device_info.items()])
-            for _, (_, node) in nodes_dict.items()
-        ]
-    )
+    n_total_workers = np.sum([
+        np.sum([device.concurrency for _, device in node.device_info.items()])
+        for _, (_, node) in nodes_dict.items()
+    ])
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     # Assign the remaining clients iteratively to the least loaded worker
@@ -547,7 +537,7 @@ def samples_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:  # noqa: PLR1702
+    while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -606,12 +596,10 @@ def batches_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum(
-        [
-            np.sum([device.concurrency for _, device in node.device_info.items()])
-            for _, (_, node) in nodes_dict.items()
-        ]
-    )
+    n_total_workers = np.sum([
+        np.sum([device.concurrency for _, device in node.device_info.items()])
+        for _, (_, node) in nodes_dict.items()
+    ])
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
@@ -629,7 +617,7 @@ def batches_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:  # noqa: PLR1702
+    while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False
@@ -688,12 +676,10 @@ def log_batches_placement(
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum(
-        [
-            np.sum([device.concurrency for _, device in node.device_info.items()])
-            for _, (_, node) in nodes_dict.items()
-        ]
-    )
+    n_total_workers = np.sum([
+        np.sum([device.concurrency for _, device in node.device_info.items()])
+        for _, (_, node) in nodes_dict.items()
+    ])
     # Assing the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
@@ -711,7 +697,7 @@ def log_batches_placement(
         for _, (client_proxy, _) in nodes_dict.items()
     ]
     # Loop over the splits created
-    while len(splits) > 0:  # noqa: PLR1702
+    while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
             tmp_node_assignments, nodes_dict.items(), strict=False

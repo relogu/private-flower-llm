@@ -126,10 +126,8 @@ class FedAvgReproducibleSampling(FedAvg):
         if sample_size > len(client_manager.clients):
             log(
                 WARNING,
-                (
-                    "sample_size > len(client_manager.clients), to satisfy this"
-                    " condition, we will sample clients with replacement"
-                ),
+                "sample_size > len(client_manager.clients), to satisfy this"
+                " condition, we will sample clients with replacement",
             )
 
             # Setting seed for reproducibility of client selection
