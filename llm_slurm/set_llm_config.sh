@@ -8,7 +8,7 @@ fi
 GPU_TYPE=$(nvidia-smi -L)
 #! Set `llm_config` names
 if [[ $GPU_TYPE == *'A40'* ]]; then
-    echo "Assuming we are running on A40s (Mauao)."
+    echo "Assuming we are running on A40-equipped machines."
     # NOTE: We're assiming 'amp_bf16' is used
     # From: https://images.nvidia.com/content/Solutions/data-center/a40/nvidia-a40-datasheet.pdf
     FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=1497e11"
@@ -20,12 +20,12 @@ if [[ $GPU_TYPE == *'A40'* ]]; then
     LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=40 llm_config.device_eval_batch_size=80" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=40"
     LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=80"
-    LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=40 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=3 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
-    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
-    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
+    LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=40 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=3 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=flash" # FSDP goes OOM
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=flash" # FSDP goes OOM
+    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=flash" # FSDP goes OOM
 elif [[ $GPU_TYPE == *'A100'* ]]; then
     echo "Assuming we are running on A100-equipped machines."
     FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=312e12" # Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad mistake of them
@@ -40,9 +40,9 @@ elif [[ $GPU_TYPE == *'A100'* ]]; then
     LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=86" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=80" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=84"
-    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=5"
-    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
-    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
+    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=5" # TO BE TESTED
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1"  # TO BE TESTED
+    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1"  # TO BE TESTED
 elif [[ $GPU_TYPE == *'H100'* ]]; then
     echo "Assuming we are running on H100-equipped machines."
     FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=312e12" # Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad mistake of them
@@ -57,11 +57,11 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
     LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=86" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=20 llm_config.device_eval_batch_size=80" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=60" # This has issues (we can't scale up the microbatch size even though it seems possible) -> https://github.com/Dao-AILab/flash-attention/issues/483
-    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=10 llm_config.device_eval_batch_size=64"
-    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
-    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1" # CANNOT DO IT
+    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=10 llm_config.device_eval_batch_size=64" # TO BE TESTED
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=5 llm_config.device_eval_batch_size=32" # TO BE TESTED
+    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1" # TO BE TESTED
 elif [[ $GPU_TYPE == *'L40'* ]]; then
-    echo "Assuming we are running on L40s-equipped machines."
+    echo "Assuming we are running on L40-equipped machines."
     # NOTE: We're assiming 'amp_bf16' is used
     # From: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/datasheets/L-40/product-brief-L40.pdf
     FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=18105e10"
@@ -70,12 +70,12 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
     LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=128 llm_config.device_eval_batch_size=50" # This has issues (we can't scale up the microbatch size even though it seems possible)  -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=50 llm_config.device_eval_batch_size=50" # This has issues (we can't scale up the microbatch size even though it seems possible)  -> https://github.com/Dao-AILab/flash-attention/issues/483
     LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=15 llm_config.device_eval_batch_size=40" # This has issues (we can't scale up the microbatch size even though it seems possible)  -> https://github.com/Dao-AILab/flash-attention/issues/483
-    LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=40 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=3 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=torch" # Cannot use Triton here
-    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
-    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
-    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=torch" # CANNOT DO IT
+    LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=40 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=3 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=35 llm_config.model.attn_config.attn_impl=flash" # Cannot use Triton here
+    LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=30 llm_config.model.attn_config.attn_impl=flash" # CANNOT DO IT
+    LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=flash" # CANNOT DO IT
+    LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1 llm_config.model.attn_config.attn_impl=flash" # CANNOT DO IT
 else
     echo "Unknown GPU type: $GPU_TYPE. Using defaults..."
 fi
