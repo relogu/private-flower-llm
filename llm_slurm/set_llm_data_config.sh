@@ -76,7 +76,9 @@ else
     SPLIT_CONFIG="llm_config.eval_loader.dataset.split=val llm_config.train_loader.dataset.split=train"
 fi
 #! Export the endpoint of the S3 object store
-export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+#! Using directly the IP to avoid name resolution issues
+export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Set data configuration
 if $IS_FEDERATED ; then
     if $IS_LOCAL ; then
