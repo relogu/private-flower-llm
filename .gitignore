@@ -205,3 +205,4 @@ checkpoints
 
 # Temporary parameters for different communication stack
 *.bin
+*.npz
