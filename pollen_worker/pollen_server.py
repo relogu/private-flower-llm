@@ -356,7 +356,7 @@ class PollenServer(Server):
         }
 
         # Waiting for at least one node to connect
-        log(INFO, "Waiting for at least one node to connect")
+        log(INFO, "Waiting for at least %s node(s) to connect", self.num_nodes)
         self._client_manager.wait_for_node_managers(self.num_nodes)
 
         log(
