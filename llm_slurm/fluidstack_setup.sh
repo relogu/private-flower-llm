@@ -103,3 +103,7 @@ git fetch origin
 git checkout --track origin/llm
 #! Changing permissions to the 'ephemeral storage' folder again
 sudo chmod -R a+wr /ephemeral
+#! Sync back conf file
+sudo rsync -a $HOME/.bashrc /home/$USER/.bashrc
+sudo rsync -a $HOME/.aws /home/$USER/.aws
+sudo rsync -a $HOME/.netrc /home/$USER/.netrc
