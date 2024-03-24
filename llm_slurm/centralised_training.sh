@@ -37,6 +37,8 @@ fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
 . $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+export LLM_OPTIONS="llm_config.save_interval=100ba llm_config.console_log_interval=1ba llm_config.save_folder=$SAVE_PATH llm_config.save_num_checkpoints_to_keep=1"
+echo "LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))

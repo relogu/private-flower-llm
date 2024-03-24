@@ -38,7 +38,9 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50744' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176 pollen.checkpoint=true llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4 llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 fl.reset_optimizer=true"
+POLLEN_CONFIG="pollen.server_address='[::]:50751' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 pollen.fit_collaborative=false pollen.restore_run_uuid=null"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH $MINIO_COMM_STACK_OPTIONS 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
@@ -46,6 +48,9 @@ sleep 30
 #! Launch NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
-#! Keep the pid and wait for it 
+#! Keep the pid of the NodeManager
 BACK_PID=$!
+# Enable CTRL+C to stop all background processes
+trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
+#! Wait for the NodeManager to finish
 wait $BACK_PID
