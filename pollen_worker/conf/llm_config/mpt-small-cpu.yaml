@@ -109,7 +109,7 @@ console_log_interval: 1ba
 
 callbacks:
   speed_monitor:
-    window_size: 10
+    window_size: 1
     gpu_flops_available: null
   lr_monitor: {}
   memory_monitor: {}
