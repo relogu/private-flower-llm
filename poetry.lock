@@ -3061,7 +3061,7 @@ tensorboard = ["mosaicml[tensorboard] (>=0.19,<0.20)"]
 type = "git"
 url = "https://github.com/relogu/llm-foundry.git"
 reference = "test"
-resolved_reference = "b85331af3e0010e7ababa360f5df6dcb0eaa9b72"
+resolved_reference = "18dee14d54d3ec8f4d141a8212153dc6f07767a6"
 
 [[package]]
 name = "llvmlite"

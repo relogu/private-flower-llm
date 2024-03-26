@@ -87,8 +87,8 @@ from pollen_worker.utils import (
     download_file_from_s3,
     dump_model_parameters_to_file,
     get_n_cuda_devices,
-    l1_norm,
     load_model_parameters_from_file,
+    sum_of_squares,
     upload_file_to_s3,
     weighted_average,
 )
@@ -402,11 +402,13 @@ class NodeManager(fl.client.NumPyClient):
                     )
                     if sum_of_samples > 0:
                         node_clients_pairwise_delta = sum(
-                            l1_norm([x - y])
+                            sum_of_squares([x - y])
                             for x, y in zip(aggregated_params, w_p_s[0], strict=False)
                         )
                         node_train_metrics |= {
-                            "node_clients_pairwise_delta": node_clients_pairwise_delta
+                            "node_clients_pairwise_delta": float(
+                                np.sqrt(node_clients_pairwise_delta)
+                            )
                         }
                     # Zero out the n_samples shared memories
                     set_num_samples_shm(w_s, 0)

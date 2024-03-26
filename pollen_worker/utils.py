@@ -274,6 +274,22 @@ def sum_of_squares(arrays: NDArrays) -> float:
     return sum(np.sum(np.square(arr)) for arr in arrays)
 
 
+def l2_norm(arrays: NDArrays) -> float:
+    """Compute the L2 norm of a list of arrays.
+
+    Parameters
+    ----------
+    arrays : NDArrays
+        List of arrays to compute the L2 norm of.
+
+    Returns
+    -------
+    float
+        The L2 norm of the list of arrays.
+    """
+    return float(np.sqrt(sum_of_squares(arrays)))
+
+
 def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
