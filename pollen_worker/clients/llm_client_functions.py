@@ -52,8 +52,13 @@ from composer.loggers import RemoteUploaderDownloader
 from composer.utils import S3ObjectStore
 from composer.utils.file_helpers import list_remote_objects
 
-
-from pollen_worker.utils import get_n_cpu_cores, get_n_cuda_devices, l1_norm
+import numpy as np
+from pollen_worker.utils import (
+    get_n_cpu_cores,
+    get_n_cuda_devices,
+    l1_norm,
+    sum_of_squares,
+)
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -1045,10 +1050,24 @@ def llm_fit(
     per_layer_norm_of_pseudo_gradient = [
         l1_norm([x - y]) for x, y in zip(parameters, model_parameters, strict=False)
     ]
+
+    per_layer_sum_of_squares = [
+        sum_of_squares([x - y])
+        for x, y in zip(parameters, model_parameters, strict=False)
+    ]
     for i, plnopg in enumerate(per_layer_norm_of_pseudo_gradient):
         train_metrics |= {f"client/layer_{i}/l1_norm_of_pseudo_gradient": plnopg}
+
+    for i, plss in enumerate(per_layer_sum_of_squares):
+        train_metrics |= {
+            f"client/layer_{i}/l2_norm_of_pseudo_gradient": float(np.sqrt(plss))
+        }
+
     norm_of_pseudo_gradient: float = sum(per_layer_norm_of_pseudo_gradient)
+    l2_norm_of_pseudo_gradient: float = float(np.sqrt(sum(per_layer_sum_of_squares)))
+
     train_metrics |= {"client/l1_norm_pseudo_gradient": norm_of_pseudo_gradient}
+    train_metrics |= {"client/l2_norm_pseudo_gradient": l2_norm_of_pseudo_gradient}
 
     # Close the trainer
     trainer.close()

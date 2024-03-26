@@ -112,6 +112,7 @@ callbacks:
   lr_monitor: {}
   memory_monitor: {}
   runtime_estimator: {}
+  activation_monitor_full_model: {}
 
 loggers:
   wandb:
