@@ -24,10 +24,11 @@ from flwr.common import (
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
+import numpy as np
 
 from pollen_worker.strategy.aggregation import aggregate_cumulative_average
 from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
-from pollen_worker.utils import l1_norm
+from pollen_worker.utils import l2_norm, sum_of_squares
 
 
 # flake8: noqa: E501
@@ -164,7 +165,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         fit_metrics: list[tuple[int, dict[str, Scalar]]] = []
 
         def acc_metrics(
-            result: tuple[ClientProxy, FitRes]
+            result: tuple[ClientProxy, FitRes],
         ) -> tuple[ClientProxy, FitRes]:
             _, fit_res = result
             fit_metrics.append((fit_res.num_examples, fit_res.metrics))
@@ -225,34 +226,34 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         if self.track_norms:
             metrics_aggregated |= {
-                "server/l1_norm_pseudo_gradient": l1_norm(pseudo_gradient),
-                "server/l1_norm_momentum_vector": l1_norm(self.momentum_vector),
-                "server/l1_norm_model": l1_norm(fedavgm_result),
-                "server/l1_norm_fedavg_result": l1_norm(fedavg_result),
+                "server/l2_norm_pseudo_gradient": l2_norm(pseudo_gradient),
+                "server/l2_norm_momentum_vector": l2_norm(self.momentum_vector),
+                "server/l2_norm_model": l2_norm(fedavgm_result),
+                "server/l2_norm_fedavg_result": l2_norm(fedavg_result),
             }
-            for i, plnpg in enumerate([l1_norm([layer]) for layer in pseudo_gradient]):
+            for i, plnpg in enumerate([l2_norm([layer]) for layer in pseudo_gradient]):
                 metrics_aggregated |= {
-                    f"server/layer_{i}/l1_norm_pseudo_gradient": plnpg
+                    f"server/layer_{i}/l2_norm_pseudo_gradient": plnpg
                 }
             for i, plnpg in enumerate(
-                [l1_norm([layer]) for layer in self.momentum_vector]
+                [l2_norm([layer]) for layer in self.momentum_vector]
             ):
                 metrics_aggregated |= {
-                    f"server/layer_{i}/l1_norm_momentum_vector": plnpg
+                    f"server/layer_{i}/l2_norm_momentum_vector": plnpg
                 }
-            for i, plnpg in enumerate([l1_norm([layer]) for layer in fedavgm_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l1_norm_model": plnpg}
-            for i, plnpg in enumerate([l1_norm([layer]) for layer in fedavg_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l1_norm_fedavg_result": plnpg}
+            for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavgm_result]):
+                metrics_aggregated |= {f"server/layer_{i}/l2_norm_model": plnpg}
+            for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavg_result]):
+                metrics_aggregated |= {f"server/layer_{i}/l2_norm_fedavg_result": plnpg}
             log(
                 INFO,
-                "Nesterov Momentum: l1_norm(pseudo_gradient)=%s,"
-                " l1_norm(self.momentum_vector)=%s, l1_norm(model)=%s,"
-                " l1_norm(fedavg_result)=%s",
-                l1_norm(pseudo_gradient),
-                l1_norm(self.momentum_vector),
-                l1_norm(fedavgm_result),
-                l1_norm(fedavg_result),
+                "Nesterov Momentum: l2_norm(pseudo_gradient)=%s,"
+                " l2_norm(self.momentum_vector)=%s, l2_norm(model)=%s,"
+                " l2_norm(fedavg_result)=%s",
+                l2_norm(pseudo_gradient),
+                l2_norm(self.momentum_vector),
+                l2_norm(fedavgm_result),
+                l2_norm(fedavg_result),
             )
 
         if self.track_inplace_aggregation:
@@ -262,13 +263,13 @@ class FedNesterov(FedAvgReproducibleSampling):
             ])
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
-                layer_by_layer_diff += l1_norm([x - y])
+                layer_by_layer_diff += sum_of_squares([x - y])
             metrics_aggregated |= {
-                "server/l1_norm_fedavg_gap": layer_by_layer_diff,
+                "server/l2_norm_fedavg_gap": float(np.sqrt(layer_by_layer_diff)),
             }
             log(
                 INFO,
-                "Inplace aggregation gap: l1_norm(normal_result -"
+                "Inplace aggregation gap: l2_norm(normal_result -"
                 " fedavg_result)=%s, len_results: %s",
                 layer_by_layer_diff,
                 len(results_cached),
