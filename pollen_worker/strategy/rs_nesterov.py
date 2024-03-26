@@ -25,10 +25,11 @@ from flwr.common import (
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
+import numpy as np
 
 from pollen_worker.strategy.aggregation import aggregate_cumulative_average
 from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
-from pollen_worker.utils import l2_norm
+from pollen_worker.utils import l2_norm, sum_of_squares
 
 
 # flake8: noqa: E501
@@ -257,9 +258,9 @@ class FedNesterov(FedAvgReproducibleSampling):
             ])
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
-                layer_by_layer_diff += l2_norm([x - y])
+                layer_by_layer_diff += sum_of_squares([x - y])
             metrics_aggregated |= {
-                "server/l2_norm_fedavg_gap": layer_by_layer_diff,
+                "server/l2_norm_fedavg_gap": float(np.sqrt(layer_by_layer_diff)),
             }
             log(
                 INFO,

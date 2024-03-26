@@ -82,7 +82,7 @@ boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
-llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "test" }
+llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl-update" }
 wheel = "^0.42.0"
 mosaicml-turbo = "0.0.4"
 loralib = "0.1.1"
