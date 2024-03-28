@@ -42,7 +42,7 @@ from pollen_worker.node_manager.utils import (
 from pollen_worker.utils import partially_aggregate, partially_aggregate_metrics
 
 
-class Worker(mp.Process):
+class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -338,7 +338,7 @@ def get_env_patcher(
                 APPOINTED_CUDA_DEVICE=rank,
             ) as env_patcher:
                 # Cleaning stale shared memory
-                streaming.base.util.clean_stale_shared_memory()
+                streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
                 log(
                     DEBUG,
                     "Environment variables patched for worker with rank"
@@ -376,7 +376,7 @@ def get_env_patcher(
                 APPOINTED_CUDA_DEVICE="all",
             ) as env_patcher:
                 # Cleaning stale shared memory
-                streaming.base.util.clean_stale_shared_memory()
+                streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
                 log(
                     DEBUG,
                     "Environment variables patched for worker with rank"
