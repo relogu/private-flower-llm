@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Streaming dataset conversion scripts for C4 and The Pile."""
+
 import json
 import os
 import platform
@@ -250,7 +251,7 @@ def build_hf_dataset(
     bos_text: str = "",
     eos_text: str = "",
     no_wrap: bool = False,
-    tokenizer: PreTrainedTokenizerBase = None,
+    tokenizer: PreTrainedTokenizerBase | None = None,
     data_subset: str | None = None,
 ) -> IterableDataset:
     """Build an IterableDataset over the HF C4 or pile source data.
@@ -277,7 +278,7 @@ def build_hf_dataset(
         path=dataset_name, name=data_subset, split=split, streaming=True
     )
     if mode == ConcatMode.NO_CONCAT:
-        dataset = NoConcatDataset(hf_dataset)
+        dataset = NoConcatDataset(hf_dataset)  # type: ignore[reportArgumentType]
     else:
         if not isinstance(tokenizer, PreTrainedTokenizerBase):
             raise ValueError(f"{tokenizer=} must be of type PreTrainedTokenizerBase")
@@ -286,8 +287,8 @@ def build_hf_dataset(
         if bos_text + eos_text:
             test_tokens = tokenizer("test")
             if (
-                test_tokens["input_ids"][0] != tokenizer.bos_token_id
-                and test_tokens["input_ids"][-1] != tokenizer.eos_token_id
+                test_tokens["input_ids"][0] != tokenizer.bos_token_id  # type: ignore[reportIndexIssue]
+                and test_tokens["input_ids"][-1] != tokenizer.eos_token_id  # type: ignore[reportIndexIssue]
             ):
                 tok_error_msg = "This tokenizer does not insert an EOS nor BOS token. "
                 tok_error_msg += (
@@ -301,7 +302,7 @@ def build_hf_dataset(
                 tok_error_msg += "--bos_text=<|endoftext|>."
                 raise ValueError(tok_error_msg)
         dataset = ConcatTokensDataset(
-            hf_dataset=hf_dataset,
+            hf_dataset=hf_dataset,  # type: ignore[reportArgumentType]
             tokenizer=tokenizer,
             max_length=max_length,
             bos_text=bos_text,
@@ -422,7 +423,7 @@ def main(args: Namespace) -> None:
         # Create the dataset given the parameters
         # NOTE: We can't know how many samples we will get from the dataset
         dataset: ConcatTokensDataset | NoConcatDataset = build_hf_dataset(
-            dataset_name=args.dataset,
+            dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
             data_subset=args.data_subset,
             split=hf_split,
             mode=mode,
@@ -432,21 +433,21 @@ def main(args: Namespace) -> None:
             no_wrap=args.no_wrap,
             tokenizer=tokenizer,
         )
-        # Build a batched dataloader for streming the HF dataset in batches
+        # Build a batched dataloader for streaming the HF dataset in batches
         loader = build_dataloader(
             dataset=dataset, batch_size=512, num_workers=args.num_workers
         )
-        # Build a generator that yeilds samples from the batched dataloader
+        # Build a generator that yields samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
         denominator = 0
         for _ in tqdm(samples, desc=folder_split):
             denominator += 1
         log(INFO, f"Number of samples in {folder_split} is {denominator}.")
-        # Build a batched dataloader for streming the HF dataset in batches
+        # Build a batched dataloader for streaming the HF dataset in batches
         loader = build_dataloader(
             dataset=dataset, batch_size=512, num_workers=args.num_workers
         )
-        # Build a generator that yeilds samples from the batched dataloader
+        # Build a generator that yields samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
 
         # Estimating the total number of samples
@@ -478,11 +479,11 @@ def main(args: Namespace) -> None:
             for _ in tqdm(samples, desc=folder_split):
                 denominator += 1
             log(INFO, f"Counted number of total samples is {denominator}.")
-            # Re-build a batched dataloader for streming the HF dataset in batches
+            # Re-build a batched dataloader for streaming the HF dataset in batches
             loader = build_dataloader(
                 dataset=dataset, batch_size=512, num_workers=args.num_workers
             )
-            # Re-build a generator that yeilds samples from the batched dataloader
+            # Re-build a generator that yields samples from the batched dataloader
             samples = generate_samples(
                 loader, truncate_num_samples=truncate_num_samples
             )

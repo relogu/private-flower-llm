@@ -344,7 +344,7 @@ def get_n_cuda_devices() -> int:
 def get_n_cpu_cores() -> int:
     """Get the number of CPU cores available."""
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
     except AttributeError:
         cpus = psutil.cpu_count()
     return cpus

@@ -365,7 +365,7 @@ def validate_config(cfg: DictConfig) -> None:
             " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
             " to eager.",
         )
-        torch._dynamo.config.suppress_errors = True
+        torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
 
     if cfg.model.get("load_in_8bit", False):
         raise ValueError(
@@ -412,10 +412,10 @@ def build_composer_peft_model(
     # log(INFO, "Model built!")
 
     # log(INFO, "Adding Lora modules...")
-    model = get_peft_model(model, lora_cfg)
+    model = get_peft_model(model, lora_cfg)  # type: ignore[reportArgumentType]
     # log(INFO, "Lora modules added!")
 
-    model = ComposerHFCausalLM(model, tokenizer)
+    model = ComposerHFCausalLM(model, tokenizer)  # type: ignore[reportArgumentType]
 
     return model
 
@@ -493,7 +493,7 @@ def get_raw_model_parameters(
     # Get model while forcing cpu to prevent any GPU allocation
     model_config.init_device = "cpu"
     model = _get_model_for_trainer(
-        init_context=process_init_device(model_config, None),
+        init_context=process_init_device(model_config, None),  # type: ignore[reportArgumentType]
         tokenizer=build_tokenizer(tokenizer_name, tokenizer_kwargs),
         model_config=model_config,
         lora_config=lora_config,
@@ -805,7 +805,7 @@ def _get_trainer_object(
         if profiler_trace_cfg:
             profiler_trace_handlers.append(JSONTraceHandler(**profiler_trace_cfg))
         profiler = Profiler(  # type: ignore[misc]
-            **profiler_cfg,
+            **profiler_cfg,  # type: ignore[reportCallIssue]
             trace_handlers=profiler_trace_handlers,
             schedule=profiler_schedule,
         )
@@ -879,7 +879,7 @@ def _get_trainer_object(
         callbacks.append(eval_gauntlet_callback)
 
     model = _get_model_for_trainer(
-        init_context,
+        init_context,  # type: ignore[reportArgumentType]
         tokenizer,
         model_config,
         lora_config,
@@ -1025,7 +1025,7 @@ def llm_fit(
             trainer.eval()
         # log(INFO, "Starting training...")
         # Prevent to run any evaluator
-        trainer.state.evaluators = None
+        trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
         # Execute fit step for the appointed duration
         try:
             trainer.fit(duration=0 if skip_iteration else cfg["local_steps"])
@@ -1077,7 +1077,7 @@ def llm_fit(
     torch.cuda.empty_cache()
 
     # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
     return model_parameters, n_samples_trained, train_metrics
 
@@ -1135,7 +1135,7 @@ def llm_eval(
     torch.cuda.empty_cache()
 
     # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
     # Return the evaluation metrics
     return 0.0, num_samples, eval_metrics

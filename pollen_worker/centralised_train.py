@@ -144,7 +144,7 @@ def validate_config(cfg: DictConfig) -> None:
             " `torch._dynamo.config.suppress_errors = True` and falling back to"
             " eager.",
         )
-        torch._dynamo.config.suppress_errors = True
+        torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
 
     if cfg.model.get("load_in_8bit", False):
         raise ValueError(
@@ -191,10 +191,10 @@ def build_composer_peft_model(
     log(INFO, "Model built!")
 
     log(INFO, "Adding Lora modules...")
-    model = get_peft_model(model, lora_cfg)
+    model = get_peft_model(model, lora_cfg)  # type: ignore[reportArgumentType]
     log(INFO, "Lora modules added!")
 
-    model = ComposerHFCausalLM(model, tokenizer)
+    model = ComposerHFCausalLM(model, tokenizer)  # type: ignore[reportArgumentType]
 
     return model
 
@@ -221,7 +221,7 @@ def main(_cfg: DictConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
     log(
         INFO,
-        "The centralised training script received the following config:\n%s",
+        "The centralized training script received the following config:\n%s",
         OmegaConf.to_yaml(_cfg, resolve=True),
     )
     cfg = _cfg.llm_config
@@ -232,7 +232,7 @@ def main(_cfg: DictConfig) -> Trainer:
     OmegaConf.set_struct(cfg, False)
     log(
         INFO,
-        "The centralised training script received the llm_config:\n%s",
+        "The centralized training script received the llm_config:\n%s",
         OmegaConf.to_yaml(cfg, resolve=True),
     )
     # Filter deprecation warning from torch internal usage
