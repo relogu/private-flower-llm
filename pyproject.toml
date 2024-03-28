@@ -1,6 +1,6 @@
 [build-system]
 requires = ["poetry-core>=1.4.0"]
-build-backend = "poetry.masonry.api"
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pollen_worker" # <----- Ensure it matches the name of your baseline directory containing all the source code
@@ -46,7 +46,7 @@ pyarrow = "^13.0.0"
 multiprocess = "^0.70.15"
 nvsmi = "^0.4.2"
 transformers = ">=4.37,<4.38"
-cloudpickle = "^2.2.1"
+cloudpickle = "^3.0.0"
 tqdm = "^4.66.1"
 psutil = "^5.9.5"
 pandas = "^2.1.1"
@@ -61,9 +61,9 @@ seaborn = "^0.13.0"
 jupyter-server = "^2.7.3"
 ipywidgets = "^8.1.1"
 ipython = "^8.17.2"
-torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=b2184b7729ef3b9b10065c074a37c1e603fd99f91e38376e25cb7ed6e1d54696"}
-torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=1e8a9207631e8ba6ecbdee3c9d66f1e9d438ad62b0b4d4f184016d8be89d68a7"}
-torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=baa7970c6b5437312e5dd0bd0f2571a20b786c3e285bafd6ed3e4f62a5c3c76e"}
+torch = {url = "https://download.pytorch.org/whl/cu121_pypi_cudnn/torch-2.1.0%2Bcu121.with.pypi.cudnn-cp311-cp311-linux_x86_64.whl"}
+torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.0%2Bcu121-cp311-cp311-linux_x86_64.whl"}
+torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.0%2Bcu121-cp311-cp311-linux_x86_64.whl"}
 mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl-update", extras = ["libcloud,wandb,mlflow,oci,gcs"] }
 accelerate = ">=0.25,<0.26"
 mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl-update" }
@@ -84,7 +84,7 @@ beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
 llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl-update" }
 wheel = "^0.42.0"
-mosaicml-turbo = "0.0.4"
+# mosaicml-turbo = "0.0.4"
 loralib = "0.1.1"
 bitsandbytes = "0.39.1"
 peft = "0.4.0"
