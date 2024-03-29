@@ -48,7 +48,7 @@ from flwr.common import (
 )
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
-from multiprocess import Queue, set_start_method
+from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
 from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
@@ -155,7 +155,7 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         try:
-            cpus = len(psutil.Process().cpu_affinity())
+            cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
         except AttributeError:
             cpus = psutil.cpu_count()
         # log(DEBUG, "NodeManager %s: device_info are %s", self.name, device_info)

@@ -81,7 +81,8 @@ def pollen_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_pollen_function, _jacobian_pollen_function], **kwargs  # type: ignore[arg-type]
+        fns=[_pollen_function, _jacobian_pollen_function],
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -96,7 +97,9 @@ def parrot_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_linear, _jacobian_linear], is_parrot=True, **kwargs  # type: ignore[arg-type]
+        fns=[_linear, _jacobian_linear],
+        is_parrot=True,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -823,10 +826,10 @@ def parallel_train_models(
     fns: list[Callable], clients_stats: dict[str, pa.Table]
 ) -> dict[str, Any]:
     """Train the models in parallel."""
-    # Set up the parallelisation
+    # Set up the parallelization
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -884,10 +887,10 @@ def parallel_get_models_scores(
     fn: Callable, models: dict[str, Any], clients_stats: dict[str, pa.Table]
 ) -> dict[str, float]:
     """Return the scores of the model computed in parallel."""
-    # Set up the parallelisation
+    # Set up the parallelization
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:

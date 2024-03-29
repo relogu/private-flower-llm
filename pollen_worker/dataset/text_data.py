@@ -204,7 +204,7 @@ class StreamingTextDataset(StreamingDataset):
             truncation=True,
             padding="max_length",
             max_length=self.max_seq_len,
-        )
+        )  # type: ignore[reportReturnType]
 
     def _read_binary_tokenized_sample(self, sample: dict[str, Any]) -> torch.Tensor:
         return torch.from_numpy(

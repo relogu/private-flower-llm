@@ -178,7 +178,7 @@ def main(cfg: DictConfig) -> None:
     # Looping over two clients
     # Cleaning stale shared memory
 
-    streaming.base.util.clean_stale_shared_memory()
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
     # for i in range(2):
     for i in range(1):
         # Get initial model parameters
