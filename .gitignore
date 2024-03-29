@@ -204,3 +204,9 @@ notebooks/*.txt
 
 # Temporary model parameters
 *.bin
+
+# Compressed Numpy arrays
+*.npz
+
+# Tensorboard logs
+events.out.tfevents.*
