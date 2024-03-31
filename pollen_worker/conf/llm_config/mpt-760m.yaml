@@ -115,7 +115,7 @@ callbacks:
 loggers:
   wandb:
     init_kwargs: ${wandb.setup}
-  tensorboard: {}
+  tensorboard: {flush_interval: 10}
 
 # Checkpoint to local filesystem or remote object store
 save_interval: 500ba
