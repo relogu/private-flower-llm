@@ -39,8 +39,8 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='[::]:50752' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=4 pollen.fit_collaborative=false pollen.restore_run_uuid=fed-125M-20240328_000428"
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=4800ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=1.0e-4"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=5 pollen.fit_collaborative=false pollen.restore_run_uuid=fed-125M-20240328_000428-restore-2"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=4800ba llm_config.scheduler.t_warmup=3000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=2.0e-5"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG pollen.saving_path=$SAVE_PATH $MINIO_COMM_STACK_OPTIONS 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
