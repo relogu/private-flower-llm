@@ -1,4 +1,27 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+echo "PROJECT_PATH=$PROJECT_PATH"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+  echo "Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
 #! Add modules from scratch to be sure everything works
 #! Enable the module command
 . /etc/profile.d/modules.sh
@@ -52,7 +75,7 @@ pip install poetry
 #! Install cmake
 pip install cmake
 #! Entering the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Install the poetry env no matter what
 poetry install -q
 #! Activate Poetry environment

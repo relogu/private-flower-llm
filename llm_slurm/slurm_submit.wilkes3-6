@@ -1,4 +1,27 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+echo "PROJECT_PATH=$PROJECT_PATH"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+  echo "Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
 #!
 #! Example SLURM job script for Wilkes3 (AMD EPYC 7763, ConnectX-6, A100)
 #! Last updated: Fri 30 Jul 11:07:58 BST 2021
@@ -107,4 +130,4 @@ echo -e "\nExecuting command:\n==================\n$CMD\n"
 
 # eval $CMD 
 
-sh $HOME/projects/pollen_worker/llm_slurm/test_virtual_llm_client.sh "3B"
+sh $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "3B"

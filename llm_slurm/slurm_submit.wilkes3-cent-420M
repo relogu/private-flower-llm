@@ -1,4 +1,27 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+echo "PROJECT_PATH=$PROJECT_PATH"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+  echo "Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
 #!
 #! Example SLURM job script for Wilkes3 (AMD EPYC 7763, ConnectX-6, A100)
 #! Last updated: Fri 30 Jul 11:07:58 BST 2021
@@ -103,6 +126,6 @@ fi
 
 echo -e "\nnumtasks=$numtasks, numnodes=$numnodes, mpi_tasks_per_node=$mpi_tasks_per_node (OMP_NUM_THREADS=$OMP_NUM_THREADS)"
 
-sh $HOME/projects/pollen_worker/llm_slurm/centralised_training.sh "420M"
+sh $PROJECT_PATH/llm_slurm/centralised_training.sh "420M"
 
-## USAGE: from CLI `sbatch $HOME/projects/pollen_worker/llm_slurm/slurm_submit.wilkes3-cent-420M`
+## USAGE: from CLI `sbatch $PROJECT_PATH/llm_slurm/slurm_submit.wilkes3-cent-420M`

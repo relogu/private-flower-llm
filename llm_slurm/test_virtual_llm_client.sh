@@ -1,34 +1,57 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+echo "PROJECT_PATH=$PROJECT_PATH"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+  echo "Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
 #! Check if there's an input argument
 if [[ $# -eq 0 ]]; then
     echo "No input argument supplied."
     exit 1
 fi
 #! Moving to the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
     echo "Assuming the script is executing in the CSD3."
     #! Executing the environment preparation script
     #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+    . $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
     echo "Assuming the script is executing NOT in the CSD3."
     #! Executing the environment preparation script
     #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_env.sh
+    . $PROJECT_PATH/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
+. $PROJECT_PATH/llm_slurm/set_llm_config.sh $1
 shift
 #! Set `DATA_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
+. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 mkdir -p $SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+. $PROJECT_PATH/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
