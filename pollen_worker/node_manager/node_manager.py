@@ -109,6 +109,7 @@ class NodeManager(fl.client.NumPyClient):
         refresh_period: int,
         use_s3_comm: bool = False,
         s3_comm_config: DictConfig | None = None,
+        delayed_resource_init: bool = False,
     ) -> None:
         super().__init__()
         # NodeManager general attributes
@@ -120,31 +121,35 @@ class NodeManager(fl.client.NumPyClient):
         self.use_s3_comm = use_s3_comm
         self.s3_comm_config = s3_comm_config
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
-        self._create_remote_up_down()
 
         self.client_fn = client_fn
         self.refresh_period = refresh_period
-        # Set up Queues
-        self.task_queue: QueueType = Queue()
-        # One result_queue for all GPUs
-        self.result_queue: QueueType = Queue()
-        # Get node properties about hardware accelerators
-        self.properties = self._get_node_properties()
-        # Set how many processes can be run on each GPU given the properties
-        [(k, v.concurrency) for k, v in self.node.device_info.items()]
-        # log(DEBUG, "Max processes per device: %s", max_proc_device)
-        # Set up round parameters SharedMemory
-        # Call the monkey-patch for the resource-register
-        remove_shm_from_resource_tracker()
-        # Shared memory for round parameters
-        self.round_parameters, self.round_parameters_sh = get_parameters_shm(
-            parameters=parameters,
-            create=True,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
-        )
-        # Create workers
-        self.workers_dict: dict[int, Worker] = {}
-        self._create_and_start_workers()
+        self.delayed_resource_init = delayed_resource_init
+
+        if not self.delayed_resource_init:
+            self._create_remote_up_down()
+
+            # Set up Queues
+            self.task_queue: QueueType = Queue()
+            # One result_queue for all GPUs
+            self.result_queue: QueueType = Queue()
+            # Get node properties about hardware accelerators
+            self.properties = self._get_node_properties()
+            # Set how many processes can be run on each GPU given the properties
+            [(k, v.concurrency) for k, v in self.node.device_info.items()]
+            # log(DEBUG, "Max processes per device: %s", max_proc_device)
+            # Set up round parameters SharedMemory
+            # Call the monkey-patch for the resource-register
+            remove_shm_from_resource_tracker()
+            # Shared memory for round parameters
+            self.round_parameters, self.round_parameters_sh = get_parameters_shm(
+                parameters=parameters,
+                create=True,
+                name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+            )
+            # Create workers
+            self.workers_dict: dict[int, Worker] = {}
+            self._create_and_start_workers()
 
     def _get_node_properties(self) -> dict[str, Scalar]:
         device_info: dict[str, Device] = {}
