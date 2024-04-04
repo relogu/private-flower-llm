@@ -6,40 +6,28 @@ from flwr.simulation.ray_transport.ray_actor import (
     VirtualClientEngineActor,
     ClientException,
     ClientRes,
+    JobFn,
 )
 import traceback
 
 import ray
 
-from flwr.client import Client, ClientFn
+from flwr.client import ClientFn
 from flwr.common.context import Context
 from flwr.simulation.ray_transport.utils import check_clientfn_returns_client
 
 
-import pickle
 from collections.abc import Callable
 from logging import WARNING
 
-import cloudpickle
-import transformers
 from flwr.common import (
     NDArrays,
 )
 from flwr.common.logger import log
-from multiprocess import set_start_method  # type: ignore[reportAttributeAccessIssue]
 from omegaconf import DictConfig
 
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
 from pollen_worker.node_manager.node_manager import NodeManager
-
-transformers.logging.set_verbosity_error()
-set_start_method("spawn", force=True)
-pickle.Pickler = cloudpickle.Pickler  # type: ignore[misc]
-
-
-# All possible returns by a client
-# A function to be executed by a client to obtain some results
-JobFn = Callable[[Client], ClientRes]
 
 
 class VirtualClientEngineActorPollen(VirtualClientEngineActor):
