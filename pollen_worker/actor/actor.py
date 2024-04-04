@@ -18,18 +18,17 @@ from flwr.simulation.ray_transport.utils import check_clientfn_returns_client
 
 
 from collections.abc import Callable
-from logging import WARNING
 
 from flwr.common import (
     NDArrays,
 )
-from flwr.common.logger import log
 from omegaconf import DictConfig
 
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
 from pollen_worker.node_manager.node_manager import NodeManager
 
 
+@ray.remote
 class VirtualClientEngineActorPollen(VirtualClientEngineActor):
     """Abstract base class for VirtualClientEngine Actors."""
 
@@ -53,11 +52,6 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
             s3_comm_config=s3_comm_config,
             delayed_resource_init=delayed_resource_init,
         )
-
-    def terminate(self) -> None:
-        """Manually terminate Actor object."""
-        log(WARNING, "Manually terminating %s}", self.__class__.__name__)
-        ray.actor.exit_actor()
 
     def run(
         self,
