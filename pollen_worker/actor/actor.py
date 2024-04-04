@@ -40,7 +40,6 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
         refresh_period: int,
         use_s3_comm: bool = False,
         s3_comm_config: DictConfig | None = None,
-        delayed_resource_init: bool = False,
     ) -> None:
         super().__init__()
         self.node_manager = NodeManager(
@@ -50,7 +49,6 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
             refresh_period=refresh_period,
             use_s3_comm=use_s3_comm,
             s3_comm_config=s3_comm_config,
-            delayed_resource_init=delayed_resource_init,
         )
 
     def run(
