@@ -76,7 +76,7 @@ def copy_old_checkpoints_to_new_run(
     restore_run_uuid: str,
     restore_run_round: int,
     restore_run_step: int,
-    n_total_clients: int,
+    n_total_clients: int | None,
 ) -> None:
     """Copy old checkpoints to the new run folder.
 
@@ -133,7 +133,10 @@ def copy_old_checkpoints_to_new_run(
                 client_path,
             )
         ]
-        if (found_clients := len(client_paths)) != n_total_clients:
+        if (
+            n_total_clients is not None
+            and (found_clients := len(client_paths)) != n_total_clients
+        ):
             raise ValueError(
                 f"Found {found_clients} clients in the old run folder {old_run_folder},"
                 f" but expected {n_total_clients}."
