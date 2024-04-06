@@ -107,16 +107,18 @@ console_log_interval: 1ba
 
 callbacks:
   speed_monitor:
-    window_size: 1
+    window_size: 20
     gpu_flops_available: null
   lr_monitor: {}
   memory_monitor: {}
   runtime_estimator: {}
-  activation_monitor_full_model: {}
+  activation_monitor_full_model: {interval: 10ba}
+  optimizer_monitor: {interval: 10ba, only_global: true}
 
 loggers:
   wandb:
     init_kwargs: ${wandb.setup}
+  tensorboard: {flush_interval: 10}
 
 # Checkpoint to local filesystem or remote object store
 # save_interval: 400ba

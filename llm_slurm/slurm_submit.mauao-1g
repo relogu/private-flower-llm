@@ -25,7 +25,8 @@ done
 #SBATCH -c 40
 #SBATCH -w mauao
 #SBATCH --gres=gpu:4
-#SBATCH --job-name=pollen_llm_75M
+#!SBATCH --job-name=pollen_llm_75M
+#SBATCH --job-name=pollen_llm_125M
 #!SBATCH --job-name=llm_test
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
@@ -64,6 +65,7 @@ done
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="test-fed-75M-$DATETIME"
 # export RUN_UUID="fed-75M-20240313_181750"
-bash $PROJECT_PATH/llm_slurm/pollen_llm_75M.sh
-# bash $PROJECT_PATH/llm_slurm/pollen_llm_125M.sh
-# bash $PROJECT_PATH/llm_slurm/pollen_llm_350M.sh
+# bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_75M.sh
+export RUN_UUID="fed-125M-20240328_000428-restore-3"
+bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_125M.sh
+# bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_350M.sh

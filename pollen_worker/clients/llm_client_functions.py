@@ -1,4 +1,4 @@
-"""Provides the internal fucntions used by the LLM client."""
+"""Provides the internal functions used by the LLM client."""
 
 import atexit
 import copy
@@ -145,7 +145,7 @@ def copy_old_checkpoints_to_new_run(
         paths_to_copy = [state_bin, parameters]
 
         if validate_given_remote_path(momentum_vec):
-            paths_to_copy.append(momentum_vec)
+            paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
         else:
             log(
                 logging.INFO,
@@ -157,6 +157,7 @@ def copy_old_checkpoints_to_new_run(
         for path in paths_to_copy:
             copy_source = {"Bucket": backend.bucket, "Key": path}
             target_key = path.replace(restore_run_uuid, run_uuid)
+            log(INFO, "Copying %s to %s", path, target_key)
             backend.client.copy(copy_source, backend.bucket, target_key)
 
     else:
@@ -188,7 +189,7 @@ def set_client_load_path(
     cfg: DictConfig, server_round: int, local_steps: str
 ) -> tuple[DictConfig, bool]:
     """Set the save and load path given the server round and client id."""
-    # Falg to notify whther to skip this iteration or not
+    # Flag to notify whether to skip this iteration or not
     skip_iteration = False
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
@@ -239,6 +240,15 @@ def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
         cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
+    return cfg
+
+
+def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
+    """Set the tensorboard logger for the client."""
+    # Set the tensorboard run name
+    if cfg.loggers.tensorboard is not None:
+        # Add the client id to the parameters
+        cfg.loggers.tensorboard.client_id = cid
     return cfg
 
 
@@ -379,7 +389,7 @@ def validate_config(cfg: DictConfig) -> None:
 def build_composer_model(
     model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase
 ) -> Any:
-    """Build the Composer model gievn the config and tokenizer."""
+    """Build the Composer model given the config and tokenizer."""
     warnings.filterwarnings(
         action="ignore",
         message="Torchmetrics v0.9 introduced a new argument class property",
@@ -1093,7 +1103,7 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
-    # Force llm_config params to select the centralised eval set
+    # Force llm_config params to select the centralized eval set
     cfg.train_loader = None  # type: ignore[union-attr]
     # NOTE: Trying to exclude checkpointing for eval
     cfg.autoresume = False  # type: ignore[union-attr]

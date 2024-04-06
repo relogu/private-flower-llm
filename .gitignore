@@ -206,3 +206,6 @@ checkpoints
 # Temporary parameters for different communication stack
 *.bin
 *.npz
+
+# Tensorboard logs
+events.out.tfevents.*
