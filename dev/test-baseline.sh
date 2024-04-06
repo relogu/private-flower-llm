@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 echo "=== test.sh ==="
 
 echo "- Start Python checks"
@@ -24,5 +23,3 @@ echo "- ruff: done"
 echo "- mypy: start"
 poetry run python -m mypy --incremental --show-traceback pollen_worker/
 echo "- mypy: done"
-
-

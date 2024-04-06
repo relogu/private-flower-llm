@@ -2,37 +2,41 @@
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
 
-
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-  echo "Error parsing options" >&2
-  exit 1
+	echo "Error parsing options" >&2
+	exit 1
 fi
 
 eval set -- "$OPTIONS"
 
 while true; do
-  case "$1" in
-    -p | --project_path )
-      PROJECT_PATH="$2"; shift 2 ;;
-    -- )
-      shift; break ;;
-    * )
-      break ;;
-  esac
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
 done
 echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-    echo "Assuming the script is executing in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $PROJECT_PATH/llm_slurm/install_hpc_env.sh
+	echo "Assuming the script is executing in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
-    echo "Assuming the script is executing NOT in the CSD3."
+	echo "Assuming the script is executing NOT in the CSD3."
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
@@ -53,4 +57,4 @@ mkdir -p $SAVE_PATH
 . $PROJECT_PATH/llm_slurm/set_llm_options.sh
 
 #! Test `text_data.py`
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.dataset.text_data $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/text_data.log 
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.dataset.text_data $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/text_data.log

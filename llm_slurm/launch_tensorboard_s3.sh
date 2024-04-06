@@ -4,28 +4,33 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-  echo "Error parsing options" >&2
-  exit 1
+	echo "Error parsing options" >&2
+	exit 1
 fi
 
 eval set -- "$OPTIONS"
 
 while true; do
-  case "$1" in
-    -p | --project_path )
-      PROJECT_PATH="$2"; shift 2 ;;
-    -- )
-      shift; break ;;
-    * )
-      break ;;
-  esac
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
 done
 
 #! Check if at least one arguments are passed
 if [[ $# -lt 1 ]]; then
-    echo "Illegal number of parameters."
-    echo "Usage: launch_tensorboard_s3.sh <run_name>"
-    exit 1
+	echo "Illegal number of parameters."
+	echo "Usage: launch_tensorboard_s3.sh <run_name>"
+	exit 1
 fi
 echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
@@ -33,16 +38,16 @@ cd $PROJECT_PATH
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
-    echo "Poetry environment exists."
-    if ! [[ $(poetry check --lock) ]]; then
-        echo "Poetry environment is not up-to-date, updating..."
-        poetry lock --no-update
-    fi
+	echo "Poetry environment exists."
+	if ! [[ $(poetry check --lock) ]]; then
+		echo "Poetry environment is not up-to-date, updating..."
+		poetry lock --no-update
+	fi
 else
-    echo "Poetry environment doesn't exist. Installing..."
-    poetry config installer.max-workers 10
-    poetry install -q
-    POETRY_ENV_PATH=$(poetry env info --path)
+	echo "Poetry environment doesn't exist. Installing..."
+	poetry config installer.max-workers 10
+	poetry install -q
+	POETRY_ENV_PATH=$(poetry env info --path)
 fi
 . $POETRY_ENV_PATH/bin/activate
 #! AWS S3 object store settings
