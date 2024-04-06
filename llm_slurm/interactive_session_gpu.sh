@@ -1,7 +1,7 @@
 #!/bin/bash
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
-echo "PROJECT_PATH=$PROJECT_PATH"
+
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
@@ -22,5 +22,6 @@ while true; do
       break ;;
   esac
 done
+
 
 sintr -A LANE-SL3-GPU -p ampere -N1 --gres=gpu:1 --time=01:00:00 --qos=INTR

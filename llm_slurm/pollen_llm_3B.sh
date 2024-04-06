@@ -1,7 +1,6 @@
 #!/bin/bash
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
-echo "PROJECT_PATH=$PROJECT_PATH"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
@@ -22,6 +21,8 @@ while true; do
       break ;;
   esac
 done
+
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Preparing environment

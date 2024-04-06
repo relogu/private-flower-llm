@@ -1,7 +1,6 @@
 #!/bin/bash
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
-echo "PROJECT_PATH=$PROJECT_PATH"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
@@ -22,6 +21,7 @@ while true; do
       break ;;
   esac
 done
+echo "PROJECT_PATH=$PROJECT_PATH"
 #!
 #! Example SLURM job script for Wilkes3 (AMD EPYC 7763, ConnectX-6, A100)
 #! Last updated: Fri 30 Jul 11:07:58 BST 2021

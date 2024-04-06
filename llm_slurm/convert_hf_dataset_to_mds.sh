@@ -1,7 +1,7 @@
 #!/bin/bash
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
-echo "PROJECT_PATH=$PROJECT_PATH"
+
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
@@ -22,6 +22,7 @@ while true; do
       break ;;
   esac
 done
+
 #! Setting the helper
 if [[ $1 = "--help" ]] || [[ $1 = "-h" ]]; then
     echo "Usage: bash convert_hf_dataset_to_mds.sh <split> <n_clients> <dataset> <dataset_subset> <data_root>."
@@ -74,6 +75,7 @@ else
     echo "Invalid split. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
     exit 1
 fi
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Preparing environment

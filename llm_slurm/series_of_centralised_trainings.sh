@@ -1,7 +1,7 @@
 #!/bin/bash
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
-echo "PROJECT_PATH=$PROJECT_PATH"
+
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
@@ -22,6 +22,7 @@ while true; do
       break ;;
   esac
 done
+echo "PROJECT_PATH=$PROJECT_PATH"
 
 
 #! Small LM as configured by MosaicML. We definetly need to modify it to make it usable.
