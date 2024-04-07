@@ -1,4 +1,32 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+echo "Install env in PROJECT_PATH=$PROJECT_PATH"
 #! Add modules from scratch to be sure everything works
 #! Enable the module command
 . /etc/profile.d/modules.sh
@@ -19,24 +47,24 @@ module load vgl/2.5.1/64
 #! Install `pyenv`
 PYENV_VER_OUTPUT=$(pyenv --version)
 if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
-    echo "pyenv is already installed."
+	echo "pyenv is already installed."
 else
-    #! Getting `pyenv`
-    curl https://pyenv.run | bash
+	#! Getting `pyenv`
+	curl https://pyenv.run | bash
 fi
 if [[ $PYENV_ROOT == *"pyenv"* ]]; then
-    echo "PYENV_ROOT variable is already set."
+	echo "PYENV_ROOT variable is already set."
 else
-    #! Setting up `pyenv` to execute automatically in the shell
-    echo '# Load `pyenv` automatically' >> ~/.bashrc
-    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-    export PYENV_ROOT="$HOME/.pyenv"
-    echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-    [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-    eval "$(pyenv init -)"
-    echo '# # Load pyenv-virtualenv automatically' >> ~/.bashrc
-    echo '# eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
+	#! Setting up `pyenv` to execute automatically in the shell
+	echo '# Load `pyenv` automatically' >>~/.bashrc
+	echo 'export PYENV_ROOT="$HOME/.pyenv"' >>~/.bashrc
+	export PYENV_ROOT="$HOME/.pyenv"
+	echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >>~/.bashrc
+	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	echo 'eval "$(pyenv init -)"' >>~/.bashrc
+	eval "$(pyenv init -)"
+	echo '# # Load pyenv-virtualenv automatically' >>~/.bashrc
+	echo '# eval "$(pyenv virtualenv-init -)"' >>~/.bashrc
 fi
 #! Installing python 3.10.13
 pyenv install 3.10.13
@@ -52,45 +80,45 @@ pip install poetry
 #! Install cmake
 pip install cmake
 #! Entering the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Install the poetry env no matter what
 poetry install -q
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
-    echo "Poetry environment exists."
-    if ! [[ $(poetry check --lock) ]]; then
-        echo "Poetry environment is not up-to-date, updating..."
-        poetry lock --no-update
-    fi
+	echo "Poetry environment exists."
+	if ! [[ $(poetry check --lock) ]]; then
+		echo "Poetry environment is not up-to-date, updating..."
+		poetry lock --no-update
+	fi
 else
-    echo "Poetry environment doesn't exist. Installing..."
-    poetry config installer.max-workers 10
-    poetry install -q
-    POETRY_ENV_PATH=$(poetry env info --path)
+	echo "Poetry environment doesn't exist. Installing..."
+	poetry config installer.max-workers 10
+	poetry install -q
+	POETRY_ENV_PATH=$(poetry env info --path)
 fi
 . $POETRY_ENV_PATH/bin/activate
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-    echo "CUDA 12.1 is detected."
+	echo "CUDA 12.1 is detected."
 else
-    echo "CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
-    exit 1
+	echo "CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+	exit 1
 fi
 #! Install `flash-attn`
 if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
-    echo "Installing flash-attn..."
-    poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
+	echo "Installing flash-attn..."
+	poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
 else
-    echo "flash-attn is already installed."
+	echo "flash-attn is already installed."
 fi
 #! Install `xentropy-cuda-lib`
 if ! [[ $(poetry run pip list | grep xentropy) ]]; then
-    echo "Installing xentropy-cuda-lib..."
-    poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
+	echo "Installing xentropy-cuda-lib..."
+	poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
 else
-    echo "xentropy-cuda-lib is already installed."
+	echo "xentropy-cuda-lib is already installed."
 fi
 #! Downgrade python warnings (default in CSD3 is 'debug')
 #! From here: https://docs.python.org/3/using/cmdline.html#envvar-PYTHONWARNINGS
@@ -99,10 +127,13 @@ export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::ResourceWarning"
 #! Check Python version
 PYTHON_OUTPUT=$(python --version)
 if [[ $PYTHON_OUTPUT == *"3.10.13"* ]]; then
-    echo "Python 3.10.13 is detected."
+	echo "Python 3.10.13 is detected."
 else
-    echo "Python 3.10.13 not detected. Please install Python 3.10.13. Exiting..."
-    exit 1
+	echo "Python 3.10.13 not detected. Please install Python 3.10.13. Exiting..."
+	exit 1
 fi
 #! Final message
 echo "Environment is ready."
+
+#! Remove the positional arguments
+eval set --

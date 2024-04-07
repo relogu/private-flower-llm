@@ -1,44 +1,72 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Check if there's an input argument
 if [[ $# -eq 0 ]]; then
-    echo "No input argument supplied."
-    exit 1
+	echo "No input argument supplied."
+	exit 1
 fi
 #! Moving to the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-    echo "Assuming the script is executing in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+	echo "Assuming the script is executing in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
-    echo "Assuming the script is executing NOT in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_env.sh
+	echo "Assuming the script is executing NOT in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
+. $PROJECT_PATH/llm_slurm/set_llm_config.sh $1
 shift
 #! Set `DATA_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
+. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export POLLEN_SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 mkdir -p $POLLEN_SAVE_PATH
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
-    export RUN_UUID="test-fed-pollen-$DATETIME"
+	export RUN_UUID="test-fed-pollen-$DATETIME"
 fi
 export SAVE_PATH="s3://checkpoints"
 #! Set `LLM_OPTIONS` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+. $PROJECT_PATH/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # Default to 0 if not set
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0} # Default to 0 if not set
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-IFS=',' read -ra DEVICES <<< "$CUDA_VISIBLE_DEVICES"  # Split on comma
+IFS=',' read -ra DEVICES <<<"$CUDA_VISIBLE_DEVICES" # Split on comma
 #! Set Pollen and FL config
 POLLEN_CONFIG="pollen.server_address='localhost:50635' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_clients_per_round=8 fl.n_rounds=10 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true pollen.checkpoint=true"
 # POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=5"
@@ -58,6 +86,6 @@ sleep 30
 # done
 #! Uncommented the following line when testing for a single NodeManager
 CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
-#! Keep the pid and wait for it 
+#! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID

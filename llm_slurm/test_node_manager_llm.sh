@@ -1,47 +1,75 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Check if there's an input argument
 if [[ $# -eq 0 ]]; then
-    echo "No input argument supplied."
-    exit 1
+	echo "No input argument supplied."
+	exit 1
 fi
 #! Moving to the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-    echo "Assuming the script is executing in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+	echo "Assuming the script is executing in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
-    echo "Assuming the script is executing NOT in the CSD3."
-    # Adding CUDA paths to environment variables
-    export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-    export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-    # Check CUDA
-    nvcc -V
+	echo "Assuming the script is executing NOT in the CSD3."
+	# Adding CUDA paths to environment variables
+	export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
+	export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+	# Check CUDA
+	nvcc -V
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
 
 #! Set `LLM_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh $1
+. $PROJECT_PATH/llm_slurm/set_llm_config.sh $1
 shift
 
 #! Set `DATA_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
+. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 mkdir -p $SAVE_PATH
 
 #! Set `LLM_OPTIONS` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+. $PROJECT_PATH/llm_slurm/set_llm_options.sh
 
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
 
 #! Test NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log 
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/node_manager.log

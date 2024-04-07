@@ -1,5 +1,33 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
 
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd /nfs-share/ls985/projects/llm-foundry
 #! Activate Poetry environment
@@ -25,3 +53,6 @@ DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
 #! Small dataset
 poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL --split val_small
 # poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL_MDS --split val_small # Compressed
+
+#! Remove the positional arguments
+eval set --

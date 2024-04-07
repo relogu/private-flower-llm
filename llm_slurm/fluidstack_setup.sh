@@ -1,4 +1,32 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
 ## This script aims to setup the OS for a fluidstack machine
 ## starting from the "Plain Ubuntu 20.04" image
 #! Update and upgrade package manager
@@ -6,31 +34,31 @@ sudo apt-get update
 sudo apt-get upgrade -y
 #! Installing the essentials
 sudo apt-get install -y build-essential zlib1g-dev libedit-dev \
-    libssl-dev liblzma-dev libffi-dev libbz2-dev \
-    libreadline-dev libsqlite3-dev
+	libssl-dev liblzma-dev libffi-dev libbz2-dev \
+	libreadline-dev libsqlite3-dev
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-    echo "CUDA 12.1 is detected."
+	echo "CUDA 12.1 is detected."
 else
-    #! Get and install CUDA 12.1.1 and its drivers
-    wget https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
-    sudo sh cuda_12.1.1_530.30.02_linux.run --toolkit --no-man-page --driver --silent
+	#! Get and install CUDA 12.1.1 and its drivers
+	wget https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
+	sudo sh cuda_12.1.1_530.30.02_linux.run --toolkit --no-man-page --driver --silent
 fi
 if [[ $PATH == *"cuda-12.1"* ]]; then
-    echo "PATH variable is already set."
+	echo "PATH variable is already set."
 else
-    #! Set the PATH env variables for the new CUDA version
-    echo '# Adding CUDA 12.1 to the PATH environmental variables' >> ~/.bashrc
-    echo 'export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}' >> ~/.bashrc
-    export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
+	#! Set the PATH env variables for the new CUDA version
+	echo '# Adding CUDA 12.1 to the PATH environmental variables' >>~/.bashrc
+	echo 'export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}' >>~/.bashrc
+	export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 fi
 if [[ $LD_LIBRARY_PATH == *"cuda-12.1"* ]]; then
-    echo "LD_LIBRARY_PATH variable is already set."
+	echo "LD_LIBRARY_PATH variable is already set."
 else
-    #! Set the LD_LIBRARY_PATH env variables for the new CUDA version
-    echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >> ~/.bashrc
-    export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+	#! Set the LD_LIBRARY_PATH env variables for the new CUDA version
+	echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >>~/.bashrc
+	export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 fi
 #! Set GPU persistence mode
 sudo nvidia-smi -pm 1
@@ -38,30 +66,30 @@ sudo nvidia-smi -pm 1
 sudo mkdir -p /ephemeral/$USER
 sudo rsync -a $HOME/ /ephemeral/$USER
 export HOME="/ephemeral/$USER"
-echo '# Move $HOME to `ephemeral storage`' >> ~/.bashrc
-echo 'export HOME="/ephemeral/$USER"' >> ~/.bashrc
+echo '# Move $HOME to `ephemeral storage`' >>~/.bashrc
+echo 'export HOME="/ephemeral/$USER"' >>~/.bashrc
 cd
 #! Install `pyenv`
 PYENV_VER_OUTPUT=$(pyenv --version)
 if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
-    echo "pyenv is already installed."
+	echo "pyenv is already installed."
 else
-    #! Getting `pyenv`
-    curl https://pyenv.run | bash
+	#! Getting `pyenv`
+	curl https://pyenv.run | bash
 fi
 if [[ $PYENV_ROOT == *"pyenv"* ]]; then
-    echo "PYENV_ROOT variable is already set."
+	echo "PYENV_ROOT variable is already set."
 else
-    #! Setting up `pyenv` to execute automatically in the shell
-    echo '# Load `pyenv` automatically' >> ~/.bashrc
-    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-    export PYENV_ROOT="$HOME/.pyenv"
-    echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-    [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-    eval "$(pyenv init -)"
-    echo '# # Load pyenv-virtualenv automatically' >> ~/.bashrc
-    echo '# eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
+	#! Setting up `pyenv` to execute automatically in the shell
+	echo '# Load `pyenv` automatically' >>~/.bashrc
+	echo 'export PYENV_ROOT="$HOME/.pyenv"' >>~/.bashrc
+	export PYENV_ROOT="$HOME/.pyenv"
+	echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >>~/.bashrc
+	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	echo 'eval "$(pyenv init -)"' >>~/.bashrc
+	eval "$(pyenv init -)"
+	echo '# # Load pyenv-virtualenv automatically' >>~/.bashrc
+	echo '# eval "$(pyenv virtualenv-init -)"' >>~/.bashrc
 fi
 #! Installing python 3.10.13
 pyenv install -s 3.10.13
@@ -77,19 +105,19 @@ pip install poetry
 #! Install cmake
 pip install cmake
 #! Set up git credentials
-echo '[user]' > ~/.gitconfig
-echo '    name = relogu' >> ~/.gitconfig
-echo '    email = lollonasi97@gmail.com' >> ~/.gitconfig
+echo '[user]' >~/.gitconfig
+echo '    name = relogu' >>~/.gitconfig
+echo '    email = lollonasi97@gmail.com' >>~/.gitconfig
 #! Set up S3 credentials
 mkdir ~/.aws
-echo '[default]' > ~/.aws/config
-echo '[default]' > ~/.aws/credentials
-echo '    aws_access_key_id = jj15X7kIlfU9uHwyuTmJ' >> ~/.aws/credentials
-echo '    aws_secret_access_key = rAD3IMOhooHO79BD1tY9DbxOY2bSN9MEj02XOFwP' >> ~/.aws/credentials
+echo '[default]' >~/.aws/config
+echo '[default]' >~/.aws/credentials
+echo '    aws_access_key_id = jj15X7kIlfU9uHwyuTmJ' >>~/.aws/credentials
+echo '    aws_secret_access_key = rAD3IMOhooHO79BD1tY9DbxOY2bSN9MEj02XOFwP' >>~/.aws/credentials
 #! Set up wandb credentials
-echo 'machine api.wandb.ai' > ~/.netrc
-echo '    login user' >> ~/.netrc
-echo '    password 7cc6fc5aec5d4c63f203cd1853a71eb7b9131774' >> ~/.netrc
+echo 'machine api.wandb.ai' >~/.netrc
+echo '    login user' >>~/.netrc
+echo '    password 7cc6fc5aec5d4c63f203cd1853a71eb7b9131774' >>~/.netrc
 #! Changing permissions to the 'ephemeral storage' folder
 sudo chmod -R a+wr /ephemeral
 #! Create the tmp folder in the 'ephemeral storage' folder

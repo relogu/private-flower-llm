@@ -7,8 +7,6 @@ exclude: |
                 multirun/|
                 dev/|
                 data/|
-                run_scripts/|
-                llm_slurm/|
                 dev/|
                 checkpoints/|
                 notebooks/|
@@ -26,6 +24,14 @@ repos:
     rev: 1.16.0
     hooks:
       - id: yamlfix
+  # - repo: https://github.com/shellcheck-py/shellcheck-py
+  #   rev: v0.10.0.1
+  #   hooks:
+  #   -   id: shellcheck
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.8.0-1
+    hooks:
+    - id: shfmt 
   - repo: https://github.com/psf/black
     rev: 23.12.1
     hooks:

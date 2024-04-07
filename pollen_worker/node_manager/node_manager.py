@@ -120,10 +120,12 @@ class NodeManager(fl.client.NumPyClient):
         self.use_s3_comm = use_s3_comm
         self.s3_comm_config = s3_comm_config
         self.node_manager_uuid = run_uuid + "-" + str(uuid.uuid4())
-        self._create_remote_up_down()
 
         self.client_fn = client_fn
         self.refresh_period = refresh_period
+
+        self._create_remote_up_down()
+
         # Set up Queues
         self.task_queue: QueueType = Queue()
         # One result_queue for all GPUs

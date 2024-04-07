@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 echo "Formatting started"
 echo "Run isort"
 poetry run python -m isort pollen_worker/

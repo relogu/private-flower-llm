@@ -1,39 +1,67 @@
 #!/bin/bash
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+	echo "Error parsing options" >&2
+	exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+	case "$1" in
+	-p | --project_path)
+		PROJECT_PATH="$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		break
+		;;
+	esac
+done
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $HOME/projects/pollen_worker
+cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-    echo "Assuming the script is executing in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_hpc_env.sh
+	echo "Assuming the script is executing in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
-    echo "Assuming the script is executing NOT in the CSD3."
-    #! Executing the environment preparation script
-    #! NOTE: Must use "." to execute, "sh" doesn't work
-    . $HOME/projects/pollen_worker/llm_slurm/install_env.sh
+	echo "Assuming the script is executing NOT in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_config.sh "420M"
+. $PROJECT_PATH/llm_slurm/set_llm_config.sh "420M"
 #! Set `DATA_CONFIG` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_data_config.sh
+. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export SAVE_PATH="$HOME/projects/pollen_worker/checkpoints/$DATETIME"
+export SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
-    export SAVE_PATH="s3://checkpoints"
+	export SAVE_PATH="s3://checkpoints"
 fi
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
-    export RUN_UUID="fed-420M-$DATETIME"
+	export RUN_UUID="fed-420M-$DATETIME"
 fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
-. $HOME/projects/pollen_worker/llm_slurm/set_llm_options.sh
+. $PROJECT_PATH/llm_slurm/set_llm_options.sh
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS-1)))
+CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoints"

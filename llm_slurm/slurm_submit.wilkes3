@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J pollen-llm-350M
+#SBATCH -J llm-centr-125M
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A LANE-SL3-GPU
 #! How many whole nodes should be allocated?
@@ -105,4 +105,28 @@ echo -e "\nnumtasks=$numtasks, numnodes=$numnodes, mpi_tasks_per_node=$mpi_tasks
 
 echo -e "\nExecuting command:\n==================\n$CMD\n"
 
-sh $HOME/projects/pollen_worker/llm_slurm/pollen_llm_350M.sh
+# Default project path
+PROJECT_PATH="$HOME/projects/pollen_worker"
+
+# Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
+if [ $? -ne 0 ]; then
+  echo "Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "PROJECT_PATH=$PROJECT_PATH"
+
+. $PROJECT_PATH/llm_slurm/series_of_centralised_trainings.sh

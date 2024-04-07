@@ -1,6 +1,6 @@
 [build-system]
 requires = ["poetry-core>=1.4.0"]
-build-backend = "poetry.masonry.api"
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pollen_worker" # <----- Ensure it matches the name of your baseline directory containing all the source code
@@ -46,7 +46,7 @@ pyarrow = "^13.0.0"
 multiprocess = "^0.70.15"
 nvsmi = "^0.4.2"
 transformers = ">=4.37,<4.38"
-cloudpickle = "^2.2.1"
+cloudpickle = "^3.0.0"
 tqdm = "^4.66.1"
 psutil = "^5.9.5"
 pandas = "^2.1.1"
@@ -84,7 +84,7 @@ beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
 llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl-update" }
 wheel = "^0.42.0"
-mosaicml-turbo = "0.0.4"
+# mosaicml-turbo = "0.0.4"
 loralib = "0.1.1"
 bitsandbytes = "0.39.1"
 peft = "0.4.0"
