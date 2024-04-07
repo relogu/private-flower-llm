@@ -1,6 +1,6 @@
 """The testing loops for the tasks in the Pollen paper.
 
-The main function is hydra-specific and allows for a centralised evluation of a model
+The main function is hydra-specific and allows for a centralised evaluation of a model
 from the hydra output directory using the concatenated test sets of all clients.
 """
 
@@ -197,9 +197,9 @@ def accuracy(
 ) -> list[torch.Tensor]:
     """Compute the accuracy over the k top predictions for the specified values of k."""
     with torch.no_grad():
-        maxk = max(topk)
+        max_k = max(topk)
 
-        _, _pred = output.topk(maxk, 1, True, True)
+        _, _pred = output.topk(max_k, 1, True, True)
         pred: torch.Tensor = _pred.t()
         correct = pred.eq(target.reshape(1, -1).expand_as(pred))
 
@@ -246,10 +246,10 @@ def main(cfg: DictConfig) -> None:
     # Get the test set
     # NOTE: The `n_clients` parameter, when greater than one, can limit the clients
     # to be used for the evaluation to the biggest `n_clients`
-    testset, tokenizer = get_centralised_eval_set(
+    test_set, tokenizer = get_centralised_eval_set(
         name=cfg.task.name, n_clients=cfg.task.n_clients, seed=cfg.seed
     )
-    log(INFO, f"Test set size: {len(testset)}")
+    log(INFO, f"Test set size: {len(test_set)}")
     # Instantiate the test loader
     batch_sizes = {
         "reddit": 375,  # Fills up the VRAM
@@ -258,7 +258,7 @@ def main(cfg: DictConfig) -> None:
         "shakespeare_memory": 256,  # Doesn't really matter: too few sample
     }
     testloader = DataLoader(
-        testset,
+        test_set,
         batch_size=batch_sizes[cfg.task.name],
         shuffle=False,
         pin_memory=True,

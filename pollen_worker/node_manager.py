@@ -21,20 +21,22 @@ to the simulation server.
 """
 
 import ast
+import multiprocessing
 import pickle
 import time
 from collections import defaultdict
 from collections.abc import Callable
 from logging import DEBUG
+from multiprocessing import Manager
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
 from typing import Any, cast
+import uuid
 
 import cloudpickle
 import flwr as fl
 import hydra
-import numpy as np
 import nvsmi
 import psutil
 import pyarrow as pa
@@ -43,16 +45,15 @@ import transformers
 from flwr.client import NumPyClient
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
-from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from hydra.utils import call
-from multiprocess import Queue, set_start_method
+from multiprocess import set_start_method, Queue
 from nvsmi import GPU
 from omegaconf import DictConfig
 
+import horovod
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
-    POLLEN_WORKER_SHM,
     allocate_shm,
     get_pyarrow_buffer_from_table,
     write_to_fit_result_shm,
@@ -82,12 +83,22 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = None
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
+        self.node_manager_uuid = str(uuid.uuid4())
+        # Set the auth key for the multiprocessing
+        new_auth_key = bytes(str(uuid.uuid4()), encoding="utf-8")
+        multiprocessing.current_process().authkey = new_auth_key
 
-        # One task_queue per GPU make this ctypes array
+        # Create multiprocessing Manager
+        self.manager = Manager()
+        # One task queue per GPU/device
         self.task_queues: dict[str, QueueType] = {
-            f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus
+            # f"cuda:{gpu.id}": self.manager.Queue() for gpu in self.all_gpus
+            f"cuda:{gpu.id}": Queue()
+            for gpu in self.all_gpus
         }
-        self.result_queue: QueueType = Queue()  # One result_queue for all GPUs
+        # One result queue for all GPUs/devices
+        # self.result_queue: QueueType = self.manager.Queue()
+        self.result_queue: QueueType = Queue()
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
@@ -112,61 +123,42 @@ class NodeManager(fl.client.NumPyClient):
         # Get node properties about hardware accelerators
         self.properties = self._get_node_properties()
         # Set how many processes can be run on each GPU given the properties
+        # NOTE: We assume that the node has GPUs with the same type that can host the
+        # same number of processes
+        self.n_workers = 0
+        self.max_proc_device: list[tuple[str, int]] = []
         if placement_policy == "llb":
             # NOTE: Parrot uses one process per GPU
             max_proc_device = [(k, 1) for k, v in self.node.device_info.items()]
+            self.n_workers = len(max_proc_device)
         else:
             max_proc_device = [
                 (k, v.concurrency) for k, v in self.node.device_info.items()
             ]
+            self.n_workers = sum([v for _, v in max_proc_device])
         log(DEBUG, "Max processes per device: %s", max_proc_device)
 
-        # Allocate shared memory for partial aggregation
-        # and create workers
-        worker_cnt = 0
-        self.workers: dict[str, list[Worker]] = defaultdict(list)
-        self.shared_local_agg: dict[
-            str,
-            tuple[
-                NDArrays,
-                np.ndarray[Any, np.dtype[Any]],
-                np.ndarray[Any, np.dtype[Any]],
-                np.ndarray[Any, np.dtype[Any]],
-                SharedMemory,
-            ],
-        ] = {}
-        dataset_name = self.dataset_name
-        for device, num_proc in max_proc_device:
-            for _ in range(num_proc):
-                worker_id = self.run_uuid + POLLEN_WORKER_SHM + f"{worker_cnt}"
-                params, num_samples, train_loss, train_acc, shm = allocate_shm(
-                    tmp_client.get_parameters({}),
-                    create=True,
-                    name=worker_id,
+        # Create worker object
+        self.workers: list[Worker] = []
+        for _local_rank in range(self.n_workers):
+            _worker_id = str(uuid.uuid4())
+            self.workers.append(
+                Worker(
+                    client_fn=client_fn,
+                    run_uuid=self.run_uuid,
+                    concurrency=self.n_workers // len(self.all_gpus),
+                    dataset_name=self.dataset_name,
+                    task_queues=self.task_queues,
+                    result_queue=self.result_queue,
+                    auth_key=new_auth_key,
+                    worker_id=_worker_id,
+                    local_rank=_local_rank,
+                    world_size=self.n_workers,
                 )
-                num_samples[0] = 0
-                self.shared_local_agg[worker_id] = (
-                    params,
-                    num_samples,
-                    train_loss,
-                    train_acc,
-                    shm,
-                )
-                self.workers[device].append(
-                    Worker(
-                        client_fn=client_fn,
-                        dataset_name=dataset_name,
-                        device=device,
-                        worker_id=worker_id,
-                        task_queue=self.task_queues[device],
-                        result_queue=self.result_queue,
-                        run_uuid=self.run_uuid,
-                        concurrency=num_proc,
-                    )
-                )
-                worker_cnt += 1
-        # Start all the workers
-        self._start_workers({})
+            )
+        # Start workers
+        self._start_workers()
+        self.workers_shms: list[SharedMemory] | None = None
 
     def _get_node_properties(self) -> dict[str, Scalar]:
         device_info: dict[str, Device] = {}
@@ -215,20 +207,33 @@ class NodeManager(fl.client.NumPyClient):
         tmp_client: NumPyClient = self.client_fn(0)
         return tmp_client.get_parameters(config=config)
 
-    def _start_workers(self, config: Config) -> None:
-        for worker_list in self.workers.values():
-            for worker in worker_list:
-                if not worker.is_alive():
-                    worker.start()
+    def _start_horovod_workers(self, worker: Worker) -> None:
+        horovod.run(
+            func=worker.run,
+            args=(),
+            kwargs=None,
+            verbose=2,
+            use_gloo=True,
+            use_mpi=False,
+            num_proc=self.n_workers,
+            hosts=f"localhost:{self.n_workers}",
+        )
+
+    def _start_workers(
+        self,
+    ) -> None:
+        for _worker in self.workers:
+            _worker.start()
 
     def fit(
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
         # TODO: Make this dropouts-ready
-        # Extract assignments from config
+        # Extract assignments from config so that we don't need to write it to the
+        # shared memory
         assignment_config: dict[str, str] = {}
-        for device in self.workers:
+        for device in self.node.device_info:
             assignment_config[device] = str(config.pop(device))
         # Update shared memories objects
         config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
@@ -246,37 +251,14 @@ class NodeManager(fl.client.NumPyClient):
 
         # Send parameters to shared memory
         num_total_virtual_clients = 0
-        for device, workers in self.workers.items():
-            # list_ids_for_this_gpu = cast(str, assignment_config[device]).split(",")
-            list_ids_for_this_gpu: list[list[int]] = ast.literal_eval(
-                assignment_config[device]
-            )
-            num_total_virtual_clients += sum(len(_l) for _l in list_ids_for_this_gpu)
-
-            # Close useless workers, one by one
-            while len(list_ids_for_this_gpu) < len(workers):
-                # Put a None for a worker to terminate it
-                self.task_queues[device].put(None)
-                #  Wait for the results of the termination task
-                self.result_queue.get()
-                # Handle which worker has died
-                flag = True
-                while flag:
-                    for i, worker in enumerate(workers):
-                        if not worker.is_alive():
-                            # Close and unlink the shared memory
-                            self.shared_local_agg[worker.worker_id][4].close()
-                            self.shared_local_agg[worker.worker_id][4].unlink()
-                            # Remove the shared memory from the dict
-                            del self.shared_local_agg[worker.worker_id]
-                            # Remove the worker from the list
-                            workers.pop(i)
-                            flag = False
-                            log(DEBUG, "Worker %s closed", worker.worker_id)
-                            break
-            # Put the client ids in the queue
-            for cid in list_ids_for_this_gpu:
-                self.task_queues[device].put(cid)
+        for device in self.node.device_info:
+            # Convert assignment to list of lists
+            assignments: list[list[int]] = ast.literal_eval(assignment_config[device])
+            # Count the number of clients
+            num_total_virtual_clients += sum(len(_l) for _l in assignments)
+            # Put each list of clients in the queue
+            for list_of_clients in assignments:
+                self.task_queues[device].put(list_of_clients)
 
         # Check if all clients have been processed
         num_processed_virtual_clients = 0
@@ -294,6 +276,27 @@ class NodeManager(fl.client.NumPyClient):
                 stats["gpu"].append(current_stats[3])
             num_processed_virtual_clients += 1
         start_time = time.time()
+        self.workers_shms = []
+        # ws_p: list[tuple[NDArrays, int]] = []
+        # ws_ns: list[int] = []
+        # ws_m: list[tuple[int, dict]] = []
+        # for _worker in self.workers:
+        #     w_p, w_ns, w_tl, w_ta, w_shm = allocate_shm(
+        #         parameters=self.client_fn(0).get_parameters({}),
+        #         name=_worker.worker_id,
+        #     )
+        #     ws_p.append((w_p, w_ns[0]))
+        #     ws_ns.append(w_ns[0])
+        #     ws_m.append((w_ns[0], {"train_loss": w_tl[0], "accuracy": w_ta[0]}))
+        #     self.workers_shms.append(w_shm)
+        # nm_p, nm_s, nm_m = aggregate_training_results(ws_p, ws_ns, ws_m)
+        nm_p, nm_s_array, n_tl, n_ta, w_shm = allocate_shm(
+            parameters=self.client_fn(0).get_parameters({}),
+            name=self.workers[0].worker_id,
+        )
+        self.workers_shms.append(w_shm)
+        nm_s = nm_s_array[0]
+        nm_m = {"train_loss": n_tl[0], "accuracy": n_ta[0]}
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
@@ -314,20 +317,7 @@ class NodeManager(fl.client.NumPyClient):
         )
         # Prepare statistics to be sent to the server
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
-        # Node aggregation
-        node_trained_params = aggregate(
-            [(val[0], val[1][0]) for val in self.shared_local_agg.values()]
-        )
-        node_n_samples = sum([val[1][0] for val in self.shared_local_agg.values()])
-        node_train_loss = weighted_loss_avg(
-            [(val[1][0], val[2][0]) for val in self.shared_local_agg.values()]
-        )
-        node_accuracy = weighted_loss_avg(
-            [(val[1][0], val[3][0]) for val in self.shared_local_agg.values()]
-        )
-        # Reset shared memories
-        for val in self.shared_local_agg.values():
-            val[4].buf[:] = b"\0" * val[4].size
+        nm_m = nm_m | {"stats": clients_training_buf.to_pybytes()}
         log(
             DEBUG,
             "NodeManager %s: elaborate %s clients in %s seconds",
@@ -336,13 +326,9 @@ class NodeManager(fl.client.NumPyClient):
             time.time() - start_time,
         )
         return (
-            node_trained_params,
-            int(node_n_samples),
-            {
-                "train_loss": node_train_loss,
-                "accuracy": node_accuracy,
-                "stats": clients_training_buf.to_pybytes(),
-            },
+            nm_p,
+            int(nm_s),
+            nm_m,
         )
 
     def evaluate(
@@ -354,26 +340,16 @@ class NodeManager(fl.client.NumPyClient):
     def __del__(self) -> None:
         """Implement the closing on the NodeManager."""
         log(DEBUG, "Closing NodeManager...")
-        device: str = ""
         if self.workers is not None:
-            for device, list_of_workers in self.workers.items():
-                for _ in range(len(list_of_workers)):
-                    # Put a None for a worker to terminate it
-                    self.task_queues[device].put(None)
-        # Wait for workers to finish
-        a = 0
-        while a < len(self.workers[device]):
-            self.result_queue.get()
-            a += 1
+            for _worker in self.workers:
+                _worker.terminate()
+                _worker.join()
         log(DEBUG, "Workers closed")
         # Free shared memories
         self.config_shm.close()
         self.round_shm.close()
         self.config_shm.unlink()
         self.round_shm.unlink()
-        for _i, v in enumerate(self.shared_local_agg.values()):
-            v[4].close()
-            v[4].unlink()
         log(DEBUG, "Shared memories closed")
 
 

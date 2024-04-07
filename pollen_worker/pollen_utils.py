@@ -43,11 +43,24 @@ from pollen_worker.datasets.shakespeare import Shakespeare, ShakespeareLoaded
 from pollen_worker.models.pfl_cnns import MultiLabelCNN, simple_cnn
 from pollen_worker.models.resnet_util import resnet34
 from pollen_worker.models.shakespeare_leaf_model import ShakespeareLeafNet
-from pollen_worker.utils import chunks_idx
+from pollen_worker.utils import chunks_idx, weighted_average
 
 POLLEN_CONFIG_SHM = "pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
 POLLEN_WORKER_SHM = "pollen_worker_"
+
+
+def aggregate_training_results(
+    parameters: list[tuple[NDArrays, int]],
+    samples: list[int],
+    metrics: list[tuple[int, dict]],
+) -> tuple[NDArrays, int, dict]:
+    """Aggregate the training results."""
+    return (
+        aggregate(parameters),
+        sum(samples),
+        weighted_average(metrics),
+    )
 
 
 def allocate_shm(

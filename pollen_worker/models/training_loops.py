@@ -49,7 +49,7 @@ def get_input_shapes(name: str) -> tuple[int, ...]:
 
 
 def flair_training_loop(
-    trainloader: DataLoader,
+    train_loader: DataLoader,
     net: Module,
     device: torch.device,
     epochs: int,
@@ -64,7 +64,7 @@ def flair_training_loop(
         current_loss = 0.0
         num_samples = 0
         num_correct = 0
-        for i, batch in enumerate(trainloader):
+        for i, batch in enumerate(train_loader):
             # TODO: handle steps instead of epochs?
 
             # ========= Pre-processing + placement ===========
@@ -89,13 +89,13 @@ def flair_training_loop(
                 break
         accuracy = num_correct / num_samples
     return net, {
-        "train_loss": current_loss / len(trainloader),
+        "train_loss": current_loss / len(train_loader),
         "accuracy": accuracy,
     }
 
 
 def reddit_training_loop(
-    trainloader: DataLoader,
+    train_loader: DataLoader,
     net: Module,
     device: torch.device,
     epochs: int,
@@ -110,7 +110,7 @@ def reddit_training_loop(
         current_loss = 0.0
         num_masked = 0
         num_correct = 0
-        for _data in trainloader:
+        for _data in train_loader:
             # TODO: handle steps instead of epochs ?
 
             # ========= Pre-processing + placement ===========
@@ -146,13 +146,13 @@ def reddit_training_loop(
             optimizer.step()
         accuracy = num_correct / num_masked
     return net, {
-        "train_loss": current_loss / len(trainloader),
+        "train_loss": current_loss / len(train_loader),
         "accuracy": accuracy,
     }
 
 
 def google_speech_training_loop(
-    trainloader: DataLoader,
+    train_loader: DataLoader,
     net: Module,
     device: torch.device,
     epochs: int,
@@ -167,7 +167,7 @@ def google_speech_training_loop(
         current_loss = 0.0
         num_samples = 0
         num_correct = 0
-        for batch in trainloader:
+        for batch in train_loader:
             # TODO: handle steps instead of epochs ?
 
             # ========= Pre-processing + placement ===========
@@ -191,13 +191,13 @@ def google_speech_training_loop(
             optimizer.step()
         accuracy = num_correct / num_samples
     return net, {
-        "train_loss": current_loss / len(trainloader),
+        "train_loss": current_loss / len(train_loader),
         "accuracy": accuracy,
     }
 
 
 def general_training_loop(
-    trainloader: DataLoader,
+    train_loader: DataLoader,
     net: Module,
     device: torch.device,
     epochs: int,
@@ -212,7 +212,7 @@ def general_training_loop(
         current_loss = 0.0
         num_samples = 0
         num_correct = 0
-        for batch in trainloader:
+        for batch in train_loader:
             # TODO: handle steps instead of epochs?
 
             # ========= Pre-processing + placement ===========
@@ -235,6 +235,6 @@ def general_training_loop(
             optimizer.step()
         accuracy = num_correct / num_samples
     return net, {
-        "train_loss": current_loss / len(trainloader),
+        "train_loss": current_loss / len(train_loader),
         "accuracy": accuracy,
     }

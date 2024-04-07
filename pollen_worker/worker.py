@@ -1,23 +1,24 @@
 """A highly efficient worker for Pollen."""
 
-import gc
-import os
+import multiprocessing
 import pickle
 import time
 from collections.abc import Callable
-from logging import ERROR
+from logging import INFO
 from multiprocessing import resource_tracker
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
+from multiprocessing.process import AuthenticationString  # type: ignore[attr-defined]
 from typing import Any
-from torch.utils.data import Dataset
+import uuid
+from torch import device
+from torch.nn import Module
+from torch.distributed import init_process_group, dist_backend
 
 import cloudpickle
 import multiprocess as mp
-import pynvml
 import torch
 import transformers
-from flwr.common import NDArrays, Scalar
 from flwr.common.logger import log
 from multiprocess import set_start_method
 
@@ -25,12 +26,21 @@ from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
     allocate_shm,
-    get_client_ds_fn,
+    get_model,
     write_to_fit_result_shm,
 )
-from pollen_worker.utils import partially_aggregate_with_metrics
-from pollen_worker.datasets.federated_dataset import FederatedDataset
-from torch.utils.data import DataLoader
+from pollen_worker.horovod_utils import (
+    FederatedDataset,
+    all_reduce,
+    get_model_difference,
+    get_ndarrays_from_model,
+    get_parameters,
+    get_variable_map,
+    make_cifar10_iid_datasets,
+    prepare_batch,
+    set_model_parameters_from_ndarrays,
+    set_parameters,
+)
 
 from pollen_worker.virtual_client import VirtualClient
 
@@ -45,165 +55,273 @@ class Worker(mp.Process):
     def __init__(
         self,
         client_fn: Callable[[int], VirtualClient],
-        device: str,
-        worker_id: str,
-        task_queue: QueueType,
-        result_queue: QueueType,
         run_uuid: str,
         concurrency: int,
         dataset_name: str,
-        client_prefetch_num_workers: int = 1,
-        client_prefetch_factor: int | None = 100,
+        task_queues: dict[str, QueueType],
+        result_queue: QueueType,
+        auth_key: bytes,
+        local_rank: int,
+        world_size: int,
+        worker_id: str | None = None,
     ) -> None:
         super().__init__()
-        self.worker_id = worker_id
-        self.device = device
         self.client_fn: Callable[[int], VirtualClient] = client_fn
-        self.task_queue = task_queue
+        self.task_queues = task_queues
         self.result_queue = result_queue
         self.run_uuid = run_uuid
-        self.current_round: int = 0
         self.concurrency = concurrency
         self.dataset_name = dataset_name
-        self.federated_dataset: FederatedDataset | None = None
-        self.client_prefetch_num_workers = client_prefetch_num_workers
-        self.client_prefetch_factor = client_prefetch_factor
+        self.auth_key = auth_key
+        self.worker_id = worker_id if worker_id else str(uuid.uuid4())
+        self.local_rank = local_rank
+        self.world_size = world_size
+        # These attributes will be set after having initialized PyTorch Distributed
+        self.device: device
+        self.federated_dataset: FederatedDataset
+        self.worker_global_model: Module
+        self.client_model: Module
+        self.buffer: dict[str, torch.Tensor]
+        self.cache: dict[str, torch.Tensor]
 
-    def process_task(self, client_ids: list[int]) -> None:
-        """Process the received task."""
+    def __getstate__(self) -> dict[str, Any]:
+        """Return the state of the object.
+
+        It is called when pickling - this hack allows subprocesses to be spawned without
+        the AuthenticationString raising an error.
+        """
+        state = self.__dict__.copy()
+        conf = state["_config"]
+        if "authkey" in conf:
+            conf["authkey"] = (
+                self.auth_key if self.auth_key is not None else bytes(conf["authkey"])
+            )
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Set the state of the object.
+
+        It is used for unpickling. It couples with the __getstate__ method to complete
+        the hack that allows subprocesses to be spawned without the AuthenticationString
+        raising an error.
+        """
+        state["_config"]["authkey"] = AuthenticationString(state["_config"]["authkey"])
+        self.__dict__.update(state)
+
+    def process_task_pytorch_distributed(self, client_ids: list[int]) -> None:
+        """Execute the training of the passed client ids using Horovod."""
         # Loads a dict from the shared memory buffer
         config = pickle.loads(self.config_shm.buf)
-        config["device"] = self.device
-
-        if self.federated_dataset is None:
-            dataset_name = self.dataset_name
-
-            def dataset_generator(cid: int) -> Dataset[Any]:
-                """Return the dataset for the client."""
-                return get_client_ds_fn(name=dataset_name)(cid)[0]
-
-            self.federated_dataset = FederatedDataset(
-                dataset_generator=dataset_generator,
-                list_of_clients=[],
-            )
-
-        self.federated_dataset.list_of_clients = client_ids
-
-        for client_id, tmp_client_dataset in zip(
-            client_ids,
-            DataLoader(
-                self.federated_dataset,
-                batch_size=1,
-                shuffle=False,
-                collate_fn=lambda x: x[0],
-                num_workers=self.client_prefetch_num_workers,
-                prefetch_factor=self.client_prefetch_factor,
-            ),
-            strict=True,
-        ):
+        # Initialise number of samples and loss to be then reduced
+        aggregated_loss = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        aggregated_accuracy = torch.tensor(0.0, dtype=torch.float32, device=self.device)
+        aggregated_num_samples = torch.tensor(
+            0, dtype=torch.float32, device=self.device
+        )
+        # Initialise the model parameters
+        set_model_parameters_from_ndarrays(self.round_params, self.client_model)
+        set_model_parameters_from_ndarrays(self.round_params, self.worker_global_model)
+        worker_global_model_variable_map = get_variable_map(self.worker_global_model)
+        worker_central_optimizer = torch.optim.SGD(
+            self.worker_global_model.parameters(), lr=1.0
+        )
+        # TODO: Fix the typing here
+        results: list[list[int, int, int, str]] = []  # type: ignore[type-arg]
+        for client_dataset in self.federated_dataset.get_cohort(client_ids):
             # Take the timestamp before training a single client
             start_time = time.time_ns()
-            # Load client
-            tmp_client = self.client_fn(client_id)
-            tmp_client.client_dataset = tmp_client_dataset
+            initial_model_variable_map = get_parameters(
+                get_variable_map(self.client_model)
+            )
+            optimizer = torch.optim.SGD(
+                self.client_model.parameters(),
+                lr=0.1,
+            )
+            # optimizer = get_optimizer(name=self.dataset_name, model=self.client_model)
+            criterion = torch.nn.CrossEntropyLoss(reduction="mean")
 
-            done = False
-            fit_trained_weights: NDArrays | None = None
-            fit_num_samples: int | None = None
-            train_metrics: dict[str, Scalar] | None = None
-            while not done:
-                try:
-                    # Call fit on shared parameters
-                    fit_trained_weights, fit_num_samples, train_metrics = (
-                        tmp_client.fit(self.round_params, config)
-                    )
-                    done = True
-                except Exception as e:
-                    log(
-                        ERROR,
-                        "Worker %s failed in training client %s with exception %s."
-                        " Retrying...",
-                        self.worker_id,
-                        client_id,
-                        e,
-                    )
-            if (
-                fit_trained_weights is None
-                or fit_num_samples is None
-                or train_metrics is None
-            ):
-                raise ValueError(
-                    f"Worker {self.worker_id} failed in training client {client_id}."
-                    " fit_trained_weights, fit_num_samples, or train_metrics is None."
+            self.client_model.train()
+
+            cumulative_loss: torch.Tensor = torch.tensor(0.0, device=self.device)
+            cumulative_accuracy: torch.Tensor = torch.tensor(0.0, device=self.device)
+            cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=self.device)
+            for data in client_dataset.iter(config["batch_size"]):
+                prepared_batch = prepare_batch(data)
+                inputs, labels = prepared_batch[0].to(self.device), prepared_batch[
+                    1
+                ].to(self.device)
+                if labels.dim() > 1:
+                    labels = labels.squeeze()
+                optimizer.zero_grad()
+                outputs: torch.Tensor = self.client_model(inputs)
+                loss: torch.Tensor = criterion(outputs, labels.long())
+                cumulative_loss += loss.item()
+                cumulative_accuracy += (
+                    (outputs.argmax(-1) == labels.long()).sum().item()
                 )
-            # If new round, then copy result to shared memory directly
-            if config["server_round"] > self.current_round:
-                self.current_round = config["server_round"]
-                write_to_fit_result_shm(
-                    self.worker_params,
-                    self.worker_num_samples,
-                    self.worker_train_loss,
-                    self.worker_train_acc,
-                    fit_trained_weights,
-                    fit_num_samples,
-                    float(train_metrics["train_loss"]),
-                    float(train_metrics["accuracy"]),
-                )
-            # Partially aggregating fit results
+                cumulative_num_samples += labels.size(0)
+                loss.backward()
+                optimizer.step()
+            aggregated_loss += cumulative_loss * cumulative_num_samples
+            aggregated_accuracy += cumulative_accuracy * cumulative_num_samples
+            aggregated_num_samples += cumulative_num_samples
+
+            # Get the pseudo-gradients
+            deltas = get_model_difference(
+                variable_map=get_variable_map(self.client_model),
+                other_variable_map=initial_model_variable_map,
+                cache=self.cache,
+            )
+
+            # Update the pseudo-gradients buffer
+            if self.buffer is None:
+                self.buffer = get_parameters(deltas)
+                # Scale the pseudo-gradients on the number of samples trained
+                for tensor_value in self.buffer.values():
+                    tensor_value.mul_(cumulative_num_samples)
             else:
-                (
-                    tmp_part_agg_params,
-                    tmp_part_agg_num_samples,
-                    tmp_part_agg_loss,
-                    tmp_part_agg_acc,
-                ) = partially_aggregate_with_metrics(
-                    (
-                        self.worker_params,
-                        self.worker_num_samples[0],
-                        self.worker_train_loss[0],
-                        self.worker_train_acc[0],
-                    ),
-                    (
-                        fit_trained_weights,
-                        fit_num_samples,
-                        float(train_metrics["train_loss"]),
-                        float(train_metrics["accuracy"]),
-                    ),
-                )
-                write_to_fit_result_shm(
-                    self.worker_params,
-                    self.worker_num_samples,
-                    self.worker_train_loss,
-                    self.worker_train_acc,
-                    tmp_part_agg_params,
-                    tmp_part_agg_num_samples,
-                    tmp_part_agg_loss,
-                    tmp_part_agg_acc,
-                )
+                for tensor_name, tensor_value in get_parameters(deltas).items():
+                    # Scale the pseudo-gradients on the number of samples trained
+                    tensor_value.mul_(cumulative_num_samples)
+                    # Add the pseudo-gradients to the buffer
+                    self.buffer[tensor_name].add_(tensor_value)
+            set_parameters(
+                initial_model_variable_map, get_variable_map(self.client_model)
+            )
             # Take the timestamp after the task is done
             end_time = time.time_ns()
-            self.result_queue.put([int(client_id), start_time, end_time, self.device])
-            # NOTE: PyTorch's memory management works bad with multiprocessing. In our
-            # case, it might happen that each process eagerly allocates more MBs of
-            # memory on the same VRAM at the same w/o cleaning the cache because each
-            # of them thinks that it is the only one using the GPU. We need to clean
-            # the cache manually to prevent this, i.e. call `torch.cuda.empty_cache()`.
-            # When to call it is a trade-off between performance and memory usage
-            # because cleaning the cache is time expensive (for Reddit it costs ~15
-            # seconds, quick took ~333s slow took ~348s in 10 rounds, 100 clients/round,
-            # 1 A40). We call it after each client, but it might be better to call it
-            # after each round.
-            for dev_id in range(pynvml.nvmlDeviceGetCount()):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
-                for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-                    if os.getpid() == proc.pid:
-                        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                        if proc.usedGpuMemory > mem.total / self.concurrency:
-                            torch.cuda.empty_cache()
-                            gc.collect()
+            results.append(
+                [client_dataset.client_id, start_time, end_time, str(self.device)]
+            )
+        # Write to shared memory if this is the last client
+        if self.buffer is not None:
+            # log(
+            #     INFO,
+            #     "Local Rank: %s, Averaging %s clients.",
+            #     self.local_rank,
+            #     j,
+            # )
+            # All reduce the updates
+            reduced_buffer = all_reduce(
+                self.world_size, list(self.buffer.values()), average=False
+            )
+            reduced_metrics = all_reduce(
+                self.world_size,
+                [aggregated_loss, aggregated_accuracy, aggregated_num_samples],
+                average=False,
+            )
+            # Scale the metrics on the number of samples trained on this node
+            reduced_metrics[0].div_(reduced_metrics[2])
+            reduced_metrics[1].div_(reduced_metrics[2])
+            # log(
+            #     INFO,
+            #     "Local Rank: %s, W. Avg. Loss: %s,"
+            #     " W. Avg. Accuracy: %s, Tot. N. Samples: %s",
+            #     self.local_rank,
+            #     float(reduced_metrics[0].cpu().item()),
+            #     float(reduced_metrics[1].cpu().item()),
+            #     int(reduced_metrics[2].cpu().item()),
+            # )
+            # Update the global model applying the updates with the optimizer
+            worker_central_optimizer.zero_grad()
+            for variable_name, difference in dict(
+                zip(self.buffer.keys(), reduced_buffer, strict=False)
+            ).items():
+                # Scale the update for the number of samples trained on this node
+                difference.div_(reduced_metrics[2])
+                if worker_global_model_variable_map[variable_name].grad is None:
+                    worker_global_model_variable_map[variable_name].grad = (
+                        torch.zeros_like(
+                            worker_global_model_variable_map[variable_name]
+                        )
+                    )
+                # Interpret the model updates as gradients.
+                worker_global_model_variable_map[
+                    variable_name
+                ].grad.data.copy_(  # type: ignore[union-attr]
+                    -1 * difference
+                )
+            # Apply the update
+            worker_central_optimizer.step()
+            # Write buffer to shared memory
+            write_to_fit_result_shm(
+                self.worker_params,
+                self.worker_num_samples,
+                self.worker_train_loss,
+                self.worker_train_acc,
+                get_ndarrays_from_model(net=self.worker_global_model),
+                int(reduced_metrics[2].cpu().item()),
+                float(reduced_metrics[0].cpu().item()),
+                float(reduced_metrics[1].cpu().item()),
+            )
+            # Put results in the result queue
+            for result in results:
+                self.result_queue.put(result)
+            # Set the new model parameters to the local model
+            set_parameters(
+                get_parameters(worker_global_model_variable_map),
+                get_variable_map(self.client_model),
+            )
+            # Empty the buffer
+            if self.buffer is not None:
+                for tensor_name, tensor_value in self.buffer.items():
+                    self.buffer[tensor_name] = torch.empty(
+                        tensor_value.shape,
+                        dtype=torch.float32,
+                        device=tensor_value.device,
+                    )
 
-    def run(self) -> None:
+    def run(self, master_address: str = "localhost", master_port: int = 51551) -> None:
         """Start the process."""
+        # Set the authentication key
+        multiprocessing.current_process().authkey = self.auth_key
+        # Initializes the distributed backend which will take care of synchronizing
+        # nodes/GPUs
+        backend = dist_backend.NCCL if torch.cuda.is_available() else dist_backend.GLOO
+        # NOTE: NCCL can only use one process per GPU, so we use GLOO if there are more
+        backend = (
+            dist_backend.GLOO
+            if self.world_size > torch.cuda.device_count()
+            else backend
+        )
+        # We assume that the master is always in the first position.
+        init_method = f"tcp://{master_address}:{master_port}"
+        init_process_group(
+            backend=backend,
+            init_method=init_method,
+            rank=self.local_rank,
+            world_size=self.world_size,
+        )
+        # Set the device and the task queue
+        gpu_id = self.local_rank % torch.cuda.device_count()
+        self.device = torch.device(f"cuda:{gpu_id}")
+        torch.cuda.set_device(gpu_id)
+        log(
+            INFO,
+            "Worker %s uses GPU %i, device %s",
+            self.worker_id,
+            gpu_id,
+            self.device,
+        )
+        # Set the task queue
+        task_queue = self.task_queues[str(self.device)]
+        log(
+            INFO,
+            "Worker %s selected %s from %s.",
+            self.worker_id,
+            task_queue,
+            self.task_queues,
+        )
+        # TODO: Create federated dataset
+        self.federated_dataset = make_cifar10_iid_datasets(
+            world_size=self.concurrency,
+            local_rank=self.local_rank,
+        )
+        # Create global model
+        self.worker_global_model = get_model(self.dataset_name)
+        # Create client model
+        self.client_model = get_model(self.dataset_name)
+        self.client_model = self.client_model.to(self.device)
         # Allocate shared memories.
         # NOTE: This goes here because it needs to be done in the child process!
         # This is the first piece of code of the worker that live in the child
@@ -235,14 +353,13 @@ class Worker(mp.Process):
         ) = allocate_shm(
             parameters=self.client_fn(0).get_parameters({}),
             name=self.worker_id,
+            create=True,
         )
-        # NOTE: This is for controlling the GPU memory allocation
-        pynvml.nvmlInit()
         # Task loop
         task: list[int]
-
-        for task in iter(self.task_queue.get, None):
-            self.process_task(task)
+        for task in iter(task_queue.get, None):
+            # log(INFO, "Worker %s received task %s.", self.worker_id, task)
+            self.process_task_pytorch_distributed(task)
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0, ""])
         # Un-register shared memories

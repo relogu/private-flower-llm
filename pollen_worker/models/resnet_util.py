@@ -1,6 +1,6 @@
 """The ResNet model at different sizes.
 
-Used for the openimages task in the Pollen paper.
+Used for the OpenImage task in the Pollen paper.
 """
 
 import math

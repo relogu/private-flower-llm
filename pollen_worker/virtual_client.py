@@ -6,7 +6,6 @@ virtual clients can be used to simulate a large number of clients on a single ma
 even if many are spawned at once.
 """
 
-from collections import OrderedDict
 from collections.abc import Callable
 from logging import INFO
 from typing import Any
@@ -23,6 +22,10 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 
 from pollen_worker.datasets.nlp_util import get_collate_fn
+from pollen_worker.horovod_utils import (
+    get_ndarrays_from_model,
+    set_model_parameters_from_ndarrays,
+)
 from pollen_worker.models.training_loops import get_input_shapes, get_training_loop
 from pollen_worker.pollen_utils import (
     get_client_ds,
@@ -66,25 +69,7 @@ class VirtualClient(fl.client.NumPyClient):
         if net is None:
             net = get_model(name=self.name)
         net.eval()
-        if device == "cpu" and to_numpy:
-            tmp = [
-                val.detach().to(device).numpy()
-                for name, val in net.state_dict().items()
-                if "bn" not in name
-            ]
-        elif device == "cpu" and not to_numpy:
-            tmp = [
-                val.detach().to(device)
-                for name, val in net.state_dict().items()
-                if "bn" not in name
-            ]
-        else:
-            tmp = [
-                val.detach().to(device)
-                for name, val in net.state_dict().items()
-                if "bn" not in name
-            ]
-        return tmp
+        return get_ndarrays_from_model(net=net, device=device, to_numpy=to_numpy)
 
     def set_parameters(
         self,
@@ -96,13 +81,7 @@ class VirtualClient(fl.client.NumPyClient):
         if net is None:
             net = get_model(name=self.name)
         net.eval()
-        module_state_dict = net.state_dict()
-        keys = [k for k in module_state_dict if "bn" not in k]
-        params_dict = zip(keys, parameters, strict=False)
-        state_dict = OrderedDict(
-            {k: torch.tensor(v, device=device) for k, v in params_dict}
-        )
-        net.load_state_dict(state_dict, strict=False)
+        set_model_parameters_from_ndarrays(parameters, net, device)
         return net
 
     def _train_loop(
@@ -164,8 +143,8 @@ class VirtualClient(fl.client.NumPyClient):
             if hasattr(self.client_dataset, "tokenizer"):
                 tokenizer = self.client_dataset.tokenizer  # type: ignore[union-attr]
 
-        # Instantiate the trainloader
-        trainloader = (
+        # Instantiate the train data loader
+        train_loader = (
             DataLoader(
                 # NOTE: Non-default arguments
                 dataset=ds,
@@ -224,7 +203,7 @@ class VirtualClient(fl.client.NumPyClient):
             device=config["device"]
         )
         net, train_metrics = self._train_loop(
-            trainloader=trainloader,
+            train_loader=train_loader,
             net=net,
             device=config["device"],
             epochs=config["local_epochs"],
