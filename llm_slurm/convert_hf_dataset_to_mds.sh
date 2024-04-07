@@ -118,3 +118,6 @@ poetry run python -m pollen_worker.dataset.convert_dataset_hf \
 # --tokenizer_kwargs # add these if you want to pass additional kwargs to the tokenizer
 # --no_wrap # set this if you want to wrap long sequences
 # --bos_text # default
+
+#! Remove the positional arguments
+eval set --

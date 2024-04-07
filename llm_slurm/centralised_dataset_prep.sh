@@ -53,3 +53,6 @@ DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
 #! Small dataset
 poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL --split val_small
 # poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL_MDS --split val_small # Compressed
+
+#! Remove the positional arguments
+eval set --

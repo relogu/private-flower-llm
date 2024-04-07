@@ -37,3 +37,6 @@ export LLM_OPTIONS="llm_config.save_interval=${STEPS}ba llm_config.console_log_i
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.speed_monitor ~llm_config.callbacks.memory_monitor ~llm_config.callbacks.runtime_estimator"
 #! Configuration: reduce number of eval batches
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=2"
+
+#! Remove the positional arguments
+eval set --

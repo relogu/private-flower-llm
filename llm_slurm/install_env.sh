@@ -72,3 +72,6 @@ else
 fi
 #! Final message
 echo "Environment is ready."
+
+#! Remove the positional arguments
+eval set --

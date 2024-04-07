@@ -121,3 +121,6 @@ else
 		export DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://c4-dataset $SPLIT_CONFIG"
 	fi
 fi
+
+#! Remove the positional arguments
+eval set --

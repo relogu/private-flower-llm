@@ -141,3 +141,6 @@ else
 fi
 
 echo "Selected LLM config: $1"
+
+#! Remove the positional arguments
+eval set --
