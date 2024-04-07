@@ -2,7 +2,7 @@
 #SBATCH -c 10
 #SBATCH -w mauao
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=PF1
+#SBATCH --job-name=PC1
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --dependency=afterany:77858
