@@ -5,17 +5,17 @@ The workers are distributed over the available hardware devices
 in an N:M mapping with N>=M.
 The number of workers depends on:
 - how many resources each client needs
-- the resources availabe for a given device
+- the resources available for a given device
 - the parallelism supported by the system.
 
 In order to minimize data movement and unnecessary allocations+copies
 the node-manager uses a statically-assigned shared memory
 to host the memory of the workers and clients.
 
-In a singlenode setting, the node-manager
+In a single node setting, the node-manager
 is the only process that runs on the node and
 is only conceptually separate from the server.
-In a multinode setting, each node hosts
+In a multi node setting, each node hosts
 a node-manager which communicates
 to the simulation server.
 """
@@ -27,7 +27,6 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from logging import DEBUG
-from multiprocessing import Manager
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
@@ -50,12 +49,13 @@ from multiprocess import set_start_method, Queue
 from nvsmi import GPU
 from omegaconf import DictConfig
 
-import horovod
+from pollen_worker.horovod_utils import get_free_tcp_port
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
     allocate_shm,
     get_pyarrow_buffer_from_table,
+    remove_shm_from_resource_tracker,
     write_to_fit_result_shm,
 )
 from pollen_worker.resources_manager import Device, Node, get_cpu_prop, get_cuda_prop
@@ -84,20 +84,28 @@ class NodeManager(fl.client.NumPyClient):
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
         self.node_manager_uuid = str(uuid.uuid4())
-        # Set the auth key for the multiprocessing
+        # Set the auth key for the multiprocessing. Necessary for accessing the queues.
         new_auth_key = bytes(str(uuid.uuid4()), encoding="utf-8")
         multiprocessing.current_process().authkey = new_auth_key
+        # Monkey-patch resource tracker to avoid tracking shared memory
+        remove_shm_from_resource_tracker()
+        # Set the master address and port for PyTorch distributed
+        self.master_addr = "localhost"
+        # NOTE: The must must be set when it is certain that it is not gonna be occupied
+        # by anything else
+        self.master_port: int | None = None
+        # Initialize auxiliary variables
+        self.assignment_config: dict[str, str] | None = None
+        self.clients_training_stats: dict[str, list] | None = None
+        self.num_clients_to_process: int | None = None
+        self.num_clients_processed: int | None = None
 
         # Create multiprocessing Manager
-        self.manager = Manager()
         # One task queue per GPU/device
         self.task_queues: dict[str, QueueType] = {
-            # f"cuda:{gpu.id}": self.manager.Queue() for gpu in self.all_gpus
-            f"cuda:{gpu.id}": Queue()
-            for gpu in self.all_gpus
+            f"cuda:{gpu.id}": Queue() for gpu in self.all_gpus
         }
         # One result queue for all GPUs/devices
-        # self.result_queue: QueueType = self.manager.Queue()
         self.result_queue: QueueType = Queue()
 
         # Round config is sent to shared memory
@@ -157,7 +165,7 @@ class NodeManager(fl.client.NumPyClient):
                 )
             )
         # Start workers
-        self._start_workers()
+        self.start_workers()
         self.workers_shms: list[SharedMemory] | None = None
 
     def _get_node_properties(self) -> dict[str, Scalar]:
@@ -168,7 +176,7 @@ class NodeManager(fl.client.NumPyClient):
         if torch.cuda.is_available():
             device_info = dict(
                 get_cuda_prop(
-                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=1
+                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=2
                 ),
                 **device_info,
             )
@@ -207,22 +215,15 @@ class NodeManager(fl.client.NumPyClient):
         tmp_client: NumPyClient = self.client_fn(0)
         return tmp_client.get_parameters(config=config)
 
-    def _start_horovod_workers(self, worker: Worker) -> None:
-        horovod.run(
-            func=worker.run,
-            args=(),
-            kwargs=None,
-            verbose=2,
-            use_gloo=True,
-            use_mpi=False,
-            num_proc=self.n_workers,
-            hosts=f"localhost:{self.n_workers}",
-        )
-
-    def _start_workers(
+    def start_workers(
         self,
     ) -> None:
+        """Launch the workers."""
+        if self.master_port is None:
+            self.master_port = get_free_tcp_port()
         for _worker in self.workers:
+            _worker.master_address = self.master_addr
+            _worker.master_port = self.master_port
             _worker.start()
 
     def fit(
@@ -277,19 +278,6 @@ class NodeManager(fl.client.NumPyClient):
             num_processed_virtual_clients += 1
         start_time = time.time()
         self.workers_shms = []
-        # ws_p: list[tuple[NDArrays, int]] = []
-        # ws_ns: list[int] = []
-        # ws_m: list[tuple[int, dict]] = []
-        # for _worker in self.workers:
-        #     w_p, w_ns, w_tl, w_ta, w_shm = allocate_shm(
-        #         parameters=self.client_fn(0).get_parameters({}),
-        #         name=_worker.worker_id,
-        #     )
-        #     ws_p.append((w_p, w_ns[0]))
-        #     ws_ns.append(w_ns[0])
-        #     ws_m.append((w_ns[0], {"train_loss": w_tl[0], "accuracy": w_ta[0]}))
-        #     self.workers_shms.append(w_shm)
-        # nm_p, nm_s, nm_m = aggregate_training_results(ws_p, ws_ns, ws_m)
         nm_p, nm_s_array, n_tl, n_ta, w_shm = allocate_shm(
             parameters=self.client_fn(0).get_parameters({}),
             name=self.workers[0].worker_id,
@@ -338,7 +326,7 @@ class NodeManager(fl.client.NumPyClient):
         return 0.0, 1, {}
 
     def __del__(self) -> None:
-        """Implement the closing on the NodeManager."""
+        """Implement the deletion of the NodeManager."""
         log(DEBUG, "Closing NodeManager...")
         if self.workers is not None:
             for _worker in self.workers:
