@@ -4,8 +4,7 @@ import multiprocessing
 import pickle
 import time
 from collections.abc import Callable
-from logging import INFO
-from multiprocessing import resource_tracker
+from logging import DEBUG, INFO
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from multiprocessing.process import AuthenticationString  # type: ignore[attr-defined]
@@ -27,6 +26,8 @@ from pollen_worker.pollen_utils import (
     POLLEN_PARAMETERS_SHM,
     allocate_shm,
     get_model,
+    get_optimizer,
+    remove_shm_from_resource_tracker,
     write_to_fit_result_shm,
 )
 from pollen_worker.horovod_utils import (
@@ -77,12 +78,14 @@ class Worker(mp.Process):
         self.local_rank = local_rank
         self.world_size = world_size
         # These attributes will be set after having initialized PyTorch Distributed
+        self.master_address: str
+        self.master_port: int
         self.device: device
         self.federated_dataset: FederatedDataset
         self.worker_global_model: Module
         self.client_model: Module
-        self.buffer: dict[str, torch.Tensor]
-        self.cache: dict[str, torch.Tensor]
+        self.buffer: dict[str, torch.Tensor] | None = None
+        self.cache: dict[str, torch.Tensor] | None = None
 
     def __getstate__(self) -> dict[str, Any]:
         """Return the state of the object.
@@ -120,6 +123,7 @@ class Worker(mp.Process):
         )
         # Initialise the model parameters
         set_model_parameters_from_ndarrays(self.round_params, self.client_model)
+        # if self.local_rank == 0:
         set_model_parameters_from_ndarrays(self.round_params, self.worker_global_model)
         worker_global_model_variable_map = get_variable_map(self.worker_global_model)
         worker_central_optimizer = torch.optim.SGD(
@@ -133,11 +137,9 @@ class Worker(mp.Process):
             initial_model_variable_map = get_parameters(
                 get_variable_map(self.client_model)
             )
-            optimizer = torch.optim.SGD(
-                self.client_model.parameters(),
-                lr=0.1,
+            local_optimizer = get_optimizer(
+                name=self.dataset_name, model=self.client_model
             )
-            # optimizer = get_optimizer(name=self.dataset_name, model=self.client_model)
             criterion = torch.nn.CrossEntropyLoss(reduction="mean")
 
             self.client_model.train()
@@ -152,7 +154,7 @@ class Worker(mp.Process):
                 ].to(self.device)
                 if labels.dim() > 1:
                     labels = labels.squeeze()
-                optimizer.zero_grad()
+                local_optimizer.zero_grad()
                 outputs: torch.Tensor = self.client_model(inputs)
                 loss: torch.Tensor = criterion(outputs, labels.long())
                 cumulative_loss += loss.item()
@@ -161,7 +163,7 @@ class Worker(mp.Process):
                 )
                 cumulative_num_samples += labels.size(0)
                 loss.backward()
-                optimizer.step()
+                local_optimizer.step()
             aggregated_loss += cumulative_loss * cumulative_num_samples
             aggregated_accuracy += cumulative_accuracy * cumulative_num_samples
             aggregated_num_samples += cumulative_num_samples
@@ -210,18 +212,20 @@ class Worker(mp.Process):
                 [aggregated_loss, aggregated_accuracy, aggregated_num_samples],
                 average=False,
             )
+            # NOTE: Doing this computation only on rank 0 doesn't work, not clear why.
+            # if self.local_rank == 0:
             # Scale the metrics on the number of samples trained on this node
             reduced_metrics[0].div_(reduced_metrics[2])
             reduced_metrics[1].div_(reduced_metrics[2])
-            # log(
-            #     INFO,
-            #     "Local Rank: %s, W. Avg. Loss: %s,"
-            #     " W. Avg. Accuracy: %s, Tot. N. Samples: %s",
-            #     self.local_rank,
-            #     float(reduced_metrics[0].cpu().item()),
-            #     float(reduced_metrics[1].cpu().item()),
-            #     int(reduced_metrics[2].cpu().item()),
-            # )
+            log(
+                INFO,
+                "Local Rank: %s, W. Avg. Loss: %s,"
+                " W. Avg. Accuracy: %s, Tot. N. Samples: %s",
+                self.local_rank,
+                float(reduced_metrics[0].cpu().item()),
+                float(reduced_metrics[1].cpu().item()),
+                int(reduced_metrics[2].cpu().item()),
+            )
             # Update the global model applying the updates with the optimizer
             worker_central_optimizer.zero_grad()
             for variable_name, difference in dict(
@@ -257,11 +261,6 @@ class Worker(mp.Process):
             # Put results in the result queue
             for result in results:
                 self.result_queue.put(result)
-            # Set the new model parameters to the local model
-            set_parameters(
-                get_parameters(worker_global_model_variable_map),
-                get_variable_map(self.client_model),
-            )
             # Empty the buffer
             if self.buffer is not None:
                 for tensor_name, tensor_value in self.buffer.items():
@@ -271,10 +270,12 @@ class Worker(mp.Process):
                         device=tensor_value.device,
                     )
 
-    def run(self, master_address: str = "localhost", master_port: int = 51551) -> None:
+    def run(self) -> None:
         """Start the process."""
-        # Set the authentication key
+        # Set the authentication key. Necessary for accessing the queues.
         multiprocessing.current_process().authkey = self.auth_key
+        # Monkey-patch resource tracker to avoid tracking shared memory
+        remove_shm_from_resource_tracker()
         # Initializes the distributed backend which will take care of synchronizing
         # nodes/GPUs
         backend = dist_backend.NCCL if torch.cuda.is_available() else dist_backend.GLOO
@@ -285,7 +286,7 @@ class Worker(mp.Process):
             else backend
         )
         # We assume that the master is always in the first position.
-        init_method = f"tcp://{master_address}:{master_port}"
+        init_method = f"tcp://{self.master_address}:{self.master_port}"
         init_process_group(
             backend=backend,
             init_method=init_method,
@@ -318,6 +319,7 @@ class Worker(mp.Process):
             local_rank=self.local_rank,
         )
         # Create global model
+        # if self.local_rank == 0:
         self.worker_global_model = get_model(self.dataset_name)
         # Create client model
         self.client_model = get_model(self.dataset_name)
@@ -362,17 +364,12 @@ class Worker(mp.Process):
             self.process_task_pytorch_distributed(task)
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0, ""])
-        # Un-register shared memories
-        # NOTE: Bug https://bugs.python.org/issue39959#msg364351
-        resource_tracker.unregister(
-            self.config_shm._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
-        resource_tracker.unregister(
-            self.round_shm._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
-        resource_tracker.unregister(
-            SharedMemory(name=self.worker_id)._name,  # type: ignore[attr-defined]
-            "shared_memory",
-        )
+
+    def __del__(self) -> None:
+        """Implement the deletion of the Worker."""
+        log(DEBUG, "Closing Worker %s...", self.worker_id)
+        # Free shared memories
+        worker_shm = SharedMemory(name=self.worker_id)
+        worker_shm.close()
+        worker_shm.unlink()
+        log(DEBUG, "Shared memories closed")
