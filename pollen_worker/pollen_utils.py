@@ -11,6 +11,7 @@ from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
 from multiprocessing.shared_memory import SharedMemory
+from multiprocessing import resource_tracker as res_track
 from pathlib import Path
 from typing import Any, cast
 import numpy as np
@@ -61,6 +62,30 @@ def aggregate_training_results(
         sum(samples),
         weighted_average(metrics),
     )
+
+
+def remove_shm_from_resource_tracker() -> None:
+    """Monkey-patch multiprocessing.resource_tracker so SharedMemory won't be tracked.
+
+    More details at: https://bugs.python.org/issue38119
+    """
+
+    def fix_register(name: str, rtype: str) -> None:
+        if rtype == "shared_memory":
+            return None
+        return res_track._resource_tracker.register(name, rtype)
+
+    res_track.register = fix_register  # type: ignore[assignment]
+
+    def fix_unregister(name: str, rtype: str) -> None:
+        if rtype == "shared_memory":
+            return None
+        return res_track._resource_tracker.unregister(name, rtype)
+
+    res_track.unregister = fix_unregister  # type: ignore[assignment]
+
+    if "shared_memory" in res_track._CLEANUP_FUNCS:  # type: ignore[attr-defined]
+        del res_track._CLEANUP_FUNCS["shared_memory"]  # type: ignore[attr-defined]
 
 
 def allocate_shm(
