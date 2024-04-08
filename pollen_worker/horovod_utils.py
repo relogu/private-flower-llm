@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import pickle
 import random
+import socket
 from typing import Any
 import torch
 from torch import device
@@ -15,6 +16,16 @@ import torch.backends as torch_backends
 
 import numpy as np
 from flwr.common import NDArrays
+
+
+def get_free_tcp_port() -> int:
+    """Get free socket port to use as MASTER_PORT."""
+    # from https://www.programcreek.com/python/?CodeExample=get+free+port
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp.bind(("", 0))
+    _, port = tcp.getsockname()
+    tcp.close()
+    return port
 
 
 def set_random_seeds(random_seed: int = 0) -> None:
