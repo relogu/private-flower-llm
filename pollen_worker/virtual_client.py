@@ -61,10 +61,10 @@ class VirtualClient(fl.client.NumPyClient):
     def get_parameters(
         self,
         config: Config,
-        net: Module = None,
+        net: Module | None = None,
         device: str = "cpu",
         to_numpy: bool = True,
-    ) -> NDArrays:
+    ) -> NDArrays | list[torch.Tensor]:
         """Implement how to get parameters."""
         if net is None:
             net = get_model(name=self.name)
