@@ -16,6 +16,12 @@ import torch.backends as torch_backends
 
 import numpy as np
 from flwr.common import NDArrays
+from pollen_worker.datasets.shakespeare import SHAKESPEARE_DTYPES
+from pollen_worker.datasets.shakespeare import (
+    load_shakespeare_file,
+)
+from pollen_worker.datasets.shakespeare import LEAF_CHARACTERS
+from pollen_worker.pollen_utils import get_clients_population_dict
 
 
 def get_free_tcp_port() -> int:
@@ -93,7 +99,7 @@ def set_model_parameters_from_ndarrays(
     parameters: NDArrays,
     model: Module,
     device: str | device = "cpu",
-) -> Module:
+) -> None:
     """Set the model parameters from a NDArrays."""
     # Put the model in eval mode
     model.eval()
@@ -269,7 +275,11 @@ def prepare_batch(batch: Any) -> dict[int, torch.Tensor] | list[torch.Tensor]:
 class ClientDataset:
     """Implementation of a client dataset for federated learning."""
 
-    def __init__(self, data: tuple[np.ndarray, np.ndarray], client_id: int) -> None:
+    def __init__(
+        self,
+        data: tuple[np.ndarray, np.ndarray],
+        client_id: int,
+    ) -> None:
         self.data = data
         self.client_id = client_id
         self._batches: dict[int, list] = {}
@@ -323,6 +333,7 @@ class FederatedDataset:
         list_of_client_ids: list[int],
         world_size: int | None = None,
         local_rank: int | None = None,
+        client_dataset_type: type[ClientDataset] = ClientDataset,
     ) -> None:
         self.data = data
         self.list_of_client_ids = list_of_client_ids
@@ -332,10 +343,11 @@ class FederatedDataset:
         self.local_rank = (
             int(os.environ["LOCAL_RANK"]) if local_rank is None else local_rank
         )
+        self.client_dataset_type = client_dataset_type
 
     def make_dataset_fn(self, client_id: int) -> ClientDataset:
         """Return a client dataset for the given client_id."""
-        return ClientDataset(data=self.data[client_id], client_id=client_id)
+        return self.client_dataset_type(data=self.data[client_id], client_id=client_id)
 
     def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
         """Iterate over a cohort of clients."""
@@ -345,8 +357,7 @@ class FederatedDataset:
                     client_id = self.list_of_client_ids[i]
                     yield self.make_dataset_fn(client_id)
         if isinstance(cohort_size, list):
-            for i in cohort_size:
-                client_id = self.list_of_client_ids[i]
+            for client_id in cohort_size:
                 yield self.make_dataset_fn(client_id)
 
 
@@ -430,6 +441,75 @@ def make_cifar10_iid_datasets(
         train_labels,
         user_dataset_len_sampler,
         numpy_to_tensor,
+        world_size=world_size,
+        local_rank=local_rank,
+    )
+
+
+DEFAULT_CLIENT_SAMPLES_DICT: dict[str | int, int] = get_clients_population_dict(
+    name="shakespeare_memory", batch_size=10, seed=1337, dataset="train"
+)
+
+
+def make_shakespeare_natural_partition(
+    root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
+    dataset_type: str = "train",
+    world_size: int | None = None,
+    local_rank: int | None = None,
+    client_samples_dict: dict[str | int, int] = DEFAULT_CLIENT_SAMPLES_DICT,
+) -> FederatedDataset:
+    """Load and preprocess SHAKESPEARE data from the shakespeare files."""
+    path_to_mapping = Path(root, "client_data_mapping")
+    path_to_data = Path(root, "data")
+
+    users_to_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+    for client_id in client_samples_dict:
+        path = Path(path_to_mapping / dataset_type / f"{client_id}.parquet")
+        data, labels = load_shakespeare_file(
+            path, path_to_data, dataset_type, SHAKESPEARE_DTYPES
+        )
+        pre_processed_data = np.array(
+            [[LEAF_CHARACTERS.find(c) for c in word] for word in data]
+        )
+        pre_processed_labels = np.array([LEAF_CHARACTERS.find(c) for c in labels])
+        users_to_data[int(client_id)] = (pre_processed_data, pre_processed_labels)
+
+    return FederatedDataset(
+        data=users_to_data,
+        list_of_client_ids=list(users_to_data),
+        world_size=world_size,
+        local_rank=local_rank,
+    )
+
+
+def make_openimage_natural_partition(
+    root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
+    dataset_type: str = "train",
+    world_size: int | None = None,
+    local_rank: int | None = None,
+    client_samples_dict: dict[str | int, int] = DEFAULT_CLIENT_SAMPLES_DICT,
+) -> FederatedDataset:
+    """Load and preprocess SHAKESPEARE data from the shakespeare files."""
+    path_to_mapping = Path(root, "client_data_mapping")
+    path_to_data = Path(root, "data")
+
+    users_to_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+    for client_id in client_samples_dict:
+        path = Path(path_to_mapping / dataset_type / f"{client_id}.parquet")
+        data, labels = load_shakespeare_file(
+            path, path_to_data, dataset_type, SHAKESPEARE_DTYPES
+        )
+        pre_processed_data = np.array(
+            [[LEAF_CHARACTERS.find(c) for c in word] for word in data]
+        )
+        pre_processed_labels = np.array([LEAF_CHARACTERS.find(c) for c in labels])
+        users_to_data[int(client_id)] = (pre_processed_data, pre_processed_labels)
+
+    return FederatedDataset(
+        data=users_to_data,
+        list_of_client_ids=list(users_to_data),
         world_size=world_size,
         local_rank=local_rank,
     )

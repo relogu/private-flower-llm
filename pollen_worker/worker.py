@@ -37,7 +37,7 @@ from pollen_worker.horovod_utils import (
     get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
-    make_cifar10_iid_datasets,
+    make_shakespeare_natural_partition,
     prepare_batch,
     set_model_parameters_from_ndarrays,
     set_parameters,
@@ -149,9 +149,10 @@ class Worker(mp.Process):
             cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=self.device)
             for data in client_dataset.iter(config["batch_size"]):
                 prepared_batch = prepare_batch(data)
-                inputs, labels = prepared_batch[0].to(self.device), prepared_batch[
-                    1
-                ].to(self.device)
+                inputs, labels = (
+                    prepared_batch[0].to(self.device),
+                    prepared_batch[1].to(self.device),
+                )
                 if labels.dim() > 1:
                     labels = labels.squeeze()
                 local_optimizer.zero_grad()
@@ -192,9 +193,12 @@ class Worker(mp.Process):
             )
             # Take the timestamp after the task is done
             end_time = time.time_ns()
-            results.append(
-                [client_dataset.client_id, start_time, end_time, str(self.device)]
-            )
+            results.append([
+                client_dataset.client_id,
+                start_time,
+                end_time,
+                str(self.device),
+            ])
         # Write to shared memory if this is the last client
         if self.buffer is not None:
             # log(
@@ -240,9 +244,7 @@ class Worker(mp.Process):
                         )
                     )
                 # Interpret the model updates as gradients.
-                worker_global_model_variable_map[
-                    variable_name
-                ].grad.data.copy_(  # type: ignore[union-attr]
+                worker_global_model_variable_map[variable_name].grad.data.copy_(  # type: ignore[union-attr]
                     -1 * difference
                 )
             # Apply the update
@@ -314,7 +316,7 @@ class Worker(mp.Process):
             self.task_queues,
         )
         # TODO: Create federated dataset
-        self.federated_dataset = make_cifar10_iid_datasets(
+        self.federated_dataset = make_shakespeare_natural_partition(
             world_size=self.concurrency,
             local_rank=self.local_rank,
         )
