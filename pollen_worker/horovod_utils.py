@@ -14,16 +14,30 @@ from torch.nn import Module
 import torch.distributed as dist
 import torch.backends as torch_backends
 import h5py
+from torch.utils.data import DataLoader
+from PIL import Image
+from pollen_worker.datasets.openimage import train_transform
+from torch.utils.data import Dataset
 
 import numpy as np
 from flwr.common import NDArrays
+import torch.utils
+from pollen_worker.datasets.openimage import OpenImage, _load_openimage_meta_data
+from pollen_worker.datasets.shakespeare import (
+    SHAKESPEARE_DTYPES,
+)
+from pollen_worker.datasets.shakespeare import (
+    load_shakespeare_file,
+)
+from pollen_worker.datasets.shakespeare import LEAF_CHARACTERS
+from pollen_worker.models.pfl_cnns import MultiLabelCNN
+from pollen_worker.pollen_utils import get_clients_population_dict, get_device
 
 from pollen_worker.datasets.pfl_datasets_common import (
     get_label_mapping,
     get_multi_hot_targets,
     get_user_num_images,
 )
-from pollen_worker.models.pfl_cnns import MultiLabelCNN
 from pollen_worker.pollen_utils import get_optimizer
 
 
@@ -269,16 +283,27 @@ def get_model_difference(
 def prepare_batch(batch: Any) -> dict[int, torch.Tensor] | list[torch.Tensor]:
     """Transform a batch of data to tensors."""
     if isinstance(batch, dict):
-        return {k: to_tensor(v) for k, v in batch.items()}
+        return {
+            k: v if isinstance(v, torch.Tensor) else to_tensor(v)
+            for k, v in batch.items()
+        }
     else:
         # TODO: Sort out the typing here
-        return [to_tensor(data) for data in batch]
+        return [
+            data if isinstance(data, torch.Tensor) else to_tensor(data)
+            for data in batch
+        ]
 
 
 class ClientDataset:
     """Implementation of a client dataset for federated learning."""
 
-    def __init__(self, data: tuple[np.ndarray, np.ndarray], client_id: int) -> None:
+    def __init__(
+        self,
+        data: tuple[np.ndarray, np.ndarray],
+        client_id: int,
+        n_workers: int = 1,
+    ) -> None:
         self.data = data
         self.client_id = client_id
         self._batches: dict[int, list] = {}
@@ -320,8 +345,214 @@ class ClientDataset:
         yield from self._batches[batch_size]
 
 
-class CIFAR10FederatedDataset:
-    """Implementation of the CIFAR10 federated dataset."""
+class FakeShakespeareDataset(Dataset):
+    """Fake Shakespeare dataset object."""
+
+    def __init__(self, data: tuple[np.ndarray, np.ndarray]) -> None:
+        """Initialize the dataset."""
+        self.data = data
+
+    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
+        """Return the data at the given index."""
+        return self.data[0][index], self.data[1][index]
+
+    def __len__(self) -> int:
+        """Return the length of the dataset."""
+        return len(self.data)
+
+
+class ClientDatasetShakespeareDataloader(ClientDataset):
+    """Implementation of a client dataset for federated learning."""
+
+    def __init__(
+        self,
+        data: tuple[np.ndarray, np.ndarray],
+        client_id: int,
+        n_workers: int,
+    ) -> None:
+        self.data = data
+        self.client_id = client_id
+        self._batches: dict[int, list] = {}
+        self.dataset = FakeShakespeareDataset(data)
+
+    def __len__(self) -> int:
+        """Return the number of samples in the client dataset."""
+        return len(self.data[0])
+
+    def iter(self, batch_size: int | None) -> Iterable[Any]:
+        """Implement an iterator over the client dataset for a given batch size.
+
+        It returns the entire dataset if batch_size is None.
+        """
+        if batch_size is None:
+            yield self.data
+            return
+        n_workers = 0
+        train_loader = DataLoader(
+            # NOTE: Non-default arguments
+            dataset=self.dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=n_workers,
+            # NOTE: Prevent runtime error related to BatchNorm, apparently
+            drop_last=False,
+            # copy Tensors into CUDA pinned memory before returning them
+            pin_memory=True,
+            # the device to be used for pinning the memory
+            pin_memory_device=str(get_device()),
+            # builds batches from samples
+            collate_fn=None,
+            # NOTE: Default arguments
+            # how to draw sample from the dataset
+            sampler=None,
+            # like the above but for batches
+            batch_sampler=None,
+            # if positive, the timeout value for collecting a batch from workers
+            timeout=0,
+            # init function for worker processes
+            worker_init_fn=None,
+            multiprocessing_context=None,
+            # This allows to maintain the workers
+            prefetch_factor=2 if n_workers > 0 else None,
+            # PRNG to use for random sampling
+            generator=None,
+            persistent_workers=False,
+        )
+
+        yield from train_loader
+
+
+class ClientDatasetOpenImageNoDataloader:
+    """Implementation of a client dataset for federated learning."""
+
+    def __init__(
+        self,
+        data: tuple[list, list],
+        client_id: int,
+        path: Path,
+        root: Path,
+        n_workers: int,
+    ) -> None:
+        self.data = data
+        self.client_id = client_id
+        self.path = path
+        self._batches: dict[int, list] = {}
+        self.dataset = OpenImage(
+            root,
+            data,
+            client_id,
+        )
+
+    def __len__(self) -> int:
+        """Return the number of samples in the client dataset."""
+        return len(self.data[0])
+
+    def iter(self, batch_size: int | None) -> Iterable[Any]:
+        """Implement an iterator over the client dataset for a given batch size.
+
+        It returns the entire dataset if batch_size is None.
+        """
+        if batch_size is None:
+            yield self.data
+            return
+
+        def get_slice(data: tuple[list, list], start_ix: int, end_ix: int) -> list:
+            """Return a slice of the data."""
+            img_names, targets = data
+            features, labels = [], []
+            for i in range(start_ix, min(end_ix, len(img_names))):
+                img_name = img_names[i]
+                target = targets[i]
+                img = Image.open(self.path / img_name)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                features.append(train_transform(img))
+                labels.append(torch.tensor(target))
+            return [torch.stack(features), torch.stack(labels)]
+
+        if batch_size not in self._batches:
+            # Only keep a cache size of 1 to limit memory growth.
+            # Only 1 is needed anyway if program uses static batch size.
+            self._batches = {
+                batch_size: [
+                    get_slice(self.data, start_index, start_index + batch_size)
+                    for start_index in range(0, len(self), batch_size)
+                ]
+            }
+        yield from self._batches[batch_size]
+
+
+class ClientDatasetOpenImageDataloader(ClientDatasetOpenImageNoDataloader):
+    """Implementation of a client dataset for federated learning."""
+
+    def __init__(
+        self,
+        data: tuple[list, list],
+        client_id: int,
+        path: Path,
+        root: Path,
+        n_workers: int,
+    ) -> None:
+        self.data = data
+        self.client_id = client_id
+        self.path = path
+        self._batches: dict[int, list] = {}
+        self.dataset = OpenImage(
+            root,
+            data,
+            client_id,
+        )
+        self.n_workers = n_workers
+
+    def __len__(self) -> int:
+        """Return the number of samples in the client dataset."""
+        return len(self.data[0])
+
+    def iter(self, batch_size: int | None) -> Iterable[Any]:
+        """Implement an iterator over the client dataset for a given batch size.
+
+        It returns the entire dataset if batch_size is None.
+        """
+        if batch_size is None:
+            yield self.data
+            return
+        n_workers = self.n_workers
+        train_loader = DataLoader(
+            # NOTE: Non-default arguments
+            dataset=self.dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=n_workers,
+            # NOTE: Prevent runtime error related to BatchNorm, apparently
+            drop_last=False,
+            # copy Tensors into CUDA pinned memory before returning them
+            pin_memory=True,
+            # the device to be used for pinning the memory
+            pin_memory_device=str(get_device()),
+            # builds batches from samples
+            collate_fn=None,
+            # NOTE: Default arguments
+            # how to draw sample from the dataset
+            sampler=None,
+            # like the above but for batches
+            batch_sampler=None,
+            # if positive, the timeout value for collecting a batch from workers
+            timeout=0,
+            # init function for worker processes
+            worker_init_fn=None,
+            multiprocessing_context=None,
+            # This allows to maintain the workers
+            prefetch_factor=2 if n_workers > 0 else None,
+            # PRNG to use for random sampling
+            generator=None,
+            persistent_workers=False,
+        )
+
+        yield from train_loader
+
+
+class FederatedDataset:
+    """Implementation of a federated dataset of clients for federated learning."""
 
     def __init__(
         self,
@@ -330,8 +561,10 @@ class CIFAR10FederatedDataset:
             | list[tuple[np.ndarray, np.ndarray]]
         ),
         list_of_client_ids: list[int],
+        n_workers: int = 0,
         world_size: int | None = None,
         local_rank: int | None = None,
+        client_dataset_type: type[ClientDataset] = ClientDataset,
     ) -> None:
         self.data = data
         self.list_of_client_ids = list_of_client_ids
@@ -341,10 +574,14 @@ class CIFAR10FederatedDataset:
         self.local_rank = (
             int(os.environ["LOCAL_RANK"]) if local_rank is None else local_rank
         )
+        self.client_dataset_type = client_dataset_type
+        self.n_workers = n_workers
 
     def make_dataset_fn(self, client_id: int) -> ClientDataset:
         """Return a client dataset for the given client_id."""
-        return ClientDataset(data=self.data[client_id], client_id=client_id)
+        return self.client_dataset_type(
+            data=self.data[client_id], client_id=client_id, n_workers=self.n_workers
+        )
 
     def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
         """Iterate over a cohort of clients."""
@@ -354,8 +591,60 @@ class CIFAR10FederatedDataset:
                     client_id = self.list_of_client_ids[i]
                     yield self.make_dataset_fn(client_id)
         if isinstance(cohort_size, list):
-            for i in cohort_size:
-                client_id = self.list_of_client_ids[i]
+            for client_id in cohort_size:
+                yield self.make_dataset_fn(client_id)
+
+
+class FederatedDatasetOpenImage:
+    """Implementation of a federated dataset of clients for federated learning."""
+
+    def __init__(
+        self,
+        path: Path,
+        root: Path,
+        data: dict[int, tuple[list, list]],
+        list_of_client_ids: list[int],
+        n_workers: int = 1,
+        world_size: int | None = None,
+        local_rank: int | None = None,
+        client_dataset_type: type[
+            ClientDatasetOpenImageNoDataloader
+        ] = ClientDatasetOpenImageDataloader,
+    ) -> None:
+        self.data = data
+        self.path = path
+        self.list_of_client_ids = list_of_client_ids
+        self.world_size = (
+            int(os.environ["WORLD_SIZE"]) if world_size is None else world_size
+        )
+        self.local_rank = (
+            int(os.environ["LOCAL_RANK"]) if local_rank is None else local_rank
+        )
+        self.client_dataset_type = client_dataset_type
+        self.root = root
+        self.n_workers = n_workers
+
+    def make_dataset_fn(self, client_id: int) -> ClientDatasetOpenImageNoDataloader:
+        """Return a client dataset for the given client_id."""
+        return self.client_dataset_type(
+            data=self.data[client_id],
+            client_id=client_id,
+            path=self.path,
+            root=self.root,
+            n_workers=self.n_workers,
+        )
+
+    def get_cohort(
+        self, cohort_size: int | list[int]
+    ) -> Iterable[ClientDatasetOpenImageNoDataloader]:
+        """Iterate over a cohort of clients."""
+        if isinstance(cohort_size, int):
+            for i in range(cohort_size):
+                if (i % self.world_size) == self.local_rank:
+                    client_id = self.list_of_client_ids[i]
+                    yield self.make_dataset_fn(client_id)
+        if isinstance(cohort_size, list):
+            for client_id in cohort_size:
                 yield self.make_dataset_fn(client_id)
 
 
@@ -496,7 +785,7 @@ def make_iid_federated_dataset(
     numpy_to_tensor: Callable = lambda x: x,
     world_size: int | None = None,
     local_rank: int | None = None,
-) -> CIFAR10FederatedDataset:
+) -> FederatedDataset:
     """
     Create a federated dataset with IID users from the CIFAR10 dataset.
 
@@ -516,7 +805,7 @@ def make_iid_federated_dataset(
         start_ix += dataset_len
         if start_ix >= len(images):
             break
-    return CIFAR10FederatedDataset(
+    return FederatedDataset(
         data=users_to_data,
         list_of_client_ids=list(users_to_data),
         world_size=world_size,
@@ -530,7 +819,7 @@ def make_cifar10_iid_datasets(
     numpy_to_tensor: Callable = lambda x: x,
     world_size: int | None = None,
     local_rank: int | None = None,
-) -> CIFAR10FederatedDataset:
+) -> FederatedDataset:
     """Construct the CIFAR10 IID federated dataset."""
     train_images, train_labels, _, _ = load_and_preprocess_cifar10(
         data_dir / "cifar10_train.p"
@@ -545,15 +834,16 @@ def make_cifar10_iid_datasets(
     )
 
 
-def cifar10_training_loop(
-    client_model: Module,
+def classification_training_loop(
+    client_model: Module | MultiLabelCNN,
     _device: device,
-    client_dataset: ClientDataset,
+    client_dataset: ClientDataset | ClientDatasetOpenImageNoDataloader,
     batch_size: int,
+    dataset_name: str,
     n_local_epochs: int = 1,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Execute the local training loop for CIFAR10."""
-    local_optimizer = get_optimizer(name="cifar10", model=client_model)
+    """Execute the local training loop for CIFAR10, OpenImage and Shakespeare."""
+    local_optimizer = get_optimizer(name=dataset_name, model=client_model)
     criterion = torch.nn.CrossEntropyLoss(reduction="mean")
 
     client_model.train()
@@ -581,10 +871,11 @@ def cifar10_training_loop(
 
 
 def flair_training_loop(
-    client_model: MultiLabelCNN,
+    client_model: Module | MultiLabelCNN,
     _device: device,
-    client_dataset: ClientDataset,
+    client_dataset: ClientDataset | ClientDatasetOpenImageNoDataloader,
     batch_size: int,
+    dataset_name: str,
     n_local_epochs: int = 1,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Execute the local training loop for FLAIR."""
@@ -618,3 +909,82 @@ def flair_training_loop(
             loss.backward()
             local_optimizer.step()
     return cumulative_loss, cumulative_accuracy, cumulative_num_samples
+
+
+def make_shakespeare_natural_partition(
+    root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
+    dataset_type: str = "train",
+    n_workers: int = 0,
+    world_size: int | None = None,
+    local_rank: int | None = None,
+    client_samples_dict: dict[str | int, int] | None = None,
+    client_dataset_type: type[ClientDataset] = ClientDataset,
+) -> FederatedDataset:
+    """Load and preprocess SHAKESPEARE data from the shakespeare files."""
+    if client_samples_dict is None:
+        client_samples_dict = get_clients_population_dict(
+            name="shakespeare_memory", batch_size=10, seed=1337, dataset="train"
+        )
+    path_to_mapping = Path(root, "client_data_mapping")
+    path_to_data = Path(root, "data")
+
+    users_to_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+
+    for client_id in client_samples_dict:
+        path = Path(path_to_mapping / dataset_type / f"{client_id}.parquet")
+        data, labels = load_shakespeare_file(
+            path, path_to_data, dataset_type, SHAKESPEARE_DTYPES
+        )
+        pre_processed_data = np.array(
+            [[LEAF_CHARACTERS.find(c) for c in word] for word in data]
+        )
+        pre_processed_labels = np.array([LEAF_CHARACTERS.find(c) for c in labels])
+        users_to_data[int(client_id)] = (pre_processed_data, pre_processed_labels)
+
+    return FederatedDataset(
+        data=users_to_data,
+        n_workers=n_workers,
+        list_of_client_ids=list(users_to_data),
+        world_size=world_size,
+        local_rank=local_rank,
+        client_dataset_type=client_dataset_type,
+    )
+
+
+def make_openimage_natural_partition(
+    root: Path = Path("/datasets/FedScale/openImg"),
+    dataset_type: str = "train",
+    n_workers: int = 1,
+    world_size: int | None = None,
+    local_rank: int | None = None,
+    client_samples_dict: dict[str | int, int] | None = None,
+    client_dataset_type: type[
+        ClientDatasetOpenImageNoDataloader
+    ] = ClientDatasetOpenImageDataloader,
+) -> FederatedDatasetOpenImage:
+    """Load and preprocess SHAKESPEARE data from the shakespeare files."""
+    if client_samples_dict is None:
+        client_samples_dict = get_clients_population_dict(
+            name="openimage", batch_size=20, seed=1337, dataset="train"
+        )
+
+    path_to_mapping = Path(root, "client_data_mapping")
+    path_to_data = Path(root, dataset_type)
+
+    users_to_data: dict[int, tuple[list, list]] = {}
+
+    for client_id in client_samples_dict:
+        path = Path(path_to_mapping / dataset_type / f"{client_id}.parquet")
+        data, labels = _load_openimage_meta_data(path)
+        users_to_data[int(client_id)] = (data, labels)
+
+    return FederatedDatasetOpenImage(
+        path=path_to_data,
+        root=root,
+        data=users_to_data,
+        n_workers=n_workers,
+        list_of_client_ids=list(users_to_data),
+        world_size=world_size,
+        local_rank=local_rank,
+        client_dataset_type=client_dataset_type,
+    )

@@ -11,7 +11,7 @@
 timestamp=$(date +%Y-%m-%d_%H%M%S)
 run_uuid=$(uuidgen)
 # \activate the environment and go to the pollen_worker directory
-cd $HOME/projects/pollen_worker
+# cd $HOME/projects/pollen_worker
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
@@ -22,10 +22,10 @@ echo "Using policy $policy"
 CUSTOM_HYDRA_ARGS="num_nodes=1 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=127.0.0.1:6480"
 
 # Launch the server.
-poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
+poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none &
 
 # Launch the node manager.
-poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS
+poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none
 
 # How to use this script? Use what follows for a interactive job
 # srun -w mauao -c 11 --gres=gpu:1 --partition=interactive bash slurm_pollen_singlenode.sh

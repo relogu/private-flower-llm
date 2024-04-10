@@ -32,17 +32,21 @@ from pollen_worker.pollen_utils import (
     write_to_fit_result_shm,
 )
 from pollen_worker.horovod_utils import (
-    CIFAR10FederatedDataset,
-    ClientDataset,
+    ClientDatasetOpenImageDataloader,
     FLAIRFederatedDataset,
+    ClientDatasetShakespeareDataloader,
+    FederatedDataset,
+    FederatedDatasetOpenImage,
     all_reduce,
-    cifar10_training_loop,
+    classification_training_loop,
     flair_training_loop,
     get_model_difference,
     get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
     make_cifar10_iid_datasets,
+    make_openimage_natural_partition,
+    make_shakespeare_natural_partition,
     set_model_parameters_from_ndarrays,
     set_parameters,
     make_flair_federated_dataset,
@@ -86,7 +90,12 @@ class Worker(mp.Process):
         self.master_address: str
         self.master_port: int
         self.device: device
-        self.federated_dataset: CIFAR10FederatedDataset | FLAIRFederatedDataset
+        self.federated_dataset: (
+            FederatedDataset
+            | FLAIRFederatedDataset
+            | FederatedDataset
+            | FederatedDatasetOpenImage
+        )
         self.worker_global_model: Module
         self.client_model: Module | MultiLabelCNN
         self.buffer: dict[str, torch.Tensor] | None = None
@@ -153,28 +162,17 @@ class Worker(mp.Process):
                 get_variable_map(self.client_model)
             )
 
-            train_loop: (
-                Callable[
-                    [MultiLabelCNN, device, ClientDataset, int, int],
-                    tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-                ]
-                | Callable[
-                    [Module, device, ClientDataset, int, int],
-                    tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-                ]
-            )
-            if self.dataset_name == "cifar10":
-                train_loop = cifar10_training_loop
-            elif self.dataset_name == "flair":
+            if self.dataset_name == "flair":
                 train_loop = flair_training_loop
             else:
-                raise ValueError(f"Dataset {self.dataset_name} not supported.")
+                train_loop = classification_training_loop
 
             cumulative_loss, cumulative_accuracy, cumulative_num_samples = train_loop(
                 self.client_model,
                 self.device,
                 client_dataset,
                 config["batch_size"],
+                self.dataset_name,
                 1,
             )
             aggregated_loss += cumulative_loss * cumulative_num_samples
@@ -205,9 +203,12 @@ class Worker(mp.Process):
             )
             # Take the timestamp after the task is done
             end_time = time.time_ns()
-            results.append(
-                [client_dataset.client_id, start_time, end_time, str(self.device)]
-            )
+            results.append([
+                client_dataset.client_id,
+                start_time,
+                end_time,
+                str(self.device),
+            ])
         # Write to shared memory if this is the last client
         if self.buffer is not None:
             barrier()
@@ -255,9 +256,7 @@ class Worker(mp.Process):
                         )
                     )
                 # Interpret the model updates as gradients.
-                worker_global_model_variable_map[
-                    variable_name
-                ].grad.data.copy_(  # type: ignore[union-attr]
+                worker_global_model_variable_map[variable_name].grad.data.copy_(  # type: ignore[union-attr]
                     -1 * difference
                 )
             # Apply the update
@@ -351,6 +350,36 @@ class Worker(mp.Process):
                 world_size=self.concurrency,
                 local_rank=self.local_rank,
             )
+        elif self.dataset_name == "openimage":
+            # Openimage with dataloader with num_workers 1
+            self.federated_dataset = make_openimage_natural_partition(
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+                n_workers=1,
+                client_dataset_type=ClientDatasetOpenImageDataloader,
+            )
+            # Openimage with list-based pfl-style loading
+            # self.federated_dataset = make_openimage_natural_partition(
+            #     world_size=self.concurrency,
+            #     local_rank=self.local_rank,
+            #     client_dataset_type=ClientDatasetOpenImageNoDataloader,
+            # )
+        elif "shakespeare" in self.dataset_name:
+            # Shakespeare with dataloader with num_workers 0
+            self.federated_dataset = make_shakespeare_natural_partition(
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+                n_workers=0,
+                client_dataset_type=ClientDatasetShakespeareDataloader,
+            )
+
+            # Shakespeare with list-based pfl-style loading
+            # self.federated_dataset = make_shakespeare_natural_partition(
+            #     world_size=self.concurrency,
+            #     local_rank=self.local_rank,
+            #     client_dataset_type=ClientDataset,
+            # )
+
         # Create global model
         # if self.local_rank == 0:
         self.worker_global_model = get_model(self.dataset_name)

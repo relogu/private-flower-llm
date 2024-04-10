@@ -106,15 +106,7 @@ class Shakespeare(Dataset):
         return data, labels
 
     def _load_meta_data(self, path: Path) -> tuple[pd.Series, pd.Series]:
-        dataframe = pd.read_parquet(
-            path,
-            engine="pyarrow",
-        )
-
-        for col in dataframe.columns:
-            dataframe[col] = dataframe[col].astype(SHAKESPEARE_DTYPES[col])
-
-        return dataframe["sample_path"], dataframe["label"]
+        return _load_shakespeare_meta_data(path, SHAKESPEARE_DTYPES)
 
     def _load_file(self) -> tuple[pd.Series, pd.Series]:
         path = Path(self.path_to_mapping / self.name / f"{self.client_id}.parquet")
@@ -130,6 +122,7 @@ class ShakespeareLoaded(Dataset):
     def __init__(
         self,
         root: Path,
+        data_targets: tuple[list, list] | None = None,
         client_id: int | None = None,
         dataset: str = "train",
         transform: Callable[[Any], torch.Tensor] | None = None,
@@ -147,7 +140,10 @@ class ShakespeareLoaded(Dataset):
         self.path_to_data = Path(self.root, "data")
 
         # load data and targets
-        self.data, self.targets = self._load_file()
+        if data_targets is not None:
+            self.data, self.targets = data_targets
+        else:
+            self.data, self.targets = self._load_file()
 
     def _word_to_indices(self, word: str) -> list[int]:
         """Convert a sequence of characters into position indices.
@@ -338,3 +334,41 @@ if __name__ == "__main__":
             f"/datasets/FedScale/leaf_shakespeare/clients_data_mapping/{dataset}_clients_dict.parquet"
         ).exists():
             _create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
+
+
+def _load_shakespeare_meta_data(
+    path: Path, shakespeare_dtypes: dict
+) -> tuple[pd.Series, pd.Series]:
+    """Load the Shakespeare dataset from the parquet file."""
+    # Filter deprecation warning from incompatible pandas and pyarrow versions
+    warnings.filterwarnings(
+        action="ignore",
+        category=DeprecationWarning,
+        message="Passing a BlockManager to DataFrame*",
+    )
+    dataframe = pd.read_parquet(
+        path,
+        engine="pyarrow",
+    )
+
+    for col in dataframe.columns:
+        dataframe[col] = dataframe[col].astype(shakespeare_dtypes[col])
+
+    return dataframe["sample_path"], dataframe["label"]
+
+
+def load_shakespeare_file(
+    path: Path, path_to_data: Path, dataset_name: str, shakespeare_dtypes: dict
+) -> tuple[list, list]:
+    """Load the Shakespeare dataset from the parquet file."""
+    samples, labels = _load_shakespeare_meta_data(path, shakespeare_dtypes)
+    data = []
+    labels = []
+    for sample in samples:
+        sample_path = path_to_data / dataset_name / sample
+        with open(sample_path, "rb") as f:
+            d = pickle.load(f)
+            data.append(d["x"])
+            labels.append(d["y"])
+
+    return data, labels

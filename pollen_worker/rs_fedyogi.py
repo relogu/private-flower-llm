@@ -129,7 +129,10 @@ class FedYogiReproducibleSampling(FedYogi):
         self.seed = seed
 
     def configure_fit(
-        self, server_round: int, parameters: Parameters, client_manager: SimpleClientManager  # type: ignore[override]
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: SimpleClientManager,  # type: ignore[override]
     ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}

@@ -25,6 +25,7 @@ from pollen_worker.utils import wandb_init, weighted_average
 from pollen_worker.virtual_client import VirtualClient
 from pollen_worker.wandb_history import WandbHistory
 
+
 transformers.logging.set_verbosity_error()
 
 
