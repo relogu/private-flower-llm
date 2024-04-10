@@ -31,6 +31,7 @@ from pollen_worker.pollen_utils import (
     write_to_fit_result_shm,
 )
 from pollen_worker.horovod_utils import (
+    ClientDatasetShakespeareDataloader,
     FederatedDataset,
     FederatedDatasetOpenImage,
     all_reduce,
@@ -38,7 +39,7 @@ from pollen_worker.horovod_utils import (
     get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
-    make_openimage_natural_partition,
+    make_shakespeare_natural_partition,
     prepare_batch,
     set_model_parameters_from_ndarrays,
     set_parameters,
@@ -317,10 +318,35 @@ class Worker(mp.Process):
             self.task_queues,
         )
         # TODO: Create federated dataset
-        self.federated_dataset = make_openimage_natural_partition(
+        # Openimage with dataloader with num_workers 1
+        # self.federated_dataset = make_openimage_natural_partition(
+        #     world_size=self.concurrency,
+        #     local_rank=self.local_rank,
+        #     n_workers=1,
+        #     client_dataset_type=ClientDatasetOpenImageDataloader,
+        # )
+        # Openimage with list-based pfl-style loading
+        # self.federated_dataset = make_openimage_natural_partition(
+        #     world_size=self.concurrency,
+        #     local_rank=self.local_rank,
+        #     client_dataset_type=ClientDatasetOpenImageNoDataloader,
+        # )
+
+        # Shakespeare with dataloader with num_workers 0
+        self.federated_dataset = make_shakespeare_natural_partition(
             world_size=self.concurrency,
             local_rank=self.local_rank,
+            n_workers=0,
+            client_dataset_type=ClientDatasetShakespeareDataloader,
         )
+
+        # Shakespeare with list-based pfl-style loading
+        # self.federated_dataset = make_shakespeare_natural_partition(
+        #     world_size=self.concurrency,
+        #     local_rank=self.local_rank,
+        #     client_dataset_type=ClientDataset,
+        # )
+
         # Create global model
         # if self.local_rank == 0:
         self.worker_global_model = get_model(self.dataset_name)

@@ -122,6 +122,7 @@ class ShakespeareLoaded(Dataset):
     def __init__(
         self,
         root: Path,
+        data_targets: tuple[list, list] | None = None,
         client_id: int | None = None,
         dataset: str = "train",
         transform: Callable[[Any], torch.Tensor] | None = None,
@@ -139,7 +140,10 @@ class ShakespeareLoaded(Dataset):
         self.path_to_data = Path(self.root, "data")
 
         # load data and targets
-        self.data, self.targets = self._load_file()
+        if data_targets is not None:
+            self.data, self.targets = data_targets
+        else:
+            self.data, self.targets = self._load_file()
 
     def _word_to_indices(self, word: str) -> list[int]:
         """Convert a sequence of characters into position indices.
