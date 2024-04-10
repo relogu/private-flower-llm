@@ -1,6 +1,6 @@
 """The placement policies used in the Pollen paper.
 
-A placement policy asssigns clients to devices according to a certain strategy. The
+A placement policy assigns clients to devices according to a certain strategy. The
 official strategy representing Pollen is the learning-based placement. However, we also
 provide other strategies as baselines. Round-robin should be considered the default
 baseline.
@@ -25,6 +25,7 @@ from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
 
 from pollen_worker.resources_manager import Node
 
@@ -73,7 +74,7 @@ def get_placement_fn(policy: str = "rr") -> Callable:
 def pollen_learning_based_placement(
     **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
-    """Return the cliets' placements according to the Pollen's learning-based placement.
+    """Return the clients' placements according to the Pollen's placement.
 
     Returns
     -------
@@ -81,14 +82,16 @@ def pollen_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_pollen_function, _jacobian_pollen_function], **kwargs
+        fns=[_pollen_function, _jacobian_pollen_function],
+        **kwargs,
+        # fns=[_linear, _jacobian_linear], **kwargs
     )
 
 
 def parrot_learning_based_placement(
     **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
-    """Return the cliets' placements according to the Parrot's learning-based placement.
+    """Return the clients' placements according to the Parrot's placement.
 
     Returns
     -------
@@ -126,6 +129,7 @@ def get_pollen_models(
             Callable[[Any, Any, Any], Any] | Callable[[Any, Any, Any, Any], Any]
         ] = (
             [_pollen_function, _jacobian_pollen_function]
+            # [_linear, _jacobian_linear]
             if placement_policy == "lb"
             else [_linear, _jacobian_linear]
         )
@@ -284,6 +288,9 @@ def learning_based_placement(
                 n_samples=num_samples,
                 batch_size=batch_size,
             )
+            # Filter out -inf predictions, if any
+            if load == -np.inf:
+                load = 1e-8
             if correction_tables is not None:
                 correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
                     pc.field("n_batches") == pc.scalar(num_samples // batch_size)
@@ -292,7 +299,7 @@ def learning_based_placement(
                     correction = correction.column("ctt_mean").to_numpy()[0]
                     # load = (load + correction) / 2
             worker[2] += load
-        # Assing all the rest
+        # Assign all the rest
         while len(sampled_virtual_cids) > 0:
             # Sort devices by load (increasing order)
             workers_assignments = sorted(
@@ -310,6 +317,9 @@ def learning_based_placement(
                 n_samples=num_samples,
                 batch_size=batch_size,
             )
+            # Filter out -inf predictions, if any
+            if load == -np.inf:
+                load = 1e-8
             if correction_tables is not None:
                 correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
                     pc.field("n_batches") == pc.scalar(num_samples // batch_size)
@@ -319,11 +329,11 @@ def learning_based_placement(
                     load = (load + correction) / 2
                     # load = correction
             workers_assignments[0][2] += load
-        # log(
-        #     DEBUG,
-        #     "Pollen-MLStrategy :: estimated loads %s",
-        #     [w[2] for w in workers_assignments],
-        # )
+        log(
+            DEBUG,
+            "Pollen-MLStrategy :: estimated loads %s",
+            [w[2] for w in workers_assignments],
+        )
         # Merge workers assignments
         devices_assignment: dict[str, list[list[int]]] = defaultdict(list)
         for worker in workers_assignments:
@@ -377,7 +387,7 @@ def round_robin_placement(
     # Extract cids
     cids: NDArray[np.int16] = np.array([x[0] for x in sampled_virtual_cids])
     # Creates equal clients splits amongst workers
-    # in an ordered fashon by index, [1,2,3] split by two -> [1],[2,3].
+    # in an ordered fashion by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
     n_total_workers = np.sum([
         np.sum([device.concurrency for _, device in node.device_info.items()])
@@ -414,7 +424,7 @@ def round_robin_placement(
     if verbose:
         log(
             DEBUG,
-            "Round Robin (RR) placement :: tuple(node, device assignements) %s",
+            "Round Robin (RR) placement :: tuple(node, device assignments) %s",
             node_assignments,
         )
     return node_assignments
@@ -490,7 +500,7 @@ def sorted_round_robin_placement(
     if verbose:
         log(
             DEBUG,
-            "Sorted Round Robin (SRR) placement :: tuple(node, device assignements) %s",
+            "Sorted Round Robin (SRR) placement :: tuple(node, device assignments) %s",
             node_assignments,
         )
     return node_assignments
@@ -526,7 +536,7 @@ def samples_placement(
         np.sum([device.concurrency for _, device in node.device_info.items()])
         for _, (_, node) in nodes_dict.items()
     ])
-    # Assing the first `n_total_workers` clients to the workers
+    # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     # Assign the remaining clients iteratively to the least loaded worker
     for virtual_cid, num_samples in sorted_sampled_virtual_cids[n_total_workers:]:
@@ -604,7 +614,7 @@ def batches_placement(
         np.sum([device.concurrency for _, device in node.device_info.items()])
         for _, (_, node) in nodes_dict.items()
     ])
-    # Assing the first `n_total_workers` clients to the workers
+    # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
@@ -684,7 +694,7 @@ def log_batches_placement(
         np.sum([device.concurrency for _, device in node.device_info.items()])
         for _, (_, node) in nodes_dict.items()
     ])
-    # Assing the first `n_total_workers` clients to the workers
+    # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
@@ -854,10 +864,13 @@ def parallel_train_models(
     fns: list[Callable], clients_stats: dict[str, pa.Table]
 ) -> dict[str, Any]:
     """Train the models in parallel."""
-    # Set up the parallelisation
+    # Set up the parallelization
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = 1
+        cpus_affinity = psutil.Process().cpu_affinity()
+        if cpus_affinity:
+            cpus = len(cpus_affinity)
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -882,6 +895,11 @@ def sequential_train_models(
     ret = {}
     # Loop over model names
     for k, v in clients_stats.items():
+        y1 = v.column("end_time").to_numpy()
+        y0 = v.column("start_time").to_numpy()
+        delta = (y1 - y0) * 1e-9
+        v = v.add_column(0, "delta", cast(pa.Array, pa.array(delta)))
+        v = v.group_by(["n_samples"]).aggregate([("delta", "mean")])
         ret.update(_train_model(fns, k, v))
     return ret
 
@@ -891,10 +909,11 @@ def _train_model(
 ) -> dict[str, Any]:
     # x = data.column("n_batches").to_numpy()
     x = data.column("n_samples").to_numpy()
-    y1 = data.column("end_time").to_numpy()
-    y0 = data.column("start_time").to_numpy()
-    delta = (y1 - y0) * 1e-9
-    p0 = [0.0] * (len(signature(fns[0]).parameters) - 1)
+    # y1 = data.column("end_time").to_numpy()
+    # y0 = data.column("start_time").to_numpy()
+    # delta = (y1 - y0) * 1e-9
+    delta = data.column("delta_mean").to_numpy()
+    p0 = [1.0] * (len(signature(fns[0]).parameters) - 1)
     bounds = (0.0, np.inf)
     return {
         model_name: curve_fit(
@@ -904,10 +923,12 @@ def _train_model(
             p0=p0,
             bounds=bounds,
             jac=fns[1],
-            ftol=1e-3,
-            xtol=1e-3,
-            gtol=1e-3,
+            ftol=1e-8,
+            xtol=1e-8,
+            gtol=1e-8,
             loss="arctan",
+            check_finite=True,
+            nan_policy="omit",
         )
     }
 
@@ -916,10 +937,13 @@ def parallel_get_models_scores(
     fn: Callable, models: dict[str, Any], clients_stats: dict[str, pa.Table]
 ) -> dict[str, float]:
     """Return the scores of the model computed in parallel."""
-    # Set up the parallelisation
+    # Set up the parallelization
     n_jobs = 100
     try:
-        cpus = len(psutil.Process().cpu_affinity())
+        cpus = 1
+        cpus_affinity = psutil.Process().cpu_affinity()
+        if cpus_affinity:
+            cpus = len(cpus_affinity)
     except AttributeError:
         cpus = psutil.cpu_count()
     if n_jobs > cpus:
@@ -944,7 +968,13 @@ def sequential_get_models_scores(
     ret = {}
     # Loop over model names
     for k in models:
-        ret.update(_get_model_score(fn, k, models[k], clients_stats[k]))
+        v = clients_stats[k]
+        y1 = v.column("end_time").to_numpy()
+        y0 = v.column("start_time").to_numpy()
+        delta = (y1 - y0) * 1e-9
+        v = v.add_column(0, "delta", cast(pa.Array, pa.array(delta)))
+        v = v.group_by(["n_samples"]).aggregate([("delta", "mean")])
+        ret.update(_get_model_score(fn, k, models[k], v))
     return ret
 
 
@@ -954,7 +984,12 @@ def _get_model_score(
     parameters, _ = model
     # x = data.column("n_batches").to_numpy()
     x = data.column("n_samples").to_numpy()
-    y1 = data.column("end_time").to_numpy()
-    y0 = data.column("start_time").to_numpy()
-    delta = (y1 - y0) * 1e-9
+    # y1 = data.column("end_time").to_numpy()
+    # y0 = data.column("start_time").to_numpy()
+    # delta = (y1 - y0) * 1e-9
+    delta = data.column("delta_mean").to_numpy()
+    plt.scatter(x, delta, label="data", alpha=0.5, marker=".", c="r")
+    plt.scatter(x, fn(x, *parameters), label="model", alpha=0.5, marker=".", c="b")
+    plt.savefig(f"{model_name}.png")
+    plt.close()
     return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}
