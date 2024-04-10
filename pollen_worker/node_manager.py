@@ -176,7 +176,7 @@ class NodeManager(fl.client.NumPyClient):
         if torch.cuda.is_available():
             device_info = dict(
                 get_cuda_prop(
-                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=2
+                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=4
                 ),
                 **device_info,
             )
@@ -191,7 +191,10 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         try:
-            cpus = len(psutil.Process().cpu_affinity())
+            cpus = 1
+            cpus_affinity = psutil.Process().cpu_affinity()
+            if cpus_affinity:
+                cpus = len(cpus_affinity)
         except AttributeError:
             cpus = psutil.cpu_count()
         # Get general node properties
