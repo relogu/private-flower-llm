@@ -1,12 +1,12 @@
 """Flower simulation using a pollen server.
 
 Starts a Flower server which awaits connections from Pollen node managers. It supports
-using wandb for logging and hydra for exeperiment configuration.
+using wandb for logging and hydra for experiment configuration.
 """
 
 import json
 import time
-from logging import DEBUG, INFO
+from logging import ERROR, INFO
 from pathlib import Path
 
 import flwr as fl
@@ -52,7 +52,12 @@ def main(cfg: DictConfig) -> None:
             seed=cfg.seed,
         )
     except Exception as e:
-        log(DEBUG, f"Exception while getting the clients' dictionary: {e}")
+        log(
+            ERROR,
+            "Exception while getting the clients' dictionary. Setting it to 1.",
+            exc_info=e,
+            stack_info=True,
+        )
         cid_samples_dict = {int(k): 1 for k in range(int(cfg.task.n_clients_per_round))}
     log(INFO, f"Time to get the clients' dictionary: {time.time() - s_t}")
     n_total_clients = len(cid_samples_dict)
