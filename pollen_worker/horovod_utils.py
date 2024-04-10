@@ -13,15 +13,18 @@ from torch import device
 from torch.nn import Module
 import torch.distributed as dist
 import torch.backends as torch_backends
+from torch.utils.data import DataLoader
 
 import numpy as np
 from flwr.common import NDArrays
+import torch.utils
+from pollen_worker.datasets.openimage import OpenImage, _load_openimage_meta_data
 from pollen_worker.datasets.shakespeare import SHAKESPEARE_DTYPES
 from pollen_worker.datasets.shakespeare import (
     load_shakespeare_file,
 )
 from pollen_worker.datasets.shakespeare import LEAF_CHARACTERS
-from pollen_worker.pollen_utils import get_clients_population_dict
+from pollen_worker.pollen_utils import get_clients_population_dict, get_device
 
 
 def get_free_tcp_port() -> int:
@@ -114,7 +117,7 @@ def set_model_parameters_from_ndarrays(
     state_dict = OrderedDict(
         {k: torch.tensor(v, device=device) for k, v in params_dict}
     )
-    model.load_state_dict(state_dict, strict=True)
+    model.load_state_dict(state_dict, strict=False)
 
 
 def flatten(
@@ -266,10 +269,16 @@ def get_model_difference(
 def prepare_batch(batch: Any) -> dict[int, torch.Tensor] | list[torch.Tensor]:
     """Transform a batch of data to tensors."""
     if isinstance(batch, dict):
-        return {k: to_tensor(v) for k, v in batch.items()}
+        return {
+            k: v if isinstance(v, torch.Tensor) else to_tensor(v)
+            for k, v in batch.items()
+        }
     else:
         # TODO: Sort out the typing here
-        return [to_tensor(data) for data in batch]
+        return [
+            data if isinstance(data, torch.Tensor) else to_tensor(data)
+            for data in batch
+        ]
 
 
 class ClientDataset:
@@ -321,6 +330,73 @@ class ClientDataset:
         yield from self._batches[batch_size]
 
 
+class ClientDatasetOpenImage:
+    """Implementation of a client dataset for federated learning."""
+
+    def __init__(
+        self,
+        data: tuple[list, list],
+        client_id: int,
+        path: Path,
+        root: Path,
+    ) -> None:
+        self.data = data
+        self.client_id = client_id
+        self.path = path
+        self._batches: dict[int, list] = {}
+        self.dataset = OpenImage(
+            root,
+            data,
+            client_id,
+        )
+
+    def __len__(self) -> int:
+        """Return the number of samples in the client dataset."""
+        return len(self.data[0])
+
+    def iter(self, batch_size: int | None) -> Iterable[Any]:
+        """Implement an iterator over the client dataset for a given batch size.
+
+        It returns the entire dataset if batch_size is None.
+        """
+        if batch_size is None:
+            yield self.data
+            return
+        n_workers = 1
+        train_loader = DataLoader(
+            # NOTE: Non-default arguments
+            dataset=self.dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=n_workers,
+            # NOTE: Prevent runtime error related to BatchNorm, apparently
+            drop_last=False,
+            # copy Tensors into CUDA pinned memory before returning them
+            pin_memory=True,
+            # the device to be used for pinning the memory
+            pin_memory_device=str(get_device()),
+            # builds batches from samples
+            collate_fn=None,
+            # NOTE: Default arguments
+            # how to draw sample from the dataset
+            sampler=None,
+            # like the above but for batches
+            batch_sampler=None,
+            # if positive, the timeout value for cxollecting a batch from workers
+            timeout=0,
+            # init function for worker processes
+            worker_init_fn=None,
+            multiprocessing_context=None,
+            # This allows to maintain the workers
+            prefetch_factor=2 if n_workers > 0 else None,
+            # PRNG to use for random sampling
+            generator=None,
+            persistent_workers=False,
+        )
+
+        yield from train_loader
+
+
 class FederatedDataset:
     """Implementation of a federated dataset of clients for federated learning."""
 
@@ -350,6 +426,54 @@ class FederatedDataset:
         return self.client_dataset_type(data=self.data[client_id], client_id=client_id)
 
     def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
+        """Iterate over a cohort of clients."""
+        if isinstance(cohort_size, int):
+            for i in range(cohort_size):
+                if (i % self.world_size) == self.local_rank:
+                    client_id = self.list_of_client_ids[i]
+                    yield self.make_dataset_fn(client_id)
+        if isinstance(cohort_size, list):
+            for client_id in cohort_size:
+                yield self.make_dataset_fn(client_id)
+
+
+class FederatedDatasetOpenImage:
+    """Implementation of a federated dataset of clients for federated learning."""
+
+    def __init__(
+        self,
+        path: Path,
+        root: Path,
+        data: dict[int, tuple[list, list]],
+        list_of_client_ids: list[int],
+        world_size: int | None = None,
+        local_rank: int | None = None,
+        client_dataset_type: type[ClientDatasetOpenImage] = ClientDatasetOpenImage,
+    ) -> None:
+        self.data = data
+        self.path = path
+        self.list_of_client_ids = list_of_client_ids
+        self.world_size = (
+            int(os.environ["WORLD_SIZE"]) if world_size is None else world_size
+        )
+        self.local_rank = (
+            int(os.environ["LOCAL_RANK"]) if local_rank is None else local_rank
+        )
+        self.client_dataset_type = client_dataset_type
+        self.root = root
+
+    def make_dataset_fn(self, client_id: int) -> ClientDatasetOpenImage:
+        """Return a client dataset for the given client_id."""
+        return self.client_dataset_type(
+            data=self.data[client_id],
+            client_id=client_id,
+            path=self.path,
+            root=self.root,
+        )
+
+    def get_cohort(
+        self, cohort_size: int | list[int]
+    ) -> Iterable[ClientDatasetOpenImage]:
         """Iterate over a cohort of clients."""
         if isinstance(cohort_size, int):
             for i in range(cohort_size):
@@ -446,19 +570,18 @@ def make_cifar10_iid_datasets(
     )
 
 
-DEFAULT_CLIENT_SAMPLES_DICT: dict[str | int, int] = get_clients_population_dict(
-    name="shakespeare_memory", batch_size=10, seed=1337, dataset="train"
-)
-
-
 def make_shakespeare_natural_partition(
     root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
     dataset_type: str = "train",
     world_size: int | None = None,
     local_rank: int | None = None,
-    client_samples_dict: dict[str | int, int] = DEFAULT_CLIENT_SAMPLES_DICT,
+    client_samples_dict: dict[str | int, int] | None = None,
 ) -> FederatedDataset:
     """Load and preprocess SHAKESPEARE data from the shakespeare files."""
+    if client_samples_dict is None:
+        client_samples_dict = get_clients_population_dict(
+            name="shakespeare_memory", batch_size=10, seed=1337, dataset="train"
+        )
     path_to_mapping = Path(root, "client_data_mapping")
     path_to_data = Path(root, "data")
 
@@ -484,30 +607,31 @@ def make_shakespeare_natural_partition(
 
 
 def make_openimage_natural_partition(
-    root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
+    root: Path = Path("/datasets/FedScale/openImg"),
     dataset_type: str = "train",
     world_size: int | None = None,
     local_rank: int | None = None,
-    client_samples_dict: dict[str | int, int] = DEFAULT_CLIENT_SAMPLES_DICT,
-) -> FederatedDataset:
+    client_samples_dict: dict[str | int, int] | None = None,
+) -> FederatedDatasetOpenImage:
     """Load and preprocess SHAKESPEARE data from the shakespeare files."""
-    path_to_mapping = Path(root, "client_data_mapping")
-    path_to_data = Path(root, "data")
+    if client_samples_dict is None:
+        client_samples_dict = get_clients_population_dict(
+            name="openimage", batch_size=20, seed=1337, dataset="train"
+        )
 
-    users_to_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    path_to_mapping = Path(root, "client_data_mapping")
+    path_to_data = Path(root, dataset_type)
+
+    users_to_data: dict[int, tuple[list, list]] = {}
 
     for client_id in client_samples_dict:
         path = Path(path_to_mapping / dataset_type / f"{client_id}.parquet")
-        data, labels = load_shakespeare_file(
-            path, path_to_data, dataset_type, SHAKESPEARE_DTYPES
-        )
-        pre_processed_data = np.array(
-            [[LEAF_CHARACTERS.find(c) for c in word] for word in data]
-        )
-        pre_processed_labels = np.array([LEAF_CHARACTERS.find(c) for c in labels])
-        users_to_data[int(client_id)] = (pre_processed_data, pre_processed_labels)
+        data, labels = _load_openimage_meta_data(path)
+        users_to_data[int(client_id)] = (data, labels)
 
-    return FederatedDataset(
+    return FederatedDatasetOpenImage(
+        path=path_to_data,
+        root=root,
         data=users_to_data,
         list_of_client_ids=list(users_to_data),
         world_size=world_size,

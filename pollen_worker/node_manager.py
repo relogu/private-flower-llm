@@ -176,7 +176,7 @@ class NodeManager(fl.client.NumPyClient):
         if torch.cuda.is_available():
             device_info = dict(
                 get_cuda_prop(
-                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=2
+                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=6
                 ),
                 **device_info,
             )

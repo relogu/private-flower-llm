@@ -32,12 +32,13 @@ from pollen_worker.pollen_utils import (
 )
 from pollen_worker.horovod_utils import (
     FederatedDataset,
+    FederatedDatasetOpenImage,
     all_reduce,
     get_model_difference,
     get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
-    make_shakespeare_natural_partition,
+    make_openimage_natural_partition,
     prepare_batch,
     set_model_parameters_from_ndarrays,
     set_parameters,
@@ -81,7 +82,7 @@ class Worker(mp.Process):
         self.master_address: str
         self.master_port: int
         self.device: device
-        self.federated_dataset: FederatedDataset
+        self.federated_dataset: FederatedDataset | FederatedDatasetOpenImage
         self.worker_global_model: Module
         self.client_model: Module
         self.buffer: dict[str, torch.Tensor] | None = None
@@ -316,7 +317,7 @@ class Worker(mp.Process):
             self.task_queues,
         )
         # TODO: Create federated dataset
-        self.federated_dataset = make_shakespeare_natural_partition(
+        self.federated_dataset = make_openimage_natural_partition(
             world_size=self.concurrency,
             local_rank=self.local_rank,
         )

@@ -46,6 +46,7 @@ class OpenImage(Dataset):
     def __init__(
         self,
         root: Path,
+        data_targets: tuple[list, list] | None = None,
         client_id: int | None = None,
         dataset: str = "train",
         transform: Callable[[Any], torch.Tensor] | None = train_transform,
@@ -63,7 +64,10 @@ class OpenImage(Dataset):
 
         self.path = self.root / self.data_file
         # load data and targets
-        self.data, self.targets = self._load_file()
+        if data_targets is not None:
+            self.data, self.targets = data_targets
+        else:
+            self.data, self.targets = self._load_file()
         self.imgview = imgview
 
     def __getitem__(self, index: int) -> tuple[Any, Any | int]:
@@ -234,3 +238,21 @@ if __name__ == "__main__":
             f"/datasets/FedScale/openImg/clients_data_mapping/{dataset}_clients_dict.parquet"
         ).exists():
             _create_parquet_clients_dict(dataset=dataset, n_jobs=n_jobs)
+
+
+def _load_openimage_meta_data(path: Path) -> tuple[list, list]:
+    # Filter deprecation warning from incompatible pandas and pyarrow versions
+    warnings.filterwarnings(
+        action="ignore",
+        category=DeprecationWarning,
+        message="Passing a BlockManager to DataFrame*",
+    )
+    dataframe = pd.read_parquet(
+        path,
+        engine="pyarrow",
+    )
+
+    for col in dataframe.columns:
+        dataframe[col] = dataframe[col].astype(OPENIMAGE_DTYPES[col])
+
+    return dataframe["sample_path"].tolist(), dataframe["label_id"].tolist()
