@@ -23,10 +23,10 @@ for policy in "lb"; do
     CUSTOM_HYDRA_ARGS="num_nodes=1 run_uuid=$run_uuid task=cifar10 placement_policy=$policy flwr_address=127.0.0.1:6481"
 
     # Launch the server.
-    poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
+    poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none  &
 
     # Launch the node manager.
-    poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS
+    poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none 
 done
 
 # How to use this script? Use what follows for a interactive job
