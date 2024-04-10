@@ -1,6 +1,7 @@
 """A highly efficient worker for Pollen."""
 
 import multiprocessing
+from pathlib import Path
 import pickle
 import time
 from collections.abc import Callable
@@ -12,7 +13,7 @@ from typing import Any
 import uuid
 from torch import device
 from torch.nn import Module
-from torch.distributed import init_process_group, dist_backend
+from torch.distributed import init_process_group, dist_backend, barrier
 
 import cloudpickle
 import multiprocess as mp
@@ -21,26 +22,30 @@ import transformers
 from flwr.common.logger import log
 from multiprocess import set_start_method
 
+from pollen_worker.models.pfl_cnns import MultiLabelCNN
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
     allocate_shm,
     get_model,
-    get_optimizer,
     remove_shm_from_resource_tracker,
     write_to_fit_result_shm,
 )
 from pollen_worker.horovod_utils import (
-    FederatedDataset,
+    CIFAR10FederatedDataset,
+    ClientDataset,
+    FLAIRFederatedDataset,
     all_reduce,
+    cifar10_training_loop,
+    flair_training_loop,
     get_model_difference,
     get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
     make_cifar10_iid_datasets,
-    prepare_batch,
     set_model_parameters_from_ndarrays,
     set_parameters,
+    make_flair_federated_dataset,
 )
 
 from pollen_worker.virtual_client import VirtualClient
@@ -81,9 +86,9 @@ class Worker(mp.Process):
         self.master_address: str
         self.master_port: int
         self.device: device
-        self.federated_dataset: FederatedDataset
+        self.federated_dataset: CIFAR10FederatedDataset | FLAIRFederatedDataset
         self.worker_global_model: Module
-        self.client_model: Module
+        self.client_model: Module | MultiLabelCNN
         self.buffer: dict[str, torch.Tensor] | None = None
         self.cache: dict[str, torch.Tensor] | None = None
 
@@ -113,6 +118,8 @@ class Worker(mp.Process):
 
     def process_task_pytorch_distributed(self, client_ids: list[int]) -> None:
         """Execute the training of the passed client ids using Horovod."""
+        barrier()
+        init_time = time.time()
         # Loads a dict from the shared memory buffer
         config = pickle.loads(self.config_shm.buf)
         # Initialise number of samples and loss to be then reduced
@@ -129,6 +136,14 @@ class Worker(mp.Process):
         worker_central_optimizer = torch.optim.SGD(
             self.worker_global_model.parameters(), lr=1.0
         )
+        barrier()
+        elapsed_time = time.time() - init_time
+        log(
+            DEBUG,
+            "Node initialization time measure at rank %s: %s",
+            self.local_rank,
+            elapsed_time,
+        )
         # TODO: Fix the typing here
         results: list[list[int, int, int, str]] = []  # type: ignore[type-arg]
         for client_dataset in self.federated_dataset.get_cohort(client_ids):
@@ -137,33 +152,31 @@ class Worker(mp.Process):
             initial_model_variable_map = get_parameters(
                 get_variable_map(self.client_model)
             )
-            local_optimizer = get_optimizer(
-                name=self.dataset_name, model=self.client_model
+
+            train_loop: (
+                Callable[
+                    [MultiLabelCNN, device, ClientDataset, int, int],
+                    tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+                ]
+                | Callable[
+                    [Module, device, ClientDataset, int, int],
+                    tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+                ]
             )
-            criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+            if self.dataset_name == "cifar10":
+                train_loop = cifar10_training_loop
+            elif self.dataset_name == "flair":
+                train_loop = flair_training_loop
+            else:
+                raise ValueError(f"Dataset {self.dataset_name} not supported.")
 
-            self.client_model.train()
-
-            cumulative_loss: torch.Tensor = torch.tensor(0.0, device=self.device)
-            cumulative_accuracy: torch.Tensor = torch.tensor(0.0, device=self.device)
-            cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=self.device)
-            for data in client_dataset.iter(config["batch_size"]):
-                prepared_batch = prepare_batch(data)
-                inputs, labels = prepared_batch[0].to(self.device), prepared_batch[
-                    1
-                ].to(self.device)
-                if labels.dim() > 1:
-                    labels = labels.squeeze()
-                local_optimizer.zero_grad()
-                outputs: torch.Tensor = self.client_model(inputs)
-                loss: torch.Tensor = criterion(outputs, labels.long())
-                cumulative_loss += loss.item()
-                cumulative_accuracy += (
-                    (outputs.argmax(-1) == labels.long()).sum().item()
-                )
-                cumulative_num_samples += labels.size(0)
-                loss.backward()
-                local_optimizer.step()
+            cumulative_loss, cumulative_accuracy, cumulative_num_samples = train_loop(
+                self.client_model,
+                self.device,
+                client_dataset,
+                config["batch_size"],
+                1,
+            )
             aggregated_loss += cumulative_loss * cumulative_num_samples
             aggregated_accuracy += cumulative_accuracy * cumulative_num_samples
             aggregated_num_samples += cumulative_num_samples
@@ -197,6 +210,8 @@ class Worker(mp.Process):
             )
         # Write to shared memory if this is the last client
         if self.buffer is not None:
+            barrier()
+            aggregation_time = time.time()
             # log(
             #     INFO,
             #     "Local Rank: %s, Averaging %s clients.",
@@ -261,6 +276,14 @@ class Worker(mp.Process):
             # Put results in the result queue
             for result in results:
                 self.result_queue.put(result)
+            barrier()
+            elapsed_time = time.time() - aggregation_time
+            log(
+                DEBUG,
+                "Node partial aggregation time measure at rank %s: %s",
+                self.local_rank,
+                elapsed_time,
+            )
             # Empty the buffer
             if self.buffer is not None:
                 for tensor_name, tensor_value in self.buffer.items():
@@ -314,10 +337,20 @@ class Worker(mp.Process):
             self.task_queues,
         )
         # TODO: Create federated dataset
-        self.federated_dataset = make_cifar10_iid_datasets(
-            world_size=self.concurrency,
-            local_rank=self.local_rank,
-        )
+        if self.dataset_name == "cifar10":
+            self.federated_dataset = make_cifar10_iid_datasets(
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+            )
+        elif self.dataset_name == "flair":
+            self.federated_dataset = make_flair_federated_dataset(
+                hdf5_path=Path("/datasets/flair/flair_federated.hdf5"),
+                partition="train",
+                use_fine_grained_labels=True,
+                max_num_user_images=512,
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+            )
         # Create global model
         # if self.local_rank == 0:
         self.worker_global_model = get_model(self.dataset_name)

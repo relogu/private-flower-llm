@@ -448,6 +448,7 @@ def get_clients_population_dict(
     batch_size: int = 20,
 ) -> dict[str | int, int]:
     """Return the client-samples mapping given the task's name."""
+    cap_n_samples: int | None = None
     dataframe = pd.read_parquet(
         _get_dataset_root(name)
         / "client_data_mapping"
@@ -459,9 +460,14 @@ def get_clients_population_dict(
         dataframe["client_id"] = pd.to_numeric(dataframe["client_id"], errors="coerce")
         # If there are, replace the "client_id" column with the DataFrame's index
         dataframe["client_id"] = dataframe.index
+        # TODO: Get this from config
+        cap_n_samples = 512
     else:
         dataframe = dataframe.set_index("client_id")
     dataframe.samples = dataframe.samples.astype(int)
+    if cap_n_samples:
+        dataframe["samples"] = dataframe["samples"].clip(upper=cap_n_samples)
+        log(DEBUG, f"Capping the number of samples to {cap_n_samples}")
     dataframe = dataframe.sort_values(by=["samples"], ascending=False)
     log(DEBUG, f"Length of cids list before filtering {len(dataframe)}")
     dataframe = dataframe[dataframe["samples"] >= batch_size]

@@ -13,9 +13,18 @@ from torch import device
 from torch.nn import Module
 import torch.distributed as dist
 import torch.backends as torch_backends
+import h5py
 
 import numpy as np
 from flwr.common import NDArrays
+
+from pollen_worker.datasets.pfl_datasets_common import (
+    get_label_mapping,
+    get_multi_hot_targets,
+    get_user_num_images,
+)
+from pollen_worker.models.pfl_cnns import MultiLabelCNN
+from pollen_worker.pollen_utils import get_optimizer
 
 
 def get_free_tcp_port() -> int:
@@ -60,7 +69,7 @@ def get_ndarrays_from_model(
     net: Module,
     device: str = "cpu",
     to_numpy: bool = True,
-) -> NDArrays:
+) -> NDArrays | list[torch.Tensor]:
     """Return NDArrays from a PyTorch model."""
     # Put the model in eval mode
     net.eval()
@@ -93,7 +102,7 @@ def set_model_parameters_from_ndarrays(
     parameters: NDArrays,
     model: Module,
     device: str | device = "cpu",
-) -> Module:
+) -> None:
     """Set the model parameters from a NDArrays."""
     # Put the model in eval mode
     model.eval()
@@ -108,7 +117,7 @@ def set_model_parameters_from_ndarrays(
     state_dict = OrderedDict(
         {k: torch.tensor(v, device=device) for k, v in params_dict}
     )
-    model.load_state_dict(state_dict, strict=True)
+    model.load_state_dict(state_dict, strict=False)
 
 
 def flatten(
@@ -311,8 +320,8 @@ class ClientDataset:
         yield from self._batches[batch_size]
 
 
-class FederatedDataset:
-    """Implementation of a federated dataset of clients for federated learning."""
+class CIFAR10FederatedDataset:
+    """Implementation of the CIFAR10 federated dataset."""
 
     def __init__(
         self,
@@ -350,12 +359,113 @@ class FederatedDataset:
                 yield self.make_dataset_fn(client_id)
 
 
+class FLAIRFederatedDataset:
+    """Implementation of the FLAIR federated dataset."""
+
+    def __init__(
+        self,
+        hdf5_path: Path,
+        list_of_client_ids: list[str],
+        max_num_user_images: int,
+        partition: str,
+        use_fine_grained_labels: bool,
+        num_classes: int,
+        world_size: int | None = None,
+        local_rank: int | None = None,
+    ) -> None:
+        self.hdf5_path = hdf5_path
+        self.list_of_client_ids = list_of_client_ids
+        self.max_num_user_images = max_num_user_images
+        self.partition = partition
+        self.use_fine_grained_labels = use_fine_grained_labels
+        self.num_classes = num_classes
+        self.world_size = (
+            int(os.environ["WORLD_SIZE"]) if world_size is None else world_size
+        )
+        self.local_rank = (
+            int(os.environ["LOCAL_RANK"]) if local_rank is None else local_rank
+        )
+
+    def make_dataset_fn(self, client_id: str) -> ClientDataset:
+        """Return a client dataset for the given client_id."""
+        with h5py.File(self.hdf5_path, "r") as h5:
+            inputs = np.array(h5[f"/{self.partition}/{client_id}/images"])
+            targets = get_multi_hot_targets(
+                (len(inputs), self.num_classes),
+                h5,
+                self.partition,
+                client_id,
+                self.use_fine_grained_labels,
+            )
+            user_slice = slice(0, self.max_num_user_images)
+            inputs, targets = inputs[user_slice], targets[user_slice]
+            data_order = np.random.permutation(len(inputs))
+        return ClientDataset(
+            data=(inputs[data_order], targets[data_order]),
+            client_id=self.list_of_client_ids.index(client_id),
+        )
+
+    def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
+        """Iterate over a cohort of clients."""
+        if isinstance(cohort_size, int):
+            for i in range(cohort_size):
+                if (i % self.world_size) == self.local_rank:
+                    client_id = self.list_of_client_ids[i]
+                    yield self.make_dataset_fn(client_id)
+        if isinstance(cohort_size, list):
+            for i in cohort_size:
+                client_id = self.list_of_client_ids[i]
+                yield self.make_dataset_fn(client_id)
+
+
+def make_flair_federated_dataset(
+    hdf5_path: Path,
+    partition: str,
+    use_fine_grained_labels: bool,
+    max_num_user_images: int,
+    world_size: int | None = None,
+    local_rank: int | None = None,
+) -> FLAIRFederatedDataset:
+    """Create federated dataset from the flair dataset, to use in simulations.
+
+    The federated dataset samples user datasets. A user dataset is
+    made from data points of one us er.
+
+    :param hdf5_path:
+        A h5py dataset object.
+    :param partition:
+        Whether it is a "train", "val" or "test" partition.
+    :param use_fine_grained_labels:
+        Whether to use fine-grained label taxonomy.
+    :param max_num_user_images:
+        Maximum number of images each user can have.
+    :param numpy_to_tensor:
+        Function that convert numpy array to ML framework tensor.
+    :return:
+        Federated dataset from the HDF5 data file.
+    """
+    num_classes = len(get_label_mapping(hdf5_path, use_fine_grained_labels))
+    user_num_images = get_user_num_images(hdf5_path, partition)
+    user_ids = sorted(user_num_images.keys())
+
+    return FLAIRFederatedDataset(
+        hdf5_path=hdf5_path,
+        list_of_client_ids=user_ids,
+        max_num_user_images=max_num_user_images,
+        partition=partition,
+        use_fine_grained_labels=use_fine_grained_labels,
+        num_classes=num_classes,
+        world_size=world_size,
+        local_rank=local_rank,
+    )
+
+
 def load_and_preprocess_cifar10(
     pickle_file_path: Path,
     channel_means: np.ndarray | None = None,
     channel_stddevs: np.ndarray | None = None,
     exclude_classes: list[int] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
     """Load and preprocess CIFAR10 data from a pickle file."""
     images: np.ndarray
     labels: np.ndarray
@@ -386,7 +496,7 @@ def make_iid_federated_dataset(
     numpy_to_tensor: Callable = lambda x: x,
     world_size: int | None = None,
     local_rank: int | None = None,
-) -> FederatedDataset:
+) -> CIFAR10FederatedDataset:
     """
     Create a federated dataset with IID users from the CIFAR10 dataset.
 
@@ -406,7 +516,7 @@ def make_iid_federated_dataset(
         start_ix += dataset_len
         if start_ix >= len(images):
             break
-    return FederatedDataset(
+    return CIFAR10FederatedDataset(
         data=users_to_data,
         list_of_client_ids=list(users_to_data),
         world_size=world_size,
@@ -420,7 +530,7 @@ def make_cifar10_iid_datasets(
     numpy_to_tensor: Callable = lambda x: x,
     world_size: int | None = None,
     local_rank: int | None = None,
-) -> FederatedDataset:
+) -> CIFAR10FederatedDataset:
     """Construct the CIFAR10 IID federated dataset."""
     train_images, train_labels, _, _ = load_and_preprocess_cifar10(
         data_dir / "cifar10_train.p"
@@ -433,3 +543,78 @@ def make_cifar10_iid_datasets(
         world_size=world_size,
         local_rank=local_rank,
     )
+
+
+def cifar10_training_loop(
+    client_model: Module,
+    _device: device,
+    client_dataset: ClientDataset,
+    batch_size: int,
+    n_local_epochs: int = 1,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Execute the local training loop for CIFAR10."""
+    local_optimizer = get_optimizer(name="cifar10", model=client_model)
+    criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+
+    client_model.train()
+
+    cumulative_loss: torch.Tensor = torch.tensor(0.0, device=_device)
+    cumulative_accuracy: torch.Tensor = torch.tensor(0.0, device=_device)
+    cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=_device)
+    for _ in range(n_local_epochs):
+        for data in client_dataset.iter(batch_size):
+            prepared_batch = prepare_batch(data)
+            inputs, labels = prepared_batch[0].to(_device), prepared_batch[1].to(
+                _device
+            )
+            if labels.dim() > 1:
+                labels = labels.squeeze()
+            local_optimizer.zero_grad()
+            outputs: torch.Tensor = client_model(inputs)
+            loss: torch.Tensor = criterion(outputs, labels.long())
+            cumulative_loss += loss.item()
+            cumulative_accuracy += (outputs.argmax(-1) == labels.long()).sum().item()
+            cumulative_num_samples += labels.size(0)
+            loss.backward()
+            local_optimizer.step()
+    return cumulative_loss, cumulative_accuracy, cumulative_num_samples
+
+
+def flair_training_loop(
+    client_model: MultiLabelCNN,
+    _device: device,
+    client_dataset: ClientDataset,
+    batch_size: int,
+    n_local_epochs: int = 1,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Execute the local training loop for FLAIR."""
+    local_optimizer = get_optimizer(name="flair", model=client_model)
+    criterion = torch.nn.BCEWithLogitsLoss()
+
+    client_model.train()
+
+    cumulative_loss: torch.Tensor = torch.tensor(0.0, device=_device)
+    cumulative_accuracy: torch.Tensor = torch.tensor(0.0, device=_device)
+    cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=_device)
+    for _ in range(n_local_epochs):
+        for data in client_dataset.iter(batch_size):
+            prepared_batch = prepare_batch(data)
+            inputs, labels = prepared_batch[0].to(_device), prepared_batch[1].to(
+                _device
+            )
+            local_optimizer.zero_grad()
+            outputs: torch.Tensor = client_model(inputs)
+            loss: torch.Tensor = criterion(outputs, labels)
+            num_data = len(inputs)
+            num_predictions = np.ones(client_model._num_outputs) * num_data
+            scores = torch.sigmoid(outputs)
+            predictions = torch.round(scores)
+            cumulative_loss += loss.item()
+            cumulative_accuracy += (
+                torch.sum(torch.eq(labels, predictions), dim=0).sum().item()
+                / num_predictions.sum()
+            )
+            cumulative_num_samples += num_predictions.sum()
+            loss.backward()
+            local_optimizer.step()
+    return cumulative_loss, cumulative_accuracy, cumulative_num_samples
