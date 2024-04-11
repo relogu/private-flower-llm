@@ -507,8 +507,12 @@ class NodeManager(fl.client.NumPyClient):
         # Extract assignments from config
         assignments = config.pop("merged", "0,1")
         list_of_cids_to_train = cast(str, assignments).split(",")
+        node_train_metrics: dict[str, Scalar] = {}
+        aggregated_params: NDArrays = []
+        sum_of_samples: int = 0
         try:
             # Choose the type of execution
+
             if config["collaborative"]:
                 (
                     aggregated_params,

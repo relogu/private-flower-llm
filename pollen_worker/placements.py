@@ -304,9 +304,9 @@ def learning_based_placement(
                 batch_size=batch_size,
             )
             if correction_tables is not None:
-                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
-                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
-                )
+                correction = correction_tables[
+                    f"{workers_assignments[0][3]}_{workers_assignments[0][4]}"
+                ].filter(pc.field("n_batches") == pc.scalar(num_samples // batch_size))
                 if correction.num_rows > 0:
                     correction = correction.column("ctt_mean").to_numpy()[0]
                     load = (load + correction) / 2
@@ -397,8 +397,7 @@ def round_robin_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
@@ -473,8 +472,7 @@ def sorted_round_robin_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
@@ -539,7 +537,6 @@ def samples_placement(
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
-    # Loop over the splits created
     while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
@@ -550,8 +547,8 @@ def samples_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
+
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
@@ -619,7 +616,6 @@ def batches_placement(
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
-    # Loop over the splits created
     while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
@@ -630,8 +626,7 @@ def batches_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
@@ -710,8 +705,7 @@ def log_batches_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
