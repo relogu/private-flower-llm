@@ -251,5 +251,5 @@ exclude = [
 [tool.ruff.format]
 preview = true
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "numpy"
