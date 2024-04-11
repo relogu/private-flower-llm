@@ -304,9 +304,9 @@ def learning_based_placement(
                 batch_size=batch_size,
             )
             if correction_tables is not None:
-                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
-                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
-                )
+                correction = correction_tables[
+                    f"{workers_assignments[0][3]}_{workers_assignments[0][4]}"
+                ].filter(pc.field("n_batches") == pc.scalar(num_samples // batch_size))
                 if correction.num_rows > 0:
                     correction = correction.column("ctt_mean").to_numpy()[0]
                     load = (load + correction) / 2

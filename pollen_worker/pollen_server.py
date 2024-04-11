@@ -107,7 +107,7 @@ class PollenServer(Server):
         restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
-        self._client_manager: PollenClientManager = client_manager
+        self._client_manager: PollenClientManager = client_manager  # type: ignore[reportIncompatibleVariableOverride]
         self.cids = cids
         self.client_fn = client_fn
         self.placement_policy = placement_policy
@@ -182,7 +182,7 @@ class PollenServer(Server):
         strategy: FedAvg,
     ) -> None:
         """Replace server strategy."""
-        self.strategy = strategy
+        self.strategy = strategy  # type: ignore[reportIncompatibleVariableOverride]
 
     def client_manager(self) -> PollenClientManager:
         """Return PollenClientManager."""

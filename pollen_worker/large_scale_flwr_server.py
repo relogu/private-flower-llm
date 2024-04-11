@@ -34,7 +34,7 @@ class LargeScaleServer(Server):
         self.parameters: Parameters = Parameters(
             tensors=[], tensor_type="numpy.ndarray"
         )
-        self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
+        self.strategy: FedAvg = strategy if strategy is not None else FedAvg()  # type: ignore[reportIncompatibleVariableOverride]
         self.max_workers: int | None = None
 
     def fit_round(

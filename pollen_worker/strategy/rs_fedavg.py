@@ -107,11 +107,11 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.seed = seed
 
-    def configure_fit(
+    def configure_fit(  # type: ignore[reportIncompatibleMethodOverride,override]
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: SimpleClientManager,  # type: ignore[override]
+        client_manager: SimpleClientManager,
     ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}

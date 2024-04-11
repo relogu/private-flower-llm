@@ -128,7 +128,7 @@ class FedYogiReproducibleSampling(FedYogi):
         )
         self.seed = seed
 
-    def configure_fit(
+    def configure_fit(  # type: ignore[reportIncompatibleMethodOverride,override]
         self,
         server_round: int,
         parameters: Parameters,
