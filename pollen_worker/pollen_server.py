@@ -1150,8 +1150,10 @@ def get_handle_success_and_failure(
                     accept_failures_cnt is not None
                     and cnt_failures > accept_failures_cnt
                 ):
-                    raise TooManyFailuresError(f"""Unintentional failures passed
-                        the maximum: {accept_failures_cnt}""")
+                    raise TooManyFailuresError(
+                        f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}"""
+                    )
                 failures.append(cast_failure_res)
                 return (False, cast_failure_res)
         return result
