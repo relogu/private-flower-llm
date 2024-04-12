@@ -25,7 +25,8 @@ from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 
 from pollen_worker.resources_manager import Node
 
@@ -321,9 +322,9 @@ def learning_based_placement(
             if load == -np.inf:
                 load = 1e-8
             if correction_tables is not None:
-                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
-                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
-                )
+                correction = correction_tables[
+                    f"{workers_assignments[0][3]}_{workers_assignments[0][4]}"
+                ].filter(pc.field("n_batches") == pc.scalar(num_samples // batch_size))
                 if correction.num_rows > 0:
                     correction = correction.column("ctt_mean").to_numpy()[0]
                     load = (load + correction) / 2
@@ -484,16 +485,12 @@ def sorted_round_robin_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
-            {
-                k: _convert_list_of_int_to_string(v)
-                for k, v in device_assignment.items()
-            },
+            {k: str(v) for k, v in device_assignment.items()},
         )
         for c_p, device_assignment in tmp_node_assignments
     ]
@@ -561,16 +558,12 @@ def samples_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
-            {
-                k: _convert_list_of_int_to_string(v)
-                for k, v in device_assignment.items()
-            },
+            {k: str(v) for k, v in device_assignment.items()},
         )
         for c_p, device_assignment in tmp_node_assignments
     ]
@@ -641,16 +634,12 @@ def batches_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
-            {
-                k: _convert_list_of_int_to_string(v)
-                for k, v in device_assignment.items()
-            },
+            {k: str(v) for k, v in device_assignment.items()},
         )
         for c_p, device_assignment in tmp_node_assignments
     ]
@@ -721,16 +710,12 @@ def log_batches_placement(
                 for _ in range(device.concurrency):
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
-                        for c in current_split:
-                            device_assignment[device_id].append(c)
+                        device_assignment[device_id].append(current_split.tolist())
     # Covert list of int to string
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
-            {
-                k: _convert_list_of_int_to_string(v)
-                for k, v in device_assignment.items()
-            },
+            {k: str(v) for k, v in device_assignment.items()},
         )
         for c_p, device_assignment in tmp_node_assignments
     ]
@@ -780,21 +765,6 @@ def _predict_single_client(
 ) -> Any:
     parameters, _ = model
     return fn(n_samples // batch_size, *parameters)
-
-
-def _convert_list_of_int_to_string(list_of_int: list[int]) -> str:
-    return ",".join([str(i) for i in list_of_int])
-
-
-def _convert_list_of_lists_of_int_to_string(
-    list_of_lists_of_int: list[list[int]],
-) -> str:
-    return str(list_of_lists_of_int)
-    # tmp_list: list[str] = []
-    # for list_of_int in list_of_lists_of_int:
-    #     tmp_tmp_list = _convert_list_of_int_to_string(list_of_int)
-    #     tmp_list.append(f"[{tmp_tmp_list}]")
-    # return ",".join([str(i) for i in tmp_list])
 
 
 def add_n_batches_column_to_clients_stats_table(
@@ -899,7 +869,9 @@ def sequential_train_models(
         y0 = v.column("start_time").to_numpy()
         delta = (y1 - y0) * 1e-9
         v = v.add_column(0, "delta", cast(pa.Array, pa.array(delta)))
-        v = v.group_by(["n_samples"]).aggregate([("delta", "mean")])
+        # v = v.group_by(["n_samples"]).aggregate(
+        #     [("delta", "mean"), ("delta", "stddev")]
+        # )
         ret.update(_train_model(fns, k, v))
     return ret
 
@@ -909,26 +881,30 @@ def _train_model(
 ) -> dict[str, Any]:
     # x = data.column("n_batches").to_numpy()
     x = data.column("n_samples").to_numpy()
-    # y1 = data.column("end_time").to_numpy()
-    # y0 = data.column("start_time").to_numpy()
-    # delta = (y1 - y0) * 1e-9
-    delta = data.column("delta_mean").to_numpy()
-    p0 = [1.0] * (len(signature(fns[0]).parameters) - 1)
+    delta = data.column("delta").to_numpy()
+    # delta = data.column("delta_mean").to_numpy()
+    # delta_stddev = data.column("delta_stddev").to_numpy()
+    # delta_stddev = delta_stddev.clip(min=1e-9)
+    delta_stddev = [1 / a for a in x]
+    p0 = [1e-9] + [1.0] * (len(signature(fns[0]).parameters) - 2)
     bounds = (0.0, np.inf)
     return {
         model_name: curve_fit(
             f=fns[0],
             xdata=x,
             ydata=delta,
+            sigma=delta_stddev,
+            absolute_sigma=True,
             p0=p0,
             bounds=bounds,
             jac=fns[1],
             ftol=1e-8,
             xtol=1e-8,
             gtol=1e-8,
-            loss="arctan",
+            # loss="arctan",
             check_finite=True,
             nan_policy="omit",
+            max_nfev=10000,
         )
     }
 
@@ -984,12 +960,10 @@ def _get_model_score(
     parameters, _ = model
     # x = data.column("n_batches").to_numpy()
     x = data.column("n_samples").to_numpy()
-    # y1 = data.column("end_time").to_numpy()
-    # y0 = data.column("start_time").to_numpy()
-    # delta = (y1 - y0) * 1e-9
+    # delta = data.column("delta").to_numpy()
     delta = data.column("delta_mean").to_numpy()
-    plt.scatter(x, delta, label="data", alpha=0.5, marker=".", c="r")
-    plt.scatter(x, fn(x, *parameters), label="model", alpha=0.5, marker=".", c="b")
-    plt.savefig(f"{model_name}.png")
-    plt.close()
+    # plt.scatter(x, delta, label="data", alpha=0.5, marker=".", c="r")
+    # plt.scatter(x, fn(x, *parameters), label="model", alpha=0.5, marker=".", c="b")
+    # plt.savefig(f"{model_name}.png")
+    # plt.close()
     return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}
