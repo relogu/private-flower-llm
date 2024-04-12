@@ -58,7 +58,7 @@ class VirtualClient(fl.client.NumPyClient):
         """Implement how to get properties."""
         return {}
 
-    def get_parameters(
+    def get_parameters(  # type: ignore[reportIncompatibleMethodOverride]
         self,
         config: Config,
         net: Module | None = None,
@@ -131,6 +131,7 @@ class VirtualClient(fl.client.NumPyClient):
         if "device" not in config:
             config["device"] = get_device()
         # Load client's dataset
+        ds: Dataset | None = None
         if self.client_dataset is None:
             ds, tokenizer = (
                 get_client_ds(name=self.name, cid=int(self.cid))
@@ -186,7 +187,7 @@ class VirtualClient(fl.client.NumPyClient):
         n_samples = (
             int(config["batch_size"] * config["local_epochs"])
             if ds is None
-            else len(ds)
+            else len(ds)  # type: ignore[reportArgumentType]
         )
         # Initialize the model and set its parameters
         net = self.set_parameters(parameters=parameters, device=config["device"])
@@ -213,7 +214,11 @@ class VirtualClient(fl.client.NumPyClient):
             batch_size=config["batch_size"],
         )
         # log(INFO, f"VirtualClient.fit :: train_metrics {train_metrics}")
-        return self.get_parameters(config={}, net=net), n_samples, train_metrics
+        return (
+            self.get_parameters(config={}, net=net),  # type: ignore[reportArgumentType]
+            n_samples,
+            train_metrics,
+        )
 
     def evaluate(
         self,
@@ -249,7 +254,8 @@ if __name__ == "__main__":
         "epochs": 1,
     }
     params, n_samples, metrics = client.fit(
-        parameters=client.get_parameters(config=config), config=config
+        parameters=client.get_parameters(config=config),  # type: ignore[reportArgumentType]
+        config=config,
     )
     log(INFO, f"VirtualClient.__main__ :: n_samples {n_samples}")
     # log(INFO, f'VirtualClient.__main__ :: params {params}')
