@@ -518,7 +518,6 @@ class PollenServer(Server):
             if len(device_assignment) > 0:
                 # Get the `fit_config` for the virtual clients
                 node_evaluate_config = self.on_evaluate_config(server_round)
-
                 # NOTE: This key is used only when the training policy of workers
                 # is not `sequential`, and for setting the `num_workers` parameter
                 # in the `DataLoader`
@@ -648,6 +647,7 @@ class PollenServer(Server):
             node_assignments,
         )
         node_instructions = []
+        raise ValueError(node_assignments)
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
