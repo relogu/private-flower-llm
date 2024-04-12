@@ -23,6 +23,7 @@ to the simulation server.
 import ast
 import multiprocessing
 import pickle
+from queue import Empty
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -76,6 +77,7 @@ class NodeManager(fl.client.NumPyClient):
         warm_up_config: dict[str, Scalar],
         run_uuid: str,
         placement_policy: str,
+        cap_num_workers: int | None,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
@@ -83,6 +85,7 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = None
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
+        self.cap_num_workers = cap_num_workers
         self.node_manager_uuid = str(uuid.uuid4())
         # Set the auth key for the multiprocessing. Necessary for accessing the queues.
         new_auth_key = bytes(str(uuid.uuid4()), encoding="utf-8")
@@ -107,6 +110,8 @@ class NodeManager(fl.client.NumPyClient):
         }
         # One result queue for all GPUs/devices
         self.result_queue: QueueType = Queue()
+        # Workers' system metrics queue
+        self.workers_system_metrics_queue: QueueType = Queue()
 
         # Round config is sent to shared memory
         self.config_shm: SharedMemory = SharedMemory(
@@ -159,9 +164,12 @@ class NodeManager(fl.client.NumPyClient):
                     task_queues=self.task_queues,
                     result_queue=self.result_queue,
                     auth_key=new_auth_key,
-                    worker_id=_worker_id,
                     local_rank=_local_rank,
                     world_size=self.n_workers,
+                    workers_system_metrics_queue=(
+                        self.workers_system_metrics_queue if _local_rank == 0 else None
+                    ),
+                    worker_id=_worker_id,
                 )
             )
         # Start workers
@@ -176,7 +184,10 @@ class NodeManager(fl.client.NumPyClient):
         if torch.cuda.is_available():
             device_info = dict(
                 get_cuda_prop(
-                    tmp_client, tmp_params, config=self.warm_up_config, cap_workers=4
+                    tmp_client,
+                    tmp_params,
+                    config=self.warm_up_config,
+                    cap_workers=self.cap_num_workers,
                 ),
                 **device_info,
             )
@@ -288,6 +299,17 @@ class NodeManager(fl.client.NumPyClient):
         self.workers_shms.append(w_shm)
         nm_s = nm_s_array[0]
         nm_m = {"train_loss": n_tl[0], "accuracy": n_ta[0]}
+        # Get workers' system metrics
+        workers_system_metrics: dict[str, float] = {}
+        try:
+            while True:
+                _metric: tuple[str, float] = self.workers_system_metrics_queue.get(
+                    timeout=0.01
+                )
+                workers_system_metrics[_metric[0]] = _metric[1]
+        except (TimeoutError, Empty):
+            pass
+        nm_m = nm_m | workers_system_metrics
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
@@ -353,6 +375,7 @@ def main(cfg: DictConfig) -> None:
         warm_up_config=warm_up_config,
         run_uuid=cfg.run_uuid,
         placement_policy=cfg.placement_policy,
+        cap_num_workers=cfg.cap_num_workers,
     )
 
     # Start Flower client

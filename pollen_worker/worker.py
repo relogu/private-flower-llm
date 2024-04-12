@@ -1,5 +1,6 @@
 """A highly efficient worker for Pollen."""
 
+import gc
 import multiprocessing
 from pathlib import Path
 import pickle
@@ -20,7 +21,7 @@ import multiprocess as mp
 import torch
 import transformers
 from flwr.common.logger import log
-from multiprocess import set_start_method
+from multiprocess import set_start_method, Queue
 
 from pollen_worker.models.pfl_cnns import MultiLabelCNN
 from pollen_worker.pollen_utils import (
@@ -73,12 +74,16 @@ class Worker(mp.Process):
         auth_key: bytes,
         local_rank: int,
         world_size: int,
+        workers_system_metrics_queue: QueueType | None = None,
         worker_id: str | None = None,
     ) -> None:
         super().__init__()
         self.client_fn: Callable[[int], VirtualClient] = client_fn
         self.task_queues = task_queues
         self.result_queue = result_queue
+        self.workers_system_metrics_queue: QueueType = (
+            workers_system_metrics_queue if workers_system_metrics_queue else Queue()
+        )
         self.run_uuid = run_uuid
         self.concurrency = concurrency
         self.dataset_name = dataset_name
@@ -127,6 +132,7 @@ class Worker(mp.Process):
 
     def process_task_pytorch_distributed(self, client_ids: list[int]) -> None:
         """Execute the training of the passed client ids using Horovod."""
+        worker_system_metrics: list[tuple[str, float]] = []
         barrier()
         init_time = time.time()
         # Loads a dict from the shared memory buffer
@@ -147,12 +153,13 @@ class Worker(mp.Process):
         )
         barrier()
         elapsed_time = time.time() - init_time
-        log(
-            DEBUG,
-            "Node initialization time measure at rank %s: %s",
-            self.local_rank,
-            elapsed_time,
-        )
+        worker_system_metrics.append(("workers_round_init_time", elapsed_time))
+        # log(
+        #     DEBUG,
+        #     "Node initialization time measure at rank %s: %s",
+        #     self.local_rank,
+        #     elapsed_time,
+        # )
         # TODO: Fix the typing here
         results: list[list[int, int, int, str]] = []  # type: ignore[type-arg]
         for client_dataset in self.federated_dataset.get_cohort(client_ids):
@@ -272,17 +279,21 @@ class Worker(mp.Process):
                 float(reduced_metrics[0].cpu().item()),
                 float(reduced_metrics[1].cpu().item()),
             )
+            barrier()
+            elapsed_time = time.time() - aggregation_time
+            worker_system_metrics.append(("workers_aggregation_time", elapsed_time))
+            # Add systems metrics to the queue
+            for metric in worker_system_metrics:
+                self.workers_system_metrics_queue.put(metric)
             # Put results in the result queue
             for result in results:
                 self.result_queue.put(result)
-            barrier()
-            elapsed_time = time.time() - aggregation_time
-            log(
-                DEBUG,
-                "Node partial aggregation time measure at rank %s: %s",
-                self.local_rank,
-                elapsed_time,
-            )
+            # log(
+            #     DEBUG,
+            #     "Node partial aggregation time measure at rank %s: %s",
+            #     self.local_rank,
+            #     elapsed_time,
+            # )
             # Empty the buffer
             if self.buffer is not None:
                 for tensor_name, tensor_value in self.buffer.items():
@@ -291,6 +302,8 @@ class Worker(mp.Process):
                         dtype=torch.float32,
                         device=tensor_value.device,
                     )
+            gc.collect()
+            torch.cuda.empty_cache()
 
     def run(self) -> None:
         """Start the process."""
@@ -315,6 +328,8 @@ class Worker(mp.Process):
             rank=self.local_rank,
             world_size=self.world_size,
         )
+        barrier()
+        aggregation_time = time.time()
         # Set the device and the task queue
         gpu_id = self.local_rank % torch.cuda.device_count()
         self.device = torch.device(f"cuda:{gpu_id}")
@@ -419,10 +434,13 @@ class Worker(mp.Process):
             name=self.worker_id,
             create=True,
         )
+        barrier()
+        elapsed_time = time.time() - aggregation_time
+        self.workers_system_metrics_queue.put(("workers_init_time", elapsed_time))
         # Task loop
         task: list[int]
         for task in iter(task_queue.get, None):
-            # log(INFO, "Worker %s received task %s.", self.worker_id, task)
+            log(INFO, "Worker %s received task %s.", self.worker_id, task)
             self.process_task_pytorch_distributed(task)
         # Put the closing task's results in the result queue
         self.result_queue.put([-1, 0, 0, ""])
@@ -435,3 +453,6 @@ class Worker(mp.Process):
         worker_shm.close()
         worker_shm.unlink()
         log(DEBUG, "Shared memories closed")
+        # Empty worker's system metrics queue
+        while not self.workers_system_metrics_queue.empty():
+            self.workers_system_metrics_queue.get()

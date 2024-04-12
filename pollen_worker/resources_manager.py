@@ -50,7 +50,7 @@ def get_cuda_prop(
     client: NumPyClient,
     params: NDArrays,
     config: dict[str, Scalar],
-    cap_workers: int = 0,
+    cap_workers: int | None,
 ) -> dict[str, Device]:
     """Assesses the capabilities of the CUDA resources available."""
     gpus_prop = {}
