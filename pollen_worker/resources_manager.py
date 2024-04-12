@@ -98,7 +98,7 @@ def get_cuda_prop(
         p.shutdown(wait=False)
     else:
         monitors = {
-            f"cuda:{gpu.id}": (gpu, 0, gpu.mem_total, gpu.mem_used, gpu.mem_free)
+            f"cuda:{gpu.id}": (gpu, 1.0, gpu.mem_total, gpu.mem_used, gpu.mem_free)
             for gpu in list(nvsmi.get_gpus())
         }
     ret_properties: dict[str, Device] = {}
