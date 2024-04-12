@@ -112,6 +112,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
         elif isinstance(self.cid, str):
             streams_dict = decode_stream_cid(eval(self.cid))
             config["streams_dict"] = streams_dict
+        else:
+            raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
         return llm_fit(parameters, config, cfg)
 
     def evaluate(
@@ -135,9 +137,11 @@ class VirtualLLMClient(fl.client.NumPyClient):
             # Tie the local path to the client_id and the run_uuid
             new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
             cfg = set_all_data_paths(cfg, new_local_path)
-        else:
+        elif isinstance(self.cid, str):
             streams_dict = decode_stream_cid(eval(self.cid))
             config["streams_dict"] = streams_dict
+        else:
+            raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
         return llm_eval(parameters, config, cfg)
 
 

@@ -53,6 +53,7 @@ from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
+import ast
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
@@ -506,7 +507,7 @@ class NodeManager(fl.client.NumPyClient):
             self._create_and_start_workers()
         # Extract assignments from config
         assignments = cast(str, config.pop("merged", str([0, 1])))
-        list_of_cids_to_train: list[str] = eval(assignments)
+        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
         node_train_metrics: dict[str, Scalar] = {}
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0
@@ -658,8 +659,8 @@ class NodeManager(fl.client.NumPyClient):
 
         start_time = time.time()
         # Extract assignments from config
-        assignments = config.pop("merged", "0,1")
-        list_of_cids_to_eval = cast(str, assignments).split(",")
+        assignments = cast(str, config.pop("merged", str([0, 1])))
+        list_of_cids_to_eval = ast.literal_eval(assignments)[0]
         # Append NodeManager's config
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid

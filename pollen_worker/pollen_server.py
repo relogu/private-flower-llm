@@ -647,7 +647,6 @@ class PollenServer(Server):
             node_assignments,
         )
         node_instructions = []
-        raise ValueError(node_assignments)
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
