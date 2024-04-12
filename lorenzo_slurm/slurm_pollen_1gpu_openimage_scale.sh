@@ -24,10 +24,10 @@ for n_clients_per_round in "1000"; do
         CUSTOM_HYDRA_ARGS="num_nodes=1 run_uuid=$run_uuid task=openimage task.n_clients_per_round=$n_clients_per_round task.num_rounds=100 local_epochs=1 placement_policy=$policy flwr_address=127.0.0.1:6480"
 
         # Launch the server.
-        poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS &
+        poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none &
 
         # Launch the node manager.
-        poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS
+        poetry run python -m pollen_worker.node_manager $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none
     done
 done
 

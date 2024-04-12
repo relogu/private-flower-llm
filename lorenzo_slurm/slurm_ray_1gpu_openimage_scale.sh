@@ -72,7 +72,7 @@ for n_clients_per_round in "10000"; do
   CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=openimage task.n_clients_per_round=$n_clients_per_round task.num_rounds=100 local_epochs=1 ray_address=auto ray_redis_password=$redis_password ray_node_ip_address=$ip"
 
   # Launch the server, uncomment the end of the line if you what separed output logs.
-  poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS
+  poetry run python -m pollen_worker.ray_simulation $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none
 
   # Stop Ray session
   poetry run ray stop

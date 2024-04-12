@@ -22,7 +22,7 @@ POETRY_ENV_PATH=$(poetry env info --path)
 CUSTOM_HYDRA_ARGS="run_uuid=$run_uuid task=google_speech task.num_rounds=100 flwr_address=127.0.0.1:1043"
 
 # Launch the server, uncomment the end of the line if you what separed output logs.
-poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS & # >> server_$timestamp.out 2>&1 &
+poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none & # >> server_$timestamp.out 2>&1 &
 
 # Launch the node manager, uncomment the end of the line if you what separed output logs.
 # NOTE that the `nsys` command is used to profile the node manager. It uses Nsight Systems software for NVIDIA.
