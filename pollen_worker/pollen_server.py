@@ -169,6 +169,7 @@ class PollenServer(Server):
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
         for current_round in range(1, num_rounds + 1):
+            start_time_round = timeit.default_timer()
             # Check for changes in connected NodeManagers
             dropped, new = _check_connected_node_managers(
                 old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
@@ -240,6 +241,10 @@ class PollenServer(Server):
                     history.add_metrics_distributed(
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
+            elapsed_time_round = timeit.default_timer() - start_time_round
+            history.add_metrics_centralized(
+                server_round=current_round, metrics={"round_time": elapsed_time_round}
+            )
 
         # Save the statistics to a parquet file
         if self.clients_training_stats is not None:
@@ -504,7 +509,7 @@ def get_nodes_properties(
 def get_properties_client(
     client: ClientProxy, timeout: float | None
 ) -> tuple[ClientProxy, Node]:
-    """Get properties froma a Node."""
+    """Get properties from a Node."""
     ins = GetPropertiesIns(config={})
     node_properties_res = client.get_properties(ins=ins, timeout=timeout)
     node_properties: Properties = node_properties_res.properties
