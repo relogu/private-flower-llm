@@ -23,6 +23,7 @@ from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import (
+    decode_stream_cid,
     get_parameters,
     get_raw_model_parameters,
     llm_eval,
@@ -94,40 +95,49 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
         # Set the appropriate path given the `client_id`
-        if cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Set the appropriate path given the `client_id`
-            new_remote_path = (
-                str(cfg.data_remote) + f"/client_{self.cid}"  # type: ignore[union-attr]
+        config["streams_dict"] = None
+        if isinstance(self.cid, int):
+            if cfg.data_remote is not None:  # type: ignore[union-attr]
+                # Set the appropriate path given the `client_id`
+                new_remote_path = (
+                    str(cfg.data_remote) + f"/client_{self.cid}"  # type: ignore[union-attr]
+                )
+                cfg = set_all_data_paths(cfg, new_remote_path, False)
+            # Tie the local path to the client_id and the run_uuid
+            new_local_path = (
+                str(cfg.data_local) + f"/client_{self.cid}"  # type: ignore[union-attr]
             )
-            cfg = set_all_data_paths(cfg, new_remote_path, False)
-        # Tie the local path to the client_id and the run_uuid
-        new_local_path = (
-            str(cfg.data_local) + f"/client_{self.cid}"  # type: ignore[union-attr]
-        )
-        cfg = set_all_data_paths(cfg, new_local_path)
-        # Execute the fit function
+            cfg = set_all_data_paths(cfg, new_local_path)
+            # Execute the fit function
+        elif isinstance(self.cid, str):
+            streams_dict = decode_stream_cid(eval(self.cid))
+            config["streams_dict"] = streams_dict
         return llm_fit(parameters, config, cfg)
 
     def evaluate(
         self,
         parameters: NDArrays,
-        config: dict[str, Scalar],
+        config: dict,
     ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Set the appropriate path for the (centralized) val set
-        if cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Extracts the parent folder from the remote path
-            new_remote_path = "s3:/" + str(
-                Path(
-                    str(cfg.data_remote).replace("s3:/", "")  # type: ignore[union-attr]
-                ).parent  # type: ignore[union-attr]
-            )
-            cfg = set_all_data_paths(cfg, new_remote_path, False)
-        # Tie the local path to the client_id and the run_uuid
-        new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
-        cfg = set_all_data_paths(cfg, new_local_path)
+        if isinstance(self.cid, int):
+            # Set the appropriate path for the (centralized) val set
+            if cfg.data_remote is not None:  # type: ignore[union-attr]
+                # Extracts the parent folder from the remote path
+                new_remote_path = "s3:/" + str(
+                    Path(
+                        str(cfg.data_remote).replace("s3:/", "")  # type: ignore[union-attr]
+                    ).parent  # type: ignore[union-attr]
+                )
+                cfg = set_all_data_paths(cfg, new_remote_path, False)
+            # Tie the local path to the client_id and the run_uuid
+            new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
+            cfg = set_all_data_paths(cfg, new_local_path)
+        else:
+            streams_dict = decode_stream_cid(eval(self.cid))
+            config["streams_dict"] = streams_dict
         return llm_eval(parameters, config, cfg)
 
 

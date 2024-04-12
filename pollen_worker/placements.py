@@ -766,7 +766,7 @@ def _predict_single_client(
 
 
 def _convert_list_of_int_to_string(list_of_int: list[int]) -> str:
-    return ",".join([str(i) for i in list_of_int])
+    return str(list_of_int)
 
 
 def add_n_batches_column_to_clients_stats_table(

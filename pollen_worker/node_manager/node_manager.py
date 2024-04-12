@@ -505,8 +505,8 @@ class NodeManager(fl.client.NumPyClient):
             # Re-create and start the workers
             self._create_and_start_workers()
         # Extract assignments from config
-        assignments = config.pop("merged", "0,1")
-        list_of_cids_to_train = cast(str, assignments).split(",")
+        assignments = cast(str, config.pop("merged", str([0, 1])))
+        list_of_cids_to_train = eval(assignments)
         node_train_metrics: dict[str, Scalar] = {}
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0

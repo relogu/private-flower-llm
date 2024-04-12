@@ -10,7 +10,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
 from logging import DEBUG, ERROR, INFO, WARN, WARNING
-from typing import Any
+from typing import Any, cast
 
 import streaming
 import torch
@@ -58,6 +58,70 @@ from pollen_worker.utils import (
     get_n_cuda_devices,
     sum_of_squares,
 )
+from typing import TypedDict
+
+
+class StreamDict(TypedDict):
+    """TypedDict for the streams dictionary."""
+
+    remote: str | None
+    local: str | None
+    split: str | None
+    proportion: float | None
+    repeat: float | None
+    choose: int | None
+    download_retry: int | None
+    download_timeout: float | None
+    validate_hash: str | None
+    keep_zip: bool | None
+
+
+StreamTuple = tuple[
+    str | None,
+    str | None,
+    str | None,
+    float | None,
+    float | None,
+    int | None,
+    int | None,
+    float | None,
+    str | None,
+    bool | None,
+]
+
+
+StreamCid = list[tuple[str, StreamTuple]]
+
+
+def decode_stream_cid(stream_cid: StreamCid) -> dict[str, StreamDict]:
+    """Decode the stream_cid into a StreamDict."""
+    return {
+        stream_name: StreamDict(
+            remote=remote,
+            local=local_thing,
+            split=split,
+            proportion=proportion,
+            repeat=repeat,
+            choose=choose,
+            download_retry=download_retry,
+            download_timeout=download_timeout,
+            validate_hash=validate_hash,
+            keep_zip=keep_zip,
+        )
+        for stream_name, (
+            remote,
+            local_thing,
+            split,
+            proportion,
+            repeat,
+            choose,
+            download_retry,
+            download_timeout,
+            validate_hash,
+            keep_zip,
+        ) in stream_cid
+    }
+
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -517,6 +581,7 @@ def get_raw_model_parameters(
 
 def _get_trainer_object(
     _cfg: DictConfig,
+    streams_dict: dict[str, StreamDict] | None,
 ) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -560,7 +625,7 @@ def _get_trainer_object(
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
     # TODO: Resolve the linter suggestion here
-    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))  # noqa: PGH001
+    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
     if type(visible_devices) is int:
         device = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
@@ -847,6 +912,11 @@ def _get_trainer_object(
     # log(INFO, "Building train loader...")
     train_loader = None
     if train_loader_config is not None:
+        if streams_dict is not None:
+            train_loader_config.dataset.streams = streams_dict
+            train_loader_config.dataset.local = None
+            train_loader_config.dataset.remote = None
+
         train_loader = build_dataloader(
             train_loader_config,
             tokenizer,
@@ -861,6 +931,11 @@ def _get_trainer_object(
         is_multi_eval = isinstance(eval_loader_config, ListConfig)
         eval_configs = eval_loader_config if is_multi_eval else [eval_loader_config]
         for eval_config in eval_configs:
+            if streams_dict is not None:
+                cast(DictConfig, eval_config).dataset.streams = streams_dict
+                cast(DictConfig, eval_config).dataset.local = None
+                cast(DictConfig, eval_config).dataset.remote = None
+
             eval_dataloader = build_dataloader(
                 eval_config, tokenizer, device_eval_batch_size
             )
@@ -1014,6 +1089,7 @@ def llm_fit(
     cfg, skip_iteration = set_client_load_path(
         cfg, config["server_round"], cfg["local_steps"]
     )
+    streams_dict = config["streams_dict"]
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
@@ -1025,6 +1101,7 @@ def llm_fit(
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(
         _cfg=cfg,
+        streams_dict=streams_dict,
     )
     # log(INFO, f"Trainer config: {logged_cfg}")
     # NOTE: Skipping a few steps if the checkpoint already exists
@@ -1111,8 +1188,10 @@ def llm_eval(
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
+    streams_dict = config["streams_dict"]
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
+        streams_dict=streams_dict,
     )
     # Set the parameters
     # log(INFO, "Initializing model...")
