@@ -19,6 +19,7 @@ from threading import Thread
 from typing import Any, cast
 
 import nvsmi
+from nvsmi import GPU
 import psutil
 import pyarrow as pa
 import pynvml
@@ -50,63 +51,80 @@ def get_cuda_prop(
     client: NumPyClient,
     params: NDArrays,
     config: dict[str, Scalar],
-    cap_workers: int | None,
+    cap_num_workers_per_gpu: int | None,
+    concurrency_estimator: bool,
 ) -> dict[str, Device]:
     """Assesses the capabilities of the CUDA resources available."""
-    gpus_prop = {}
+    if not concurrency_estimator and cap_num_workers_per_gpu is None:
+        raise ValueError(
+            "If concurrency_estimator is False, cap_num_workers_per_gpu must be an"
+            " integer."
+        )
+    gpus_prop: dict[str, GPU] = {}
     # NOTE: This is for controlling the GPU memory allocation
     pynvml.nvmlInit()
-    # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
-    # NOTE: This also solves the issue of the first round not using all the workers.
-    torch.multiprocessing.set_start_method("spawn", force=True)
-    p = ProcessPoolExecutor()
-    clients = []
-    gpus_available = list(nvsmi.get_gpus())
-    for gpu in gpus_available:
-        if f"cuda:{gpu.id}" not in gpus_prop:
-            config["device"] = f"cuda:{gpu.id}"
-            log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
-            clients.append(
-                p.submit(client.fit, parameters=params, config=deepcopy(config))
-            )
-            gpus_prop[f"cuda:{gpu.id}"] = gpu
-    for c in clients:
-        c.result()
-    monitors = {}
-    for pid in list(p._processes.keys()):
-        for dev_id in range(pynvml.nvmlDeviceGetCount()):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
-            for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-                if pid == proc.pid:
-                    mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                    current_gpu = gpus_prop.get(f"cuda:{dev_id}", None)
-                    monitors[f"cuda:{dev_id}"] = (
-                        current_gpu,
-                        proc.usedGpuMemory,
-                        mem.total,
-                        mem.used,
-                        mem.free,
-                    )
-    p.shutdown(wait=False)
+    monitors: dict[str, tuple[GPU, Any, Any, Any, Any]] = {}
+    if concurrency_estimator:
+        # NOTE: This is necessary, otherwise it throws an error: https://github.com/pytorch/pytorch/issues/40403
+        # NOTE: This also solves the issue of the first round not using all the workers.
+        torch.multiprocessing.set_start_method("spawn", force=True)
+        p = ProcessPoolExecutor()
+        clients = []
+        gpus_available: list[GPU] = list(nvsmi.get_gpus())
+        for gpu in gpus_available:
+            if f"cuda:{gpu.id}" not in gpus_prop:
+                config["device"] = f"cuda:{gpu.id}"
+                log(INFO, f"Collecting training statistics for GPU {gpu.id}.")
+                clients.append(
+                    p.submit(client.fit, parameters=params, config=deepcopy(config))
+                )
+                gpus_prop[f"cuda:{gpu.id}"] = gpu
+        for c in clients:
+            c.result()
+        for pid in list(p._processes.keys()):
+            for dev_id in range(pynvml.nvmlDeviceGetCount()):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
+                for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+                    if pid == proc.pid:
+                        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                        current_gpu = gpus_prop[f"cuda:{dev_id}"]
+                        monitors[f"cuda:{dev_id}"] = (
+                            current_gpu,
+                            proc.usedGpuMemory,
+                            mem.total,
+                            mem.used,
+                            mem.free,
+                        )
+        p.shutdown(wait=False)
+    else:
+        monitors = {
+            f"cuda:{gpu.id}": (gpu, 0, gpu.mem_total, gpu.mem_used, gpu.mem_free)
+            for gpu in list(nvsmi.get_gpus())
+        }
+    ret_properties: dict[str, Device] = {}
     for gpu_name, (gpu, proc_used, total, used, _free) in monitors.items():
         # NOTE: This accounts for other (external) processes running on the same GPU
-        if cap_workers:
+        if cap_num_workers_per_gpu:
             current_concurrency = min(
-                int((total - used + proc_used) // proc_used), cap_workers
+                int((total - used + proc_used) // proc_used), cap_num_workers_per_gpu
             )
         else:
             current_concurrency = int((total - used + proc_used) // proc_used)
-        gpus_prop[gpu_name] = Device(
+        ret_properties[gpu_name] = Device(
             device_id=gpu.id,
             name=gpu.name,
             device_type="cuda",
             total_memory=gpu.mem_total,
             allocated_memory=gpu.mem_used,
-            concurrency=current_concurrency,
+            concurrency=(
+                cap_num_workers_per_gpu  # type: ignore[arg-type, reportArgumentType]
+                if not concurrency_estimator
+                else current_concurrency
+            ),
         )
     # Shutdown pynvml
     pynvml.nvmlShutdown()
-    return gpus_prop
+    return ret_properties
 
 
 def get_cpu_prop(

@@ -7,6 +7,7 @@ Pollen paper.
 # TODO: split the codebase into task-specific and task-independent units.
 from argparse import ArgumentTypeError
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import reduce
 from logging import DEBUG, INFO
 from multiprocessing import Pool
@@ -49,6 +50,16 @@ from pollen_worker.utils import chunks_idx, weighted_average
 POLLEN_CONFIG_SHM = "pollen_config_shm"
 POLLEN_PARAMETERS_SHM = "pollen_parameters_shm"
 POLLEN_WORKER_SHM = "pollen_worker_"
+
+
+@dataclass
+class WorkerResult:
+    """Data type to store the results of the worker."""
+
+    client_id: int
+    start_time: int
+    end_time: int
+    device: str
 
 
 def aggregate_training_results(

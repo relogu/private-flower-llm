@@ -1,5 +1,5 @@
 ---
-# General parmeters
+# General parameters
 local_epochs: 1
 flwr_address: null
 ray_address: null
@@ -12,6 +12,8 @@ multirun_output_dir: null
 seed: 1337
 placement_policy: lb # "rr", "srr", "bu", "su", "lbu", "lb", "llb""
 num_nodes: 1
+cap_num_workers_per_gpu: null
+concurrency_estimator: false
 
 # Task
 defaults:
@@ -35,12 +37,13 @@ gen_on_fit_config_fn:
   n_workers: ${task.n_workers}
 
 # Wandb configuration
-use_wandb: false
+use_wandb: true
 
 wandb:
   setup:
     project: pollen
     group: ${task.data_root}
+    id: ${run_uuid}
     tags:
       - run_uuid_${run_uuid}
       - learning_rate_${task.learning_rate}

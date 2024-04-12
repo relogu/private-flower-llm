@@ -46,7 +46,7 @@ from flwr.client import NumPyClient
 from flwr.common import Config, NDArrays, Scalar
 from flwr.common.logger import log
 from hydra.utils import call
-from multiprocess import set_start_method, Queue
+from multiprocess import set_start_method, Queue  # type: ignore[reportAttributeAccessIssue]
 from nvsmi import GPU
 from omegaconf import DictConfig
 
@@ -54,6 +54,7 @@ from pollen_worker.horovod_utils import get_free_tcp_port
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
+    WorkerResult,
     allocate_shm,
     get_pyarrow_buffer_from_table,
     remove_shm_from_resource_tracker,
@@ -77,7 +78,8 @@ class NodeManager(fl.client.NumPyClient):
         warm_up_config: dict[str, Scalar],
         run_uuid: str,
         placement_policy: str,
-        cap_num_workers: int | None,
+        cap_num_workers_per_gpu: int | None,
+        concurrency_estimator: bool,
     ) -> None:
         super().__init__()
         self.name: str = getfqdn()
@@ -85,7 +87,8 @@ class NodeManager(fl.client.NumPyClient):
         self.properties = None
         self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
         self.run_uuid = run_uuid
-        self.cap_num_workers = cap_num_workers
+        self.cap_num_workers_per_gpu = cap_num_workers_per_gpu
+        self.concurrency_estimator = concurrency_estimator
         self.node_manager_uuid = str(uuid.uuid4())
         # Set the auth key for the multiprocessing. Necessary for accessing the queues.
         new_auth_key = bytes(str(uuid.uuid4()), encoding="utf-8")
@@ -127,7 +130,7 @@ class NodeManager(fl.client.NumPyClient):
             self.round_train_acc,
             self.round_shm,
         ) = allocate_shm(
-            tmp_client.get_parameters({}),
+            tmp_client.get_parameters({}),  # type: ignore[reportArgumentType]
             create=True,
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
@@ -180,18 +183,19 @@ class NodeManager(fl.client.NumPyClient):
         device_info: dict[str, Device] = {}
         # Get hardware accelerator properties
         tmp_client: VirtualClient = self.client_fn(0)
-        tmp_params = tmp_client.get_parameters(config={})
+        tmp_params: NDArrays = tmp_client.get_parameters(config={})  # type: ignore[reportArgumentType]
         if torch.cuda.is_available():
             device_info = dict(
                 get_cuda_prop(
                     tmp_client,
                     tmp_params,
                     config=self.warm_up_config,
-                    cap_workers=self.cap_num_workers,
+                    cap_num_workers_per_gpu=self.cap_num_workers_per_gpu,
+                    concurrency_estimator=self.concurrency_estimator,
                 ),
                 **device_info,
             )
-        if torch._C._mps_is_available() and torch._C.has_mps:
+        if torch._C._mps_is_available() and torch._C.has_mps:  # type: ignore[reportPrivateImportUsage]
             device_info = dict(
                 get_cpu_prop("mps", tmp_client, tmp_params, config=self.warm_up_config),
                 **device_info,
@@ -227,7 +231,7 @@ class NodeManager(fl.client.NumPyClient):
     def get_parameters(self, config: Config) -> NDArrays:
         """Implement how to get parameters."""
         tmp_client: NumPyClient = self.client_fn(0)
-        return tmp_client.get_parameters(config=config)
+        return tmp_client.get_parameters(config=config)  # type: ignore[reportArgumentType]
 
     def start_workers(
         self,
@@ -281,19 +285,19 @@ class NodeManager(fl.client.NumPyClient):
         while num_processed_virtual_clients < num_total_virtual_clients:
             # This call is blocking and it will return the statistics
             # about client's training put in the queue by the Worker
-            current_stats = self.result_queue.get()
+            worker_result: WorkerResult = self.result_queue.get()
             # NOTE: Added to be compatible with the termination task's
             # return value, i.e. `[-1, 0, 0]`
-            if current_stats[0] > -1:
-                stats["cid"].append(current_stats[0])
-                stats["start_time"].append(current_stats[1])
-                stats["end_time"].append(current_stats[2])
-                stats["gpu"].append(current_stats[3])
+            if worker_result.client_id > -1:
+                stats["cid"].append(worker_result.client_id)
+                stats["start_time"].append(worker_result.start_time)
+                stats["end_time"].append(worker_result.end_time)
+                stats["gpu"].append(worker_result.device)  # type: ignore[arg-type]
             num_processed_virtual_clients += 1
         start_time = time.time()
         self.workers_shms = []
         nm_p, nm_s_array, n_tl, n_ta, w_shm = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),
+            parameters=self.client_fn(0).get_parameters({}),  # type: ignore[reportArgumentType]
             name=self.workers[0].worker_id,
         )
         self.workers_shms.append(w_shm)
@@ -375,7 +379,8 @@ def main(cfg: DictConfig) -> None:
         warm_up_config=warm_up_config,
         run_uuid=cfg.run_uuid,
         placement_policy=cfg.placement_policy,
-        cap_num_workers=cfg.cap_num_workers,
+        cap_num_workers_per_gpu=cfg.cap_num_workers_per_gpu,
+        concurrency_estimator=cfg.concurrency_estimator,
     )
 
     # Start Flower client

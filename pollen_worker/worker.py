@@ -17,16 +17,16 @@ from torch.nn import Module
 from torch.distributed import init_process_group, dist_backend, barrier
 
 import cloudpickle
-import multiprocess as mp
 import torch
 import transformers
 from flwr.common.logger import log
-from multiprocess import set_start_method, Queue
+from multiprocess import set_start_method, Queue, Process  # type: ignore[reportAttributeAccessIssue]
 
 from pollen_worker.models.pfl_cnns import MultiLabelCNN
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
+    WorkerResult,
     allocate_shm,
     get_model,
     remove_shm_from_resource_tracker,
@@ -60,7 +60,7 @@ transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)
 
 
-class Worker(mp.Process):
+class Worker(Process):
     """Worker Process child of the NodeManager."""
 
     def __init__(
@@ -161,7 +161,7 @@ class Worker(mp.Process):
         #     elapsed_time,
         # )
         # TODO: Fix the typing here
-        results: list[list[int, int, int, str]] = []  # type: ignore[type-arg]
+        results: list[WorkerResult] = []  # type: ignore[type-arg]
         for client_dataset in self.federated_dataset.get_cohort(client_ids):
             # Take the timestamp before training a single client
             start_time = time.time_ns()
@@ -210,12 +210,14 @@ class Worker(mp.Process):
             )
             # Take the timestamp after the task is done
             end_time = time.time_ns()
-            results.append([
-                client_dataset.client_id,
-                start_time,
-                end_time,
-                str(self.device),
-            ])
+            results.append(
+                WorkerResult(
+                    client_dataset.client_id,
+                    start_time,
+                    end_time,
+                    str(self.device),
+                )
+            )
         # Write to shared memory if this is the last client
         if self.buffer is not None:
             barrier()
@@ -274,7 +276,7 @@ class Worker(mp.Process):
                 self.worker_num_samples,
                 self.worker_train_loss,
                 self.worker_train_acc,
-                get_ndarrays_from_model(net=self.worker_global_model),
+                get_ndarrays_from_model(net=self.worker_global_model),  # type: ignore[reportArgumentType]
                 int(reduced_metrics[2].cpu().item()),
                 float(reduced_metrics[0].cpu().item()),
                 float(reduced_metrics[1].cpu().item()),
@@ -418,7 +420,7 @@ class Worker(mp.Process):
             self.round_train_acc,
             self.round_shm,
         ) = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),
+            parameters=self.client_fn(0).get_parameters({}),  # type: ignore[reportArgumentType]
             name=self.run_uuid + POLLEN_PARAMETERS_SHM,
         )
         # NOTE: This is the Worker's shared memory for the fit results.
@@ -430,7 +432,7 @@ class Worker(mp.Process):
             self.worker_train_acc,
             self.worker_shm,
         ) = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),
+            parameters=self.client_fn(0).get_parameters({}),  # type: ignore[reportArgumentType]
             name=self.worker_id,
             create=True,
         )
@@ -443,7 +445,14 @@ class Worker(mp.Process):
             log(INFO, "Worker %s received task %s.", self.worker_id, task)
             self.process_task_pytorch_distributed(task)
         # Put the closing task's results in the result queue
-        self.result_queue.put([-1, 0, 0, ""])
+        self.result_queue.put(
+            WorkerResult(
+                -1,
+                0,
+                0,
+                "",
+            )
+        )
 
     def __del__(self) -> None:
         """Implement the deletion of the Worker."""
