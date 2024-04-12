@@ -23,7 +23,7 @@ from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
 
 from pollen_worker.clients.llm_client_functions import (
-    decode_stream_cid,
+    StreamDict,
     get_parameters,
     get_raw_model_parameters,
     llm_eval,
@@ -39,6 +39,7 @@ from pollen_worker.utils import (
     get_referenced_tensors_summary,
     get_selected_objects_types,
 )
+from dataclasses import asdict
 
 
 class VirtualLLMClient(fl.client.NumPyClient):
@@ -95,23 +96,53 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
         # Set the appropriate path given the `client_id`
-        config["streams_dict"] = None
-        if isinstance(self.cid, int):
+        streams_dict_list: list[int | dict] | None = cfg.pop(
+            "client_stream_list", {}
+        ).get("client_stream_list", None)
+
+        client_streams = (
+            streams_dict_list[int(self.cid)] if streams_dict_list is not None else None
+        )
+
+        if not isinstance(client_streams, dict):
+            cid_to_map_to = client_streams if client_streams is not None else self.cid
             if cfg.data_remote is not None:  # type: ignore[union-attr]
                 # Set the appropriate path given the `client_id`
                 new_remote_path = (
-                    str(cfg.data_remote) + f"/client_{self.cid}"  # type: ignore[union-attr]
+                    str(cfg.data_remote) + f"/client_{cid_to_map_to}"  # type: ignore[union-attr]
                 )
                 cfg = set_all_data_paths(cfg, new_remote_path, False)
             # Tie the local path to the client_id and the run_uuid
             new_local_path = (
-                str(cfg.data_local) + f"/client_{self.cid}"  # type: ignore[union-attr]
+                str(cfg.data_local) + f"/client_{cid_to_map_to}"  # type: ignore[union-attr]
             )
             cfg = set_all_data_paths(cfg, new_local_path)
             # Execute the fit function
-        elif isinstance(self.cid, str):
-            streams_dict = decode_stream_cid(eval(self.cid))
-            config["streams_dict"] = streams_dict
+        elif isinstance(client_streams, dict):
+            client_streams = {
+                key: StreamDict(**stream) for key, stream in client_streams.items()
+            }
+            for stream in client_streams.values():
+                if cfg.data_remote is not None and stream.remote is not None:
+                    stream.remote = (
+                        str(cfg.data_remote) + stream.remote if stream.remote else None
+                    )
+                if stream.local is not None:
+                    stream.local = str(cfg.data_local) + stream.local
+
+            set_all_data_paths(cfg, None, False)
+            set_all_data_paths(
+                cfg,
+                new_path=None,
+            )
+            streams_dict = {
+                name: asdict(stream) for name, stream in client_streams.items()
+            }
+            cfg.streams = streams_dict
+
+            cfg.train_loader.dataset.streams = streams_dict
+
+            config["client_streams"] = streams_dict
         else:
             raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
         return llm_fit(parameters, config, cfg)
@@ -124,7 +155,15 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        if isinstance(self.cid, int):
+        streams_dict_list: list[int | dict] | None = cfg.pop(
+            "client_stream_list", {}
+        ).pop("client_stream_list", None)
+
+        client_streams = (
+            streams_dict_list[int(self.cid)] if streams_dict_list is not None else None
+        )
+
+        if not isinstance(client_streams, dict):
             # Set the appropriate path for the (centralized) val set
             if cfg.data_remote is not None:  # type: ignore[union-attr]
                 # Extracts the parent folder from the remote path
@@ -137,9 +176,8 @@ class VirtualLLMClient(fl.client.NumPyClient):
             # Tie the local path to the client_id and the run_uuid
             new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
             cfg = set_all_data_paths(cfg, new_local_path)
-        elif isinstance(self.cid, str):
-            streams_dict = decode_stream_cid(eval(self.cid))
-            config["streams_dict"] = streams_dict
+        elif isinstance(client_streams, dict):
+            config["client_streams"] = StreamDict(**client_streams)
         else:
             raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
         return llm_eval(parameters, config, cfg)

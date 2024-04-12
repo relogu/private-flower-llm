@@ -1,0 +1,110 @@
+---
+client_streams_list:
+  - streams:
+      bucket_1:
+        remote: client_0
+        local: client_0
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_1
+        local: client_1
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_2
+        local: client_2
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_3
+        local: client_3
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_4
+        local: client_4
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_5
+        local: client_5
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_6
+        local: client_6
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_7
+        local: client_7
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
+  - streams:
+      bucket_1:
+        remote: client_8
+        local: client_8
+        split: train
+        proportion: null
+        repeat: null
+        choose: null
+        download_retry: null
+        download_timeout: null
+        validate_hash: null
+        keep_zip: null
