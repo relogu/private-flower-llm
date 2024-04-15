@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=PO13-llb-scale10k
+#SBATCH --job-name=PO13-rr
 #SBATCH --output=%x-%j.out
 #SBATCH --partition=normal
 #SBATCH --gres=gpu:a40:1
@@ -27,7 +27,7 @@ POETRY_ENV_PATH=$(poetry env info --path)
 
 
 # Set the custom hydra arguments that will be passed to the server and the node manager
-CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=10000 task.num_rounds=100 local_epochs=1 placement_policy=llb flwr_address=$ip:6380"
+CUSTOM_HYDRA_ARGS="num_nodes=2 run_uuid=$run_uuid task=openimage task.n_clients_per_round=100 task.num_rounds=100 local_epochs=1 placement_policy=rr flwr_address=$ip:6380"
 
 echo "STARTING POLLEN SERVER at $node_1"
 poetry run python -m pollen_worker.launch_pollen_server $CUSTOM_HYDRA_ARGS hydra/job_logging=none hydra/hydra_logging=none &
