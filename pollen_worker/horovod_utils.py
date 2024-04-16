@@ -31,14 +31,13 @@ from pollen_worker.datasets.shakespeare import (
 )
 from pollen_worker.datasets.shakespeare import LEAF_CHARACTERS
 from pollen_worker.models.pfl_cnns import MultiLabelCNN
-from pollen_worker.pollen_utils import get_clients_population_dict, get_device
+from pollen_worker.pollen_utils import get_clients_population_dict
 
 from pollen_worker.datasets.pfl_datasets_common import (
     get_label_mapping,
     get_multi_hot_targets,
     get_user_num_images,
 )
-from pollen_worker.pollen_utils import get_optimizer
 
 
 def get_free_tcp_port() -> int:
@@ -54,8 +53,8 @@ def get_free_tcp_port() -> int:
 def set_random_seeds(random_seed: int = 0) -> None:
     """Set random seeds for reproducibility."""
     torch.manual_seed(random_seed)
-    torch_backends.cudnn.deterministic = True
-    torch_backends.cudnn.benchmark = False
+    torch_backends.cudnn.deterministic = True  # type: ignore[reportAttributeAccessIssue]
+    torch_backends.cudnn.benchmark = False  # type: ignore[reportAttributeAccessIssue]
     np.random.seed(random_seed)
     random.seed(random_seed)
 
@@ -72,7 +71,7 @@ def get_default_device() -> torch.device:
         default_device = torch.device(manual_device)
     elif torch.cuda.is_available():
         default_device = torch.device("cuda")
-    elif hasattr(torch_backends, "mps") and torch_backends.mps.is_available():
+    elif hasattr(torch_backends, "mps") and torch_backends.mps.is_available():  # type: ignore[reportAttributeAccessIssue]
         default_device = torch.device("mps")
     else:
         default_device = torch.device("cpu")
@@ -129,7 +128,7 @@ def set_model_parameters_from_ndarrays(
     }
     params_dict = zip(module_state_dict.keys(), parameters, strict=True)
     state_dict = OrderedDict(
-        {k: torch.tensor(v, device=device) for k, v in params_dict}
+        {k: torch.as_tensor(v, device=device) for k, v in params_dict}
     )
     model.load_state_dict(state_dict, strict=False)
 
@@ -207,13 +206,26 @@ def all_reduce(
     return in_memory_reshape(flat, tensors)
 
 
-def to_tensor(values: list | np.ndarray, dtype: str | None = "float32") -> torch.Tensor:
+def broadcast(world_size: int, tensors: list[torch.Tensor]) -> list[torch.Tensor]:
+    """Execute an broadcast operation on the provided tensors."""
+    if world_size <= 1:
+        return tensors
+
+    flat, _, _ = flatten(tensors)
+    dist.broadcast(flat, 0)
+    return in_memory_reshape(flat, tensors)
+
+
+def to_tensor(
+    values: list | np.ndarray, _device: device, dtype: str | None = "float32"
+) -> torch.Tensor:
     """Convert a list of values or a numpy array to a float32 Torch tensor."""
     torch_dtype = (
         getattr(torch, dtype) if dtype is not None and isinstance(dtype, str) else dtype
     )
 
     tensor = torch.as_tensor(values, dtype=torch_dtype)
+    tensor = tensor.to(_device)
     return tensor
 
 
@@ -280,17 +292,18 @@ def get_model_difference(
     return model_diff
 
 
-def prepare_batch(batch: Any) -> dict[int, torch.Tensor] | list[torch.Tensor]:
+def prepare_batch(
+    batch: Any, _device: device
+) -> dict[int, torch.Tensor] | list[torch.Tensor]:
     """Transform a batch of data to tensors."""
     if isinstance(batch, dict):
         return {
-            k: v if isinstance(v, torch.Tensor) else to_tensor(v)
+            k: v if isinstance(v, torch.Tensor) else to_tensor(v, _device=_device)
             for k, v in batch.items()
         }
     else:
-        # TODO: Sort out the typing here
         return [
-            data if isinstance(data, torch.Tensor) else to_tensor(data)
+            data if isinstance(data, torch.Tensor) else to_tensor(data, _device=_device)
             for data in batch
         ]
 
@@ -302,15 +315,33 @@ class ClientDataset:
         self,
         data: tuple[np.ndarray, np.ndarray],
         client_id: int,
+        device: str,
         n_workers: int = 1,
+        cap_batch_size: int | None = 256,
     ) -> None:
         self.data = data
         self.client_id = client_id
         self._batches: dict[int, list] = {}
+        self.num_accumulation_steps: int = 1
+        self.n_workers = n_workers
+        self.cap_batch_size = cap_batch_size
+        self.device = device
 
     def __len__(self) -> int:
         """Return the number of samples in the client dataset."""
-        return len(self.data[0])
+        return len(self.data[1])
+
+    def set_num_accumulation_steps(self, batch_size: int) -> None:
+        """Set the number of accumulation steps for the client dataset."""
+        # Get the 10% of the dataset
+        threshold = max(1, int(len(self) * 1.0))
+        # Round to the closest power of two
+        preferred_batch_size = 2 ** int(np.log2(threshold))
+        # Cap the batch size if needed
+        if self.cap_batch_size:
+            preferred_batch_size = min(preferred_batch_size, self.cap_batch_size)
+        # Set the number of accumulation steps
+        self.num_accumulation_steps = max(1, preferred_batch_size // batch_size)
 
     def iter(self, batch_size: int | None) -> Iterable[Any]:
         """Implement an iterator over the client dataset for a given batch size.
@@ -334,6 +365,12 @@ class ClientDataset:
                 return data[start_ix:end_ix]
 
         if batch_size not in self._batches:
+            # self.set_num_accumulation_steps(batch_size)
+            # log(
+            #     DEBUG,
+            #     "Client %s num_accumulation_steps: %s",
+            #     self.client_id, self.num_accumulation_steps,
+            # )
             # Only keep a cache size of 1 to limit memory growth.
             # Only 1 is needed anyway if program uses static batch size.
             self._batches = {
@@ -358,7 +395,7 @@ class FakeShakespeareDataset(Dataset):
 
     def __len__(self) -> int:
         """Return the length of the dataset."""
-        return len(self.data)
+        return len(self.data[0])
 
 
 class ClientDatasetShakespeareDataloader(ClientDataset):
@@ -369,11 +406,14 @@ class ClientDatasetShakespeareDataloader(ClientDataset):
         data: tuple[np.ndarray, np.ndarray],
         client_id: int,
         n_workers: int,
+        device: str,
     ) -> None:
         self.data = data
         self.client_id = client_id
         self._batches: dict[int, list] = {}
+        self.n_workers = n_workers
         self.dataset = FakeShakespeareDataset(data)
+        self.device = device
 
     def __len__(self) -> int:
         """Return the number of samples in the client dataset."""
@@ -387,19 +427,18 @@ class ClientDatasetShakespeareDataloader(ClientDataset):
         if batch_size is None:
             yield self.data
             return
-        n_workers = 0
         train_loader = DataLoader(
             # NOTE: Non-default arguments
             dataset=self.dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=n_workers,
+            num_workers=self.n_workers,
             # NOTE: Prevent runtime error related to BatchNorm, apparently
             drop_last=False,
             # copy Tensors into CUDA pinned memory before returning them
             pin_memory=True,
             # the device to be used for pinning the memory
-            pin_memory_device=str(get_device()),
+            pin_memory_device=self.device,
             # builds batches from samples
             collate_fn=None,
             # NOTE: Default arguments
@@ -413,7 +452,7 @@ class ClientDatasetShakespeareDataloader(ClientDataset):
             worker_init_fn=None,
             multiprocessing_context=None,
             # This allows to maintain the workers
-            prefetch_factor=2 if n_workers > 0 else None,
+            prefetch_factor=2 if self.n_workers > 0 else None,
             # PRNG to use for random sampling
             generator=None,
             persistent_workers=False,
@@ -432,6 +471,8 @@ class ClientDatasetOpenImageNoDataloader:
         path: Path,
         root: Path,
         n_workers: int,
+        device: str,
+        cap_batch_size: int = 256,
     ) -> None:
         self.data = data
         self.client_id = client_id
@@ -442,10 +483,26 @@ class ClientDatasetOpenImageNoDataloader:
             data,
             client_id,
         )
+        self.n_workers = n_workers
+        self.device = device
+        self.cap_batch_size = cap_batch_size
+        self.num_accumulation_steps = 1
 
     def __len__(self) -> int:
         """Return the number of samples in the client dataset."""
         return len(self.data[0])
+
+    def set_num_accumulation_steps(self, batch_size: int) -> None:
+        """Set the number of accumulation steps for the client dataset."""
+        # Get the 10% of the dataset
+        threshold = max(1, int(len(self) * 1.0))
+        # Round to the closest power of two
+        preferred_batch_size = 2 ** int(np.log2(threshold))
+        # Cap the batch size if needed
+        if self.cap_batch_size:
+            preferred_batch_size = min(preferred_batch_size, self.cap_batch_size)
+        # Set the number of accumulation steps
+        self.num_accumulation_steps = max(1, preferred_batch_size // batch_size)
 
     def iter(self, batch_size: int | None) -> Iterable[Any]:
         """Implement an iterator over the client dataset for a given batch size.
@@ -471,6 +528,7 @@ class ClientDatasetOpenImageNoDataloader:
             return [torch.stack(features), torch.stack(labels)]
 
         if batch_size not in self._batches:
+            # self.set_num_accumulation_steps(batch_size)
             # Only keep a cache size of 1 to limit memory growth.
             # Only 1 is needed anyway if program uses static batch size.
             self._batches = {
@@ -492,6 +550,7 @@ class ClientDatasetOpenImageDataloader(ClientDatasetOpenImageNoDataloader):
         path: Path,
         root: Path,
         n_workers: int,
+        device: str,
     ) -> None:
         self.data = data
         self.client_id = client_id
@@ -503,6 +562,7 @@ class ClientDatasetOpenImageDataloader(ClientDatasetOpenImageNoDataloader):
             client_id,
         )
         self.n_workers = n_workers
+        self.device = device
 
     def __len__(self) -> int:
         """Return the number of samples in the client dataset."""
@@ -528,7 +588,7 @@ class ClientDatasetOpenImageDataloader(ClientDatasetOpenImageNoDataloader):
             # copy Tensors into CUDA pinned memory before returning them
             pin_memory=True,
             # the device to be used for pinning the memory
-            pin_memory_device=str(get_device()),
+            pin_memory_device=self.device,
             # builds batches from samples
             collate_fn=None,
             # NOTE: Default arguments
@@ -561,6 +621,7 @@ class FederatedDataset:
             | list[tuple[np.ndarray, np.ndarray]]
         ),
         list_of_client_ids: list[int],
+        device: str,
         n_workers: int = 0,
         world_size: int | None = None,
         local_rank: int | None = None,
@@ -576,11 +637,15 @@ class FederatedDataset:
         )
         self.client_dataset_type = client_dataset_type
         self.n_workers = n_workers
+        self.device = device
 
     def make_dataset_fn(self, client_id: int) -> ClientDataset:
         """Return a client dataset for the given client_id."""
         return self.client_dataset_type(
-            data=self.data[client_id], client_id=client_id, n_workers=self.n_workers
+            data=self.data[client_id],
+            client_id=client_id,
+            n_workers=self.n_workers,
+            device=self.device,
         )
 
     def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
@@ -604,6 +669,7 @@ class FederatedDatasetOpenImage:
         root: Path,
         data: dict[int, tuple[list, list]],
         list_of_client_ids: list[int],
+        device: str,
         n_workers: int = 1,
         world_size: int | None = None,
         local_rank: int | None = None,
@@ -623,6 +689,7 @@ class FederatedDatasetOpenImage:
         self.client_dataset_type = client_dataset_type
         self.root = root
         self.n_workers = n_workers
+        self.device = device
 
     def make_dataset_fn(self, client_id: int) -> ClientDatasetOpenImageNoDataloader:
         """Return a client dataset for the given client_id."""
@@ -632,6 +699,7 @@ class FederatedDatasetOpenImage:
             path=self.path,
             root=self.root,
             n_workers=self.n_workers,
+            device=self.device,
         )
 
     def get_cohort(
@@ -659,6 +727,7 @@ class FLAIRFederatedDataset:
         partition: str,
         use_fine_grained_labels: bool,
         num_classes: int,
+        device: str,
         world_size: int | None = None,
         local_rank: int | None = None,
     ) -> None:
@@ -668,6 +737,7 @@ class FLAIRFederatedDataset:
         self.partition = partition
         self.use_fine_grained_labels = use_fine_grained_labels
         self.num_classes = num_classes
+        self.device = device
         self.world_size = (
             int(os.environ["WORLD_SIZE"]) if world_size is None else world_size
         )
@@ -692,6 +762,7 @@ class FLAIRFederatedDataset:
         return ClientDataset(
             data=(inputs[data_order], targets[data_order]),
             client_id=self.list_of_client_ids.index(client_id),
+            device=self.device,
         )
 
     def get_cohort(self, cohort_size: int | list[int]) -> Iterable[ClientDataset]:
@@ -712,6 +783,7 @@ def make_flair_federated_dataset(
     partition: str,
     use_fine_grained_labels: bool,
     max_num_user_images: int,
+    device: str,
     world_size: int | None = None,
     local_rank: int | None = None,
 ) -> FLAIRFederatedDataset:
@@ -746,6 +818,7 @@ def make_flair_federated_dataset(
         num_classes=num_classes,
         world_size=world_size,
         local_rank=local_rank,
+        device=device,
     )
 
 
@@ -782,6 +855,7 @@ def make_iid_federated_dataset(
     images: np.ndarray,
     labels: np.ndarray,
     user_dataset_len_sampler: Callable[[], int],
+    device: str,
     numpy_to_tensor: Callable = lambda x: x,
     world_size: int | None = None,
     local_rank: int | None = None,
@@ -805,15 +879,18 @@ def make_iid_federated_dataset(
         start_ix += dataset_len
         if start_ix >= len(images):
             break
+
     return FederatedDataset(
         data=users_to_data,
         list_of_client_ids=list(users_to_data),
         world_size=world_size,
         local_rank=local_rank,
+        device=device,
     )
 
 
 def make_cifar10_iid_datasets(
+    device: str,
     data_dir: Path = Path("/datasets/cifar10"),
     user_dataset_len_sampler: Callable[[], int] = lambda: 50,
     numpy_to_tensor: Callable = lambda x: x,
@@ -825,10 +902,11 @@ def make_cifar10_iid_datasets(
         data_dir / "cifar10_train.p"
     )
     return make_iid_federated_dataset(
-        train_images,
-        train_labels,
-        user_dataset_len_sampler,
-        numpy_to_tensor,
+        images=train_images,
+        labels=train_labels,
+        user_dataset_len_sampler=user_dataset_len_sampler,
+        numpy_to_tensor=numpy_to_tensor,
+        device=device,
         world_size=world_size,
         local_rank=local_rank,
     )
@@ -836,6 +914,8 @@ def make_cifar10_iid_datasets(
 
 def classification_training_loop(
     client_model: Module | MultiLabelCNN,
+    local_optimizer: torch.optim.Optimizer,
+    criterion: torch.nn.Module,
     _device: device,
     client_dataset: ClientDataset | ClientDatasetOpenImageNoDataloader,
     batch_size: int,
@@ -843,9 +923,6 @@ def classification_training_loop(
     n_local_epochs: int = 1,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Execute the local training loop for CIFAR10, OpenImage and Shakespeare."""
-    local_optimizer = get_optimizer(name=dataset_name, model=client_model)
-    criterion = torch.nn.CrossEntropyLoss(reduction="mean")
-
     client_model.train()
 
     cumulative_loss: torch.Tensor = torch.tensor(0.0, device=_device)
@@ -853,25 +930,29 @@ def classification_training_loop(
     cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=_device)
     for _ in range(n_local_epochs):
         for data in client_dataset.iter(batch_size):
-            prepared_batch = prepare_batch(data)
+            prepared_batch = prepare_batch(data, _device=_device)
             inputs, labels = prepared_batch[0].to(_device), prepared_batch[1].to(
                 _device
             )
-            if labels.dim() > 1:
+            if dataset_name == "cifar10" and labels.dim() > 1:
                 labels = labels.squeeze()
             local_optimizer.zero_grad()
             outputs: torch.Tensor = client_model(inputs)
             loss: torch.Tensor = criterion(outputs, labels.long())
-            cumulative_loss += loss.item()
-            cumulative_accuracy += (outputs.argmax(-1) == labels.long()).sum().item()
-            cumulative_num_samples += labels.size(0)
             loss.backward()
             local_optimizer.step()
+            cumulative_loss += loss.detach().clone().item()
+            cumulative_accuracy += (
+                (outputs.argmax(-1) == labels.long()).detach().clone().sum().item()
+            )
+            cumulative_num_samples += len(labels)
     return cumulative_loss, cumulative_accuracy, cumulative_num_samples
 
 
 def flair_training_loop(
     client_model: Module | MultiLabelCNN,
+    local_optimizer: torch.optim.Optimizer,
+    criterion: torch.nn.Module,
     _device: device,
     client_dataset: ClientDataset | ClientDatasetOpenImageNoDataloader,
     batch_size: int,
@@ -879,25 +960,24 @@ def flair_training_loop(
     n_local_epochs: int = 1,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Execute the local training loop for FLAIR."""
-    local_optimizer = get_optimizer(name="flair", model=client_model)
-    criterion = torch.nn.BCEWithLogitsLoss()
-
     client_model.train()
 
     cumulative_loss: torch.Tensor = torch.tensor(0.0, device=_device)
     cumulative_accuracy: torch.Tensor = torch.tensor(0.0, device=_device)
     cumulative_num_samples: torch.Tensor = torch.tensor(0.0, device=_device)
     for _ in range(n_local_epochs):
-        for data in client_dataset.iter(batch_size):
-            prepared_batch = prepare_batch(data)
+        # TODO: Assess if this is really necessary
+        local_optimizer.zero_grad()
+        for i, data in enumerate(client_dataset.iter(batch_size)):
+            prepared_batch = prepare_batch(data, _device=_device)
             inputs, labels = prepared_batch[0].to(_device), prepared_batch[1].to(
                 _device
             )
-            local_optimizer.zero_grad()
+            # local_optimizer.zero_grad()
             outputs: torch.Tensor = client_model(inputs)
             loss: torch.Tensor = criterion(outputs, labels)
             num_data = len(inputs)
-            num_predictions = np.ones(client_model._num_outputs) * num_data
+            num_predictions = np.ones(client_model._num_outputs) * num_data  # type: ignore[reportArgumentType]
             scores = torch.sigmoid(outputs)
             predictions = torch.round(scores)
             cumulative_loss += loss.item()
@@ -907,11 +987,17 @@ def flair_training_loop(
             )
             cumulative_num_samples += num_predictions.sum()
             loss.backward()
-            local_optimizer.step()
+            if (i + 1) % client_dataset.num_accumulation_steps:  # type: ignore[reportArgumentType]
+                local_optimizer.step()
+                local_optimizer.zero_grad()
+        # TODO: Assess if this is an overhead whenever the gradients are actually zero
+        # because the accumulation steps split evenly the number of iterations performed
+        local_optimizer.step()
     return cumulative_loss, cumulative_accuracy, cumulative_num_samples
 
 
 def make_shakespeare_natural_partition(
+    device: str,
     root: Path = Path("/datasets/FedScale/leaf_shakespeare"),
     dataset_type: str = "train",
     n_workers: int = 0,
@@ -948,10 +1034,12 @@ def make_shakespeare_natural_partition(
         world_size=world_size,
         local_rank=local_rank,
         client_dataset_type=client_dataset_type,
+        device=device,
     )
 
 
 def make_openimage_natural_partition(
+    device: str,
     root: Path = Path("/datasets/FedScale/openImg"),
     dataset_type: str = "train",
     n_workers: int = 1,
@@ -987,4 +1075,5 @@ def make_openimage_natural_partition(
         world_size=world_size,
         local_rank=local_rank,
         client_dataset_type=client_dataset_type,
+        device=device,
     )
