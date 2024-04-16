@@ -1,6 +1,5 @@
 """A highly efficient worker for Pollen."""
 
-import gc
 import multiprocessing
 from pathlib import Path
 import pickle
@@ -14,13 +13,17 @@ from typing import Any
 import uuid
 from torch import device
 from torch.nn import Module
-from torch.distributed import init_process_group, dist_backend, barrier
+from torch.distributed import (
+    init_process_group,
+    dist_backend,
+    barrier,
+)
 
 import cloudpickle
 import torch
 import transformers
 from flwr.common.logger import log
-from multiprocess import set_start_method, Queue, Process  # type: ignore[reportAttributeAccessIssue]
+from multiprocess import set_start_method, Process  # type: ignore[reportAttributeAccessIssue]
 
 from pollen_worker.models.pfl_cnns import MultiLabelCNN
 from pollen_worker.pollen_utils import (
@@ -29,11 +32,14 @@ from pollen_worker.pollen_utils import (
     WorkerResult,
     allocate_shm,
     get_model,
+    get_optimizer,
     remove_shm_from_resource_tracker,
     write_to_fit_result_shm,
 )
 from pollen_worker.horovod_utils import (
+    ClientDataset,
     ClientDatasetOpenImageDataloader,
+    ClientDatasetOpenImageNoDataloader,
     FLAIRFederatedDataset,
     ClientDatasetShakespeareDataloader,
     FederatedDataset,
@@ -81,8 +87,8 @@ class Worker(Process):
         self.client_fn: Callable[[int], VirtualClient] = client_fn
         self.task_queues = task_queues
         self.result_queue = result_queue
-        self.workers_system_metrics_queue: QueueType = (
-            workers_system_metrics_queue if workers_system_metrics_queue else Queue()
+        self.workers_system_metrics_queue: QueueType | None = (
+            workers_system_metrics_queue if workers_system_metrics_queue else None
         )
         self.run_uuid = run_uuid
         self.concurrency = concurrency
@@ -105,6 +111,8 @@ class Worker(Process):
         self.client_model: Module | MultiLabelCNN
         self.buffer: dict[str, torch.Tensor] | None = None
         self.cache: dict[str, torch.Tensor] | None = None
+        self.worker_global_model_variable_map: dict[str, torch.Tensor]
+        self.worker_central_optimizer: torch.optim.Optimizer
 
     def __getstate__(self) -> dict[str, Any]:
         """Return the state of the object.
@@ -144,38 +152,51 @@ class Worker(Process):
             0, dtype=torch.float32, device=self.device
         )
         # Initialise the model parameters
+        # NOTE: Method 1 is quicker for CIFAR10
+        # Method 1 -- All workers read the shared memory concurrently
         set_model_parameters_from_ndarrays(self.round_params, self.client_model)
+        # Method 2 -- Just rank zero reads and then it broadcasts
         # if self.local_rank == 0:
-        set_model_parameters_from_ndarrays(self.round_params, self.worker_global_model)
-        worker_global_model_variable_map = get_variable_map(self.worker_global_model)
-        worker_central_optimizer = torch.optim.SGD(
+        #     set_model_parameters_from_ndarrays(self.round_params, self.client_model)
+        # with torch.no_grad():
+        #     for _, variable in self.client_model.named_parameters():
+        #         variable_copy = variable.detach()
+        #         broadcast(variable_copy, 0)
+        #         variable.copy_(variable_copy)
+        set_parameters(
+            get_variable_map(self.client_model),
+            get_variable_map(self.worker_global_model),
+        )
+        self.worker_global_model_variable_map = get_variable_map(
+            self.worker_global_model
+        )
+        self.worker_central_optimizer = torch.optim.SGD(
             self.worker_global_model.parameters(), lr=1.0
         )
         barrier()
         elapsed_time = time.time() - init_time
-        worker_system_metrics.append(("workers_round_init_time", elapsed_time))
-        # log(
-        #     DEBUG,
-        #     "Node initialization time measure at rank %s: %s",
-        #     self.local_rank,
-        #     elapsed_time,
-        # )
-        # TODO: Fix the typing here
-        results: list[WorkerResult] = []  # type: ignore[type-arg]
+        worker_system_metrics.append(("workers/fit_init_time", elapsed_time))
+        barrier()
+        train_time = time.time()
+        results: list[WorkerResult] = []
+        if self.dataset_name == "flair":
+            train_loop = flair_training_loop
+            local_optimizer = get_optimizer(name="flair", model=self.client_model)
+            criterion = torch.nn.BCEWithLogitsLoss()
+        else:
+            train_loop = classification_training_loop
+            local_optimizer = get_optimizer(
+                name=self.dataset_name, model=self.client_model
+            )
+            criterion = torch.nn.CrossEntropyLoss(reduction="mean")
         for client_dataset in self.federated_dataset.get_cohort(client_ids):
             # Take the timestamp before training a single client
             start_time = time.time_ns()
-            initial_model_variable_map = get_parameters(
-                get_variable_map(self.client_model)
-            )
-
-            if self.dataset_name == "flair":
-                train_loop = flair_training_loop
-            else:
-                train_loop = classification_training_loop
 
             cumulative_loss, cumulative_accuracy, cumulative_num_samples = train_loop(
                 self.client_model,
+                local_optimizer,
+                criterion,
                 self.device,
                 client_dataset,
                 config["batch_size"],
@@ -189,7 +210,7 @@ class Worker(Process):
             # Get the pseudo-gradients
             deltas = get_model_difference(
                 variable_map=get_variable_map(self.client_model),
-                other_variable_map=initial_model_variable_map,
+                other_variable_map=self.worker_global_model_variable_map,
                 cache=self.cache,
             )
 
@@ -206,18 +227,21 @@ class Worker(Process):
                     # Add the pseudo-gradients to the buffer
                     self.buffer[tensor_name].add_(tensor_value)
             set_parameters(
-                initial_model_variable_map, get_variable_map(self.client_model)
+                self.worker_global_model_variable_map,
+                get_variable_map(self.client_model),
             )
             # Take the timestamp after the task is done
             end_time = time.time_ns()
             results.append(
                 WorkerResult(
-                    client_dataset.client_id,
-                    start_time,
-                    end_time,
+                    int(cumulative_num_samples.cpu().item()),
+                    (end_time - start_time) * 1e-9,
                     str(self.device),
                 )
             )
+        barrier()
+        elapsed_time = time.time() - train_time
+        worker_system_metrics.append(("workers/fit_train_time", elapsed_time))
         # Write to shared memory if this is the last client
         if self.buffer is not None:
             barrier()
@@ -237,56 +261,61 @@ class Worker(Process):
                 [aggregated_loss, aggregated_accuracy, aggregated_num_samples],
                 average=False,
             )
-            # NOTE: Doing this computation only on rank 0 doesn't work, not clear why.
-            # if self.local_rank == 0:
-            # Scale the metrics on the number of samples trained on this node
-            reduced_metrics[0].div_(reduced_metrics[2])
-            reduced_metrics[1].div_(reduced_metrics[2])
-            log(
-                INFO,
-                "Local Rank: %s, W. Avg. Loss: %s,"
-                " W. Avg. Accuracy: %s, Tot. N. Samples: %s",
-                self.local_rank,
-                float(reduced_metrics[0].cpu().item()),
-                float(reduced_metrics[1].cpu().item()),
-                int(reduced_metrics[2].cpu().item()),
-            )
-            # Update the global model applying the updates with the optimizer
-            worker_central_optimizer.zero_grad()
-            for variable_name, difference in dict(
-                zip(self.buffer.keys(), reduced_buffer, strict=False)
-            ).items():
-                # Scale the update for the number of samples trained on this node
-                difference.div_(reduced_metrics[2])
-                if worker_global_model_variable_map[variable_name].grad is None:
-                    worker_global_model_variable_map[variable_name].grad = (
-                        torch.zeros_like(
-                            worker_global_model_variable_map[variable_name]
-                        )
-                    )
-                # Interpret the model updates as gradients.
-                worker_global_model_variable_map[variable_name].grad.data.copy_(  # type: ignore[union-attr]
-                    -1 * difference
+            # Post-process the results of the reduce operation on rank 0 only
+            if self.local_rank == 0:
+                # Scale the metrics on the number of samples trained on this node
+                reduced_metrics[0].div_(reduced_metrics[2])
+                reduced_metrics[1].div_(reduced_metrics[2])
+                log(
+                    INFO,
+                    "Local Rank: %s, W. Avg. Loss: %s,"
+                    " W. Avg. Accuracy: %s, Tot. N. Samples: %s",
+                    self.local_rank,
+                    float(reduced_metrics[0].cpu().item()),
+                    float(reduced_metrics[1].cpu().item()),
+                    int(reduced_metrics[2].cpu().item()),
                 )
-            # Apply the update
-            worker_central_optimizer.step()
-            # Write buffer to shared memory
-            write_to_fit_result_shm(
-                self.worker_params,
-                self.worker_num_samples,
-                self.worker_train_loss,
-                self.worker_train_acc,
-                get_ndarrays_from_model(net=self.worker_global_model),  # type: ignore[reportArgumentType]
-                int(reduced_metrics[2].cpu().item()),
-                float(reduced_metrics[0].cpu().item()),
-                float(reduced_metrics[1].cpu().item()),
-            )
+                # Update the global model applying the updates with the optimizer
+                self.worker_central_optimizer.zero_grad()
+                for variable_name, difference in dict(
+                    zip(self.buffer.keys(), reduced_buffer, strict=False)
+                ).items():
+                    # Scale the update for the number of samples trained on this node
+                    difference.div_(reduced_metrics[2])
+                    if (
+                        self.worker_global_model_variable_map[variable_name].grad
+                        is None
+                    ):
+                        self.worker_global_model_variable_map[variable_name].grad = (
+                            torch.zeros_like(
+                                self.worker_global_model_variable_map[variable_name],
+                                device=self.device,
+                            )
+                        )
+                    # Interpret the model updates as gradients.
+                    self.worker_global_model_variable_map[variable_name].grad.data.copy_(  # type: ignore[union-attr]
+                        -1 * difference
+                    )
+                # Apply the update
+                self.worker_central_optimizer.step()
+                # Write buffer to shared memory
+                write_to_fit_result_shm(
+                    self.worker_params,
+                    self.worker_num_samples,
+                    self.worker_train_loss,
+                    self.worker_train_acc,
+                    get_ndarrays_from_model(net=self.worker_global_model),  # type: ignore[reportArgumentType]
+                    int(reduced_metrics[2].cpu().item()),
+                    float(reduced_metrics[0].cpu().item()),
+                    float(reduced_metrics[1].cpu().item()),
+                )
             barrier()
             elapsed_time = time.time() - aggregation_time
-            worker_system_metrics.append(("workers_aggregation_time", elapsed_time))
+            worker_system_metrics.append(("workers/aggregation_time", elapsed_time))
             # Add systems metrics to the queue
-            for metric in worker_system_metrics:
-                self.workers_system_metrics_queue.put(metric)
+            if self.workers_system_metrics_queue is not None:
+                for metric in worker_system_metrics:
+                    self.workers_system_metrics_queue.put(metric)
             # Put results in the result queue
             for result in results:
                 self.result_queue.put(result)
@@ -304,8 +333,8 @@ class Worker(Process):
                         dtype=torch.float32,
                         device=tensor_value.device,
                     )
-            gc.collect()
-            torch.cuda.empty_cache()
+            # gc.collect()
+            # torch.cuda.empty_cache()
 
     def run(self) -> None:
         """Start the process."""
@@ -330,7 +359,6 @@ class Worker(Process):
             rank=self.local_rank,
             world_size=self.world_size,
         )
-        barrier()
         aggregation_time = time.time()
         # Set the device and the task queue
         gpu_id = self.local_rank % torch.cuda.device_count()
@@ -352,11 +380,11 @@ class Worker(Process):
             task_queue,
             self.task_queues,
         )
-        # TODO: Create federated dataset
         if self.dataset_name == "cifar10":
             self.federated_dataset = make_cifar10_iid_datasets(
                 world_size=self.concurrency,
                 local_rank=self.local_rank,
+                device=str(self.device),
             )
         elif self.dataset_name == "flair":
             self.federated_dataset = make_flair_federated_dataset(
@@ -366,6 +394,7 @@ class Worker(Process):
                 max_num_user_images=512,
                 world_size=self.concurrency,
                 local_rank=self.local_rank,
+                device=str(self.device),
             )
         elif self.dataset_name == "openimage":
             # Openimage with dataloader with num_workers 1
@@ -374,13 +403,15 @@ class Worker(Process):
                 local_rank=self.local_rank,
                 n_workers=1,
                 client_dataset_type=ClientDatasetOpenImageDataloader,
+                device=str(self.device),
             )
             # Openimage with list-based pfl-style loading
-            # self.federated_dataset = make_openimage_natural_partition(
-            #     world_size=self.concurrency,
-            #     local_rank=self.local_rank,
-            #     client_dataset_type=ClientDatasetOpenImageNoDataloader,
-            # )
+            self.federated_dataset = make_openimage_natural_partition(
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+                client_dataset_type=ClientDatasetOpenImageNoDataloader,
+                device=str(self.device),
+            )
         elif "shakespeare" in self.dataset_name:
             # Shakespeare with dataloader with num_workers 0
             self.federated_dataset = make_shakespeare_natural_partition(
@@ -388,18 +419,21 @@ class Worker(Process):
                 local_rank=self.local_rank,
                 n_workers=0,
                 client_dataset_type=ClientDatasetShakespeareDataloader,
+                device=str(self.device),
             )
 
             # Shakespeare with list-based pfl-style loading
-            # self.federated_dataset = make_shakespeare_natural_partition(
-            #     world_size=self.concurrency,
-            #     local_rank=self.local_rank,
-            #     client_dataset_type=ClientDataset,
-            # )
+            self.federated_dataset = make_shakespeare_natural_partition(
+                world_size=self.concurrency,
+                local_rank=self.local_rank,
+                client_dataset_type=ClientDataset,
+                device=str(self.device),
+            )
 
         # Create global model
         # if self.local_rank == 0:
         self.worker_global_model = get_model(self.dataset_name)
+        self.worker_global_model = self.worker_global_model.to(self.device)
         # Create client model
         self.client_model = get_model(self.dataset_name)
         self.client_model = self.client_model.to(self.device)
@@ -436,9 +470,9 @@ class Worker(Process):
             name=self.worker_id,
             create=True,
         )
-        barrier()
         elapsed_time = time.time() - aggregation_time
-        self.workers_system_metrics_queue.put(("workers_init_time", elapsed_time))
+        if self.workers_system_metrics_queue is not None:
+            self.workers_system_metrics_queue.put(("workers/init_time", elapsed_time))
         # Task loop
         task: list[int]
         for task in iter(task_queue.get, None):
@@ -448,8 +482,7 @@ class Worker(Process):
         self.result_queue.put(
             WorkerResult(
                 -1,
-                0,
-                0,
+                0.0,
                 "",
             )
         )
@@ -463,5 +496,6 @@ class Worker(Process):
         worker_shm.unlink()
         log(DEBUG, "Shared memories closed")
         # Empty worker's system metrics queue
-        while not self.workers_system_metrics_queue.empty():
-            self.workers_system_metrics_queue.get()
+        if self.workers_system_metrics_queue is not None:
+            while not self.workers_system_metrics_queue.empty():
+                self.workers_system_metrics_queue.get()
