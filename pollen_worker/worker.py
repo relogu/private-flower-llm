@@ -247,7 +247,7 @@ class Worker(Process):
             barrier()
             aggregation_time = time.time()
             # log(
-            #     INFO,
+            #     DEBUG,
             #     "Local Rank: %s, Averaging %s clients.",
             #     self.local_rank,
             #     j,
@@ -364,22 +364,22 @@ class Worker(Process):
         gpu_id = self.local_rank % torch.cuda.device_count()
         self.device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(gpu_id)
-        log(
-            INFO,
-            "Worker %s uses GPU %i, device %s",
-            self.worker_id,
-            gpu_id,
-            self.device,
-        )
+        # log(
+        #     DEBUG,
+        #     "Worker %s uses GPU %i, device %s",
+        #     self.worker_id,
+        #     gpu_id,
+        #     self.device,
+        # )
         # Set the task queue
         task_queue = self.task_queues[str(self.device)]
-        log(
-            INFO,
-            "Worker %s selected %s from %s.",
-            self.worker_id,
-            task_queue,
-            self.task_queues,
-        )
+        # log(
+        #     DEBUG,
+        #     "Worker %s selected %s from %s.",
+        #     self.worker_id,
+        #     task_queue,
+        #     self.task_queues,
+        # )
         if self.dataset_name == "cifar10":
             self.federated_dataset = make_cifar10_iid_datasets(
                 world_size=self.concurrency,
@@ -476,7 +476,7 @@ class Worker(Process):
         # Task loop
         task: list[int]
         for task in iter(task_queue.get, None):
-            log(INFO, "Worker %s received task %s.", self.worker_id, task)
+            # log(DEBUG, "Worker %s received task %s.", self.worker_id, task)
             self.process_task_pytorch_distributed(task)
         # Put the closing task's results in the result queue
         self.result_queue.put(
@@ -489,7 +489,7 @@ class Worker(Process):
 
     def __del__(self) -> None:
         """Implement the deletion of the Worker."""
-        log(DEBUG, "Closing Worker %s...", self.worker_id)
+        log(INFO, "Closing Worker %s...", self.worker_id)
         # Free shared memories
         worker_shm = SharedMemory(name=self.worker_id)
         worker_shm.close()
