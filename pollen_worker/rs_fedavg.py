@@ -3,11 +3,13 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
+from itertools import starmap
 import pickle
 import random
-from collections.abc import Callable
-from logging import WARNING
+from collections.abc import Callable, Iterable
+from logging import DEBUG, WARNING
 from pathlib import Path
+import time
 
 from flwr.common import (
     FitIns,
@@ -23,7 +25,62 @@ from flwr.common import (
 from flwr.server.client_manager import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
-from flwr.server.strategy.aggregate import aggregate
+import numpy as np
+
+
+def aggregate_cumulative_average(
+    results: Iterable[tuple[ClientProxy, FitRes]]
+) -> NDArrays | None:
+    """Compute in-place weighted average, lazily and async."""
+    # Initialize params,
+    # the iterator may not contain anything
+    # and we do not want a next+try-except
+    params: NDArrays | None = None
+
+    num_total_examples: int = 0  # total number of examples, aggregated over time
+
+    for client_proxy, fit_res in results:
+        start_time = time.time()
+        log(
+            DEBUG,
+            f"Started aggregating cid: {client_proxy.cid}",
+        )
+        # Compute the new total number of samples
+        new_total_samples = num_total_examples + fit_res.num_examples
+
+        # Compute scaling factor for the update
+        scaling_factor: float = float(fit_res.num_examples) / new_total_samples
+
+        # Generator to multiply the layers by the scaling factor
+        # Lazy operation, will be expanded in the zip
+        res = (scaling_factor * x for x in parameters_to_ndarrays(fit_res.parameters))
+
+        if params is None:
+            # Initialize with the first set of parameters
+            params = list(res)
+        else:
+            # Invert the previous division now
+            # that we have updated information on the number of samples
+            # Then divide by the new total number
+            general_scaling = float(num_total_examples) / new_total_samples
+
+            # Lazy generator for scaled layers
+            scaled_params = (general_scaling * x for x in params)
+
+            # Create new parameters
+            params = list(starmap(np.add, zip(scaled_params, res, strict=False)))
+
+        # Update total number of examples
+        num_total_examples = new_total_samples
+        log(
+            DEBUG,
+            f"""Aggregated cid: {client_proxy.cid}
+                                with samples: {fit_res.num_examples}
+                                total samples used: {num_total_examples}
+                                time: {time.time() - start_time} """,
+        )
+
+    return params
 
 
 # flake8: noqa: E501
@@ -107,7 +164,7 @@ class FedAvgReproducibleSampling(FedAvg):
         )
         self.seed = seed
 
-    def configure_fit(
+    def configure_fit(  # type: ignore[reportIncompatibleMethodOverride]
         self,
         server_round: int,
         parameters: Parameters,
@@ -253,8 +310,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
     def aggregate_fit(
         self,
         server_round: int,
-        results: list[tuple[ClientProxy, FitRes]],
-        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+        results: Iterable[tuple[ClientProxy, FitRes]],
+        failures: Iterable[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
         if not results:
@@ -264,11 +321,12 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             return None, {}
 
         # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
-        parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
+        fedavg_result = aggregate_cumulative_average(results)
+
+        # Return None if no results were aggregated
+        if fedavg_result is None:
+            return None, {}
+        parameters_aggregated = ndarrays_to_parameters(fedavg_result)
         if server_round % self.freq == 0:
             # Save `parameters_aggregated`` to file
             with open(

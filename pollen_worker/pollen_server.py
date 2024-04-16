@@ -1,27 +1,40 @@
 """Pollen server."""
 
 import concurrent.futures
+from dataclasses import dataclass
 import sys
 import timeit
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from flwr.client import Client
-from flwr.common import DisconnectRes, EvaluateRes, FitIns, FitRes, Parameters, Scalar
+from flwr.common import (
+    DisconnectRes,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    Parameters,
+    Scalar,
+    Status,
+    Code,
+)
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
-from flwr.server.server import _handle_finished_future_after_fit  # noqa: PLC2701
 from flwr.server.server import evaluate_clients, fit_client
 from flwr.server.strategy import FedAvg
 
-from pollen_worker.placements import get_placement_fn, get_pollen_models
+from pollen_worker.placements import (
+    get_placement_fn,
+    get_pollen_models,
+    skim_clients_training_stats,
+)
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.pollen_utils import get_table_from_pyarrow_buffer
 from pollen_worker.resources_manager import Node
@@ -46,6 +59,23 @@ GetPropResultsAndFailures = tuple[
 ]
 
 
+class TooManyFailuresError(Exception):
+    """Exception raised when a client is dropped out of the tree."""
+
+
+class IntentionalClientDropoutError(Exception):
+    """Exception raised when a client is dropped out of the tree."""
+
+
+@dataclass
+class AuxiliaryFitClientsResults:
+    """Dataclass for the auxiliary results of the fit_clients function."""
+
+    pollen_models: dict[str, Any] | None
+    correction_tables: dict[str, pa.Table] | None
+    fit_pollen_models_time: float
+
+
 class PollenServer(Server):
     """Flower server."""
 
@@ -62,7 +92,7 @@ class PollenServer(Server):
         num_nodes: int = 1,
     ) -> None:
         self.start_up_time = timeit.default_timer()
-        self._client_manager: PollenClientManager = client_manager
+        self._client_manager: PollenClientManager = client_manager  # type: ignore[reportIncompatibleVariableOverride]
         self.cids = cids
         self.client_fn = client_fn
         self.placement_policy = placement_policy
@@ -87,17 +117,22 @@ class PollenServer(Server):
         self.num_nodes = num_nodes
         self.pollen_models: dict[str, Any] | None = None
         self.correction_tables: dict[str, pa.Table] | None = None
+        self.ignore_failed_rounds = False
+        self.accept_failures_cnt = 0
+        self.ignore_failed_rounds = False
+        self.print_failures = True
+        self.print_intentional_failures = True
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
         self.max_workers = max_workers
 
-    def set_strategy(
+    def set_strategy(  # type: ignore[reportIncompatibleMethodOverride]
         self,
         strategy: FedAvg,  # type: ignore[override]
     ) -> None:
         """Replace server strategy."""
-        self.strategy = strategy
+        self.strategy = strategy  # type: ignore[reportIncompatibleVariableOverride]
 
     def client_manager(self) -> PollenClientManager:
         """Return PollenClientManager."""
@@ -106,6 +141,7 @@ class PollenServer(Server):
     # pylint: disable=too-many-locals
     def fit(self, num_rounds: int, timeout: float | None) -> History:
         """Run federated averaging for a number of rounds."""
+        server_system_metrics: dict[str, Scalar] = {}
         log(INFO, "Initializing Pollen simulation")
         history = self.history if self.history is not None else History()
 
@@ -165,6 +201,11 @@ class PollenServer(Server):
             "Start-up time for the server is %s",
             timeit.default_timer() - self.start_up_time,
         )
+        server_system_metrics["server/start_up_time"] = (
+            timeit.default_timer() - self.start_up_time
+        )
+        history.add_metrics_centralized(server_round=0, metrics=server_system_metrics)
+        server_system_metrics = {}
         # Run federated learning for num_rounds
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
@@ -199,7 +240,9 @@ class PollenServer(Server):
                     for client_proxy, node in results
                 }
                 self.nodes_dict.update(new_nodes_dict)
-
+            check_nm_time_round = timeit.default_timer() - start_time_round
+            server_system_metrics["server/check_nm_round_time"] = check_nm_time_round
+            tmp_timer = timeit.default_timer()
             # Train model and replace previous global model
             res_fit = self.fit_round(
                 server_round=current_round,
@@ -212,7 +255,10 @@ class PollenServer(Server):
                 history.add_metrics_distributed_fit(
                     server_round=current_round, metrics=fit_metrics
                 )
+            fit_round = timeit.default_timer() - tmp_timer
+            server_system_metrics["server/fit_round_time"] = fit_round
 
+            tmp_timer = timeit.default_timer()
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
@@ -229,7 +275,10 @@ class PollenServer(Server):
                 history.add_metrics_centralized(
                     server_round=current_round, metrics=metrics_cen
                 )
+            evaluate = timeit.default_timer() - tmp_timer
+            server_system_metrics["server/evaluate_time"] = evaluate
 
+            tmp_timer = timeit.default_timer()
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
@@ -242,8 +291,11 @@ class PollenServer(Server):
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
             elapsed_time_round = timeit.default_timer() - start_time_round
+            server_system_metrics["server/round_time"] = elapsed_time_round
+            evaluate_round_time = timeit.default_timer() - tmp_timer
+            server_system_metrics["server/evaluate_round_time"] = evaluate_round_time
             history.add_metrics_centralized(
-                server_round=current_round, metrics={"round_time": elapsed_time_round}
+                server_round=current_round, metrics=server_system_metrics
             )
 
         # Save the statistics to a parquet file
@@ -305,12 +357,24 @@ class PollenServer(Server):
         loss_aggregated, metrics_aggregated = aggregated_result
         return loss_aggregated, metrics_aggregated, (results, failures)
 
-    def fit_round(
+    def fit_round(  # type: ignore[override, reportIncompatibleMethodOverride]
         self,
         server_round: int,
         timeout: float | None,
-    ) -> tuple[Parameters | None, dict[str, Scalar], FitResultsAndFailures] | None:
+    ) -> (
+        None
+        | tuple[
+            Parameters | None,
+            dict[str, Scalar],
+            tuple[
+                list[tuple[ClientProxy, dict[str, Scalar], Status, int]],
+                list[tuple[ClientProxy, FitRes] | BaseException],
+                list[BaseException],
+            ],
+        ]
+    ):
         """Perform a single round of federated averaging."""
+        start_time = timeit.default_timer()
         # Get clients and their respective instructions from strategy
         client_instructions = self.strategy.configure_fit(
             server_round=server_round,
@@ -370,6 +434,7 @@ class PollenServer(Server):
                 client_proxy,
                 FitIns(self.parameters, node_fit_config),
             ))
+        fit_config_time = timeit.default_timer() - start_time
 
         # log(
         #     DEBUG,
@@ -385,99 +450,190 @@ class PollenServer(Server):
             len(node_instructions),
         )
 
-        # Collect `fit` results from all NodeManagers participating in this round
-        (
-            (results, failures),
-            self.pollen_models,
-            self.correction_tables,
-        ) = pollen_fit_clients(
-            client_instructions=node_instructions,
+        # Using a generator limits us in failure/metrics accumulation
+        # The output params are not used in the aggregation
+        # They are merely populated by the processing of the generator
+        failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
+
+        # Accumulate IntentionalClientDropoutError exceptions
+        intentional_failures: list[BaseException] = []
+
+        # Accumulate metrics from all NodeManagers
+        metrics_accumulator: list[
+            tuple[ClientProxy, dict[str, Scalar], Status, int]
+        ] = []
+
+        # Send fit instructions to all NodeManagers participating in this round
+        start_time = timeit.default_timer()
+        auxiliary_fit_results = AuxiliaryFitClientsResults(
+            pollen_models=None,
+            correction_tables=None,
+            fit_pollen_models_time=0.0,
+        )
+        (results_futures) = pollen_fit_clients(
+            node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
             clients_stats=self.clients_training_stats,
             batch_size=int(self.on_fit_config(server_round)["batch_size"]),
             cids=self.cids,
             placement_policy=self.placement_policy,
+            auxiliary_fit_results=auxiliary_fit_results,
         )
-        log(
-            DEBUG,
-            "fit_round %s received %s results and %s failures",
-            server_round,
-            len(results),
-            len(failures),
+        # Wraps the results to discriminate between success and failure
+        results_and_failures = (
+            _handle_finished_future_after_fit_async(future)
+            for future in results_futures
         )
-
-        # Collect statistics that Pollen uses from the FitRes of the NodeManagers
-        received_clients_training_stats = []
-        for _client, fit_res in results:
-            tmp_clients_training_stats = fit_res.metrics.pop("stats")
-            received_clients_training_stats.append(
-                get_table_from_pyarrow_buffer(
-                    cast(pa.Buffer, tmp_clients_training_stats)
-                )
+        # Return a closure to pre-process success and failure of the NodeManagers
+        handle_success_and_failure = get_handle_success_and_failure(
+            metrics_accumulator,
+            failures,
+            intentional_failures,
+            accept_failures_cnt=self.accept_failures_cnt,
+        )
+        # Wraps pre-processed successes and failures
+        results_and_failures = (
+            handle_success_and_failure(result) for result in results_and_failures
+        )
+        # Filter out the successful results and cast them as a generator
+        results = (result for success, result in results_and_failures if success)
+        complete_results = cast(
+            Generator[tuple[ClientProxy, FitRes], None, None], results
+        )
+        # Collect and aggregate training results asynchronously
+        extraction_time = 0.0
+        aggregation_time = 0.0
+        try:
+            # Aggregate training results
+            # TODO: Measure aggregation time
+            aggregated_result: tuple[
+                Parameters | None,
+                dict[str, Scalar],
+            ] = self.strategy.aggregate_fit(
+                server_round,
+                cast(list[tuple[ClientProxy, FitRes]], complete_results),
+                failures,
             )
 
-        # Collect the new statistics and append to the global statistics
+            # Collect statistics that Pollen uses from the FitRes of the NodeManagers
+            start_time = timeit.default_timer()
+            received_clients_training_stats = []
+            for metrics in metrics_accumulator:
+                tmp_clients_training_stats = metrics[1].pop("stats", None)
+                if tmp_clients_training_stats is not None:
+                    received_clients_training_stats.append(
+                        get_table_from_pyarrow_buffer(
+                            cast(pa.Buffer, tmp_clients_training_stats)
+                        )
+                    )
+            extraction_time = timeit.default_timer() - start_time
+        except TooManyFailuresError as e:
+            if self.ignore_failed_rounds:
+                log(
+                    ERROR,
+                    """Ignoring failed round %s: %s,
+                    there are %s failures: %s,
+                    there are %s intentional failures: %s""",
+                    server_round,
+                    e,
+                    len(failures),
+                    failures if self.print_failures else [],
+                    len(intentional_failures),
+                    intentional_failures if self.print_intentional_failures else [],
+                )
+                return None
+            else:
+                raise
+        # NOTE: Now, this time includes the aggregation time
+        server_fit_time = timeit.default_timer() - start_time
+
+        # Collect the new statistics relative to the clients' training times
+        start_time = timeit.default_timer()
         if self.clients_training_stats is None:
+            # Create the table from scratch
             self.clients_training_stats = pa.concat_tables(
                 received_clients_training_stats
             )
         else:
+            # Skim the `clients_training_stats` to keep just the average per n_samples
+            self.clients_training_stats = skim_clients_training_stats(
+                self.clients_training_stats
+            )
+            # Append to the global statistics
             self.clients_training_stats = pa.concat_tables(
                 [self.clients_training_stats] + received_clients_training_stats
             )
-            # self.clients_training_stats = pa.concat_tables(
-            #     received_clients_training_stats
-            # )
+        concatenation_time = timeit.default_timer() - start_time
 
-        # Aggregate training results
-        aggregated_result: tuple[
-            Parameters | None,
-            dict[str, Scalar],
-        ] = self.strategy.aggregate_fit(server_round, results, failures)
+        # NOTE: We must assign this only after we can the first iter over the results
+        # generator
+        self.correction_tables = auxiliary_fit_results.correction_tables
+        self.pollen_models = auxiliary_fit_results.pollen_models
 
+        # Return the aggregated results
         parameters_aggregated, metrics_aggregated = aggregated_result
-        return parameters_aggregated, metrics_aggregated, (results, failures)
+        metrics_aggregated = metrics_aggregated | {
+            "server/fit_config_time": fit_config_time,
+            "server/fit_clients_time": server_fit_time,
+            "server/stats_extraction_time": extraction_time,
+            "server/stats_concatenation_time": concatenation_time,
+            "server/aggregate_fit_time": aggregation_time,
+            "server/fit_pollen_models_time": (
+                auxiliary_fit_results.fit_pollen_models_time
+            ),
+        }
+        return (
+            parameters_aggregated,
+            metrics_aggregated,
+            (metrics_accumulator, failures, intentional_failures),
+        )
 
 
-# NEW FUNCTIONS #######################
+# NEW FUNCTIONS ###############################################################
 
 
 def pollen_fit_clients(
-    client_instructions: list[tuple[ClientProxy, FitIns]],
+    node_instructions: list[tuple[ClientProxy, FitIns]],
     max_workers: int | None,
     timeout: float | None,
+    auxiliary_fit_results: AuxiliaryFitClientsResults,
     cids: dict[str | int, int],
     clients_stats: pa.Table | None = None,
     batch_size: int = 1,
     placement_policy: str = "rr",
-) -> tuple[FitResultsAndFailures, dict[str, Any] | None, dict[str, pa.Table] | None]:
+) -> Generator[concurrent.futures.Future[tuple[ClientProxy, FitRes]], Any, None]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
             executor.submit(fit_client, client_proxy, ins, timeout)
-            for client_proxy, ins in client_instructions
+            for client_proxy, ins in node_instructions
         }
-        pollen_models, correction_tables = get_pollen_models(
-            placement_policy=placement_policy,
-            clients_stats=clients_stats,
-            batch_size=batch_size,
-            cids=cids,
-            server_round=int(client_instructions[0][1].config["server_round"]),
+        # Fit the Pollen models and collect their parameters and correction tables in
+        # the `auxiliary_fit_results` variables
+        start_time = timeit.default_timer()
+        auxiliary_fit_results.pollen_models, auxiliary_fit_results.correction_tables = (
+            get_pollen_models(
+                placement_policy=placement_policy,
+                clients_stats=clients_stats,
+                batch_size=batch_size,
+                cids=cids,
+                server_round=int(node_instructions[0][1].config["server_round"]),
+            )
         )
-        finished_fs, _ = concurrent.futures.wait(
-            fs=submitted_fs,
-            timeout=None,  # Handled in the respective communication stack
+        auxiliary_fit_results.fit_pollen_models_time = (
+            timeit.default_timer() - start_time
         )
-
-    # Gather results
-    results: list[tuple[ClientProxy, FitRes]] = []
-    failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
-    for future in finished_fs:
-        _handle_finished_future_after_fit(
-            future=future, results=results, failures=failures
-        )
-    return (results, failures), pollen_models, correction_tables
+        # Constructing the generator of training results
+        while submitted_fs:
+            finished_fs, _ = concurrent.futures.wait(
+                fs=submitted_fs,
+                timeout=None,  # Handled in the respective communication stack
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in finished_fs:
+                submitted_fs.remove(future)
+                yield future
 
 
 def get_nodes_properties(
@@ -515,7 +671,7 @@ def get_properties_client(
     node_properties: Properties = node_properties_res.properties
     log(
         DEBUG,
-        "node properties received from %s: %s",
+        "NodeManger properties received from %s: %s",
         client,
         node_properties,
     )
@@ -581,3 +737,112 @@ def _check_connected_node_managers(
         if new_cid not in set(old_connected_node_managers_cid):
             new.append(new_cid)
     return dropped, new
+
+
+def _handle_finished_future_after_fit_async(
+    future: concurrent.futures.Future,
+) -> (
+    tuple[Literal[True], tuple[ClientProxy, FitRes]]
+    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
+):
+    """Convert finished future into either a result or a failure."""
+    # Check if there was an exception
+    failure = future.exception()
+    if failure is not None:
+        return (False, failure)
+
+    # Successfully received a result from a client
+    result: tuple[ClientProxy, FitRes] = future.result()
+    _, res = result
+    # Check result status code
+    if res.status.code == Code.OK:
+        return (True, result)
+
+    # Not successful, client returned a result where the status code is not OK
+    return (False, result)
+
+
+def get_handle_success_and_failure(
+    metrics_accumulator: list[tuple[ClientProxy, dict[str, Scalar], Status, int]],
+    failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    intentional_failures: list[BaseException],
+    accept_failures_cnt: int | None,
+) -> Callable[
+    [
+        tuple[Literal[True], tuple[ClientProxy, FitRes]]
+        | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
+    ],
+    tuple[Literal[True], tuple[ClientProxy, FitRes]]
+    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException],
+]:
+    """Closure to generate a function which handles client success and failure.
+
+    The function distinguishes between intentional and unintentional failures.
+    It enforces constraints on the number of unintentional failures.
+    It stores results and failures in the respective lists.
+
+    Parameters
+    ----------
+    metrics_accumulator : List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]]
+        The list where the metrics are accumulated.
+    failures : List[Union[Tuple[ClientProxy, FitRes], BaseException]]
+        The list where the failures are accumulated.
+    intentional_failures : List[BaseException]
+        The list where the intentional failures are accumulated.
+    accept_failures_cnt : int | None
+        The maximum number of unintentional failures to accept.
+
+    Returns
+    -------
+    handle_success_and_failure : Callable[
+        [
+            Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
+            | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
+        ],
+        Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
+        | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException],
+    ]
+        The function which handles client success and failure while saving the outputs.
+    """
+
+    def handle_success_and_failure(
+        result: (
+            tuple[Literal[True], tuple[ClientProxy, FitRes]]
+            | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
+        ),
+    ) -> (
+        tuple[Literal[True], tuple[ClientProxy, FitRes]]
+        | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
+    ):
+        cnt_failures = 0
+
+        match result:
+            case (True, res):
+                cast_res = cast(tuple[ClientProxy, FitRes], res)
+                client_proxy, fit_res = cast_res
+                metrics_accumulator.append((
+                    client_proxy,
+                    fit_res.metrics,
+                    fit_res.status,
+                    fit_res.num_examples,
+                ))
+                return (True, cast_res)
+            case (False, res) if isinstance(res, IntentionalClientDropoutError):
+                intentional_failures.append(res)
+                return (False, res)
+            case (False, res):
+                cast_failure_res = cast(tuple[ClientProxy, FitRes] | BaseException, res)
+                if isinstance(cast_failure_res, BaseException):
+                    log(ERROR, "Unintentional failure.", exc_info=cast_failure_res)
+                cnt_failures += 1
+                if (
+                    accept_failures_cnt is not None
+                    and cnt_failures > accept_failures_cnt
+                ):
+                    raise TooManyFailuresError(f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}""")
+                failures.append(cast_failure_res)
+                return (False, cast_failure_res)
+        return result
+
+    return handle_success_and_failure
