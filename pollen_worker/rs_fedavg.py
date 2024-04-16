@@ -29,8 +29,8 @@ import numpy as np
 
 
 def aggregate_cumulative_average(
-    results: Iterable[tuple[ClientProxy, FitRes]]
-) -> NDArrays | None:
+    results: Iterable[tuple[ClientProxy, FitRes]],
+) -> tuple[NDArrays | None, float]:
     """Compute in-place weighted average, lazily and async."""
     # Initialize params,
     # the iterator may not contain anything
@@ -38,7 +38,7 @@ def aggregate_cumulative_average(
     params: NDArrays | None = None
 
     num_total_examples: int = 0  # total number of examples, aggregated over time
-
+    total_aggregated_time: float = 0.0  # total time spent aggregating
     for client_proxy, fit_res in results:
         start_time = time.time()
         log(
@@ -72,6 +72,7 @@ def aggregate_cumulative_average(
 
         # Update total number of examples
         num_total_examples = new_total_samples
+        total_aggregated_time += time.time() - start_time
         log(
             DEBUG,
             f"""Aggregated cid: {client_proxy.cid}
@@ -80,7 +81,7 @@ def aggregate_cumulative_average(
                                 time: {time.time() - start_time} """,
         )
 
-    return params
+    return params, total_aggregated_time
 
 
 # flake8: noqa: E501
@@ -321,7 +322,7 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             return None, {}
 
         # Convert results
-        fedavg_result = aggregate_cumulative_average(results)
+        fedavg_result, aggregation_time = aggregate_cumulative_average(results)
 
         # Return None if no results were aggregated
         if fedavg_result is None:
@@ -340,5 +341,8 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
+        metrics_aggregated = metrics_aggregated | {
+            "server/aggregate_fit_time": aggregation_time
+        }
 
         return parameters_aggregated, metrics_aggregated

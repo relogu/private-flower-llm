@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import sys
 import timeit
 from collections.abc import Callable, Generator
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -503,24 +503,18 @@ class PollenServer(Server):
         )
         # Collect and aggregate training results asynchronously
         extraction_time = 0.0
-        aggregation_time = 0.0
         try:
             # Aggregate training results
-            # TODO: Measure aggregation time
-            aggregated_result: tuple[
-                Parameters | None,
-                dict[str, Scalar],
-            ] = self.strategy.aggregate_fit(
+            parameters_aggregated, metrics_aggregated = self.strategy.aggregate_fit(
                 server_round,
                 cast(list[tuple[ClientProxy, FitRes]], complete_results),
                 failures,
             )
-
             # Collect statistics that Pollen uses from the FitRes of the NodeManagers
             start_time = timeit.default_timer()
             received_clients_training_stats = []
-            for metrics in metrics_accumulator:
-                tmp_clients_training_stats = metrics[1].pop("stats", None)
+            for _, metrics, _, _ in metrics_accumulator:
+                tmp_clients_training_stats = metrics.pop("stats", None)
                 if tmp_clients_training_stats is not None:
                     received_clients_training_stats.append(
                         get_table_from_pyarrow_buffer(
@@ -528,6 +522,20 @@ class PollenServer(Server):
                         )
                     )
             extraction_time = timeit.default_timer() - start_time
+            # Aggregate the metrics
+            # NOTE: This bypasses any metrics aggregation in the aggregate_fit of the
+            # strategy because the metrics are empty there
+            if self.strategy.fit_metrics_aggregation_fn:
+                fit_metrics = [
+                    (num_examples, metrics)
+                    for _, metrics, _, num_examples in metrics_accumulator
+                ]
+                metrics_aggregated = (
+                    metrics_aggregated
+                    | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
+                )
+            elif server_round == 1:  # Only log this warning once
+                log(WARNING, "No fit_metrics_aggregation_fn provided")
         except TooManyFailuresError as e:
             if self.ignore_failed_rounds:
                 log(
@@ -572,13 +580,11 @@ class PollenServer(Server):
         self.pollen_models = auxiliary_fit_results.pollen_models
 
         # Return the aggregated results
-        parameters_aggregated, metrics_aggregated = aggregated_result
         metrics_aggregated = metrics_aggregated | {
             "server/fit_config_time": fit_config_time,
             "server/fit_clients_time": server_fit_time,
             "server/stats_extraction_time": extraction_time,
             "server/stats_concatenation_time": concatenation_time,
-            "server/aggregate_fit_time": aggregation_time,
             "server/fit_pollen_models_time": (
                 auxiliary_fit_results.fit_pollen_models_time
             ),
