@@ -31,7 +31,7 @@ from logging import DEBUG
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
 from socket import getfqdn
-from typing import Any, cast
+from typing import Any
 import uuid
 
 import cloudpickle
@@ -51,6 +51,7 @@ from nvsmi import GPU
 from omegaconf import DictConfig
 
 from pollen_worker.horovod_utils import get_free_tcp_port
+from pollen_worker.placements import add_constant_column_to_clients_stats_table
 from pollen_worker.pollen_utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_PARAMETERS_SHM,
@@ -248,6 +249,8 @@ class NodeManager(fl.client.NumPyClient):
         self, parameters: NDArrays, config: Config
     ) -> tuple[NDArrays, int, dict[str, Any]]:
         """Implement the fit step."""
+        node_manager_system_metrics: dict[str, Scalar] = {}
+        start_fit_time = time.time()
         # TODO: Make this dropouts-ready
         # Extract assignments from config so that we don't need to write it to the
         # shared memory
@@ -277,9 +280,14 @@ class NodeManager(fl.client.NumPyClient):
             num_total_virtual_clients += sum(len(_l) for _l in assignments)
             # Put each list of clients in the queue
             for list_of_clients in assignments:
-                self.task_queues[device].put(list_of_clients)
+                self.task_queues[device].put(list_of_clients, block=False)
+        node_manager_fit_init_time = time.time() - start_fit_time
+        node_manager_system_metrics["node_manager/fit_init_time"] = (
+            node_manager_fit_init_time
+        )
 
         # Check if all clients have been processed
+        get_workers_results_time = time.time()
         num_processed_virtual_clients = 0
         stats = defaultdict(list)
         while num_processed_virtual_clients < num_total_virtual_clients:
@@ -288,12 +296,16 @@ class NodeManager(fl.client.NumPyClient):
             worker_result: WorkerResult = self.result_queue.get()
             # NOTE: Added to be compatible with the termination task's
             # return value, i.e. `[-1, 0, 0]`
-            if worker_result.client_id > -1:
-                stats["cid"].append(worker_result.client_id)
-                stats["start_time"].append(worker_result.start_time)
-                stats["end_time"].append(worker_result.end_time)
-                stats["gpu"].append(worker_result.device)  # type: ignore[arg-type]
+            if worker_result.n_samples > -1:
+                # NOTE: The order here is important for compatibility with the server
+                stats["device"].append(worker_result.device)
+                stats["n_samples"].append(worker_result.n_samples)  # type: ignore[arg-type]
+                stats["delta"].append(worker_result.delta)  # type: ignore[arg-type]
             num_processed_virtual_clients += 1
+        node_manager_get_workers_results_time = time.time() - get_workers_results_time
+        node_manager_system_metrics["node_manager/get_workers_results_time"] = (
+            node_manager_get_workers_results_time
+        )
         start_time = time.time()
         self.workers_shms = []
         nm_p, nm_s_array, n_tl, n_ta, w_shm = allocate_shm(
@@ -302,7 +314,10 @@ class NodeManager(fl.client.NumPyClient):
         )
         self.workers_shms.append(w_shm)
         nm_s = nm_s_array[0]
-        nm_m = {"train_loss": n_tl[0], "accuracy": n_ta[0]}
+        nm_m = {
+            "train_loss": n_tl[0],
+            "accuracy": n_ta[0],
+        } | node_manager_system_metrics
         # Get workers' system metrics
         workers_system_metrics: dict[str, float] = {}
         try:
@@ -317,36 +332,27 @@ class NodeManager(fl.client.NumPyClient):
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
-        clients_training_stats = clients_training_stats.add_column(
-            0,
-            "node",
-            cast(pa.Array, pa.array([self.name] * len(clients_training_stats["cid"]))),
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "node", self.name
         )
-        clients_training_stats = clients_training_stats.add_column(
-            0,
-            "server_round",
-            cast(
-                pa.Array,
-                pa.array(
-                    [int(config["server_round"])] * len(clients_training_stats["cid"])
-                ),
-            ),
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "server_round", int(config["server_round"])
         )
         # Prepare statistics to be sent to the server
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
-        nm_m = nm_m | {"stats": clients_training_buf.to_pybytes()}
+        elapsed_time = time.time() - start_time
+        nm_m = nm_m | {
+            "stats": clients_training_buf.to_pybytes(),
+            "node_manager/aggregation_time": elapsed_time,
+        }
         log(
             DEBUG,
             "NodeManager %s: elaborate %s clients in %s seconds",
             self.name,
-            len(clients_training_stats["cid"]),
-            time.time() - start_time,
+            clients_training_stats.num_rows,
+            elapsed_time,
         )
-        return (
-            nm_p,
-            int(nm_s),
-            nm_m,
-        )
+        return (nm_p, int(nm_s), nm_m)
 
     def evaluate(
         self, parameters: NDArrays, config: Config

@@ -56,9 +56,8 @@ POLLEN_WORKER_SHM = "pollen_worker_"
 class WorkerResult:
     """Data type to store the results of the worker."""
 
-    client_id: int
-    start_time: int
-    end_time: int
+    n_samples: int
+    delta: float
     device: str
 
 
@@ -169,7 +168,7 @@ def get_device() -> device_type:
     device = "cpu"
     if torch.cuda.is_available():
         device = "cuda"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():  # type: ignore[reportAttributeAccessIssue]
         device = "mps"
     return cast(device_type, device)
 
