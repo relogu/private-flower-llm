@@ -3,12 +3,13 @@
 #SBATCH -w mauao
 #SBATCH --gres=gpu:4
 #!SBATCH --job-name=pollen_llm_75M
-#SBATCH --job-name=pollen_llm_125M
+#!SBATCH --job-name=centralised_llm_125M
+#SBATCH --job-name=centralised_llm_350M
 #!SBATCH --job-name=llm_test
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --time=01:00:00
-#!SBATCH --dependency=afterany:83070
+#SBATCH --dependency=afterany:1151
 
 # Default project path
 PROJECT_PATH="$HOME/projects/pollen_worker"
@@ -17,7 +18,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-  echo "Error parsing options" >&2
+  echo "slurm_submit.mauao: Error parsing options" >&2
   exit 1
 fi
 
@@ -33,7 +34,7 @@ while true; do
       break ;;
   esac
 done
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "small"
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "16M"
@@ -46,6 +47,9 @@ echo "PROJECT_PATH=$PROJECT_PATH"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "16M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "75M" "10ba"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "125M"
+export RUN_UUID="centralised-350M-20240409_181338"
+export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/pollen_worker/centralised-350M-20240409_181338/latest-rank0.pt"
+bash $PROJECT_PATH/llm_slurm/centralised_training.sh "350M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "1B"
 
 # unset RUN_UUID
@@ -68,6 +72,6 @@ echo "PROJECT_PATH=$PROJECT_PATH"
 # export RUN_UUID="test-fed-75M-$DATETIME"
 # export RUN_UUID="fed-75M-20240313_181750"
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_75M.sh
-export RUN_UUID="fed-125M-20240328_000428-restore-3"
-bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_125M.sh
+# export RUN_UUID="fed-125M-20240328_000428-restore-3"
+# bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_125M.sh
 # bash $HOME/projects/pollen_worker/llm_slurm/pollen_llm_350M.sh
