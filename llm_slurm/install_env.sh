@@ -5,11 +5,13 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "install_env.sh: Error parsing options" >&2
 	exit 1
 fi
 
 eval set -- "$OPTIONS"
+
+echo "install_env.sh: options parsed OPTIONS=$OPTIONS"
 
 while true; do
 	case "$1" in
@@ -26,20 +28,20 @@ while true; do
 		;;
 	esac
 done
-echo "Install env in PROJECT_PATH=$PROJECT_PATH"
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "install_env.sh: current arguments=$@, first argument=$1"
+echo "install_env.sh: Install env in PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
-	echo "Poetry environment exists."
+	echo "install_env.sh: Poetry environment exists."
 	if ! [[ $(poetry check --lock) ]]; then
-		echo "Poetry environment is not up-to-date, updating..."
+		echo "install_env.sh: Poetry environment is not up-to-date, updating..."
 		poetry lock --no-update
 	fi
 else
-	echo "Poetry environment doesn't exist. Installing..."
+	echo "install_env.sh: Poetry environment doesn't exist. Installing..."
 	poetry config installer.max-workers 10
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
@@ -51,27 +53,24 @@ export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRAR
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-	echo "CUDA 12.1 is detected."
+	echo "install_env.sh: CUDA 12.1 is detected."
 else
-	echo "CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+	echo "install_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
 	exit 1
 fi
 #! Install `flash-attn`
 if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
-	echo "Installing flash-attn..."
+	echo "install_env.sh: Installing flash-attn..."
 	poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
 else
-	echo "flash-attn is already installed."
+	echo "install_env.sh: flash-attn is already installed."
 fi
 #! Install `xentropy-cuda-lib`
 if ! [[ $(poetry run pip list | grep xentropy) ]]; then
-	echo "Installing xentropy-cuda-lib..."
+	echo "install_env.sh: Installing xentropy-cuda-lib..."
 	poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
 else
-	echo "xentropy-cuda-lib is already installed."
+	echo "install_env.sh: xentropy-cuda-lib is already installed."
 fi
 #! Final message
-echo "Environment is ready."
-
-#! Remove the positional arguments
-eval set --
+echo "install_env.sh: Environment is ready."

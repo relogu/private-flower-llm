@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "install_hpc_env.sh: Error parsing options" >&2
 	exit 1
 fi
 
@@ -26,7 +26,7 @@ while true; do
 		;;
 	esac
 done
-echo "Install env in PROJECT_PATH=$PROJECT_PATH"
+echo "install_hpc_env.sh: Install env in PROJECT_PATH=$PROJECT_PATH"
 #! Add modules from scratch to be sure everything works
 #! Enable the module command
 . /etc/profile.d/modules.sh
@@ -47,13 +47,13 @@ module load vgl/2.5.1/64
 #! Install `pyenv`
 PYENV_VER_OUTPUT=$(pyenv --version)
 if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
-	echo "pyenv is already installed."
+	echo "install_hpc_env.sh: pyenv is already installed."
 else
 	#! Getting `pyenv`
 	curl https://pyenv.run | bash
 fi
 if [[ $PYENV_ROOT == *"pyenv"* ]]; then
-	echo "PYENV_ROOT variable is already set."
+	echo "install_hpc_env.sh: PYENV_ROOT variable is already set."
 else
 	#! Setting up `pyenv` to execute automatically in the shell
 	echo '# Load `pyenv` automatically' >>~/.bashrc
@@ -86,13 +86,13 @@ poetry install -q
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
-	echo "Poetry environment exists."
+	echo "install_hpc_env.sh: Poetry environment exists."
 	if ! [[ $(poetry check --lock) ]]; then
-		echo "Poetry environment is not up-to-date, updating..."
+		echo "install_hpc_env.sh: Poetry environment is not up-to-date, updating..."
 		poetry lock --no-update
 	fi
 else
-	echo "Poetry environment doesn't exist. Installing..."
+	echo "install_hpc_env.sh: Poetry environment doesn't exist. Installing..."
 	poetry config installer.max-workers 10
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
@@ -101,24 +101,24 @@ fi
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-	echo "CUDA 12.1 is detected."
+	echo "install_hpc_env.sh: CUDA 12.1 is detected."
 else
-	echo "CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+	echo "install_hpc_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
 	exit 1
 fi
 #! Install `flash-attn`
 if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
-	echo "Installing flash-attn..."
+	echo "install_hpc_env.sh: Installing flash-attn..."
 	poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
 else
-	echo "flash-attn is already installed."
+	echo "install_hpc_env.sh: flash-attn is already installed."
 fi
 #! Install `xentropy-cuda-lib`
 if ! [[ $(poetry run pip list | grep xentropy) ]]; then
-	echo "Installing xentropy-cuda-lib..."
+	echo "install_hpc_env.sh: Installing xentropy-cuda-lib..."
 	poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
 else
-	echo "xentropy-cuda-lib is already installed."
+	echo "install_hpc_env.sh: xentropy-cuda-lib is already installed."
 fi
 #! Downgrade python warnings (default in CSD3 is 'debug')
 #! From here: https://docs.python.org/3/using/cmdline.html#envvar-PYTHONWARNINGS
@@ -127,13 +127,10 @@ export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::ResourceWarning"
 #! Check Python version
 PYTHON_OUTPUT=$(python --version)
 if [[ $PYTHON_OUTPUT == *"3.10.13"* ]]; then
-	echo "Python 3.10.13 is detected."
+	echo "install_hpc_env.sh: Python 3.10.13 is detected."
 else
-	echo "Python 3.10.13 not detected. Please install Python 3.10.13. Exiting..."
+	echo "install_hpc_env.sh: Python 3.10.13 not detected. Please install Python 3.10.13. Exiting..."
 	exit 1
 fi
 #! Final message
-echo "Environment is ready."
-
-#! Remove the positional arguments
-eval set --
+echo "install_hpc_env.sh: Environment is ready."

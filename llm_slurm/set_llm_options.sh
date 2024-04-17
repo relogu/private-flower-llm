@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "set_llm_options: Error parsing options" >&2
 	exit 1
 fi
 
@@ -26,7 +26,7 @@ while true; do
 		;;
 	esac
 done
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "set_llm_options: PROJECT_PATH=$PROJECT_PATH"
 #! Set the run configuration
 STEPS="500"
 #! Test configuration: just 10 steps during training
@@ -37,6 +37,8 @@ export LLM_OPTIONS="llm_config.save_interval=${STEPS}ba llm_config.console_log_i
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.speed_monitor ~llm_config.callbacks.memory_monitor ~llm_config.callbacks.runtime_estimator"
 #! Configuration: reduce number of eval batches
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=2"
+
+echo "set_llm_options: arguments=$@, first argument=$1"
 
 #! Remove the positional arguments
 eval set --
