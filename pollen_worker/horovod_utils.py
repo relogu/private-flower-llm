@@ -231,10 +231,12 @@ def to_tensor(
 
 def get_variable_map(model: torch.nn.Module) -> dict[str, torch.Tensor]:
     """Get the variable map from the model."""
+    model_parameter_dict = model.named_parameters()
+    model_parameter_dict = sorted(model_parameter_dict)
     return {
         name: variable
-        for name, variable in model.named_parameters()
-        if variable.requires_grad
+        for name, variable in model_parameter_dict
+        if "bn" not in name and variable.requires_grad
     }
 
 

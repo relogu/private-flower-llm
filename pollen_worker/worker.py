@@ -12,11 +12,14 @@ from multiprocessing.process import AuthenticationString  # type: ignore[attr-de
 from typing import Any
 import uuid
 from torch import device
+import torch.amp
 from torch.nn import Module
 from torch.distributed import (
     init_process_group,
     dist_backend,
     barrier,
+    all_reduce as all_reduce_tensor,
+    ReduceOp,
 )
 
 import cloudpickle
@@ -47,8 +50,6 @@ from pollen_worker.horovod_utils import (
     all_reduce,
     classification_training_loop,
     flair_training_loop,
-    get_model_difference,
-    get_ndarrays_from_model,
     get_parameters,
     get_variable_map,
     make_cifar10_iid_datasets,
@@ -111,8 +112,6 @@ class Worker(Process):
         self.client_model: Module | MultiLabelCNN
         self.buffer: dict[str, torch.Tensor] | None = None
         self.cache: dict[str, torch.Tensor] | None = None
-        self.worker_global_model_variable_map: dict[str, torch.Tensor]
-        self.worker_central_optimizer: torch.optim.Optimizer
 
     def __getstate__(self) -> dict[str, Any]:
         """Return the state of the object.
@@ -151,34 +150,11 @@ class Worker(Process):
         aggregated_num_samples = torch.tensor(
             0, dtype=torch.float32, device=self.device
         )
-        # Initialise the model parameters
-        # NOTE: Method 1 is quicker for CIFAR10
-        # Method 1 -- All workers read the shared memory concurrently
-        set_model_parameters_from_ndarrays(self.round_params, self.client_model)
-        # Method 2 -- Just rank zero reads and then it broadcasts
-        # if self.local_rank == 0:
-        #     set_model_parameters_from_ndarrays(self.round_params, self.client_model)
-        # with torch.no_grad():
-        #     for _, variable in self.client_model.named_parameters():
-        #         variable_copy = variable.detach()
-        #         broadcast(variable_copy, 0)
-        #         variable.copy_(variable_copy)
-        set_parameters(
-            get_variable_map(self.client_model),
-            get_variable_map(self.worker_global_model),
+        # Initialise model parameters: all workers read the shared memory concurrently
+        set_model_parameters_from_ndarrays(
+            self.round_params, self.client_model, self.device
         )
-        self.worker_global_model_variable_map = get_variable_map(
-            self.worker_global_model
-        )
-        self.worker_central_optimizer = torch.optim.SGD(
-            self.worker_global_model.parameters(), lr=1.0
-        )
-        barrier()
-        elapsed_time = time.time() - init_time
-        worker_system_metrics.append(("workers/fit_init_time", elapsed_time))
-        barrier()
-        train_time = time.time()
-        results: list[WorkerResult] = []
+        initial_parameters = get_parameters(get_variable_map(self.client_model))
         if self.dataset_name == "flair":
             train_loop = flair_training_loop
             local_optimizer = get_optimizer(name="flair", model=self.client_model)
@@ -189,11 +165,18 @@ class Worker(Process):
                 name=self.dataset_name, model=self.client_model
             )
             criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+        barrier()
+        elapsed_time = time.time() - init_time
+        worker_system_metrics.append(("workers/fit_init_time", elapsed_time))
+        barrier()
+        train_time = time.time()
+        results: list[WorkerResult] = []
         for client_dataset in self.federated_dataset.get_cohort(client_ids):
             # Take the timestamp before training a single client
             start_time = time.time_ns()
 
-            cumulative_loss, cumulative_accuracy, cumulative_num_samples = train_loop(
+            # Train the client model
+            client_loss, client_accuracy, client_num_samples = train_loop(
                 self.client_model,
                 local_optimizer,
                 criterion,
@@ -203,38 +186,37 @@ class Worker(Process):
                 self.dataset_name,
                 1,
             )
-            aggregated_loss += cumulative_loss * cumulative_num_samples
-            aggregated_accuracy += cumulative_accuracy * cumulative_num_samples
-            aggregated_num_samples += cumulative_num_samples
 
-            # Get the pseudo-gradients
-            deltas = get_model_difference(
-                variable_map=get_variable_map(self.client_model),
-                other_variable_map=self.worker_global_model_variable_map,
-                cache=self.cache,
-            )
+            # Accumulate metrics
+            aggregated_loss += client_loss.mul_(client_num_samples)
+            aggregated_accuracy += client_accuracy.mul_(client_num_samples)
 
-            # Update the pseudo-gradients buffer
+            # Get the trained model parameters
+            deltas = get_parameters(get_variable_map(self.client_model))
+            for tensor in deltas.values():
+                tensor.mul_(client_num_samples)
+
+            # Update the model parameters accumulation buffer
             if self.buffer is None:
                 self.buffer = get_parameters(deltas)
-                # Scale the pseudo-gradients on the number of samples trained
-                for tensor_value in self.buffer.values():
-                    tensor_value.mul_(cumulative_num_samples)
             else:
                 for tensor_name, tensor_value in get_parameters(deltas).items():
-                    # Scale the pseudo-gradients on the number of samples trained
-                    tensor_value.mul_(cumulative_num_samples)
-                    # Add the pseudo-gradients to the buffer
                     self.buffer[tensor_name].add_(tensor_value)
+
+            # Update the number of samples
+            aggregated_num_samples += client_num_samples
+
+            # Reset client model parameters to the initial ones
             set_parameters(
-                self.worker_global_model_variable_map,
+                initial_parameters,
                 get_variable_map(self.client_model),
             )
+
             # Take the timestamp after the task is done
             end_time = time.time_ns()
             results.append(
                 WorkerResult(
-                    int(cumulative_num_samples.cpu().item()),
+                    int(client_num_samples.cpu().item()),
                     (end_time - start_time) * 1e-9,
                     str(self.device),
                 )
@@ -252,20 +234,27 @@ class Worker(Process):
             #     self.local_rank,
             #     j,
             # )
-            # All reduce the updates
+            # All reduce (SUM) the number of samples across the workers in this node
+            all_reduce_tensor(aggregated_num_samples, op=ReduceOp.SUM)
+            # All reduce (SUM) the buffer containing the accumulated model parameters
+            # across the workers in this node
             reduced_buffer = all_reduce(
                 self.world_size, list(self.buffer.values()), average=False
             )
+            # Divide the reduced buffer by the total number of samples trained in this
+            # node
+            for reduced_tensor in reduced_buffer:
+                reduced_tensor.div_(aggregated_num_samples)
+            # All reduce the metrics
             reduced_metrics = all_reduce(
                 self.world_size,
-                [aggregated_loss, aggregated_accuracy, aggregated_num_samples],
+                [aggregated_loss, aggregated_accuracy],
                 average=False,
             )
-            # Post-process the results of the reduce operation on rank 0 only
+            for reduced_metric in reduced_metrics:
+                reduced_metric.div_(aggregated_num_samples)
+            # Post-process the results fro the NodeManager on rank 0 only
             if self.local_rank == 0:
-                # Scale the metrics on the number of samples trained on this node
-                reduced_metrics[0].div_(reduced_metrics[2])
-                reduced_metrics[1].div_(reduced_metrics[2])
                 log(
                     INFO,
                     "Local Rank: %s, W. Avg. Loss: %s,"
@@ -273,39 +262,16 @@ class Worker(Process):
                     self.local_rank,
                     float(reduced_metrics[0].cpu().item()),
                     float(reduced_metrics[1].cpu().item()),
-                    int(reduced_metrics[2].cpu().item()),
+                    int(aggregated_num_samples.cpu().item()),
                 )
-                # Update the global model applying the updates with the optimizer
-                self.worker_central_optimizer.zero_grad()
-                for variable_name, difference in dict(
-                    zip(self.buffer.keys(), reduced_buffer, strict=False)
-                ).items():
-                    # Scale the update for the number of samples trained on this node
-                    difference.div_(reduced_metrics[2])
-                    if (
-                        self.worker_global_model_variable_map[variable_name].grad
-                        is None
-                    ):
-                        self.worker_global_model_variable_map[variable_name].grad = (
-                            torch.zeros_like(
-                                self.worker_global_model_variable_map[variable_name],
-                                device=self.device,
-                            )
-                        )
-                    # Interpret the model updates as gradients.
-                    self.worker_global_model_variable_map[variable_name].grad.data.copy_(  # type: ignore[union-attr]
-                        -1 * difference
-                    )
-                # Apply the update
-                self.worker_central_optimizer.step()
                 # Write buffer to shared memory
                 write_to_fit_result_shm(
                     self.worker_params,
                     self.worker_num_samples,
                     self.worker_train_loss,
                     self.worker_train_acc,
-                    get_ndarrays_from_model(net=self.worker_global_model),  # type: ignore[reportArgumentType]
-                    int(reduced_metrics[2].cpu().item()),
+                    [t.detach().to("cpu").numpy() for t in reduced_buffer],
+                    int(aggregated_num_samples.cpu().item()),
                     float(reduced_metrics[0].cpu().item()),
                     float(reduced_metrics[1].cpu().item()),
                 )
@@ -325,10 +291,10 @@ class Worker(Process):
             #     self.local_rank,
             #     elapsed_time,
             # )
-            # Empty the buffer
+            # Zero-out the buffer
             if self.buffer is not None:
                 for tensor_name, tensor_value in self.buffer.items():
-                    self.buffer[tensor_name] = torch.empty(
+                    self.buffer[tensor_name] = torch.zeros(
                         tensor_value.shape,
                         dtype=torch.float32,
                         device=tensor_value.device,
@@ -431,10 +397,6 @@ class Worker(Process):
             )
 
         # Create global model
-        # if self.local_rank == 0:
-        self.worker_global_model = get_model(self.dataset_name)
-        self.worker_global_model = self.worker_global_model.to(self.device)
-        # Create client model
         self.client_model = get_model(self.dataset_name)
         self.client_model = self.client_model.to(self.device)
         # Allocate shared memories.
@@ -459,17 +421,18 @@ class Worker(Process):
         )
         # NOTE: This is the Worker's shared memory for the fit results.
         # NodeManager should only read this. Worker should only write this.
-        (
-            self.worker_params,
-            self.worker_num_samples,
-            self.worker_train_loss,
-            self.worker_train_acc,
-            self.worker_shm,
-        ) = allocate_shm(
-            parameters=self.client_fn(0).get_parameters({}),  # type: ignore[reportArgumentType]
-            name=self.worker_id,
-            create=True,
-        )
+        if self.local_rank == 0:
+            (
+                self.worker_params,
+                self.worker_num_samples,
+                self.worker_train_loss,
+                self.worker_train_acc,
+                self.worker_shm,
+            ) = allocate_shm(
+                parameters=self.client_fn(0).get_parameters({}),  # type: ignore[reportArgumentType]
+                name=self.worker_id,
+                create=True,
+            )
         elapsed_time = time.time() - aggregation_time
         if self.workers_system_metrics_queue is not None:
             self.workers_system_metrics_queue.put(("workers/init_time", elapsed_time))
