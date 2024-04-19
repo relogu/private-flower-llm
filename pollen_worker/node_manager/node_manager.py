@@ -804,10 +804,10 @@ def main(cfg: DictConfig) -> None:
         "NodeManager received the llm_config:\n%s",
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
-    client_stream_list = cfg.client_stream_list
-    OmegaConf.resolve(client_stream_list)
-    OmegaConf.set_struct(client_stream_list, False)
-    _llm_config.client_stream_list = client_stream_list
+    client_streams_list = cfg.client_streams_list
+    OmegaConf.resolve(client_streams_list)
+    OmegaConf.set_struct(client_streams_list, False)
+    _llm_config.client_streams_list = client_streams_list
 
     assert isinstance(_llm_config, DictConfig)
     # Get the client generator function

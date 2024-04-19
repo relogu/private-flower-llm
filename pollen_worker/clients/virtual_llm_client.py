@@ -97,14 +97,14 @@ class VirtualLLMClient(fl.client.NumPyClient):
         cfg: DictConfig = copy.deepcopy(self.cfg)
         # Set the appropriate path given the `client_id`
         streams_dict_list: list[int | dict] | None = cfg.pop(
-            "client_stream_list", {}
-        ).get("client_stream_list", None)
+            "client_streams_list", {}
+        ).get("client_streams_list", None)
 
         client_streams = (
             streams_dict_list[int(self.cid)] if streams_dict_list is not None else None
         )
 
-        if not isinstance(client_streams, dict):
+        if client_streams is None or isinstance(client_streams, int):
             cid_to_map_to = client_streams if client_streams is not None else self.cid
             if cfg.data_remote is not None:  # type: ignore[union-attr]
                 # Set the appropriate path given the `client_id`
@@ -118,33 +118,43 @@ class VirtualLLMClient(fl.client.NumPyClient):
             )
             cfg = set_all_data_paths(cfg, new_local_path)
             # Execute the fit function
-        elif isinstance(client_streams, dict):
-            client_streams = {
-                key: StreamDict(**stream) for key, stream in client_streams.items()
+        else:
+            actual_streams = {
+                key: StreamDict(**value)
+                for key, value in client_streams["streams"].items()
             }
-            for stream in client_streams.values():
+            for stream in actual_streams.values():
                 if cfg.data_remote is not None and stream.remote is not None:
                     stream.remote = (
-                        str(cfg.data_remote) + stream.remote if stream.remote else None
+                        str(cfg.data_remote) + f"/{stream.remote}"
+                        if stream.remote
+                        else None
                     )
                 if stream.local is not None:
-                    stream.local = str(cfg.data_local) + stream.local
+                    stream.local = str(cfg.data_local) + f"/{stream.local}"
 
             set_all_data_paths(cfg, None, False)
             set_all_data_paths(
                 cfg,
                 new_path=None,
             )
+            test_streams = copy.deepcopy(actual_streams)
+            for stream in test_streams.values():
+                stream.split = "val"
+
             streams_dict = {
-                name: asdict(stream) for name, stream in client_streams.items()
+                name: asdict(stream) for name, stream in actual_streams.items()
+            }
+            test_streams_dict = {
+                name: asdict(stream) for name, stream in test_streams.items()
             }
             cfg.streams = streams_dict
 
             cfg.train_loader.dataset.streams = streams_dict
+            cfg.eval_loader.dataset.streams = test_streams_dict
 
             config["client_streams"] = streams_dict
-        else:
-            raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
+
         return llm_fit(parameters, config, cfg)
 
     def evaluate(
@@ -163,7 +173,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
             streams_dict_list[int(self.cid)] if streams_dict_list is not None else None
         )
 
-        if not isinstance(client_streams, dict):
+        if client_streams is None or isinstance(client_streams, int):
             # Set the appropriate path for the (centralized) val set
             if cfg.data_remote is not None:  # type: ignore[union-attr]
                 # Extracts the parent folder from the remote path
@@ -176,10 +186,9 @@ class VirtualLLMClient(fl.client.NumPyClient):
             # Tie the local path to the client_id and the run_uuid
             new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
             cfg = set_all_data_paths(cfg, new_local_path)
-        elif isinstance(client_streams, dict):
-            config["client_streams"] = StreamDict(**client_streams)
         else:
-            raise TypeError(f"Invalid client_id type: {self.cid}, {type(self.cid)}")
+            config["client_streams"] = client_streams
+
         return llm_eval(parameters, config, cfg)
 
 

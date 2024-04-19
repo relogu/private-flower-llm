@@ -30,7 +30,7 @@ fl:
 defaults:
   - _self_
   - llm_config: mpt-125m
-  - client_stream_list: int_based
+  - client_streams_list: none_based.yaml
 
 # S3 communication stack
 use_s3_comm: false
