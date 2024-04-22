@@ -1,46 +1,47 @@
 """Pollen server."""
 
 import concurrent.futures
-from dataclasses import dataclass
-import os
+import pickle
 import sys
 import time
 import timeit
 from collections.abc import Callable, Generator
-from logging import DEBUG, ERROR, INFO, WARNING
+from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 import pyarrow as pa
-import pyarrow.parquet as pq
 from flwr.client import Client
+from flwr.client.numpy_client import NumPyClient
 from flwr.common import (
+    Code,
     DisconnectRes,
+    EvaluateIns,
     EvaluateRes,
     FitIns,
     FitRes,
     Parameters,
     Scalar,
     Status,
-    Code,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
 )
 from flwr.common.logger import log
 from flwr.common.typing import GetPropertiesIns, Properties
 from flwr.server import Server
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
-from flwr.server.server import evaluate_clients, fit_client
+from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: PLC2701
+from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
-from pollen_worker.placements import (
-    get_placement_fn,
-    get_pollen_models,
-    skim_clients_training_stats,
-)
+from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
+from pollen_worker.clients.llm_client_functions import copy_old_checkpoints_to_new_run
+from pollen_worker.placements import get_placement_fn, get_pollen_models
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
 from pollen_worker.strategy.rs_nesterov import FedNesterov
@@ -78,23 +79,6 @@ class TooManyFailuresError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
-class TooManyFailuresError(Exception):
-    """Exception raised when a client is dropped out of the tree."""
-
-
-class IntentionalClientDropoutError(Exception):
-    """Exception raised when a client is dropped out of the tree."""
-
-
-@dataclass
-class AuxiliaryFitClientsResults:
-    """Dataclass for the auxiliary results of the fit_clients function."""
-
-    pollen_models: dict[str, Any] | None
-    correction_tables: dict[str, pa.Table] | None
-    fit_pollen_models_time: float
-
-
 class PollenServer(Server):
     """Flower server."""
 
@@ -104,7 +88,7 @@ class PollenServer(Server):
         run_uuid: str,
         client_manager: PollenClientManager,
         cids: dict[str | int, int],
-        client_fn: Callable[[int], Client],
+        client_fn: Callable[[int], ClientLike],
         strategy: FedAvg | None = None,
         placement_policy: str = "rr",
         saving_path: Path | None = None,
@@ -138,30 +122,64 @@ class PollenServer(Server):
             if (conf_fn := self.strategy.on_fit_config_fn) is not None
             else lambda _: {}
         )
+        self.on_evaluate_config: Callable[[int], dict[str, Scalar]] = (
+            conf_fn
+            if (conf_fn := self.strategy.on_evaluate_config_fn) is not None
+            else lambda _: {}
+        )
         self.max_workers: int | None = None
         self.nodes_dict: dict[str, tuple[ClientProxy, Node]] = {}
-        if saving_path is None:
-            saving_path = Path.cwd()
         self.saving_path = saving_path
         self.clients_training_stats: pa.Table | None = None
         self.history = history
         self.num_nodes = num_nodes
         self.pollen_models: dict[str, Any] | None = None
         self.correction_tables: dict[str, pa.Table] | None = None
-        self.ignore_failed_rounds = False
-        self.accept_failures_cnt = 0
-        self.ignore_failed_rounds = False
-        self.print_failures = True
-        self.print_intentional_failures = True
-        self.received_clients_training_stats: list[pa.Table] = []
+        self.accept_failures_cnt = accept_failures_cnt
+        self.ignore_failed_rounds = ignore_failed_rounds
+        self.print_failures = print_failures
+        self.print_intentional_failures = print_intentional_failures
+        self.use_s3_comm = use_s3_comm
+        self.s3_comm_config = s3_comm_config
+        self.checkpoint = checkpoint
+        self.resume_round = resume_round
+        self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
+        self.run_uuid = run_uuid
+
+        if self.checkpoint or self.use_s3_comm:
+            bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
+            self.remote_up_down = RemoteUploaderDownloader(
+                # TODO: Don't hardcode
+                bucket_uri=bucket_uri,
+                backend_kwargs={
+                    "bucket": self.s3_comm_config.bucket_name,  # type: ignore[union-attr]
+                    "prefix": f"{self.run_uuid}/server",  # Don't touch
+                    "region_name": None,  # Not necessary
+                    "endpoint_url": None,  # Will be read from env var
+                    "aws_access_key_id": None,  # Will be read from config file
+                    "aws_secret_access_key": None,  # Will be read from config file
+                    "aws_session_token": None,  # Will be automatically generated
+                    "client_config": OmegaConf.to_container(
+                        self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
+                    ),  # And using defaults
+                    "transfer_config": None,  # Using defaults
+                },
+                file_path_format_string="{remote_file_name}",  # Don't touch
+                # TODO: Think about this in relation with the checkpointing
+                num_concurrent_uploads=1,
+                upload_staging_folder=None,  # Don't touch, it's /tmp by default
+                use_procs=True,  # Don't touch
+                num_attempts=self.s3_comm_config.num_attempts,  # type: ignore[union-attr]
+            )
+            self.remote_up_down.init(run_name=self.run_uuid)
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
         self.max_workers = max_workers
 
-    def set_strategy(  # type: ignore[reportIncompatibleMethodOverride]
+    def set_strategy(  # type: ignore[override]
         self,
-        strategy: FedAvg,  # type: ignore[override]
+        strategy: FedAvg,
     ) -> None:
         """Replace server strategy."""
         self.strategy = strategy  # type: ignore[reportIncompatibleVariableOverride]
@@ -173,7 +191,6 @@ class PollenServer(Server):
     # pylint: disable=too-many-locals
     def fit(self, num_rounds: int, timeout: float | None) -> History:
         """Run federated averaging for a number of rounds."""
-        server_system_metrics: dict[str, Scalar] = {}
         log(INFO, "Initializing Pollen simulation")
 
         # Import previous checkpoints if asked to
@@ -347,48 +364,13 @@ class PollenServer(Server):
             "Start-up time for the server is %s",
             timeit.default_timer() - self.start_up_time,
         )
-        server_system_metrics["server/start_up_time"] = (
-            timeit.default_timer() - self.start_up_time
-        )
-        history.add_metrics_centralized(server_round=0, metrics=server_system_metrics)
-        server_system_metrics = {}
         # Run federated learning for num_rounds
         log(INFO, "FL starting from round %s", start_round + 1)
         start_time = timeit.default_timer()
-        for current_round in range(1, num_rounds + 1):
-            start_time_round = timeit.default_timer()
+        for current_round in range(start_round + 1, num_rounds + 1):
             # Check for changes in connected NodeManagers
-            dropped, new = _check_connected_node_managers(
-                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
-                new_connected_node_managers_cid=[
-                    k for k, _ in self._client_manager.node_managers.items()
-                ],
-            )
-            if len(dropped) > 0:
-                # Handle dropped NodeManagers
-                [self.nodes_dict.pop(k) for k in dropped]
-            if len(new) > 0:
-                # Handle newly added NodeManagers
-                results, failures = get_nodes_properties(
-                    node_managers={
-                        k: self._client_manager.node_managers[k] for k in new
-                    },
-                    max_workers=self.max_workers,
-                )
-                log(
-                    INFO,
-                    "Get nodes properties: there are %s results and %s failures",
-                    len(results),
-                    len(failures),
-                )
-                new_nodes_dict = {
-                    client_proxy.cid: (client_proxy, node)
-                    for client_proxy, node in results
-                }
-                self.nodes_dict.update(new_nodes_dict)
-            check_nm_time_round = timeit.default_timer() - start_time_round
-            server_system_metrics["server/check_nm_round_time"] = check_nm_time_round
-            tmp_timer = timeit.default_timer()
+            self.check_node_managers()
+
             # Train model and replace previous global model
             res_fit = self.fit_round(
                 server_round=current_round,
@@ -401,10 +383,21 @@ class PollenServer(Server):
                 history.add_metrics_distributed_fit(
                     server_round=current_round, metrics=fit_metrics
                 )
-            fit_round = timeit.default_timer() - tmp_timer
-            server_system_metrics["server/fit_round_time"] = fit_round
 
-            tmp_timer = timeit.default_timer()
+            # Push the global model to S3 Object Store (but not the server state)
+            if self.checkpoint or self.use_s3_comm:
+                log(INFO, "Dump server parameters to disk")
+                dump_model_parameters_to_file(
+                    Path.cwd() / "current_server_parameters.npz",
+                    parameters_to_ndarrays(self.parameters),
+                )
+                log(INFO, "Push parameters to S3 Object Store")
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{current_round}/current_server_parameters.npz",
+                    Path.cwd() / "current_server_parameters.npz",
+                )
+
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
@@ -421,10 +414,10 @@ class PollenServer(Server):
                 history.add_metrics_centralized(
                     server_round=current_round, metrics=metrics_cen
                 )
-            evaluate = timeit.default_timer() - tmp_timer
-            server_system_metrics["server/evaluate_time"] = evaluate
 
-            tmp_timer = timeit.default_timer()
+            # Check for changes in connected NodeManagers
+            self.check_node_managers()
+
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
@@ -436,26 +429,39 @@ class PollenServer(Server):
                     history.add_metrics_distributed(
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
-            elapsed_time_round = timeit.default_timer() - start_time_round
-            server_system_metrics["server/round_time"] = elapsed_time_round
-            evaluate_round_time = timeit.default_timer() - tmp_timer
-            server_system_metrics["server/evaluate_round_time"] = evaluate_round_time
-            history.add_metrics_centralized(
-                server_round=current_round, metrics=server_system_metrics
-            )
 
-        # Save the statistics to a parquet file
-        if self.clients_training_stats is not None:
-            pq.write_table(
-                self.clients_training_stats,
-                str(self.saving_path / "clients_training_stats.parquet"),
-            )
-        # Dump the statistics to a csv file
-        run_uuid = os.getenv("RUN_UUID", "default")
-        concurrency = os.getenv("CONCURRENCY", "default")
-        pa.concat_tables(self.received_clients_training_stats).to_pandas().to_csv(
-            f"clients_training_stats_{run_uuid}_{concurrency}.csv"
-        )
+            # Save the checkpoint to S3 Object Store (w/o the global parameters)
+            if self.checkpoint or self.use_s3_comm:
+                log(INFO, "Create server state (server_round, history, time_offset)")
+                current_server_state = {
+                    "server_round": current_round,
+                    "history": history,
+                    "time_offset": time_offset,
+                }
+                log(INFO, "Dump server state to disk")
+                with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+                    pickle.dump(current_server_state, f)
+                log(INFO, "Push server state to S3")
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{current_round}/state.bin",
+                    Path.cwd() / "current_server_state.bin",
+                )
+                if (
+                    isinstance(self.strategy, FedNesterov)
+                    and self.strategy.momentum_vector is not None
+                ):
+                    log(INFO, "Dump momentum vector to disk")
+                    dump_model_parameters_to_file(
+                        Path.cwd() / "current_momentum_vector.npz",
+                        self.strategy.momentum_vector,
+                    )
+                    log(INFO, "Push momentum vector to S3 Object Store")
+                    upload_file_to_s3(
+                        self.remote_up_down,
+                        f"{current_round}/current_momentum_vector.npz",
+                        Path.cwd() / "current_momentum_vector.npz",
+                    )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -586,7 +592,7 @@ class PollenServer(Server):
         loss_aggregated, metrics_aggregated = aggregated_result
         return loss_aggregated, metrics_aggregated, (results, failures)
 
-    def fit_round(  # type: ignore[override, reportIncompatibleMethodOverride]
+    def fit_round(  # type: ignore[override]
         self,
         server_round: int,
         timeout: float | None,
@@ -603,7 +609,6 @@ class PollenServer(Server):
         ]
     ):
         """Perform a single round of federated averaging."""
-        start_time = timeit.default_timer()
         # Get clients and their respective instructions from strategy
         client_instructions = self.strategy.configure_fit(
             server_round=server_round,
@@ -659,11 +664,21 @@ class PollenServer(Server):
             node_fit_config.update(device_assignment)
 
             # Append instruction
-            node_instructions.append((
-                client_proxy,
-                FitIns(self.parameters, node_fit_config),
-            ))
-        fit_config_time = timeit.default_timer() - start_time
+            if self.use_s3_comm:
+                node_instructions.append((
+                    client_proxy,
+                    FitIns(
+                        # NOTE: We must pass a real NDArrays object,
+                        # Flower crashes otherwise
+                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                        node_fit_config,
+                    ),
+                ))
+            else:
+                node_instructions.append((
+                    client_proxy,
+                    FitIns(self.parameters, node_fit_config),
+                ))
 
         log(
             DEBUG,
@@ -687,19 +702,10 @@ class PollenServer(Server):
         # Accumulate IntentionalClientDropoutError exceptions
         intentional_failures: list[BaseException] = []
 
-        # Accumulate metrics from all NodeManagers
         metrics_accumulator: list[
             tuple[ClientProxy, dict[str, Scalar], Status, int]
         ] = []
-
-        # Send fit instructions to all NodeManagers participating in this round
-        start_time = timeit.default_timer()
-        auxiliary_fit_results = AuxiliaryFitClientsResults(
-            pollen_models=None,
-            correction_tables=None,
-            fit_pollen_models_time=0.0,
-        )
-        (results_futures) = pollen_fit_clients(
+        results_futures = pollen_fit_clients(
             node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
@@ -781,135 +787,139 @@ class PollenServer(Server):
             clients_stats=self.clients_training_stats,
             batch_size=int(self.on_fit_config(server_round)["batch_size"]),
             cids=self.cids,
-            placement_policy=self.placement_policy,
-            auxiliary_fit_results=auxiliary_fit_results,
+            server_round=int(node_instructions[0][1].config["server_round"]),
         )
-        # Wraps the results to discriminate between success and failure
-        results_and_failures = (
-            _handle_finished_future_after_fit_async(future)
-            for future in results_futures
-        )
-        # Return a closure to pre-process success and failure of the NodeManagers
-        handle_success_and_failure = get_handle_success_and_failure(
-            metrics_accumulator,
-            failures,
-            intentional_failures,
-            accept_failures_cnt=self.accept_failures_cnt,
-        )
-        # Wraps pre-processed successes and failures
-        results_and_failures = (
-            handle_success_and_failure(result) for result in results_and_failures
-        )
-        # Filter out the successful results and cast them as a generator
-        results = (result for success, result in results_and_failures if success)
-        complete_results = cast(
-            Generator[tuple[ClientProxy, FitRes], None, None], results
-        )
-        # Collect and aggregate training results asynchronously
-        extraction_time = 0.0
-        try:
-            # Aggregate training results
-            parameters_aggregated, metrics_aggregated = self.strategy.aggregate_fit(
-                server_round,
-                cast(list[tuple[ClientProxy, FitRes]], complete_results),
-                failures,
-            )
-            # Collect statistics that Pollen uses from the FitRes of the NodeManagers
-            start_time = timeit.default_timer()
-            round_clients_training_stats = []
-            for _, metrics, _, _ in metrics_accumulator:
-                tmp_clients_training_stats = metrics.pop("stats", None)
-                if tmp_clients_training_stats is not None:
-                    tmp_table = get_table_from_pyarrow_buffer(
-                        cast(pa.Buffer, tmp_clients_training_stats)
-                    )
-                    round_clients_training_stats.append(tmp_table)
-                    self.received_clients_training_stats.append(tmp_table)
-            extraction_time = timeit.default_timer() - start_time
-            # Aggregate the metrics
-            # NOTE: This bypasses any metrics aggregation in the aggregate_fit of the
-            # strategy because the metrics are empty there
-            if self.strategy.fit_metrics_aggregation_fn:
-                fit_metrics = [
-                    (num_examples, metrics)
-                    for _, metrics, _, num_examples in metrics_accumulator
-                ]
-                metrics_aggregated = (
-                    metrics_aggregated
-                    | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
+
+        # Collect the new statistics and append to the global statistics
+        if len(received_clients_training_stats) > 0:
+            if self.clients_training_stats is None:
+                self.clients_training_stats = pa.concat_tables(
+                    received_clients_training_stats
                 )
-            elif server_round == 1:  # Only log this warning once
-                log(WARNING, "No fit_metrics_aggregation_fn provided")
-        except TooManyFailuresError as e:
-            if self.ignore_failed_rounds:
-                log(
-                    ERROR,
-                    """Ignoring failed round %s: %s,
-                    there are %s failures: %s,
-                    there are %s intentional failures: %s""",
-                    server_round,
-                    e,
-                    len(failures),
-                    failures if self.print_failures else [],
-                    len(intentional_failures),
-                    intentional_failures if self.print_intentional_failures else [],
-                )
-                return None
             else:
-                raise
-        # NOTE: Now, this time includes the aggregation time
-        server_fit_time = timeit.default_timer() - start_time
+                self.clients_training_stats = pa.concat_tables(
+                    [self.clients_training_stats] + received_clients_training_stats
+                )
+                # self.clients_training_stats = pa.concat_tables(
+                #     received_clients_training_stats
+                # )
 
-        # Collect the new statistics relative to the clients' training times
-        start_time = timeit.default_timer()
-        if self.clients_training_stats is None:
-            # Create the table from scratch
-            self.clients_training_stats = pa.concat_tables(round_clients_training_stats)
-        else:
-            # Skim the `clients_training_stats` to keep just the average per n_samples
-            self.clients_training_stats = skim_clients_training_stats(
-                self.clients_training_stats
-            )
-            # Append to the global statistics
-            self.clients_training_stats = pa.concat_tables(
-                [self.clients_training_stats] + round_clients_training_stats
-            )
-        concatenation_time = timeit.default_timer() - start_time
+        log(
+            DEBUG,
+            """fit_round %s received %s results, %s
+            failures, and %s intentional failures
+            Using async inplace aggregation.
+            These failures are: %s,
+            the intentional failures are: %s""",
+            server_round,
+            len(metrics_accumulator),
+            len(failures),
+            len(intentional_failures),
+            failures if self.print_failures else [],
+            intentional_failures if self.print_intentional_failures else [],
+        )
 
-        # NOTE: We must assign this only after we can the first iter over the results
-        # generator
-        self.correction_tables = auxiliary_fit_results.correction_tables
-        self.pollen_models = auxiliary_fit_results.pollen_models
-
-        # Return the aggregated results
-        metrics_aggregated = metrics_aggregated | {
-            "server/fit_config_time": fit_config_time,
-            "server/fit_clients_time": server_fit_time,
-            "server/stats_extraction_time": extraction_time,
-            "server/stats_concatenation_time": concatenation_time,
-            "server/fit_pollen_models_time": (
-                auxiliary_fit_results.fit_pollen_models_time
-            ),
-        }
+        parameters_aggregated, metrics_aggregated = aggregated_result
         return (
             parameters_aggregated,
             metrics_aggregated,
             (metrics_accumulator, failures, intentional_failures),
         )
 
+    def check_node_managers(
+        self,
+    ) -> None:
+        """Quick check on the availability of the NodeManagers."""
+        while self._client_manager.num_available_node_managers() < self.num_nodes:
+            log(
+                INFO,
+                "Waiting for %s nodes to connect",
+                self.num_nodes - self._client_manager.num_available_node_managers(),
+            )
+            time.sleep(5)
+            # Check for changes in connected NodeManagers
+            dropped, new = _check_connected_node_managers(
+                old_connected_node_managers_cid=[k for k, _ in self.nodes_dict.items()],
+                new_connected_node_managers_cid=[
+                    k for k, _ in self._client_manager.node_managers.items()
+                ],
+            )
+            if len(dropped) > 0:
+                # Handle dropped NodeManagers
+                [self.nodes_dict.pop(k) for k in dropped]
+            if len(new) > 0:
+                # Handle newly added NodeManagers
+                results, failures = get_nodes_properties(
+                    node_managers={
+                        k: self._client_manager.node_managers[k] for k in new
+                    },
+                    max_workers=self.max_workers,
+                )
+                log(
+                    INFO,
+                    "Get nodes properties: there are %s results and %s failures",
+                    len(results),
+                    len(failures),
+                )
+                new_nodes_dict = {
+                    client_proxy.cid: (client_proxy, node)
+                    for client_proxy, node in results
+                }
+                self.nodes_dict.update(new_nodes_dict)
+        results, failures = get_nodes_properties(
+            node_managers=self._client_manager.node_managers,
+            max_workers=self.max_workers,
+        )
+        log(
+            INFO,
+            "Get nodes properties: there are %s results and %s failures",
+            len(results),
+            len(failures),
+        )
+        for failure in failures:
+            if isinstance(failure, BaseException):
+                log(ERROR, "Failure in getting nodes properties.", exc_info=failure)
+        # This is a dictionary of the form {"node_id": Node}
+        self.nodes_dict = {
+            client_proxy.cid: (client_proxy, node) for client_proxy, node in results
+        }
+        # TODO: Clean-up stats?
 
-# NEW FUNCTIONS ###############################################################
+
+# NEW FUNCTIONS #######################
+
+
+def pollen_evaluate_clients(
+    node_instructions: list[tuple[ClientProxy, EvaluateIns]],
+    max_workers: int | None,
+    timeout: float | None,
+) -> EvaluateResultsAndFailures:
+    """Evaluate parameters concurrently on all selected clients."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        submitted_fs = {
+            executor.submit(evaluate_client, client_proxy, ins, timeout)
+            for client_proxy, ins in node_instructions
+        }
+        # TODO: Implement Pollen's model for the eval assignment
+        finished_fs, _ = concurrent.futures.wait(
+            fs=submitted_fs,
+            timeout=None,  # Handled in the respective communication stack
+        )
+
+    # Gather results
+    results: list[tuple[ClientProxy, EvaluateRes]] = []
+    failures: list[tuple[ClientProxy, EvaluateRes] | BaseException] = []
+    for future in finished_fs:
+        _handle_finished_future_after_evaluate(
+            future=future, results=results, failures=failures
+        )
+    return results, failures
 
 
 def pollen_fit_clients(
     node_instructions: list[tuple[ClientProxy, FitIns]],
     max_workers: int | None,
     timeout: float | None,
-    auxiliary_fit_results: AuxiliaryFitClientsResults,
-    cids: dict[str | int, int],
-    clients_stats: pa.Table | None = None,
-    batch_size: int = 1,
-    placement_policy: str = "rr",
 ) -> Generator[concurrent.futures.Future[tuple[ClientProxy, FitRes]], Any, None]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -917,22 +927,7 @@ def pollen_fit_clients(
             executor.submit(fit_client, client_proxy, ins, timeout)
             for client_proxy, ins in node_instructions
         }
-        # Fit the Pollen models and collect their parameters and correction tables in
-        # the `auxiliary_fit_results` variables
-        start_time = timeit.default_timer()
-        auxiliary_fit_results.pollen_models, auxiliary_fit_results.correction_tables = (
-            get_pollen_models(
-                placement_policy=placement_policy,
-                clients_stats=clients_stats,
-                batch_size=batch_size,
-                cids=cids,
-                server_round=int(node_instructions[0][1].config["server_round"]),
-            )
-        )
-        auxiliary_fit_results.fit_pollen_models_time = (
-            timeit.default_timer() - start_time
-        )
-        # Constructing the generator of training results
+
         while submitted_fs:
             finished_fs, _ = concurrent.futures.wait(
                 fs=submitted_fs,
@@ -1034,9 +1029,9 @@ def replace_clients_updates_with_remote(
 
     log(
         DEBUG,
-        "NodeManger properties received from %s: %s",
-        client,
-        node_properties,
+        "Wait for NodeManager %s parameters to be in S3 Object Store at %s",
+        endpoint_id,
+        remote_file_name_no_ext,
     )
 
     while not file_found:
@@ -1248,112 +1243,3 @@ def _check_connected_node_managers(
         if new_cid not in set(old_connected_node_managers_cid):
             new.append(new_cid)
     return dropped, new
-
-
-def _handle_finished_future_after_fit_async(
-    future: concurrent.futures.Future,
-) -> (
-    tuple[Literal[True], tuple[ClientProxy, FitRes]]
-    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
-):
-    """Convert finished future into either a result or a failure."""
-    # Check if there was an exception
-    failure = future.exception()
-    if failure is not None:
-        return (False, failure)
-
-    # Successfully received a result from a client
-    result: tuple[ClientProxy, FitRes] = future.result()
-    _, res = result
-    # Check result status code
-    if res.status.code == Code.OK:
-        return (True, result)
-
-    # Not successful, client returned a result where the status code is not OK
-    return (False, result)
-
-
-def get_handle_success_and_failure(
-    metrics_accumulator: list[tuple[ClientProxy, dict[str, Scalar], Status, int]],
-    failures: list[tuple[ClientProxy, FitRes] | BaseException],
-    intentional_failures: list[BaseException],
-    accept_failures_cnt: int | None,
-) -> Callable[
-    [
-        tuple[Literal[True], tuple[ClientProxy, FitRes]]
-        | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException]
-    ],
-    tuple[Literal[True], tuple[ClientProxy, FitRes]]
-    | tuple[Literal[False], tuple[ClientProxy, FitRes] | BaseException],
-]:
-    """Closure to generate a function which handles client success and failure.
-
-    The function distinguishes between intentional and unintentional failures.
-    It enforces constraints on the number of unintentional failures.
-    It stores results and failures in the respective lists.
-
-    Parameters
-    ----------
-    metrics_accumulator : List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]]
-        The list where the metrics are accumulated.
-    failures : List[Union[Tuple[ClientProxy, FitRes], BaseException]]
-        The list where the failures are accumulated.
-    intentional_failures : List[BaseException]
-        The list where the intentional failures are accumulated.
-    accept_failures_cnt : int | None
-        The maximum number of unintentional failures to accept.
-
-    Returns
-    -------
-    handle_success_and_failure : Callable[
-        [
-            Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-            | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException]
-        ],
-        Tuple[Literal[True], Tuple[ClientProxy, FitRes]]
-        | Tuple[Literal[False], Tuple[ClientProxy, FitRes] | BaseException],
-    ]
-        The function which handles client success and failure while saving the outputs.
-    """
-
-    def handle_success_and_failure(
-        result: (
-            tuple[Literal[True], tuple[ClientProxy, FitRes]]
-            | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
-        ),
-    ) -> (
-        tuple[Literal[True], tuple[ClientProxy, FitRes]]
-        | tuple[Literal[False], (tuple[ClientProxy, FitRes] | BaseException)]
-    ):
-        cnt_failures = 0
-
-        match result:
-            case (True, res):
-                cast_res = cast(tuple[ClientProxy, FitRes], res)
-                client_proxy, fit_res = cast_res
-                metrics_accumulator.append((
-                    client_proxy,
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
-                return (True, cast_res)
-            case (False, res) if isinstance(res, IntentionalClientDropoutError):
-                intentional_failures.append(res)
-                return (False, res)
-            case (False, res):
-                cast_failure_res = cast(tuple[ClientProxy, FitRes] | BaseException, res)
-                if isinstance(cast_failure_res, BaseException):
-                    log(ERROR, "Unintentional failure.", exc_info=cast_failure_res)
-                cnt_failures += 1
-                if (
-                    accept_failures_cnt is not None
-                    and cnt_failures > accept_failures_cnt
-                ):
-                    raise TooManyFailuresError(f"""Unintentional failures passed
-                        the maximum: {accept_failures_cnt}""")
-                failures.append(cast_failure_res)
-                return (False, cast_failure_res)
-        return result
-
-    return handle_success_and_failure
