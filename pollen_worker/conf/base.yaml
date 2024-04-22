@@ -37,7 +37,7 @@ gen_on_fit_config_fn:
   n_workers: ${task.n_workers}
 
 # Wandb configuration
-use_wandb: true
+use_wandb: false
 
 wandb:
   setup:
