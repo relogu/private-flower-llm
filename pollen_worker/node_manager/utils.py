@@ -1,6 +1,7 @@
 """TODO: Add description here."""
 
 import copy
+from dataclasses import dataclass
 import pickle
 from logging import ERROR
 from multiprocessing import resource_tracker as res_track
@@ -22,6 +23,15 @@ POLLEN_PARAMETERS_SHM = "_pollen_parameters_shm"
 POLLEN_N_SAMPLES_SHM = "_pollen_n_samples_shm"
 POLLEN_EVAL_LOSS_SHM = "_pollen_eval_loss_shm"
 POLLEN_METRICS_SHM = "_pollen_metrics_shm"
+
+
+@dataclass
+class WorkerResult:
+    """Data type to store the results of the worker."""
+
+    n_samples: int
+    delta: float
+    device: str
 
 
 def aggregate_training_results(
