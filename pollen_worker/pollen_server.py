@@ -2,6 +2,7 @@
 
 import concurrent.futures
 from dataclasses import dataclass
+import os
 import sys
 import timeit
 from collections.abc import Callable, Generator
@@ -122,6 +123,7 @@ class PollenServer(Server):
         self.ignore_failed_rounds = False
         self.print_failures = True
         self.print_intentional_failures = True
+        self.received_clients_training_stats: list[pa.Table] = []
 
     def set_max_workers(self, max_workers: int | None) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -304,6 +306,12 @@ class PollenServer(Server):
                 self.clients_training_stats,
                 str(self.saving_path / "clients_training_stats.parquet"),
             )
+        # Dump the statistics to a csv file
+        run_uuid = os.getenv("RUN_UUID", "default")
+        concurrency = os.getenv("CONCURRENCY", "default")
+        pa.concat_tables(self.received_clients_training_stats).to_pandas().to_csv(
+            f"clients_training_stats_{run_uuid}_{concurrency}.csv"
+        )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -512,15 +520,15 @@ class PollenServer(Server):
             )
             # Collect statistics that Pollen uses from the FitRes of the NodeManagers
             start_time = timeit.default_timer()
-            received_clients_training_stats = []
+            round_clients_training_stats = []
             for _, metrics, _, _ in metrics_accumulator:
                 tmp_clients_training_stats = metrics.pop("stats", None)
                 if tmp_clients_training_stats is not None:
-                    received_clients_training_stats.append(
-                        get_table_from_pyarrow_buffer(
-                            cast(pa.Buffer, tmp_clients_training_stats)
-                        )
+                    tmp_table = get_table_from_pyarrow_buffer(
+                        cast(pa.Buffer, tmp_clients_training_stats)
                     )
+                    round_clients_training_stats.append(tmp_table)
+                    self.received_clients_training_stats.append(tmp_table)
             extraction_time = timeit.default_timer() - start_time
             # Aggregate the metrics
             # NOTE: This bypasses any metrics aggregation in the aggregate_fit of the
@@ -560,9 +568,7 @@ class PollenServer(Server):
         start_time = timeit.default_timer()
         if self.clients_training_stats is None:
             # Create the table from scratch
-            self.clients_training_stats = pa.concat_tables(
-                received_clients_training_stats
-            )
+            self.clients_training_stats = pa.concat_tables(round_clients_training_stats)
         else:
             # Skim the `clients_training_stats` to keep just the average per n_samples
             self.clients_training_stats = skim_clients_training_stats(
@@ -570,7 +576,7 @@ class PollenServer(Server):
             )
             # Append to the global statistics
             self.clients_training_stats = pa.concat_tables(
-                [self.clients_training_stats] + received_clients_training_stats
+                [self.clients_training_stats] + round_clients_training_stats
             )
         concatenation_time = timeit.default_timer() - start_time
 
