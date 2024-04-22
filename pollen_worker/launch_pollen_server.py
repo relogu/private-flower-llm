@@ -59,7 +59,10 @@ def main(cfg: DictConfig) -> None:
             exc_info=e,
             stack_info=True,
         )
-        cid_samples_dict = {int(k): 1 for k in range(int(cfg.task.n_clients_per_round))}
+        max_n_clients = (
+            1000 if cfg.task.name == "cifar10" else int(cfg.task.n_clients_per_round)
+        )
+        cid_samples_dict = {int(k): 1 for k in range(max_n_clients)}
     log(INFO, f"Time to get the clients' dictionary: {time.time() - s_t}")
     n_total_clients = len(cid_samples_dict)
     n_clients_per_round = cfg.task.n_clients_per_round
