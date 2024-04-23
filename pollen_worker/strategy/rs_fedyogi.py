@@ -32,6 +32,7 @@ class FedYogiReproducibleSampling(FedYogi):
     def __init__(
         self,
         *,
+        initial_parameters: Parameters,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
         min_fit_clients: int = 2,
@@ -47,7 +48,6 @@ class FedYogiReproducibleSampling(FedYogi):
         on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Parameters | None = None,
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         eta: float = 1e-2,
@@ -168,6 +168,7 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
     def __init__(
         self,
         *,
+        initial_parameters: Parameters,
         saving_path: Path | None = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
@@ -184,7 +185,6 @@ class FedYogiRSModel(FedYogiReproducibleSampling):
         on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Parameters | None = None,
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         eta: float = 1e-2,

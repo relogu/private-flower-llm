@@ -28,6 +28,7 @@ from pollen_worker.node_manager.utils import (
     POLLEN_METRICS_SHM,
     POLLEN_N_SAMPLES_SHM,
     POLLEN_PARAMETERS_SHM,
+    WorkerResult,
     close_all_shms,
     get_config_shm,
     get_eval_loss_shm,
@@ -68,6 +69,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.worker_metrics_sh: SharedMemory | None = None
         self.worker_metrics: Config = {}
         self.auto_terminate = False
+        self.n_samples = 0
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -77,6 +79,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         fit_trained_weights, fit_num_samples, train_metrics = client.fit(
             self.round_parameters, fl_instructions_config
         )
+        self.n_samples = fit_num_samples
         # log(
         #     DEBUG,
         #     "Worker %s with rank %s successfully obtained the training results from"
@@ -145,6 +148,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         #     eval_num_samples,
         #     eval_metrics,
         # )
+        self.n_samples = eval_num_samples
         if int(os.getenv("LOCAL_RANK", "")) == 0:
             # Worker's partial aggregation for metrics
             (agg_n_samples, p_agg_metrics) = partially_aggregate_metrics(
@@ -209,33 +213,35 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             # Try to execute the task of the client
             try:
                 if action == "fit":
-                    # Lauch the fit routine
+                    # Launch the fit routine
                     self._fit_action(tmp_client, fl_instructions_config)
                     # Take the timestamp after the task is done
                     end_time = time.time_ns()
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Put the result in the result queue
-                        self.result_queue.put([
-                            int(tmp_client.cid),
-                            start_time,
-                            end_time,
-                            self.worker_uuid,
-                        ])
+                        self.result_queue.put(
+                            WorkerResult(
+                                self.n_samples,
+                                end_time - start_time,
+                                self.worker_uuid,
+                            )
+                        )
                 elif action == "evaluate":
-                    # Lauch the evaluate routine
+                    # Launch the evaluate routine
                     self._evaluate_action(tmp_client, fl_instructions_config)
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Take the timestamp after the task is done
                         end_time = time.time_ns()
                         # Put the result in the result queue
-                        self.result_queue.put([
-                            int(tmp_client.cid),
-                            start_time,
-                            end_time,
-                            self.worker_uuid,
-                        ])
+                        self.result_queue.put(
+                            WorkerResult(
+                                self.n_samples,
+                                end_time - start_time,
+                                self.worker_uuid,
+                            )
+                        )
             except Exception as e:
                 log(
                     ERROR,
@@ -247,8 +253,14 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
                     stack_info=True,
                 )
                 # Always return the error to the result queue to notify the NodeManager
-                self.result_queue.put([-1, 0, 0, self.worker_uuid])
-                # Append to the task queu only if not collaborative
+                self.result_queue.put(
+                    WorkerResult(
+                        -1,
+                        0.0,
+                        "",
+                    )
+                )
+                # Append to the task queue only if not collaborative
                 if not is_collaborative:
                     self.task_queue.put((client_id, action))
                 # Set the auto_terminate flag to True for suicide

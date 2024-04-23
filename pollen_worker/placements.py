@@ -10,15 +10,17 @@ import sys
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from heapq import heappop, heappush
+import itertools
+from collections.abc import Iterator
 from copy import copy
 from inspect import signature
 from logging import DEBUG, ERROR
 from math import floor, log10
-from multiprocessing import Pool
 from typing import Any, cast
 
 import numpy as np
-import psutil
 import pyarrow as pa
 import pyarrow.compute as pc
 from flwr.common.logger import log
@@ -26,7 +28,7 @@ from flwr.server.client_proxy import ClientProxy
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 from pollen_worker.resources_manager import Node
 
@@ -41,6 +43,61 @@ The known values are:
  - `su` for sample uniform placement;
  - `lbu` for logarithm batch uniform placement.
 """
+
+
+@dataclass(order=True)
+class WorkerAssignment:
+    """Dataclass to store the worker assignment."""
+
+    model: Any = field(compare=False)
+    cids: list[int] = field(compare=False)
+    load: float
+    node: str = field(compare=False)
+    device: str = field(compare=False)
+    worker_id: str = field(compare=False)
+    is_removed: bool = False
+
+    def __hash__(self) -> int:
+        """Hash by the worker_id."""
+        return hash(self.worker_id)
+
+
+def add_worker_assignment(
+    priority_queue: list[tuple[float, int, WorkerAssignment]],
+    entry_finder: dict[WorkerAssignment, tuple[float, int, WorkerAssignment]],
+    counter: Iterator,
+    worker_assignment: WorkerAssignment,
+    load: float = 0.0,
+) -> None:
+    """Add a new WorkerAssignment or update its priority."""
+    if worker_assignment in entry_finder:
+        remove_task(entry_finder, worker_assignment)
+    count = next(counter)
+    entry = (load, count, worker_assignment)
+    entry_finder[worker_assignment] = entry
+    heappush(priority_queue, entry)
+
+
+def remove_task(
+    entry_finder: dict[WorkerAssignment, tuple[float, int, WorkerAssignment]],
+    worker_assignment: WorkerAssignment,
+) -> None:
+    """Mark an existing task as REMOVED.  Raise KeyError if not found."""
+    _, _, worker_assignment = entry_finder.pop(worker_assignment)
+    worker_assignment.is_removed = True
+
+
+def pop_worker_assignment(
+    priority_queue: list[tuple[float, int, WorkerAssignment]],
+    entry_finder: dict[WorkerAssignment, tuple[float, int, WorkerAssignment]],
+) -> WorkerAssignment:
+    """Remove and return the lowest priority task. Raise KeyError if empty."""
+    while priority_queue:
+        _, _, worker_assignment = heappop(priority_queue)
+        if not worker_assignment.is_removed:
+            del entry_finder[worker_assignment]
+            return worker_assignment
+    raise KeyError("pop from an empty priority queue")
 
 
 def get_placement_fn(policy: str = "rr") -> Callable:
@@ -108,6 +165,7 @@ def get_pollen_models(
     cids: dict[str | int, int],
     placement_policy: str = "rr",
     batch_size: int = 1,
+    # Columns here are: server_round, node, n_samples, delta, device
     clients_stats: pa.Table | None = None,
     server_round: int = 1,
 ) -> tuple[dict[str, Any] | None, dict[str, pa.Table] | None]:
@@ -129,43 +187,21 @@ def get_pollen_models(
         fns: list[
             Callable[[Any, Any, Any], Any] | Callable[[Any, Any, Any, Any], Any]
         ] = (
-            [_pollen_function, _jacobian_pollen_function]
-            # [_linear, _jacobian_linear]
+            # [_pollen_function, _jacobian_pollen_function]
+            [_linear, _jacobian_linear]
             if placement_policy == "lb"
             else [_linear, _jacobian_linear]
-        )
-        # Add n_batches column to clients_stats table
-        clients_stats = add_n_batches_column_to_clients_stats_table(
-            clients_stats, batch_size, cids
-        )
-        # Add n_samples column to clients_stats table
-        clients_stats = add_n_samples_column_to_clients_stats_table(
-            clients_stats, batch_size, cids
         )
         # Split clients_stats table into a list of tables, one per client
         splitted_clients_stats: dict[str, pa.Table] = split_clients_training_table(
             clients_stats
         )
-        # Create correction tables
+        # Create correction tables using the last server round
         correction_tables: dict[str, pa.Table] = {}
-        for client_id, _client_stats in splitted_clients_stats.items():
-            filtered_client_stats = _client_stats.filter(
-                pc.field("server_round") == pc.scalar(server_round - 1),
-                null_selection_behavior="emit_null",
-            )
-            y1 = np.array(filtered_client_stats.column("end_time").flatten())
-            y0 = np.array(filtered_client_stats.column("start_time").flatten())
-            ctt = (y1 - y0) * 1e-9
-            # Replace zero values with a small number
-            ctt[ctt == 0] = 1e-9
-            filtered_client_stats = filtered_client_stats.add_column(
-                0,
-                "ctt",
-                cast(pa.Array, pa.array(np.array(ctt).flatten())),
-            )
-            correction_tables[client_id] = filtered_client_stats.group_by(
-                ["n_batches"]
-            ).aggregate([("ctt", "mean")])
+        for node_device, _client_stats in splitted_clients_stats.items():
+            correction_tables[node_device] = _client_stats.group_by(
+                ["n_samples"]
+            ).aggregate([("delta", "mean")])
         # Train models
         try:
             pollen_models: dict[str, Any] = sequential_train_models(
@@ -182,18 +218,19 @@ def get_pollen_models(
                 key=lambda item: _predict_single_client(
                     model=item[1],
                     fn=fns[0],
+                    # NOTE: Choosing an arbitrary number of samples for ordering the
+                    # devices by speed
                     # n_samples=batch_size**2,
                     n_samples=3 * batch_size,
-                    batch_size=batch_size,
                 ),
             )
         )
-        # Get models' scores
-        current_scores: dict[str, float] = sequential_get_models_scores(
-            fns[0], pollen_models, splitted_clients_stats
-        )
-        # Log scores and return trained models
-        log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
+        # # Get models' scores
+        # current_scores: dict[str, float] = sequential_get_models_scores(
+        #     fns[0], pollen_models, splitted_clients_stats
+        # )
+        # # Log scores and return trained models
+        # log(DEBUG, "Pollen-MLStrategy :: models' scores %s", current_scores)
         return pollen_models, correction_tables
     else:
         return None, None
@@ -238,112 +275,123 @@ def learning_based_placement(
         return round_robin_placement(sampled_virtual_cids, nodes_dict)
     else:
         start_time = time.time()
-        # Sorting by batch size (decreasing order)
+        # Sorting by n samples -- batch size (increasing order b/c popright is faster)
         # This is a list of tuples (cid, list of samples)
         sampled_virtual_cids = sorted(
             sampled_virtual_cids,
-            key=lambda x: x[1] // batch_size,
-            reverse=True,
+            key=lambda x: x[1],  # // batch_size,
+            reverse=False,
         )
         # Getting nodes a simpler node dict
         simple_node_dict = {node.name: node for k, (c_p, node) in nodes_dict.items()}
 
-        # Init the device assignment and the return value
-        workers_assignments = []
+        # Creating priority queue, entry finder and counter
+        priority_queue: list[tuple[float, int, WorkerAssignment]] = []
+        entry_finder: dict[WorkerAssignment, tuple[float, int, WorkerAssignment]] = {}
+        counter = cast(Iterator, itertools.count())
+
+        # Create the priority queue of WorkerAssignments
         for model_name, model_params in pollen_models.items():
+            node_name = model_name.split("_")[0]
+            device_name = model_name.split("_")[1]
             if is_parrot:
                 # Parrot uses one worker per device
-                workers_assignments.append([
-                    model_params,  # Model parameters
-                    [],  # List of cids
-                    0.0,  # Device load
-                    model_name.split("_")[0],  # Node name
-                    model_name.split("_")[1],  # Device name
-                ])
+                tmp_worker_assignment = WorkerAssignment(
+                    model=model_params,
+                    cids=[],
+                    load=0.0,
+                    node=node_name,
+                    device=device_name,
+                    worker_id=node_name + "_" + device_name,
+                )
+                add_worker_assignment(
+                    priority_queue,
+                    entry_finder,
+                    counter,
+                    tmp_worker_assignment,
+                )
             else:
                 concurrency = (
-                    simple_node_dict[model_name.split("_")[0]]
-                    .device_info[model_name.split("_")[1]]
-                    .concurrency
+                    simple_node_dict[node_name].device_info[device_name].concurrency
                 )
-                for _ in range(concurrency):
-                    # Pollen uses `concurrency` workers per device
-                    workers_assignments.append([
-                        model_params,  # Model parameters
-                        [],  # List of cids
-                        0.0,  # Device load
-                        model_name.split("_")[0],  # Node name
-                        model_name.split("_")[1],  # Device name
-                    ])
-        # Assignment
-        # Assign initially at least one client per worker
-        for worker in workers_assignments:
+                # Pollen uses `concurrency` workers per device
+                for i in range(concurrency):
+                    tmp_worker_assignment = WorkerAssignment(
+                        model=model_params,
+                        cids=[],
+                        load=0.0,
+                        node=node_name,
+                        device=device_name,
+                        worker_id=node_name + "_" + device_name + "_" + str(i),
+                    )
+                    add_worker_assignment(
+                        priority_queue,
+                        entry_finder,
+                        counter,
+                        tmp_worker_assignment,
+                    )
+        # Assign clients to the workers depending on the priority queue
+        load_memory: dict[str, dict[int, float]] = {}
+        while sampled_virtual_cids:
             # Extract the first element of the list
-            virtual_cid, num_samples = sampled_virtual_cids.pop(0)
-            # Assign client to the current worker
-            worker[1].append(virtual_cid)
-            # Get device load
-            load = _predict_single_client(
-                model=worker[0],
-                fn=fns[0],
-                n_samples=num_samples,
-                batch_size=batch_size,
-            )
-            # Filter out -inf predictions, if any
-            if load == -np.inf:
-                load = 1e-8
-            if correction_tables is not None:
-                correction = correction_tables[f"{worker[3]}_{worker[4]}"].filter(
-                    pc.field("n_batches") == pc.scalar(num_samples // batch_size)
-                )
-                if correction.num_rows > 0:
-                    correction = correction.column("ctt_mean").to_numpy()[0]
-                    # load = (load + correction) / 2
-            worker[2] += load
-        # Assign all the rest
-        while len(sampled_virtual_cids) > 0:
-            # Sort devices by load (increasing order)
-            workers_assignments = sorted(
-                workers_assignments,
-                key=lambda x: x[2],
-            )
-            # Extract the first element of the list
-            virtual_cid, num_samples = sampled_virtual_cids.pop(0)
+            virtual_cid, n_samples = sampled_virtual_cids.pop()
+            # Pop the WorkerAssignment with the lowest load
+            worker_assignment = pop_worker_assignment(priority_queue, entry_finder)
             # Assign client to the least loaded device
-            workers_assignments[0][1].append(virtual_cid)
+            worker_assignment.cids.append(virtual_cid)
             # Get device load
-            load = _predict_single_client(
-                model=workers_assignments[0][0],
-                fn=fns[0],
-                n_samples=num_samples,
-                batch_size=batch_size,
+            if (
+                f"{worker_assignment.node}_{worker_assignment.device}" in load_memory
+                and n_samples
+                in load_memory[f"{worker_assignment.node}_{worker_assignment.device}"]
+            ):
+                load = load_memory[
+                    f"{worker_assignment.node}_{worker_assignment.device}"
+                ][n_samples]
+            else:
+                load = _predict_single_client(
+                    model=worker_assignment.model,
+                    fn=fns[0],
+                    n_samples=n_samples,
+                )
+                # Apply correction table
+                load = apply_correction_table(
+                    load,
+                    correction_tables,
+                    f"{worker_assignment.node}_{worker_assignment.device}",
+                    n_samples,
+                )
+                if (
+                    f"{worker_assignment.node}_{worker_assignment.device}"
+                    not in load_memory
+                ):
+                    load_memory[
+                        f"{worker_assignment.node}_{worker_assignment.device}"
+                    ] = {}
+                load_memory[f"{worker_assignment.node}_{worker_assignment.device}"][
+                    n_samples
+                ] = load
+            # Update the load of the WorkerAssignment
+            worker_assignment.load += load
+            # Add the WorkerAssignment back to the priority queue
+            add_worker_assignment(
+                priority_queue,
+                entry_finder,
+                counter,
+                worker_assignment,
+                worker_assignment.load,
             )
-            # Filter out -inf predictions, if any
-            if load == -np.inf:
-                load = 1e-8
-            if correction_tables is not None:
-                correction = correction_tables[
-                    f"{workers_assignments[0][3]}_{workers_assignments[0][4]}"
-                ].filter(pc.field("n_batches") == pc.scalar(num_samples // batch_size))
-                if correction.num_rows > 0:
-                    correction = correction.column("ctt_mean").to_numpy()[0]
-                    load = (load + correction) / 2
-                    # load = correction
-            workers_assignments[0][2] += load
         log(
             DEBUG,
             "Pollen-MLStrategy :: estimated loads %s",
-            [w[2] for w in workers_assignments],
+            [w[0] for w in priority_queue],
         )
         # Merge workers assignments
         devices_assignment: dict[str, list[list[int]]] = defaultdict(list)
-        for worker in workers_assignments:
-            # log(
-            #     DEBUG,
-            #     f"Pollen-MLStrategy :: worker assignments {worker}",
-            # )
-            _, list_of_cids, _, node_name, gpu_name = worker
-            devices_assignment[f"{node_name}_{gpu_name}"].append(list_of_cids)
+        for _, _, worker_assignment in priority_queue:
+            devices_assignment[
+                f"{worker_assignment.node}_{worker_assignment.device}"
+            ].append(worker_assignment.cids)
         # Build node assignments
         node_assignments = []
         for client_proxy, node in nodes_dict.values():
@@ -760,44 +808,76 @@ def _jacobian_linear(x, a, b) -> NDArray:  # noqa: ANN001
     return np.hstack((grad_a.reshape(-1, 1), x.reshape(-1, 1)))
 
 
-def _predict_single_client(
-    model: tuple[Any, Any], fn: Callable, n_samples: int, batch_size: int
-) -> Any:
+def _predict_single_client(model: tuple[Any, Any], fn: Callable, n_samples: int) -> Any:
     parameters, _ = model
-    return fn(n_samples // batch_size, *parameters)
+    return fn(n_samples, *parameters)
 
 
-def add_n_batches_column_to_clients_stats_table(
-    input_table: pa.Table,
-    batch_size: int,
-    cids: dict[str | int, int],
+def apply_correction_table(
+    load: float,
+    correction_tables: dict[str, pa.Table] | None,
+    device_name: str,
+    n_samples: int,
+) -> float:
+    """Apply the correction table to the given load."""
+    # Filter out -inf predictions, if any
+    if load == -np.inf:
+        load = 1e-8
+    if correction_tables is not None:
+        # NOTE: A correction table has columns: n_samples, delta_mean
+        correction: pa.Table = correction_tables[device_name].filter(
+            pc.field("n_samples") == pc.scalar(n_samples)
+        )
+        if correction.num_rows > 0:
+            load_correction = float(correction.column("delta_mean").to_numpy()[0])
+            # load = (load + load_correction) / 2
+            load = load_correction
+    return load
+
+
+def skim_clients_training_stats(
+    clients_training_stats: pa.Table,
 ) -> pa.Table:
-    """Add a `num_batches` column to the given Table."""
+    """Skim the clients' training stats keeping just the average per n_samples."""
+    # Initialize the list of skimmed tables
+    table_list: list[pa.Table] = []
+    # Split the table into a list of tables, one per GPU in each node
+    # Columns here are: server_round, node, n_samples, delta, device
+    for table in split_clients_training_table(clients_training_stats).values():
+        # Extract constant information: node, device
+        node = table.column("node").to_numpy()[0]
+        device = table.column("device").to_numpy()[0]
+        # Make up the server round
+        server_round = 0
+        # Drop unused columns for aggregation
+        table = table.drop_columns(["node", "device", "server_round"])  # type: ignore[attr-defined, reportAttributeAccessIssue]
+        # Aggregate the table by n_samples and average over the delta
+        table = table.group_by(["n_samples"]).aggregate(
+            [("delta", "mean")]  # , ("delta", "stddev")]
+        )
+        # Rename column `delta_mean` to `delta`
+        table = table.rename_columns(["n_samples", "delta"])  # type: ignore[attr-defined]
+        # Add constant columns back
+        table = add_constant_column_to_clients_stats_table(table, "device", device)
+        table = add_constant_column_to_clients_stats_table(table, "node", node)
+        table = add_constant_column_to_clients_stats_table(
+            table, "server_round", server_round
+        )
+        # Append the table to the list
+        table_list.append(table)
+    return pa.concat_tables(table_list)
+
+
+def add_constant_column_to_clients_stats_table(
+    input_table: pa.Table,
+    column_name: str,
+    constant_value: Any,
+) -> pa.Table:
+    """Add a constant column to the given Table."""
     return input_table.add_column(
         0,
-        "n_batches",
-        cast(
-            pa.Array,
-            pa.array(
-                [cids[int(cid.as_py())] // batch_size for cid in input_table["cid"]]
-            ),
-        ),
-    )
-
-
-def add_n_samples_column_to_clients_stats_table(
-    input_table: pa.Table,
-    batch_size: int,
-    cids: dict[str | int, int],
-) -> pa.Table:
-    """Add a `num_batches` column to the given Table."""
-    return input_table.add_column(
-        0,
-        "n_samples",
-        cast(
-            pa.Array,
-            pa.array([cids[int(cid.as_py())] for cid in input_table["cid"]]),
-        ),
+        column_name,
+        cast(pa.Array, pa.array([constant_value] * input_table.num_rows)),
     )
 
 
@@ -814,13 +894,13 @@ def split_clients_training_table(input_table: pa.Table) -> dict[str, pa.Table]:
     # Get the list of unique node names
     unique_node_names = np.unique(input_table.column("node").to_numpy())
     # Get the list of unique GPU names
-    unique_gpu_names = np.unique(input_table.column("gpu").to_numpy())
+    unique_gpu_names = np.unique(input_table.column("device").to_numpy())
     # Create cross product iterator
     iterator = ((a, b) for a in unique_node_names for b in unique_gpu_names)
     # Create a list of tables, one per GPU
     output = {
         f"{a}_{b}": input_table.filter(pc.field("node") == pc.scalar(a)).filter(
-            pc.field("gpu") == pc.scalar(b)
+            pc.field("device") == pc.scalar(b)
         )
         for a, b in iterator
     }
@@ -828,33 +908,6 @@ def split_clients_training_table(input_table: pa.Table) -> dict[str, pa.Table]:
     output = {k: v for k, v in output.items() if v.num_rows != 0}
     # Return the cleaned list of tables
     return output
-
-
-def parallel_train_models(
-    fns: list[Callable], clients_stats: dict[str, pa.Table]
-) -> dict[str, Any]:
-    """Train the models in parallel."""
-    # Set up the parallelization
-    n_jobs = 100
-    try:
-        cpus = 1
-        cpus_affinity = psutil.Process().cpu_affinity()
-        if cpus_affinity:
-            cpus = len(cpus_affinity)
-    except AttributeError:
-        cpus = psutil.cpu_count()
-    if n_jobs > cpus:
-        n_jobs = cpus
-    n_jobs = min(n_jobs, len(clients_stats))
-    pool = Pool(n_jobs)
-    # Execute the pool
-    pool_outputs = pool.starmap(
-        _train_model, [[fns, k, v] for k, v in clients_stats.items()]
-    )
-    pool.close()
-    pool.join()
-    # Return the results from the pool
-    return {k: v for result in pool_outputs for k, v in result.items()}
 
 
 def sequential_train_models(
@@ -865,10 +918,6 @@ def sequential_train_models(
     ret = {}
     # Loop over model names
     for k, v in clients_stats.items():
-        y1 = v.column("end_time").to_numpy()
-        y0 = v.column("start_time").to_numpy()
-        delta = (y1 - y0) * 1e-9
-        v = v.add_column(0, "delta", cast(pa.Array, pa.array(delta)))
         # v = v.group_by(["n_samples"]).aggregate(
         #     [("delta", "mean"), ("delta", "stddev")]
         # )
@@ -885,7 +934,7 @@ def _train_model(
     # delta = data.column("delta_mean").to_numpy()
     # delta_stddev = data.column("delta_stddev").to_numpy()
     # delta_stddev = delta_stddev.clip(min=1e-9)
-    delta_stddev = [1 / a for a in x]
+    # delta_stddev = [1 / a for a in x]
     p0 = [1e-9] + [1.0] * (len(signature(fns[0]).parameters) - 2)
     bounds = (0.0, np.inf)
     return {
@@ -893,8 +942,8 @@ def _train_model(
             f=fns[0],
             xdata=x,
             ydata=delta,
-            sigma=delta_stddev,
-            absolute_sigma=True,
+            # sigma=delta_stddev,
+            # absolute_sigma=True,
             p0=p0,
             bounds=bounds,
             jac=fns[1],
@@ -904,36 +953,9 @@ def _train_model(
             # loss="arctan",
             check_finite=True,
             nan_policy="omit",
-            max_nfev=10000,
+            # max_nfev=10000,
         )
     }
-
-
-def parallel_get_models_scores(
-    fn: Callable, models: dict[str, Any], clients_stats: dict[str, pa.Table]
-) -> dict[str, float]:
-    """Return the scores of the model computed in parallel."""
-    # Set up the parallelization
-    n_jobs = 100
-    try:
-        cpus = 1
-        cpus_affinity = psutil.Process().cpu_affinity()
-        if cpus_affinity:
-            cpus = len(cpus_affinity)
-    except AttributeError:
-        cpus = psutil.cpu_count()
-    if n_jobs > cpus:
-        n_jobs = cpus
-    n_jobs = min(n_jobs, len(models))
-    pool = Pool(n_jobs)
-    # Execute the pool
-    pool_outputs = pool.starmap(
-        _get_model_score, [[fn, k, models[k], clients_stats[k]] for k in models]
-    )
-    pool.close()
-    pool.join()
-    # Return the results from the pool
-    return {k: v for result in pool_outputs for k, v in result.items()}
 
 
 def sequential_get_models_scores(
@@ -945,11 +967,6 @@ def sequential_get_models_scores(
     # Loop over model names
     for k in models:
         v = clients_stats[k]
-        y1 = v.column("end_time").to_numpy()
-        y0 = v.column("start_time").to_numpy()
-        delta = (y1 - y0) * 1e-9
-        v = v.add_column(0, "delta", cast(pa.Array, pa.array(delta)))
-        v = v.group_by(["n_samples"]).aggregate([("delta", "mean")])
         ret.update(_get_model_score(fn, k, models[k], v))
     return ret
 
@@ -958,12 +975,10 @@ def _get_model_score(
     fn: Callable, model_name: str, model: Any, data: pa.Table
 ) -> dict[str, float]:
     parameters, _ = model
-    # x = data.column("n_batches").to_numpy()
     x = data.column("n_samples").to_numpy()
-    # delta = data.column("delta").to_numpy()
-    delta = data.column("delta_mean").to_numpy()
-    # plt.scatter(x, delta, label="data", alpha=0.5, marker=".", c="r")
-    # plt.scatter(x, fn(x, *parameters), label="model", alpha=0.5, marker=".", c="b")
-    # plt.savefig(f"{model_name}.png")
-    # plt.close()
+    delta = data.column("delta").to_numpy()
+    plt.scatter(x, delta, label="data", alpha=0.5, marker=".", c="r")
+    plt.scatter(x, fn(x, *parameters), label="model", alpha=0.5, marker=".", c="b")
+    plt.savefig(f"{model_name}.png")
+    plt.close()
     return {model_name: np.sum(np.abs(delta - fn(x, *parameters)))}

@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "centralised_dataset_prep.sh: Error parsing options" >&2
 	exit 1
 fi
 
@@ -27,7 +27,7 @@ while true; do
 	esac
 done
 
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "centralised_dataset_prep.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd /nfs-share/ls985/projects/llm-foundry
 #! Activate Poetry environment

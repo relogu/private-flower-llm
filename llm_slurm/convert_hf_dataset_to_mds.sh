@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "convert_hf_dataset_to_mds.sh: Error parsing options" >&2
 	exit 1
 fi
 
@@ -67,7 +67,7 @@ elif [[ $# -eq 5 ]]; then
 	DATASET_SUBSET=$4
 	MOSAICML_DATA_ROOT=$5
 else
-	echo "Invalid number of input arguments. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
+	echo "convert_hf_dataset_to_mds.sh: Invalid number of input arguments. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
 	exit 1
 fi
 mkdir -p $MOSAICML_DATA_ROOT
@@ -76,15 +76,15 @@ if [[ $SPLIT == "small" ]]; then
 elif [[ $SPLIT == "full" ]]; then
 	SPLIT_NAME="val train"
 else
-	echo "Invalid split. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
+	echo "convert_hf_dataset_to_mds.sh: Invalid split. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
 	exit 1
 fi
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "convert_hf_dataset_to_mds.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-	echo "Assuming the script is executing in the CSD3."
+	echo "convert_hf_dataset_to_mds.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
 	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
@@ -94,7 +94,7 @@ POETRY_ENV_PATH=$(poetry env info --path)
 . $POETRY_ENV_PATH/bin/activate
 #! Set the data root
 DATA_ROOT="$MOSAICML_DATA_ROOT/fed_$DATASET/c$N_CLIENTS"
-echo "Creating the partition data root directory: $DATA_ROOT"
+echo "convert_hf_dataset_to_mds.sh: Creating the partition data root directory: $DATA_ROOT"
 mkdir -p $DATA_ROOT
 #! Get info about CPU resources available
 if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
@@ -102,7 +102,7 @@ if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
 else
 	export NUM_CPUS=$SLURM_CPUS_PER_TASK
 fi
-echo "Number of CPU cores available: $NUM_CPUS"
+echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
 #! Execute the command
 poetry run python -m pollen_worker.dataset.convert_dataset_hf \
 	--dataset $DATASET \

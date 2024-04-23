@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/pollen_worker"
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
+	echo "centralised_training.sh: Error parsing options" >&2
 	exit 1
 fi
 
@@ -26,30 +26,32 @@ while true; do
 		;;
 	esac
 done
+MODEL_SIZE=$1
+echo "centralised_training.sh: MODEL_SIZE=$MODEL_SIZE"
 
 #! Check if at least one arguments are passed
 if [[ $# -lt 1 ]]; then
-	echo "Illegal number of parameters."
+	echo "centralised_training.sh: Illegal number of parameters."
 	echo "Usage: centralised_training.sh <llm_model_config>"
 	exit 1
 fi
-echo "PROJECT_PATH=$PROJECT_PATH"
+echo "centralised_training.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd $PROJECT_PATH
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-	echo "Assuming the script is executing in the CSD3."
+	echo "centralised_training.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
 	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
-	echo "Assuming the script is executing NOT in the CSD3."
+	echo "centralised_training.sh: Assuming the script is executing NOT in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
 	. $PROJECT_PATH/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_config.sh $1
+. $PROJECT_PATH/llm_slurm/set_llm_config.sh $MODEL_SIZE
 #! Set `DATA_CONFIG` environment variable
 . $PROJECT_PATH/llm_slurm/set_llm_data_config.sh "full" false false
 #! Saving path
@@ -57,21 +59,20 @@ DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
-	export SAVE_PATH="s3://checkpoints/centralised-$1-$DATETIME"
+	export SAVE_PATH="s3://checkpoints/centralised-$MODEL_SIZE-$DATETIME"
 fi
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
-	export RUN_UUID="centralised-$1-$DATETIME"
+	export RUN_UUID="centralised-$MODEL_SIZE-$DATETIME"
 fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_options.sh
-export LLM_OPTIONS="llm_config.save_interval=100ba llm_config.console_log_interval=1ba llm_config.save_folder=$SAVE_PATH llm_config.save_num_checkpoints_to_keep=1"
-echo "LLM_OPTIONS=$LLM_OPTIONS"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH llm_config.save_num_checkpoints_to_keep=1"
+echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
-echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 #! Launch centralised training script

@@ -20,6 +20,7 @@ a node-manager which communicates
 to the simulation server.
 """
 
+from collections import defaultdict
 import copy
 import gc
 from pathlib import Path
@@ -38,6 +39,7 @@ import hydra
 import numpy as np
 import nvsmi
 import psutil
+import pyarrow as pa
 import torch
 import transformers
 from composer.utils.misc import get_free_tcp_port
@@ -63,6 +65,7 @@ from pollen_worker.node_manager.utils import (
     POLLEN_METRICS_SHM,
     POLLEN_N_SAMPLES_SHM,
     POLLEN_PARAMETERS_SHM,
+    WorkerResult,
     aggregate_training_results,
     close_all_shms,
     get_config_shm,
@@ -82,12 +85,14 @@ from pollen_worker.node_manager.worker import (
     get_training_results_from_workers_dict,
     start_worker,
 )
+from pollen_worker.placements import add_constant_column_to_clients_stats_table
 from pollen_worker.resources_manager import Device, Node, get_gpu_prop
 from pollen_worker.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     download_file_from_s3,
     dump_model_parameters_to_file,
     get_n_cuda_devices,
+    get_pyarrow_buffer_from_table,
     load_model_parameters_from_file,
     sum_of_squares,
     upload_file_to_s3,
@@ -292,20 +297,17 @@ class NodeManager(fl.client.NumPyClient):
             self.task_queue.put((cid, "fit"))
         # Get the results
         successes = 0
+        stats = defaultdict(list)
         while successes < len(list_of_cids_to_train):
             self._check_workers_health()
             # TODO: Handle the case where they all fail
-            current_stats = self.result_queue.get()
-            log(
-                DEBUG,
-                "NodeManager %s: worker %s finished and returned cid %s.",
-                self.name,
-                current_stats[3],
-                current_stats[0],
-            )
+            worker_result: WorkerResult = self.result_queue.get()
             # Check if the training was successful
-            if current_stats[0] > -1:
-                # TODO: Collect stats
+            if worker_result.n_samples > -1:
+                # NOTE: The order here is important for compatibility with the server
+                stats["device"].append(worker_result.device)
+                stats["n_samples"].append(worker_result.n_samples)  # type: ignore[arg-type]
+                stats["delta"].append(worker_result.delta)  # type: ignore[arg-type]
                 successes += 1
         # Get stuff from shared memories of the workers
         # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
@@ -328,6 +330,22 @@ class NodeManager(fl.client.NumPyClient):
         # Close the config shared memory
         fl_instructions_config_sh.close()
         fl_instructions_config_sh.unlink()
+        # Collect statistics to pyarrow.Table
+        clients_training_stats = pa.Table.from_pydict(stats)
+        # Add info to `clients_training_stats`
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "node", self.name
+        )
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "server_round", int(config["server_round"])
+        )
+        # Prepare statistics to be sent to the server
+        clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
+        # Append the statistics to the node_train_metrics
+        node_train_metrics = node_train_metrics | {
+            "stats": clients_training_buf.to_pybytes(),
+        }
+        # Return the results
         return (
             aggregated_params,
             sum_of_samples,
@@ -343,6 +361,7 @@ class NodeManager(fl.client.NumPyClient):
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0
         node_train_metrics: dict = {}
+        stats = defaultdict(list)
         # Here, workers are forced to collaborate with each other,
         # as such, we evaluate one client at a time
         while len(list_of_cids_to_train) > 0:
@@ -364,10 +383,10 @@ class NodeManager(fl.client.NumPyClient):
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "fit"))
             # Wait for the result
-            current_stats = None
-            while current_stats is None:
+            worker_result: WorkerResult | None = None
+            while worker_result is None:
                 try:
-                    current_stats = self.result_queue.get(timeout=10)
+                    worker_result = self.result_queue.get(timeout=10)
                 except Exception:
                     # log(
                     #     ERROR,
@@ -378,17 +397,17 @@ class NodeManager(fl.client.NumPyClient):
                     # )
                     for worker in self.workers_dict.values():
                         if not worker.is_alive():
-                            current_stats = [-1, 0, 0, -1]
-            log(
-                DEBUG,
-                "NodeManager %s: worker %s finished and returned cid %s.",
-                self.name,
-                current_stats[3],
-                current_stats[0],
-            )
+                            worker_result = WorkerResult(
+                                -1,
+                                0.0,
+                                "",
+                            )
             # Check if the training was successful
-            if current_stats[0] > -1:
-                # TODO: Collect stats
+            if worker_result.n_samples > -1:
+                # NOTE: The order here is important for compatibility with the server
+                stats["device"].append(worker_result.device)
+                stats["n_samples"].append(worker_result.n_samples)  # type: ignore[arg-type]
+                stats["delta"].append(worker_result.delta)  # type: ignore[arg-type]
                 # Get stuff from shared memories of the workers
                 # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
                 results = get_training_results_from_worker(self.workers_dict[0])
@@ -429,6 +448,22 @@ class NodeManager(fl.client.NumPyClient):
             # Empty the tasks list
             while not self.task_queue.empty():
                 self.task_queue.get()
+        # Collect statistics to pyarrow.Table
+        clients_training_stats = pa.Table.from_pydict(stats)
+        # Add info to `clients_training_stats`
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "node", self.name
+        )
+        clients_training_stats = add_constant_column_to_clients_stats_table(
+            clients_training_stats, "server_round", int(config["server_round"])
+        )
+        # Prepare statistics to be sent to the server
+        clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
+        # Append the statistics to the node_train_metrics
+        node_train_metrics = node_train_metrics | {
+            "stats": clients_training_buf.to_pybytes(),
+        }
+        # Return the results
         return (
             aggregated_params,
             sum_of_samples,
@@ -692,10 +727,10 @@ class NodeManager(fl.client.NumPyClient):
             for _ in range(len(self.workers_dict)):
                 self.task_queue.put((current_cid, "evaluate"))
             # Wait for the result
-            current_stats = None
-            while current_stats is None:
+            worker_results: WorkerResult | None = None
+            while worker_results is None:
                 try:
-                    current_stats = self.result_queue.get(timeout=10)
+                    worker_results = self.result_queue.get(timeout=10)
                 except Exception:
                     # log(
                     #     ERROR,
@@ -706,16 +741,13 @@ class NodeManager(fl.client.NumPyClient):
                     # )
                     for worker in self.workers_dict.values():
                         if not worker.is_alive():
-                            current_stats = [-1, 0, 0, -1]
-            log(
-                DEBUG,
-                "NodeManager %s: worker %s finished and returned cid %s.",
-                self.name,
-                current_stats[3],
-                current_stats[0],
-            )
+                            worker_results = WorkerResult(
+                                -1,
+                                0.0,
+                                "",
+                            )
             # Check if the evaluation was successful
-            if current_stats[0] > -1:
+            if worker_results.n_samples > -1:
                 # TODO: Collect stats
                 # Get stuff from shared memories of the rank 0 worker
                 # NOTE: Keep the `*_shm` variables to prevent Seg Fault
