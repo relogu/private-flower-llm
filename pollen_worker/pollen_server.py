@@ -368,10 +368,20 @@ class PollenServer(Server):
         log(INFO, "FL starting from round %s", start_round + 1)
         start_time = timeit.default_timer()
         for current_round in range(start_round + 1, num_rounds + 1):
+            start_round_time = time.time_ns()
             # Check for changes in connected NodeManagers
+            first_check_nm_time = time.time_ns()
             self.check_node_managers()
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/first_check_nm_time": (time.time_ns() - first_check_nm_time)
+                    * 1e-9
+                },
+            )
 
             # Train model and replace previous global model
+            fit_round_time = time.time_ns()
             res_fit = self.fit_round(
                 server_round=current_round,
                 timeout=timeout,
@@ -383,6 +393,12 @@ class PollenServer(Server):
                 history.add_metrics_distributed_fit(
                     server_round=current_round, metrics=fit_metrics
                 )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/fit_round_time": (time.time_ns() - fit_round_time) * 1e-9
+                },
+            )
 
             # Push the global model to S3 Object Store (but not the server state)
             if self.checkpoint or self.use_s3_comm:
@@ -399,6 +415,7 @@ class PollenServer(Server):
                 )
 
             # Evaluate model using strategy implementation
+            evaluate_time = time.time_ns()
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
                 loss_cen, metrics_cen = res_cen
@@ -414,11 +431,28 @@ class PollenServer(Server):
                 history.add_metrics_centralized(
                     server_round=current_round, metrics=metrics_cen
                 )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/evaluate_time": (time.time_ns() - evaluate_time) * 1e-9
+                },
+            )
 
             # Check for changes in connected NodeManagers
+            second_check_nm_time = time.time_ns()
             self.check_node_managers()
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/second_check_nm_time": (
+                        time.time_ns() - second_check_nm_time
+                    )
+                    * 1e-9
+                },
+            )
 
             # Evaluate model on a sample of available clients
+            evaluate_round_time = time.time_ns()
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
                 loss_fed, evaluate_metrics_fed, _ = res_fed
@@ -429,6 +463,19 @@ class PollenServer(Server):
                     history.add_metrics_distributed(
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/evaluate_round_time": (time.time_ns() - evaluate_round_time)
+                    * 1e-9
+                },
+            )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/round_time": (time.time_ns() - start_round_time) * 1e-9
+                },
+            )
 
             # Save the checkpoint to S3 Object Store (w/o the global parameters)
             if self.checkpoint or self.use_s3_comm:
