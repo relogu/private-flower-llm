@@ -38,6 +38,8 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
+        cpu_only: bool,
+        cpu_concurrency: int,
         use_s3_comm: bool = False,
         s3_comm_config: DictConfig | None = None,
     ) -> None:
@@ -47,6 +49,8 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
             run_uuid=run_uuid,
             parameters=parameters,
             refresh_period=refresh_period,
+            cpu_only=cpu_only,
+            cpu_concurrency=cpu_concurrency,
             use_s3_comm=use_s3_comm,
             s3_comm_config=s3_comm_config,
         )
