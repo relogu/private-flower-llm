@@ -6,6 +6,7 @@ import gc
 import logging
 import os
 import re
+import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
@@ -560,7 +561,7 @@ def _get_trainer_object(
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
     # TODO: Resolve the linter suggestion here
-    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))  # noqa: PGH001
+    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
     if type(visible_devices) is int:
         device = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
@@ -1010,6 +1011,8 @@ def llm_fit(
     cfg: DictConfig,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    start_time = time.time_ns()
+    train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     cfg, skip_iteration = set_client_load_path(
         cfg, config["server_round"], cfg["local_steps"]
@@ -1027,28 +1030,38 @@ def llm_fit(
         _cfg=cfg,
     )
     # log(INFO, f"Trainer config: {logged_cfg}")
+    train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the parameters
         if parameters is not None and not skip_iteration:
             # log(INFO, "Initializing model...")
+            start_time = time.time_ns()
             set_parameters_to_state(parameters, trainer)
+            train_metrics |= {
+                "client/fit_set_parameters_time": (time.time_ns() - start_time) * 1e-9
+            }
         # Eval first if requested
         if eval_first and trainer.state.timestamp.batch.value == 0:
+            start_time = time.time_ns()
             trainer.eval()
+            train_metrics |= {
+                "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
+            }
         # log(INFO, "Starting training...")
         # Prevent to run any evaluator
         trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
         # Execute fit step for the appointed duration
         try:
+            start_time = time.time_ns()
             trainer.fit(duration=0 if skip_iteration else cfg["local_steps"])
+            train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
     n_samples_trained = int(str(cfg["local_steps"]).replace("ba", ""))
-    train_metrics: dict[str, Scalar] = {}
     # Retrieve training metrics
     train_metrics |= {
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
@@ -1056,8 +1069,12 @@ def llm_fit(
     }
     log(INFO, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
+    start_time = time.time_ns()
     model_parameters = get_parameters_from_state({}, trainer)
-
+    train_metrics |= {
+        "client/fit_get_parameters_time": (time.time_ns() - start_time) * 1e-9
+    }
+    start_time = time.time_ns()
     per_layer_sum_of_squares = [
         sum_of_squares([x - y])
         for x, y in zip(parameters, model_parameters, strict=False)
@@ -1071,8 +1088,12 @@ def llm_fit(
     l2_norm_of_pseudo_gradient: float = float(np.sqrt(sum(per_layer_sum_of_squares)))
 
     train_metrics |= {"client/l2_norm_pseudo_gradient": l2_norm_of_pseudo_gradient}
+    train_metrics |= {
+        "client/fit_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Close the trainer
+    start_time = time.time_ns()
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
@@ -1091,6 +1112,9 @@ def llm_fit(
 
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    train_metrics |= {
+        "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     return model_parameters, n_samples_trained, train_metrics
 
@@ -1101,6 +1125,8 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    start_time = time.time_ns()
+    eval_metrics: dict[str, Scalar] = {}
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Force llm_config params to select the centralized eval set
@@ -1114,22 +1140,34 @@ def llm_eval(
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
     )
+    eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
     # Set the parameters
     # log(INFO, "Initializing model...")
+    start_time = time.time_ns()
     set_parameters_to_state(parameters, trainer)
     gc.collect()
     torch.cuda.empty_cache()
+    eval_metrics |= {
+        "client/eval_set_parameters_time": (time.time_ns() - start_time) * 1e-9
+    }
     # log(INFO, "Starting evaluation...")
+    start_time = time.time_ns()
     trainer.eval()
+    eval_metrics |= {"client/eval_time": (time.time_ns() - start_time) * 1e-9}
+    start_time = time.time_ns()
     # Retrieve number of samples evaluated
     num_samples = trainer.state.eval_timestamp._sample.value
     # Retrieve evaluation metrics
-    eval_metrics = {
+    eval_metrics = eval_metrics | {
         "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
+    eval_metrics |= {
+        "client/eval_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Close the trainer
+    start_time = time.time_ns()
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
@@ -1149,6 +1187,9 @@ def llm_eval(
 
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    eval_metrics |= {
+        "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Return the evaluation metrics
     return 0.0, num_samples, eval_metrics

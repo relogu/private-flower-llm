@@ -92,11 +92,16 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         #     len(train_metrics),
         # )
         if int(os.getenv("LOCAL_RANK", "")) == 0:
+            start_time = time.time_ns()
             # Worker's partial aggregation for parameters and n_samples
             (p_agg_params, p_agg_samples) = partially_aggregate(
                 (self.worker_parameters, self.worker_num_samples[0]),
                 (fit_trained_weights, fit_num_samples),
             )
+            partial_aggregation_time = time.time_ns() - start_time
+            train_metrics = train_metrics | {
+                "worker/partial_aggregation_time": partial_aggregation_time * 1e-9
+            }
             # Worker's partial aggregation for metrics
             (p_agg_samples, p_agg_metrics) = partially_aggregate_metrics(
                 (int(self.worker_num_samples[0]), self.worker_metrics),
