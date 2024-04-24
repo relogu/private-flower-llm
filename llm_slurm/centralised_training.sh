@@ -57,13 +57,13 @@ fi
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
-#! If SAVE_PATH hasn't been set, set it to the default value
-if [ -z "$SAVE_PATH" ]; then
-	export SAVE_PATH="s3://checkpoints/centralised-$MODEL_SIZE-$DATETIME"
-fi
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
 	export RUN_UUID="centralised-$MODEL_SIZE-$DATETIME"
+fi
+#! If SAVE_PATH hasn't been set, set it to the default value
+if [ -z "$SAVE_PATH" ]; then
+	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
