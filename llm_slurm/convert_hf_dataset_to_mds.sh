@@ -31,16 +31,17 @@ done
 if [[ $1 == "--help" ]] || [[ $1 == "-h" ]]; then
 	echo "Usage: bash convert_hf_dataset_to_mds.sh <split> <n_clients> <dataset> <dataset_subset> <data_root>."
 	echo -e "\t<split>: 'small' or 'full'. Default: 'full'"
-	echo -e "\t<n_clients>: integer. Default: 10"
+	echo -e "\t<n_clients>: integer. Default: 8"
 	echo -e "\t<dataset>: 'c4' or 'pile'. Default: 'c4'"
 	echo -e "\t<dataset_subset>: 'en' or 'all'. Default: 'en'"
 	echo -e "\t<data_root>: path. Default: '/local/scratch'"
-	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 10 c4 en"
+	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 8 c4 en"
+	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 16 c4 en"
 	exit 1
 fi
 #! Set/get the variables
 SPLIT="full"
-N_CLIENTS=10
+N_CLIENTS=8
 DATASET="c4"
 DATASET_SUBSET="en"
 MOSAICML_DATA_ROOT="/local/scratch"
