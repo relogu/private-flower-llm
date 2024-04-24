@@ -34,6 +34,9 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 elif [[ $(hostname) == *'mauao'* ]]; then
 	echo "set_llm_data_config.sh: Assuming the script is executing in Mauao."
 	export DATA_TMP_DIR="/local/scratch/$USER/tmp"
+elif [[ $(hostname) == *'ruapehu'* ]]; then
+	echo "set_llm_data_config.sh: Assuming the script is executing in ruapehu."
+	export DATA_TMP_DIR="/local/scratch/$USER/tmp"
 else
 	echo "set_llm_data_config.sh: Assuming the script is executing NOT in the CSD3 and not in Mauao (Fluidstack)."
 	export DATA_TMP_DIR="/ephemeral/$USER/tmp"

@@ -42,7 +42,7 @@ train_loader:
     keep_zip: false
     cache_limit: null
   drop_last: true
-  num_workers: 2
+  num_workers: 4
 
 eval_loader:
   name: text
@@ -56,7 +56,7 @@ eval_loader:
     keep_zip: false
     cache_limit: null
   drop_last: false
-  num_workers: 2
+  num_workers: 4
 
 # Optimization
 scheduler:

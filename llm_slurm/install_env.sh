@@ -50,27 +50,37 @@ fi
 # Adding CUDA paths to environment variables
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-#! Check the output of `nvcc -V`
-NVCC_OUTPUT=$(nvcc -V)
-if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-	echo "install_env.sh: CUDA 12.1 is detected."
+
+if ! command -v nvcc &>/dev/null; then
+	if [[ $1 != "no_cuda" ]]; then
+		echo "nvcc could not be found"
+		exit 1
+	fi
 else
-	echo "install_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
-	exit 1
+	#! Check the output of `nvcc -V`
+	NVCC_OUTPUT=$(nvcc -V)
+	if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
+		echo "install_env.sh: CUDA 12.1 is detected."
+	else
+
+		echo "install_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+		exit 1
+
+	fi
+	#! Install `flash-attn`
+	if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
+		echo "install_env.sh: Installing flash-attn..."
+		poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
+	else
+		echo "install_env.sh: flash-attn is already installed."
+	fi
+	#! Install `xentropy-cuda-lib`
+	if ! [[ $(poetry run pip list | grep xentropy) ]]; then
+		echo "install_env.sh: Installing xentropy-cuda-lib..."
+		poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
+	else
+		echo "install_env.sh: xentropy-cuda-lib is already installed."
+	fi
+	#! Final message
+	echo "install_env.sh: Environment is ready."
 fi
-#! Install `flash-attn`
-if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
-	echo "install_env.sh: Installing flash-attn..."
-	poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
-else
-	echo "install_env.sh: flash-attn is already installed."
-fi
-#! Install `xentropy-cuda-lib`
-if ! [[ $(poetry run pip list | grep xentropy) ]]; then
-	echo "install_env.sh: Installing xentropy-cuda-lib..."
-	poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
-else
-	echo "install_env.sh: xentropy-cuda-lib is already installed."
-fi
-#! Final message
-echo "install_env.sh: Environment is ready."

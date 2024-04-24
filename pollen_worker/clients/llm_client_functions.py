@@ -15,7 +15,7 @@ from typing import Any
 import streaming
 import torch
 from composer import Callback, ComposerModel, Evaluator, Trainer
-from composer.devices import DeviceGPU
+from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility
 from composer.utils.file_helpers import validate_given_remote_path
@@ -579,9 +579,12 @@ def _get_trainer_object(
     # with the parameters from the environmental variables.
     # TODO: Resolve the linter suggestion here
     visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
-    if type(visible_devices) is int:
-        device = DeviceGPU(device_id=int(visible_devices))
+    if type(visible_devices) is int and not _cfg.cpu_only:
+        device: DeviceGPU | DeviceCPU | None = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
+    elif _cfg.cpu_only:
+        device = DeviceCPU()
+        log(DEBUG, f"Selecting device CPU, {device}")
     else:
         device = None
 
@@ -950,7 +953,7 @@ def _get_trainer_object(
         console_log_interval=console_log_interval,
         loggers=loggers,
         callbacks=callbacks,
-        precision=precision,
+        precision=precision if not _cfg.cpu_only else None,
         algorithms=algorithms,
         device_train_microbatch_size=device_train_microbatch_size,
         fsdp_config=fsdp_config,

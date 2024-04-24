@@ -125,7 +125,7 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
             device_type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,
-            # NOTE: Forcing cuncurrency to one
+            # NOTE: Forcing concurrency to one
             concurrency=1,
         )
         # Loop over all running process on the current device
@@ -334,8 +334,9 @@ class ResourcesMonitor(Thread):
             ) from e
         ret_val = (0.0, 0.0)
         try:
-            ret_val = float(current_gpu_stats.split(",")[0]), float(
-                current_gpu_stats.split(",")[1]
+            ret_val = (
+                float(current_gpu_stats.split(",")[0]),
+                float(current_gpu_stats.split(",")[1]),
             )
         except Exception as e:
             log(

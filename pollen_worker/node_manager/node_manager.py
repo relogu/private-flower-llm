@@ -37,7 +37,6 @@ import cloudpickle
 import flwr as fl
 import hydra
 import numpy as np
-import nvsmi
 import psutil
 import pyarrow as pa
 import torch
@@ -51,7 +50,6 @@ from flwr.common import (
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
-from nvsmi import GPU
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
@@ -113,6 +111,8 @@ class NodeManager(fl.client.NumPyClient):
         run_uuid: str,
         parameters: NDArrays,
         refresh_period: int,
+        cpu_only: bool,
+        cpu_concurrency: int,
         use_s3_comm: bool = False,
         s3_comm_config: DictConfig | None = None,
     ) -> None:
@@ -120,8 +120,9 @@ class NodeManager(fl.client.NumPyClient):
         # NodeManager general attributes
         self.name: str = getfqdn()
         self.properties: dict[str, Scalar] = {}
-        self.all_gpus: list[GPU] = list(nvsmi.get_gpus())
+        self.cpu_only = cpu_only
         self.run_uuid = run_uuid
+        self.cpu_concurrency = cpu_concurrency
 
         self.use_s3_comm = use_s3_comm
         self.s3_comm_config = s3_comm_config
@@ -157,11 +158,24 @@ class NodeManager(fl.client.NumPyClient):
     def _get_node_properties(self) -> dict[str, Scalar]:
         device_info: dict[str, Device] = {}
         # Get hardware accelerator properties
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and not self.cpu_only:
             device_info = dict(
                 get_gpu_prop(merge=True),
                 **device_info,
             )
+        elif self.cpu_only:
+            device_info["merged"] = Device(
+                device_id=0,
+                name="cpu:0",
+                device_type="cpu",
+                total_memory=psutil.virtual_memory().total,
+                allocated_memory=psutil.virtual_memory().total
+                - psutil.virtual_memory().used,
+                concurrency=1,
+            )
+
+        else:
+            raise ValueError("Running without cpu_only but GPU is not available.")
         try:
             cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
         except AttributeError:
@@ -238,18 +252,32 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_and_start_workers(self) -> None:
         """Create and start workers."""
-        for i in range(get_n_cuda_devices()):
-            worker = create_new_worker(
-                client_fn=self.client_fn,
-                task_queue=self.task_queue,
-                result_queue=self.result_queue,
-                node_manager_uuid=self.node_manager_uuid,
-                run_uuid=self.run_uuid,
-                parameters=self.round_parameters,
-                worker_rank=i,
-            )
-            self.workers_dict[i] = worker
-            log(DEBUG, f"Created worker with rank {i}")
+        if not self.cpu_only:
+            for i in range(get_n_cuda_devices()):
+                worker = create_new_worker(
+                    client_fn=self.client_fn,
+                    task_queue=self.task_queue,
+                    result_queue=self.result_queue,
+                    node_manager_uuid=self.node_manager_uuid,
+                    run_uuid=self.run_uuid,
+                    parameters=self.round_parameters,
+                    worker_rank=i,
+                )
+                self.workers_dict[i] = worker
+                log(DEBUG, f"Created worker with rank {i}")
+        else:
+            for i in range(self.cpu_concurrency):
+                worker = create_new_worker(
+                    client_fn=self.client_fn,
+                    task_queue=self.task_queue,
+                    result_queue=self.result_queue,
+                    node_manager_uuid=self.node_manager_uuid,
+                    run_uuid=self.run_uuid,
+                    parameters=self.round_parameters,
+                    worker_rank=i,
+                )
+                self.workers_dict[i] = worker
+                log(DEBUG, f"Created CPU worker with rank {i}")
         # log(
         #     DEBUG,
         #     "NodeManager %s: the worker dict has been build %s.",
@@ -840,6 +868,7 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(client_streams_list)
     OmegaConf.set_struct(client_streams_list, False)
     _llm_config.client_streams_list = client_streams_list
+    _llm_config.cpu_only = cfg.cpu_only
 
     assert isinstance(_llm_config, DictConfig)
     # Get the client generator function
@@ -854,6 +883,8 @@ def main(cfg: DictConfig) -> None:
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
+        cpu_only=cfg.cpu_only,
+        cpu_concurrency=cfg.cpu_concurrency,
         use_s3_comm=cfg.use_s3_comm,
         s3_comm_config=cfg.s3_comm_config,
     )
