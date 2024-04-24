@@ -68,3 +68,6 @@ unset S3_REGION
 export AWS_LOG_LEVEL=1
 #! Launch tensorboard
 poetry run tensorboard --logdir s3://checkpoints/tensorboard_logs/$1
+
+#! ssh -L <local_port>:<forward_to_host>:<port_on_forward_to_host> -N <username>@<node_name>.cl.cam.ac.uk
+#! ssh -L 6006:localhost:6006 -N mauao
