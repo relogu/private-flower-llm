@@ -487,13 +487,15 @@ def main(args: Namespace) -> None:
             denominator = 0
             for _ in tqdm(samples, desc=folder_split):
                 denominator += 1
+            # Build a batched dataloader for streaming the HF dataset in batches
+            loader = build_dataloader(
+                dataset=dataset, batch_size=512, num_workers=args.num_workers
+            )
+            # Build a generator that yields samples from the batched dataloader
+            samples = generate_samples(
+                loader, truncate_num_samples=truncate_num_samples
+            )
         log(INFO, f"Number of samples in {folder_split} is {denominator}.")
-        # Build a batched dataloader for streaming the HF dataset in batches
-        loader = build_dataloader(
-            dataset=dataset, batch_size=512, num_workers=args.num_workers
-        )
-        # Build a generator that yields samples from the batched dataloader
-        samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
 
         # Estimating the total number of samples
         if "small" in split_name:
@@ -526,15 +528,15 @@ def main(args: Namespace) -> None:
                 denominator = 0
                 for _ in tqdm(samples, desc=folder_split):
                     denominator += 1
+                # Re-build a batched dataloader for streaming the HF dataset in batches
+                loader = build_dataloader(
+                    dataset=dataset, batch_size=512, num_workers=args.num_workers
+                )
+                # Re-build a generator that yields samples from the batched dataloader
+                samples = generate_samples(
+                    loader, truncate_num_samples=truncate_num_samples
+                )
             log(INFO, f"Number of samples in {folder_split} is {denominator}.")
-            # Re-build a batched dataloader for streaming the HF dataset in batches
-            loader = build_dataloader(
-                dataset=dataset, batch_size=512, num_workers=args.num_workers
-            )
-            # Re-build a generator that yields samples from the batched dataloader
-            samples = generate_samples(
-                loader, truncate_num_samples=truncate_num_samples
-            )
         # Estimate the number of samples for the current client
         # NOTE: The last client will get the remainder of the samples
         expected_samples_per_client = denominator // args.num_clients
