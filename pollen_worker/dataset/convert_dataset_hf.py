@@ -25,6 +25,8 @@ from transformers import PreTrainedTokenizerBase
 
 import datasets as hf_datasets
 
+from pollen_worker.dataset.text_data import StreamingTextDataset
+
 
 class ConcatMode(Enum):
     """Describe concatenation modes."""
@@ -34,10 +36,10 @@ class ConcatMode(Enum):
 
 
 def parse_args() -> Namespace:
-    """Parse commandline arguments."""
+    """Parse command line arguments."""
     parser = ArgumentParser(
         description=(
-            "Convert dataset into MDS format, optionally concatenating andtokenizing"
+            "Convert dataset into MDS format, optionally concatenating and tokenizing"
         )
     )
     parser.add_argument("--dataset", type=str, required=True)
@@ -67,6 +69,22 @@ def parse_args() -> Namespace:
     parser.add_argument("--num_workers", type=int, required=False, default=None)
     parser.add_argument("--num_clients", type=int, required=False, default=1)
 
+    # Arguments to use our S3-stored dataset when concatenating tokens
+    parser.add_argument(
+        "--local",
+        type=str,
+        default="/local/scratch/tmp",
+        help="Local path to centralized dataset",
+    )
+    parser.add_argument(
+        "--remote",
+        type=str,
+        default="s3://c4-dataset",
+        help="Remote path to centralized dataset",
+    )
+    parser.add_argument("--shuffle", default=False, action="store_true")
+    parser.add_argument("--shuffle_seed", type=int, default=17)
+
     parsed = parser.parse_args()
 
     if parsed.tokenizer_kwargs is not None:
@@ -75,12 +93,14 @@ def parse_args() -> Namespace:
         parsed.tokenizer_kwargs = {}
 
     if (
-        Path.is_dir(parsed.out_root)
-        and len(set(os.listdir(parsed.out_root)).intersection(set(parsed.splits))) > 0
+        Path.is_dir(Path(parsed.out_root))
+        and len(set(os.listdir(Path(parsed.out_root))).intersection(set(parsed.splits)))
+        > 0
     ):
         raise ValueError(
-            f"--out_root={parsed.out_root} contains {os.listdir(parsed.out_root)} which"
-            "cannot overlap with the requested splits {parsed.splits}."
+            f"--out_root={Path(parsed.out_root)} contains"
+            f"{os.listdir(Path(parsed.out_root))} which"
+            f"cannot overlap with the requested splits {parsed.splits}."
         )
 
     # Make sure we have needed concat options
@@ -107,6 +127,7 @@ class DataSplitConstants:
     folder_split: str
     raw_samples: int
     truncated_samples: int | None
+    denominator: int | None = None
 
 
 @dataclass
@@ -162,85 +183,87 @@ class ValXSmallConstants(DataSplitConstants):
 
 
 # Set the constants for the Pile dataset
-pileconstants = DatasetConstants(
+pile_constants = DatasetConstants(
     chars_per_sample=6212,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
     splits={},
 )
-pileconstants.splits["train"] = DataSplitConstants(
+pile_constants.splits["train"] = DataSplitConstants(
     hf_split="train",
     folder_split="train",
     raw_samples=210607728,
     truncated_samples=None,
 )
-pileconstants.splits["train_small"] = DataSplitConstants(
+pile_constants.splits["train_small"] = DataSplitConstants(
     hf_split="train",
     folder_split="train_small",
     raw_samples=1000000,
     truncated_samples=100000,
 )
-pileconstants.splits["val"] = DataSplitConstants(
+pile_constants.splits["val"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val",
     raw_samples=214670,
     truncated_samples=None,
 )
-pileconstants.splits["val_small"] = DataSplitConstants(
+pile_constants.splits["val_small"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val_small",
     raw_samples=10000,
     truncated_samples=10000,
 )
-pileconstants.splits["val_xsmall"] = DataSplitConstants(
+pile_constants.splits["val_xsmall"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val_xsmall",
     raw_samples=3000,
     truncated_samples=3000,
 )
 # Set the constants for the C4 dataset
-c4constants = DatasetConstants(
+c4_constants = DatasetConstants(
     chars_per_sample=2163,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
     splits={},
 )
-c4constants.splits["train"] = DataSplitConstants(
+c4_constants.splits["train"] = DataSplitConstants(
     hf_split="train",
     folder_split="train",
     raw_samples=364868892,
     truncated_samples=None,
+    denominator=85336729,
 )
-c4constants.splits["train_small"] = DataSplitConstants(
+c4_constants.splits["train_small"] = DataSplitConstants(
     hf_split="train",
     folder_split="train_small",
     raw_samples=1000000,
     truncated_samples=100000,
 )
-c4constants.splits["val"] = DataSplitConstants(
+c4_constants.splits["val"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val",
     raw_samples=364608,
     truncated_samples=None,
+    denominator=85039,
 )
-c4constants.splits["val_small"] = DataSplitConstants(
+c4_constants.splits["val_small"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val_small",
     raw_samples=10000,
     truncated_samples=10000,
 )
-c4constants.splits["val_xsmall"] = DataSplitConstants(
+c4_constants.splits["val_xsmall"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val_xsmall",
     raw_samples=3000,
     truncated_samples=3000,
 )
-c4constants.splits["val_xxsmall"] = DataSplitConstants(
+c4_constants.splits["val_xxsmall"] = DataSplitConstants(
     hf_split="validation",
     folder_split="val_xxsmall",
     raw_samples=100,
     truncated_samples=100,
 )
 # Put the constants into a dict for easy lookup
-CONSTS = {"c4": c4constants, "the_pile": pileconstants}
+CONSTANTS = {"c4": c4_constants, "the_pile": pile_constants}
 
 
 def build_hf_dataset(
@@ -284,7 +307,7 @@ def build_hf_dataset(
             raise ValueError(f"{tokenizer=} must be of type PreTrainedTokenizerBase")
         if max_length is None:
             raise ValueError("max_length must be set.")
-        if bos_text + eos_text:
+        if bos_text and eos_text:
             test_tokens = tokenizer("test")
             if (
                 test_tokens["input_ids"][0] != tokenizer.bos_token_id  # type: ignore[reportIndexIssue]
@@ -384,11 +407,12 @@ def main(args: Namespace) -> None:
     """Create C4/pile streaming dataset.
 
     Args:
-        args (Namespace): Commandline arguments.
+        args (Namespace): Command line arguments.
     """
+    log(INFO, "Arguments received: %s", args)
     # Retrieve constants for the dataset
     try:
-        dataset_constants = CONSTS[args.dataset]
+        dataset_constants = CONSTANTS[args.dataset]
     except KeyError as e:
         raise ValueError(
             f'Constants for dataset "{args.dataset}" not found. Currently only'
@@ -422,33 +446,56 @@ def main(args: Namespace) -> None:
             continue
         # Create the dataset given the parameters
         # NOTE: We can't know how many samples we will get from the dataset
-        dataset: ConcatTokensDataset | NoConcatDataset = build_hf_dataset(
-            dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
-            data_subset=args.data_subset,
-            split=hf_split,
-            mode=mode,
-            max_length=args.concat_tokens,
-            bos_text=args.bos_text,
-            eos_text=args.eos_text,
-            no_wrap=args.no_wrap,
-            tokenizer=tokenizer,
-        )
+        if mode == ConcatMode.NO_CONCAT:
+            dataset = build_hf_dataset(
+                dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
+                data_subset=args.data_subset,
+                split=hf_split,
+                mode=mode,
+                max_length=args.concat_tokens,
+                bos_text=args.bos_text,
+                eos_text=args.eos_text,
+                no_wrap=args.no_wrap,
+                tokenizer=tokenizer,
+            )
+        else:
+            assert tokenizer is not None
+            # Build dataset potentially with streams
+            dataset = StreamingTextDataset(
+                tokenizer=tokenizer,
+                streams=None,
+                batch_size=None,
+                local=args.local,
+                remote=args.remote,
+                split=split_name,
+                shuffle=args.shuffle,
+                max_seq_len=args.concat_tokens,
+                shuffle_seed=args.shuffle_seed,
+                cache_limit=None,
+            )
+            # Substituting the dataset.__getitem__ method with its parent's method
+            dataset.__getitem__ = super(dataset.__class__, dataset).__getitem__  # type: ignore[reportAttributeAccessIssue]
         # Build a batched dataloader for streaming the HF dataset in batches
         loader = build_dataloader(
             dataset=dataset, batch_size=512, num_workers=args.num_workers
         )
         # Build a generator that yields samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
-        denominator = 0
-        for _ in tqdm(samples, desc=folder_split):
-            denominator += 1
+        if split.denominator is not None:
+            denominator = split.denominator
+        else:
+            denominator = 0
+            for _ in tqdm(samples, desc=folder_split):
+                denominator += 1
+            # Build a batched dataloader for streaming the HF dataset in batches
+            loader = build_dataloader(
+                dataset=dataset, batch_size=512, num_workers=args.num_workers
+            )
+            # Build a generator that yields samples from the batched dataloader
+            samples = generate_samples(
+                loader, truncate_num_samples=truncate_num_samples
+            )
         log(INFO, f"Number of samples in {folder_split} is {denominator}.")
-        # Build a batched dataloader for streaming the HF dataset in batches
-        loader = build_dataloader(
-            dataset=dataset, batch_size=512, num_workers=args.num_workers
-        )
-        # Build a generator that yields samples from the batched dataloader
-        samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
 
         # Estimating the total number of samples
         if "small" in split_name:
@@ -475,18 +522,21 @@ def main(args: Namespace) -> None:
                 "Counting the number of samples w/ the current settings for split %s.",
                 split_name,
             )
-            denominator = 0
-            for _ in tqdm(samples, desc=folder_split):
-                denominator += 1
-            log(INFO, f"Counted number of total samples is {denominator}.")
-            # Re-build a batched dataloader for streaming the HF dataset in batches
-            loader = build_dataloader(
-                dataset=dataset, batch_size=512, num_workers=args.num_workers
-            )
-            # Re-build a generator that yields samples from the batched dataloader
-            samples = generate_samples(
-                loader, truncate_num_samples=truncate_num_samples
-            )
+            if split.denominator is not None:
+                denominator = split.denominator
+            else:
+                denominator = 0
+                for _ in tqdm(samples, desc=folder_split):
+                    denominator += 1
+                # Re-build a batched dataloader for streaming the HF dataset in batches
+                loader = build_dataloader(
+                    dataset=dataset, batch_size=512, num_workers=args.num_workers
+                )
+                # Re-build a generator that yields samples from the batched dataloader
+                samples = generate_samples(
+                    loader, truncate_num_samples=truncate_num_samples
+                )
+            log(INFO, f"Number of samples in {folder_split} is {denominator}.")
         # Estimate the number of samples for the current client
         # NOTE: The last client will get the remainder of the samples
         expected_samples_per_client = denominator // args.num_clients
@@ -499,7 +549,7 @@ def main(args: Namespace) -> None:
         log(
             INFO,
             "Note: the progress bar is based on the dataset length before"
-            " tokenization,and may finish at a value before 100%.",
+            " tokenization, and may finish at a value before 100%.",
         )
         # Loop over the number of clients
         for i in range(args.num_clients):
@@ -508,9 +558,9 @@ def main(args: Namespace) -> None:
                 expected_samples_per_client += remainder
             # Set the output path given the client id
             out_path = (
-                Path(args.out_root / f"client_{i}", folder_split)
+                Path(args.out_root) / f"client_{i}" / folder_split
                 if args.num_clients > 1
-                else Path(args.out_root / folder_split)
+                else Path(args.out_root) / folder_split
             )
             log(
                 INFO,

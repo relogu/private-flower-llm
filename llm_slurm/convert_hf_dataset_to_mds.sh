@@ -29,18 +29,20 @@ done
 
 #! Setting the helper
 if [[ $1 == "--help" ]] || [[ $1 == "-h" ]]; then
-	echo "Usage: bash convert_hf_dataset_to_mds.sh <split> <n_clients> <dataset> <dataset_subset> <data_root>."
-	echo -e "\t<split>: 'small' or 'full'. Default: 'full'"
-	echo -e "\t<n_clients>: integer. Default: 10"
+	echo "Usage: bash convert_hf_dataset_to_mds.sh <splitS> <n_clients> <dataset> <dataset_subset> <data_root>."
+	echo -e "\t<split>: list containing a combination of 'small_val', 'small_train', 'val', 'train'. Default: 'val train'"
+	echo -e "\t<n_clients>: integer. Default: 8"
 	echo -e "\t<dataset>: 'c4' or 'pile'. Default: 'c4'"
 	echo -e "\t<dataset_subset>: 'en' or 'all'. Default: 'en'"
 	echo -e "\t<data_root>: path. Default: '/local/scratch'"
-	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 10 c4 en"
+	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 8 c4 en"
+	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 16 c4 en"
+	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 32 c4 en"
 	exit 1
 fi
 #! Set/get the variables
 SPLIT="full"
-N_CLIENTS=10
+N_CLIENTS=8
 DATASET="c4"
 DATASET_SUBSET="en"
 MOSAICML_DATA_ROOT="/local/scratch"
@@ -71,13 +73,12 @@ else
 	exit 1
 fi
 mkdir -p $MOSAICML_DATA_ROOT
-if [[ $SPLIT == "small" ]]; then
-	SPLIT_NAME="val_small train_small"
-elif [[ $SPLIT == "full" ]]; then
+if [[ $SPLIT == "full" ]]; then
 	SPLIT_NAME="val train"
+	echo "convert_hf_dataset_to_mds.sh: Default splits selected: $SPLIT_NAME."
 else
-	echo "convert_hf_dataset_to_mds.sh: Invalid split. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
-	exit 1
+	SPLIT_NAME=$SPLIT
+	echo "convert_hf_dataset_to_mds.sh: The selected splits are $SPLIT_NAME."
 fi
 echo "convert_hf_dataset_to_mds.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
@@ -103,6 +104,10 @@ else
 	export NUM_CPUS=$SLURM_CPUS_PER_TASK
 fi
 echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
+#! Export the endpoint of the S3 object store
+# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+#! Using directly the IP to avoid name resolution issues
+export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Execute the command
 poetry run python -m pollen_worker.dataset.convert_dataset_hf \
 	--dataset $DATASET \
@@ -118,6 +123,10 @@ poetry run python -m pollen_worker.dataset.convert_dataset_hf \
 # --tokenizer_kwargs # add these if you want to pass additional kwargs to the tokenizer
 # --no_wrap # set this if you want to wrap long sequences
 # --bos_text # default
+# --local # default
+# --remote # default
+# --shuffle # default
+# --shuffle_seed # default
 
 #! Remove the positional arguments
 eval set --

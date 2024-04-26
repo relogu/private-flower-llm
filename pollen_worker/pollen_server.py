@@ -1,12 +1,13 @@
 """Pollen server."""
 
 import concurrent.futures
+from dataclasses import dataclass
 import pickle
 import sys
 import time
 import timeit
 from collections.abc import Callable, Generator
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -41,7 +42,11 @@ from composer.utils.file_helpers import validate_given_remote_path
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
 from pollen_worker.clients.llm_client_functions import copy_old_checkpoints_to_new_run
-from pollen_worker.placements import get_placement_fn, get_pollen_models
+from pollen_worker.placements import (
+    get_placement_fn,
+    get_pollen_models,
+    skim_clients_training_stats,
+)
 from pollen_worker.pollen_client_manager import PollenClientManager
 from pollen_worker.resources_manager import Node
 from pollen_worker.strategy.rs_nesterov import FedNesterov
@@ -77,6 +82,15 @@ ClientLike = Client | NumPyClient
 
 class TooManyFailuresError(Exception):
     """Exception raised when a client is dropped out of the tree."""
+
+
+@dataclass
+class AuxiliaryFitClientsResults:
+    """Dataclass for the auxiliary results of the fit_clients function."""
+
+    pollen_models: dict[str, Any] | None
+    correction_tables: dict[str, pa.Table] | None
+    fit_pollen_models_time: float
 
 
 class PollenServer(Server):
@@ -369,10 +383,20 @@ class PollenServer(Server):
         log(INFO, "FL starting from round %s", start_round + 1)
         start_time = timeit.default_timer()
         for current_round in range(start_round + 1, num_rounds + 1):
+            start_round_time = time.time_ns()
             # Check for changes in connected NodeManagers
+            first_check_nm_time = time.time_ns()
             self.check_node_managers()
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/first_check_nm_time": (time.time_ns() - first_check_nm_time)
+                    * 1e-9
+                },
+            )
 
             # Train model and replace previous global model
+            fit_round_time = time.time_ns()
             res_fit = self.fit_round(
                 server_round=current_round,
                 timeout=timeout,
@@ -384,6 +408,12 @@ class PollenServer(Server):
                 history.add_metrics_distributed_fit(
                     server_round=current_round, metrics=fit_metrics
                 )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/fit_round_time": (time.time_ns() - fit_round_time) * 1e-9
+                },
+            )
 
             # Push the global model to S3 Object Store (but not the server state)
             if self.checkpoint or self.use_s3_comm:
@@ -400,6 +430,7 @@ class PollenServer(Server):
                 )
 
             # Evaluate model using strategy implementation
+            evaluate_time = time.time_ns()
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
                 loss_cen, metrics_cen = res_cen
@@ -415,11 +446,28 @@ class PollenServer(Server):
                 history.add_metrics_centralized(
                     server_round=current_round, metrics=metrics_cen
                 )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/evaluate_time": (time.time_ns() - evaluate_time) * 1e-9
+                },
+            )
 
             # Check for changes in connected NodeManagers
+            second_check_nm_time = time.time_ns()
             self.check_node_managers()
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/second_check_nm_time": (
+                        time.time_ns() - second_check_nm_time
+                    )
+                    * 1e-9
+                },
+            )
 
             # Evaluate model on a sample of available clients
+            evaluate_round_time = time.time_ns()
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
             if res_fed is not None:
                 loss_fed, evaluate_metrics_fed, _ = res_fed
@@ -430,6 +478,19 @@ class PollenServer(Server):
                     history.add_metrics_distributed(
                         server_round=current_round, metrics=evaluate_metrics_fed
                     )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/evaluate_round_time": (time.time_ns() - evaluate_round_time)
+                    * 1e-9
+                },
+            )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/round_time": (time.time_ns() - start_round_time) * 1e-9
+                },
+            )
 
             # Save the checkpoint to S3 Object Store (w/o the global parameters)
             if self.checkpoint or self.use_s3_comm:
@@ -705,10 +766,20 @@ class PollenServer(Server):
         metrics_accumulator: list[
             tuple[ClientProxy, dict[str, Scalar], Status, int]
         ] = []
+        auxiliary_fit_results = AuxiliaryFitClientsResults(
+            pollen_models=None,
+            correction_tables=None,
+            fit_pollen_models_time=0.0,
+        )
         results_futures = pollen_fit_clients(
             node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
+            clients_stats=self.clients_training_stats,
+            batch_size=int(self.on_fit_config(server_round)["batch_size"]),
+            cids=self.cids,
+            placement_policy=self.placement_policy,
+            auxiliary_fit_results=auxiliary_fit_results,
         )
         results_and_failures = (
             _handle_finished_future_after_fit_async(future)
@@ -743,10 +814,7 @@ class PollenServer(Server):
 
         try:
             # Aggregate training results
-            aggregated_result: tuple[
-                Parameters | None,
-                dict[str, Scalar],
-            ] = self.strategy.aggregate_fit(
+            parameters_aggregated, metrics_aggregated = self.strategy.aggregate_fit(
                 server_round,
                 cast(list[tuple[ClientProxy, FitRes]], complete_results),
                 failures,
@@ -762,6 +830,20 @@ class PollenServer(Server):
                             cast(pa.Buffer, tmp_clients_training_stats)
                         )
                     )
+            # Aggregate the metrics
+            # NOTE: This bypasses any metrics aggregation in the aggregate_fit of the
+            # strategy because the metrics are empty there
+            if self.strategy.fit_metrics_aggregation_fn:
+                fit_metrics = [
+                    (num_examples, metrics)
+                    for _, metrics, _, num_examples in metrics_accumulator
+                ]
+                metrics_aggregated = (
+                    metrics_aggregated
+                    | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
+                )
+            elif server_round == 1:  # Only log this warning once
+                log(WARNING, "No fit_metrics_aggregation_fn provided")
         except TooManyFailuresError as e:
             if self.ignore_failed_rounds:
                 log(
@@ -780,29 +862,26 @@ class PollenServer(Server):
             else:
                 raise
 
-        # Collect `fit` results from all NodeManagers participating in this round
-        # pollen_models, correction_tables = get_pollen_models(
-        get_pollen_models(
-            placement_policy=self.placement_policy,
-            clients_stats=self.clients_training_stats,
-            batch_size=int(self.on_fit_config(server_round)["batch_size"]),
-            cids=self.cids,
-            server_round=int(node_instructions[0][1].config["server_round"]),
-        )
-
         # Collect the new statistics and append to the global statistics
-        if len(received_clients_training_stats) > 0:
-            if self.clients_training_stats is None:
-                self.clients_training_stats = pa.concat_tables(
-                    received_clients_training_stats
-                )
-            else:
-                self.clients_training_stats = pa.concat_tables(
-                    [self.clients_training_stats] + received_clients_training_stats
-                )
-                # self.clients_training_stats = pa.concat_tables(
-                #     received_clients_training_stats
-                # )
+        if self.clients_training_stats is None:
+            # Create the table from scratch
+            self.clients_training_stats = pa.concat_tables(
+                received_clients_training_stats
+            )
+        else:
+            # Skim the `clients_training_stats` to keep just the average per n_samples
+            self.clients_training_stats = skim_clients_training_stats(
+                self.clients_training_stats
+            )
+            # Append to the global statistics
+            self.clients_training_stats = pa.concat_tables(
+                [self.clients_training_stats] + received_clients_training_stats
+            )
+
+        # NOTE: We must assign this only after we can the first iter over the results
+        # generator
+        self.correction_tables = auxiliary_fit_results.correction_tables
+        self.pollen_models = auxiliary_fit_results.pollen_models
 
         log(
             DEBUG,
@@ -818,8 +897,6 @@ class PollenServer(Server):
             failures if self.print_failures else [],
             intentional_failures if self.print_intentional_failures else [],
         )
-
-        parameters_aggregated, metrics_aggregated = aggregated_result
         return (
             parameters_aggregated,
             metrics_aggregated,
@@ -920,6 +997,11 @@ def pollen_fit_clients(
     node_instructions: list[tuple[ClientProxy, FitIns]],
     max_workers: int | None,
     timeout: float | None,
+    auxiliary_fit_results: AuxiliaryFitClientsResults,
+    cids: dict[str | int, int],
+    clients_stats: pa.Table | None = None,
+    batch_size: int = 1,
+    placement_policy: str = "rr",
 ) -> Generator[concurrent.futures.Future[tuple[ClientProxy, FitRes]], Any, None]:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -927,7 +1009,22 @@ def pollen_fit_clients(
             executor.submit(fit_client, client_proxy, ins, timeout)
             for client_proxy, ins in node_instructions
         }
-
+        # Fit the Pollen models and collect their parameters and correction tables in
+        # the `auxiliary_fit_results` variables
+        start_time = timeit.default_timer()
+        auxiliary_fit_results.pollen_models, auxiliary_fit_results.correction_tables = (
+            get_pollen_models(
+                placement_policy=placement_policy,
+                clients_stats=clients_stats,
+                batch_size=batch_size,
+                cids=cids,
+                server_round=int(node_instructions[0][1].config["server_round"]),
+            )
+        )
+        auxiliary_fit_results.fit_pollen_models_time = (
+            timeit.default_timer() - start_time
+        )
+        # Constructing the generator of training results
         while submitted_fs:
             finished_fs, _ = concurrent.futures.wait(
                 fs=submitted_fs,

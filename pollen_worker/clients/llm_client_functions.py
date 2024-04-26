@@ -6,11 +6,12 @@ import gc
 import logging
 import os
 import re
+import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
 from logging import DEBUG, ERROR, INFO, WARN, WARNING
-from typing import Any
+from typing import Any, cast
 
 import streaming
 import torch
@@ -58,6 +59,7 @@ import numpy as np
 from pollen_worker.utils import (
     get_n_cpu_cores,
     get_n_cuda_devices,
+    get_trainable_params_dict,
     sum_of_squares,
 )
 from dataclasses import dataclass, asdict
@@ -502,7 +504,9 @@ def _get_model_for_trainer(
 
 def get_raw_model_parameters(
     _cfg: DictConfig,
-) -> NDArrays:
+    verbose: bool = False,
+    return_names: bool = False,
+) -> NDArrays | tuple[NDArrays, list[str]]:
     """Get the raw model parameters."""
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -537,7 +541,17 @@ def get_raw_model_parameters(
         lora_config=lora_config,
     )
     model.cpu()
-    return [val.detach().to("cpu").numpy() for _, val in model.state_dict().items()]
+    # Get model summary
+    if verbose:
+        log(INFO, model)
+    parameters_ndarrays = [
+        val.detach().to("cpu").numpy()
+        for _, val in get_trainable_params_dict(model).items()
+    ]
+    if return_names:
+        return parameters_ndarrays, list(get_trainable_params_dict(model).keys())
+    else:
+        return parameters_ndarrays
 
 
 def _get_trainer_object(
@@ -1005,7 +1019,7 @@ def get_parameters(
     parameters : NDArrays
         The local model parameters as a list of NumPy ndarrays.
     """
-    return get_raw_model_parameters(copy.deepcopy(cfg))
+    return cast(NDArrays, get_raw_model_parameters(copy.deepcopy(cfg)))
 
 
 def get_parameters_from_state(
@@ -1013,10 +1027,8 @@ def get_parameters_from_state(
     trainer: Trainer,
 ) -> NDArrays:
     """Implement how to get parameters."""
-    return [
-        val.detach().to("cpu").numpy()
-        for _, val in trainer.state.model.state_dict().items()
-    ]
+    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
+    return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
 
 
 def set_parameters_to_state(
@@ -1024,10 +1036,9 @@ def set_parameters_to_state(
     trainer: Trainer,
 ) -> None:
     """Implement how to set parameters in the case of an LLM."""
-    keys = list(trainer.state.model.state_dict().keys())
-    params_dict = zip(keys, parameters, strict=False)
-    state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-    # NOTE: We may want to try strict=False
+    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
+    params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
+    state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
     trainer.state.model.load_state_dict(state_dict, strict=True)
     del state_dict
 
@@ -1046,6 +1057,8 @@ def llm_fit(
     client_state_struct = ClientState(**client_state[cid])
 
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+    start_time = time.time_ns()
+    train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     cfg, skip_iteration = set_client_load_path(
         cfg,
@@ -1064,21 +1077,32 @@ def llm_fit(
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg)
     # log(INFO, f"Trainer config: {logged_cfg}")
+    train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the parameters
         if parameters is not None and not skip_iteration:
             # log(INFO, "Initializing model...")
+            start_time = time.time_ns()
             set_parameters_to_state(parameters, trainer)
+            train_metrics |= {
+                "client/fit_set_parameters_time": (time.time_ns() - start_time) * 1e-9
+            }
         # Eval first if requested
         if eval_first and trainer.state.timestamp.batch.value == 0:
+            start_time = time.time_ns()
             trainer.eval()
+            train_metrics |= {
+                "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
+            }
         # log(INFO, "Starting training...")
         # Prevent to run any evaluator
         trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
         # Execute fit step for the appointed duration
         try:
+            start_time = time.time_ns()
             trainer.fit(duration=0 if skip_iteration else cfg["local_steps"])
+            train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
     # Retrieve number of samples trained
@@ -1100,8 +1124,12 @@ def llm_fit(
     }
     log(INFO, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
+    start_time = time.time_ns()
     model_parameters = get_parameters_from_state({}, trainer)
-
+    train_metrics |= {
+        "client/fit_get_parameters_time": (time.time_ns() - start_time) * 1e-9
+    }
+    start_time = time.time_ns()
     per_layer_sum_of_squares = [
         sum_of_squares([x - y])
         for x, y in zip(parameters, model_parameters, strict=False)
@@ -1115,8 +1143,12 @@ def llm_fit(
     l2_norm_of_pseudo_gradient: float = float(np.sqrt(sum(per_layer_sum_of_squares)))
 
     train_metrics |= {"client/l2_norm_pseudo_gradient": l2_norm_of_pseudo_gradient}
+    train_metrics |= {
+        "client/fit_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Close the trainer
+    start_time = time.time_ns()
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
@@ -1138,6 +1170,9 @@ def llm_fit(
 
     train_metrics["client_state"] = str(asdict(client_state_struct))
     train_metrics["cid"] = cid
+    train_metrics |= {
+        "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     return model_parameters, n_samples_trained, train_metrics
 
@@ -1148,6 +1183,8 @@ def llm_eval(
     cfg: DictConfig,
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
+    start_time = time.time_ns()
+    eval_metrics: dict[str, Scalar] = {}
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Force llm_config params to select the centralized eval set
@@ -1161,22 +1198,34 @@ def llm_eval(
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
     )
+    eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
     # Set the parameters
     # log(INFO, "Initializing model...")
+    start_time = time.time_ns()
     set_parameters_to_state(parameters, trainer)
     gc.collect()
     torch.cuda.empty_cache()
+    eval_metrics |= {
+        "client/eval_set_parameters_time": (time.time_ns() - start_time) * 1e-9
+    }
     # log(INFO, "Starting evaluation...")
+    start_time = time.time_ns()
     trainer.eval()
+    eval_metrics |= {"client/eval_time": (time.time_ns() - start_time) * 1e-9}
+    start_time = time.time_ns()
     # Retrieve number of samples evaluated
     num_samples = trainer.state.eval_timestamp._sample.value
     # Retrieve evaluation metrics
-    eval_metrics = {
+    eval_metrics = eval_metrics | {
         "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.eval_metric_values.items()
     }
+    eval_metrics |= {
+        "client/eval_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Close the trainer
+    start_time = time.time_ns()
     trainer.close()
 
     # NOTE: Clean up leaking shared memories
@@ -1196,6 +1245,9 @@ def llm_eval(
 
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    eval_metrics |= {
+        "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+    }
 
     # Return the evaluation metrics
     return 0.0, num_samples, eval_metrics

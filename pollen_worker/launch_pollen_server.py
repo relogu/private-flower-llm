@@ -9,11 +9,12 @@ from logging import INFO
 import pickle
 import sys
 from pathlib import Path
+from typing import cast
 
 import flwr as fl
 import hydra
 import transformers
-from flwr.common import ndarrays_to_parameters, log
+from flwr.common import ndarrays_to_parameters, log, NDArrays
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
@@ -57,9 +58,23 @@ def main(cfg: DictConfig) -> None:
             INFO,
             "FL server initializes model with random parameters.",
         )
-        initial_parameters = ndarrays_to_parameters(
-            get_raw_model_parameters(copy.deepcopy(_llm_config))
+        initial_parameters_ndarrays: NDArrays
+        names: list[str]
+        (initial_parameters_ndarrays, names) = cast(
+            tuple[NDArrays, list[str]],
+            get_raw_model_parameters(copy.deepcopy(_llm_config), True, True),
         )
+        for i, (param, name) in enumerate(
+            zip(initial_parameters_ndarrays, names, strict=True)
+        ):
+            log(
+                INFO,
+                "Initial parameter, component %s, name %s, shape %s",
+                i,
+                name,
+                param.shape,
+            )
+        initial_parameters = ndarrays_to_parameters(initial_parameters_ndarrays)
     # Instantiate the strategy
     strategy = FedNesterov(
         fraction_fit=sys.float_info.min,
@@ -70,13 +85,15 @@ def main(cfg: DictConfig) -> None:
         evaluate_fn=None,
         on_fit_config_fn=lambda x: {
             "server_round": x,
-            "batch_size": 32,
+            "batch_size": cfg.llm_config.global_train_batch_size,
+            "n_local_steps": cfg.fl.n_local_steps,
+            "n_local_epochs": cfg.fl.n_local_epochs,
             "collaborative": cfg.pollen.fit_collaborative,
             "reset_optimizer": cfg.fl.reset_optimizer,
         },
         on_evaluate_config_fn=lambda x: {
             "server_round": x,
-            "batch_size": 32,
+            "batch_size": cfg.llm_config.device_eval_batch_size,
             "collaborative": cfg.pollen.eval_collaborative,
         },
         accept_failures=False,

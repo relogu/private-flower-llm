@@ -20,6 +20,7 @@ a node-manager which communicates
 to the simulation server.
 """
 
+import ast
 from collections import defaultdict
 import copy
 import gc
@@ -571,6 +572,8 @@ class NodeManager(fl.client.NumPyClient):
         # Extract assignments from config
         assignments = cast(str, config.pop("merged", str([0, 1])))
         list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
+        assignments = cast(str, config.pop("merged", str([0, 1])))
+        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
         node_train_metrics: dict[str, Scalar] = {}
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0
@@ -723,7 +726,7 @@ class NodeManager(fl.client.NumPyClient):
         start_time = time.time()
         # Extract assignments from config
         assignments = cast(str, config.pop("merged", str([0, 1])))
-        list_of_cids_to_eval = ast.literal_eval(assignments)[0]
+        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
         # Append NodeManager's config
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
@@ -876,7 +879,7 @@ def main(cfg: DictConfig) -> None:
         cfg=copy.deepcopy(_llm_config),
     )
     # Get initial model parameters
-    parameters = get_raw_model_parameters(copy.deepcopy(_llm_config))
+    parameters = cast(NDArrays, get_raw_model_parameters(copy.deepcopy(_llm_config)))
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
