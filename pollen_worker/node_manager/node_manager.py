@@ -54,7 +54,6 @@ from multiprocess import Queue, set_start_method  # type: ignore[reportAttribute
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
-import ast
 
 from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
 from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
@@ -95,7 +94,7 @@ from pollen_worker.utils import (
     load_model_parameters_from_file,
     sum_of_squares,
     upload_file_to_s3,
-    weighted_average,
+    combine_partial_weighted_avg,
 )
 
 transformers.logging.set_verbosity_error()
@@ -726,7 +725,7 @@ class NodeManager(fl.client.NumPyClient):
         start_time = time.time()
         # Extract assignments from config
         assignments = cast(str, config.pop("merged", str([0, 1])))
-        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
+        list_of_cids_to_eval: list[str] = ast.literal_eval(assignments)[0]
         # Append NodeManager's config
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
@@ -814,7 +813,7 @@ class NodeManager(fl.client.NumPyClient):
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
-        node_eval_metrics = weighted_average(clients_eval_metrics)
+        node_eval_metrics = combine_partial_weighted_avg(clients_eval_metrics)
         node_eval_metrics.update({"node_eval_time_s": float(time.time() - start_time)})
         # Aggregation of eval samples
         node_eval_samples = sum(clients_eval_samples)

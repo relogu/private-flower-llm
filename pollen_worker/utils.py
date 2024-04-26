@@ -101,8 +101,45 @@ def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 
+def weighted_avg(
+    metrics: list[tuple[int, dict]],
+) -> dict:
+    """Compute a weighted average over pre-defined metrics.
+
+    Parameters
+    ----------
+    metrics : List[Tuple[int, Dict]]
+        The metrics to aggregate.
+
+    Returns
+    -------
+    Dict
+        The weighted average over pre-defined metrics.
+    """
+    total_num_examples = sum(
+        [num_examples for num_examples, _ in metrics],
+    )
+    # NOTE:accumulate the client state of the clients involved in training
+
+    client_state_accumulator: dict[int | str, str] = {}
+    weighted_metrics: dict = defaultdict(float)
+
+    for num_examples, metric in metrics:
+        if metric is not None:
+            cid = metric.pop("cid", None)
+            client_state = metric.pop("client_state", None)
+            for key, value in metric.items():
+                weighted_metrics[key] += num_examples * value
+            if cid is not None and client_state is not None:
+                client_state_accumulator[cid] = client_state
+
+    return {
+        key: value / total_num_examples for key, value in weighted_metrics.items()
+    } | {"client_state_acc": client_state_accumulator}
+
+
 # Server ####
-def weighted_average(
+def combine_partial_weighted_avg(
     current_agg: tuple[int, dict],
     new_metrics: tuple[int, dict],
 ) -> dict:
@@ -118,12 +155,7 @@ def weighted_average(
     Dict
         The weighted average over pre-defined metrics.
     """
-    total_num_examples = (
-        sum(
-            [num_examples for num_examples, _ in metrics],
-        )
-        + current_agg[0]
-    )
+    total_num_examples = new_metrics[0] + current_agg[0]
     # NOTE:accumulate the client state of the clients involved in training
 
     client_state_accumulator: dict[int | str, str] = current_agg[1].pop(
@@ -175,7 +207,7 @@ def partially_aggregate_metrics(
         updated_agg = copy.deepcopy(new_results[1])
     else:
         total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
-        updated_agg = weighted_average(current_agg, new_results)
+        updated_agg = combine_partial_weighted_avg(current_agg, new_results)
     return total_num_examples, updated_agg
 
 
