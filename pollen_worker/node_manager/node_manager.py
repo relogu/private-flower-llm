@@ -694,8 +694,8 @@ class NodeManager(fl.client.NumPyClient):
 
         start_time = time.time()
         # Extract assignments from config
-        assignments = config.pop("merged", "0,1")
-        list_of_cids_to_eval = cast(str, assignments).split(",")
+        assignments = cast(str, config.pop("merged", str([0, 1])))
+        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
         # Append NodeManager's config
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
