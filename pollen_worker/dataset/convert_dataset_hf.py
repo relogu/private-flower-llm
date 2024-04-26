@@ -127,6 +127,7 @@ class DataSplitConstants:
     folder_split: str
     raw_samples: int
     truncated_samples: int | None
+    denominator: int | None = None
 
 
 @dataclass
@@ -228,6 +229,7 @@ c4_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=364868892,
     truncated_samples=None,
+    denominator=85336729,
 )
 c4_constants.splits["train_small"] = DataSplitConstants(
     hf_split="train",
@@ -240,6 +242,7 @@ c4_constants.splits["val"] = DataSplitConstants(
     folder_split="val",
     raw_samples=364608,
     truncated_samples=None,
+    denominator=85039,
 )
 c4_constants.splits["val_small"] = DataSplitConstants(
     hf_split="validation",
@@ -478,9 +481,12 @@ def main(args: Namespace) -> None:
         )
         # Build a generator that yields samples from the batched dataloader
         samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
-        denominator = 0
-        for _ in tqdm(samples, desc=folder_split):
-            denominator += 1
+        if split.denominator is not None:
+            denominator = split.denominator
+        else:
+            denominator = 0
+            for _ in tqdm(samples, desc=folder_split):
+                denominator += 1
         log(INFO, f"Number of samples in {folder_split} is {denominator}.")
         # Build a batched dataloader for streaming the HF dataset in batches
         loader = build_dataloader(
@@ -514,10 +520,13 @@ def main(args: Namespace) -> None:
                 "Counting the number of samples w/ the current settings for split %s.",
                 split_name,
             )
-            denominator = 0
-            for _ in tqdm(samples, desc=folder_split):
-                denominator += 1
-            log(INFO, f"Counted number of total samples is {denominator}.")
+            if split.denominator is not None:
+                denominator = split.denominator
+            else:
+                denominator = 0
+                for _ in tqdm(samples, desc=folder_split):
+                    denominator += 1
+            log(INFO, f"Number of samples in {folder_split} is {denominator}.")
             # Re-build a batched dataloader for streaming the HF dataset in batches
             loader = build_dataloader(
                 dataset=dataset, batch_size=512, num_workers=args.num_workers
