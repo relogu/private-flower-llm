@@ -1137,7 +1137,7 @@ def llm_fit(
 
     for i, plss in enumerate(per_layer_sum_of_squares):
         train_metrics |= {
-            f"client/layer_{i}/l2_norm_of_pseudo_gradient": float(np.sqrt(plss))
+            f"client/layer/{i}/l2_norm_of_pseudo_gradient": float(np.sqrt(plss))
         }
 
     l2_norm_of_pseudo_gradient: float = float(np.sqrt(sum(per_layer_sum_of_squares)))
