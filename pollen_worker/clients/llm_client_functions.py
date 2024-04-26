@@ -11,7 +11,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
 from logging import DEBUG, ERROR, INFO, WARN, WARNING
-from typing import Any
+from typing import Any, cast
 
 import streaming
 import torch
@@ -57,6 +57,7 @@ import numpy as np
 from pollen_worker.utils import (
     get_n_cpu_cores,
     get_n_cuda_devices,
+    get_trainable_params_dict,
     sum_of_squares,
 )
 
@@ -478,7 +479,9 @@ def _get_model_for_trainer(
 
 def get_raw_model_parameters(
     _cfg: DictConfig,
-) -> NDArrays:
+    verbose: bool = False,
+    return_names: bool = False,
+) -> NDArrays | tuple[NDArrays, list[str]]:
     """Get the raw model parameters."""
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -513,7 +516,17 @@ def get_raw_model_parameters(
         lora_config=lora_config,
     )
     model.cpu()
-    return [val.detach().to("cpu").numpy() for _, val in model.state_dict().items()]
+    # Get model summary
+    if verbose:
+        log(INFO, model)
+    parameters_ndarrays = [
+        val.detach().to("cpu").numpy()
+        for _, val in get_trainable_params_dict(model).items()
+    ]
+    if return_names:
+        return parameters_ndarrays, list(get_trainable_params_dict(model).keys())
+    else:
+        return parameters_ndarrays
 
 
 def _get_trainer_object(
@@ -978,7 +991,7 @@ def get_parameters(
     parameters : NDArrays
         The local model parameters as a list of NumPy ndarrays.
     """
-    return get_raw_model_parameters(copy.deepcopy(cfg))
+    return cast(NDArrays, get_raw_model_parameters(copy.deepcopy(cfg)))
 
 
 def get_parameters_from_state(
@@ -986,10 +999,8 @@ def get_parameters_from_state(
     trainer: Trainer,
 ) -> NDArrays:
     """Implement how to get parameters."""
-    return [
-        val.detach().to("cpu").numpy()
-        for _, val in trainer.state.model.state_dict().items()
-    ]
+    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
+    return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
 
 
 def set_parameters_to_state(
@@ -997,10 +1008,9 @@ def set_parameters_to_state(
     trainer: Trainer,
 ) -> None:
     """Implement how to set parameters in the case of an LLM."""
-    keys = list(trainer.state.model.state_dict().keys())
-    params_dict = zip(keys, parameters, strict=False)
-    state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-    # NOTE: We may want to try strict=False
+    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
+    params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
+    state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
     trainer.state.model.load_state_dict(state_dict, strict=True)
     del state_dict
 

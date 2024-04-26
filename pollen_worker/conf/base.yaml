@@ -25,6 +25,9 @@ fl:
   n_clients_per_round: 8
   n_rounds: 200
   reset_optimizer: true
+  n_local_epochs: 500
+  n_local_steps: 0
+  rescale_global_model: true
 
 # Defaults
 defaults:

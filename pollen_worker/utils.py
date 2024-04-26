@@ -36,6 +36,18 @@ import wandb
 POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
 
 
+def get_trainable_params_dict(
+    model: torch.nn.Module, sort_dict: bool = True
+) -> dict[str, torch.nn.Parameter]:
+    """Get the trainable parameters of a model as a dictionary."""
+    params_dict = {
+        name: param for name, param in model.named_parameters() if param.requires_grad
+    }
+    if sort_dict:
+        params_dict = dict(sorted(params_dict.items()))
+    return params_dict
+
+
 def download_file_from_s3(
     remote_up_down: RemoteUploaderDownloader,
     remote_file_name: str,
