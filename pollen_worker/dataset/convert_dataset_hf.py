@@ -25,6 +25,8 @@ from transformers import PreTrainedTokenizerBase
 
 import datasets as hf_datasets
 
+from pollen_worker.dataset.text_data import StreamingTextDataset
+
 
 class ConcatMode(Enum):
     """Describe concatenation modes."""
@@ -66,6 +68,22 @@ def parse_args() -> Namespace:
     parser.add_argument("--no_wrap", default=False, action="store_true")
     parser.add_argument("--num_workers", type=int, required=False, default=None)
     parser.add_argument("--num_clients", type=int, required=False, default=1)
+
+    # Arguments to use our S3-stored dataset when concatenating tokens
+    parser.add_argument(
+        "--local",
+        type=str,
+        default="/local/scratch/tmp",
+        help="Local path to centralized dataset",
+    )
+    parser.add_argument(
+        "--remote",
+        type=str,
+        default="s3://c4-dataset",
+        help="Remote path to centralized dataset",
+    )
+    parser.add_argument("--shuffle", default=False, action="store_true")
+    parser.add_argument("--shuffle_seed", type=int, default=17)
 
     parsed = parser.parse_args()
 
@@ -425,17 +443,35 @@ def main(args: Namespace) -> None:
             continue
         # Create the dataset given the parameters
         # NOTE: We can't know how many samples we will get from the dataset
-        dataset: ConcatTokensDataset | NoConcatDataset = build_hf_dataset(
-            dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
-            data_subset=args.data_subset,
-            split=hf_split,
-            mode=mode,
-            max_length=args.concat_tokens,
-            bos_text=args.bos_text,
-            eos_text=args.eos_text,
-            no_wrap=args.no_wrap,
-            tokenizer=tokenizer,
-        )
+        if mode == ConcatMode.NO_CONCAT:
+            dataset = build_hf_dataset(
+                dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
+                data_subset=args.data_subset,
+                split=hf_split,
+                mode=mode,
+                max_length=args.concat_tokens,
+                bos_text=args.bos_text,
+                eos_text=args.eos_text,
+                no_wrap=args.no_wrap,
+                tokenizer=tokenizer,
+            )
+        else:
+            assert tokenizer is not None
+            # Build dataset potentially with streams
+            dataset = StreamingTextDataset(
+                tokenizer=tokenizer,
+                streams=None,
+                batch_size=None,
+                local=args.local,
+                remote=args.remote,
+                split=split_name,
+                shuffle=args.shuffle,
+                max_seq_len=args.concat_tokens,
+                shuffle_seed=args.shuffle_seed,
+                cache_limit=None,
+            )
+            # Substituting the dataset.__getitem__ method with its parent's method
+            dataset.__getitem__ = super(dataset.__class__, dataset).__getitem__  # type: ignore[reportAttributeAccessIssue]
         # Build a batched dataloader for streaming the HF dataset in batches
         loader = build_dataloader(
             dataset=dataset, batch_size=512, num_workers=args.num_workers
