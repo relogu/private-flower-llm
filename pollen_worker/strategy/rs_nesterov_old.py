@@ -9,7 +9,7 @@ Papers:
 """
 
 from collections.abc import Callable, Iterable
-from logging import INFO, WARNING
+from logging import INFO
 from pathlib import Path
 
 from flwr.common import (
@@ -217,12 +217,13 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         parameters_aggregated = ndarrays_to_parameters(fedavgm_result)
 
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        if self.fit_metrics_aggregation_fn:
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        elif server_round == 1:  # Only log this warning once
-            log(WARNING, "No fit_metrics_aggregation_fn provided")
+        # NOTE: This is handled by the server
+        # # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated: dict[str, Scalar] = {}
+        # if self.fit_metrics_aggregation_fn:
+        #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+        # elif server_round == 1:  # Only log this warning once
+        #     log(WARNING, "No fit_metrics_aggregation_fn provided")
 
         if self.track_norms:
             metrics_aggregated |= {
