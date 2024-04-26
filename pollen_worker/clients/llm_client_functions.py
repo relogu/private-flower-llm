@@ -1011,7 +1011,7 @@ def set_parameters_to_state(
     model_parameters_dict = get_trainable_params_dict(trainer.state.model)
     params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
     state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
-    trainer.state.model.load_state_dict(state_dict, strict=True)
+    trainer.state.model.load_state_dict(state_dict, strict=False)
     del state_dict
 
 
