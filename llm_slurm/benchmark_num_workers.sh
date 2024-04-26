@@ -34,7 +34,6 @@ while true; do
 done
 echo "PROJECT_PATH=$PROJECT_PATH"
 
-
 export CPU_CONCURRENCY=8
 unset RUN_UUID
 export RUN_UUID="fed-pollen_smalll_benchmark_${CPU_CONCURRENCY}_worker"
