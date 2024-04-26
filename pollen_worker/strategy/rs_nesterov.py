@@ -62,6 +62,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         seed: int = 1337,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
+        rescale_global_model: bool = False,
         track_norms: bool = True,
         track_inplace_aggregation: bool = False,
     ) -> None:
@@ -133,6 +134,9 @@ class FedNesterov(FedAvgReproducibleSampling):
         self.server_learning_rate = server_learning_rate
         self.server_momentum = server_momentum
 
+        # Rescale global model
+        self.rescale_global_model = rescale_global_model
+
         # Avoid translating between parameters and NDArrays every time unnecessarily
         self.ndarray_parameters: NDArrays = parameters_to_ndarrays(initial_parameters)
 
@@ -203,6 +207,17 @@ class FedNesterov(FedAvgReproducibleSampling):
                 new_momentum_vector, self.momentum_vector, strict=False
             )
         ]
+
+        # Rescale the global model if asked to
+        if self.rescale_global_model:
+            fedavg_norm = l2_norm(fedavg_result)
+            current_norm = l2_norm(fedavgm_result)
+            # Choose the minimum norm as the target norm
+            target_norm = min(fedavg_norm, current_norm)
+            # Compute the scaling factor
+            scaling_factor = target_norm / current_norm
+            # Rescale the norm of the fedavgm result to match the norm of the fedavg result
+            fedavgm_result = [scaling_factor * v for v in fedavgm_result]
 
         # Update the momentum vector and the model
         self.momentum_vector = new_momentum_vector
