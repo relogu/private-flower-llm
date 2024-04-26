@@ -199,9 +199,9 @@ def get_pollen_models(
         # Create correction tables using the last server round
         correction_tables: dict[str, pa.Table] = {}
         for node_device, _client_stats in splitted_clients_stats.items():
-            correction_tables[node_device] = _client_stats.group_by(
-                ["n_samples"]
-            ).aggregate([("delta", "mean")])
+            correction_tables[node_device] = _client_stats.group_by([
+                "n_samples"
+            ]).aggregate([("delta", "mean")])
         # Train models
         try:
             pollen_models: dict[str, Any] = sequential_train_models(

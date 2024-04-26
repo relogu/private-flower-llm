@@ -29,6 +29,8 @@ from llmfoundry.models.inference_api_wrapper.openai_causal_lm import (
     OpenAICausalLMEvalWrapper,
     OpenAIChatAPIEvalWrapper,
 )
+
+
 from llmfoundry.models.mpt.modeling_mpt import ComposerMPTCausalLM, MPTForCausalLM
 from llmfoundry.utils.builders import (
     build_algorithm,
@@ -58,12 +60,13 @@ from pollen_worker.utils import (
     get_n_cuda_devices,
     sum_of_squares,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import ast
 
 
 @dataclass
 class StreamDict:
-    """TypedDict for the streams dictionary."""
+    """Dataclass for stream dictionary."""
 
     remote: str | None = None
     local: str | None = None
@@ -75,6 +78,14 @@ class StreamDict:
     download_timeout: float | None = None
     validate_hash: str | None = None
     keep_zip: bool | None = None
+
+
+@dataclass
+class ClientState:
+    """Dataclass for client state."""
+
+    local_steps_cumulative: int
+    rng_state: list[dict[str, Any]]
 
 
 COMPOSER_MODEL_REGISTRY = {
@@ -204,7 +215,7 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig
 
 
 def set_client_load_path(
-    cfg: DictConfig, server_round: int, local_steps: str
+    cfg: DictConfig, server_round: int, n_steps_done: int, n_steps: int
 ) -> tuple[DictConfig, bool]:
     """Set the save and load path given the server round and client id."""
     # Flag to notify whether to skip this iteration or not
@@ -214,15 +225,11 @@ def set_client_load_path(
         try:
             log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
             if validate_given_remote_path(cfg.save_folder):
-                n_steps_done = int(
-                    int(local_steps.replace("ba", "")) * (server_round - 1)
-                )
                 cfg.load_path = (
                     cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
                 )
                 log(INFO, "Set checkpoint to load: %s", cfg.load_path)
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
-            n_steps = int(int(local_steps.replace("ba", "")) * (server_round))
             path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
             skip_iteration = validate_given_remote_path(path_to_check)
             if skip_iteration:
@@ -1029,11 +1036,22 @@ def llm_fit(
     parameters: NDArrays,
     config: dict,
     cfg: DictConfig,
+    cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
+        config["client_state"]
+    )
+
+    client_state_struct = ClientState(**client_state[cid])
+
+    num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
     # Set the loading path
     cfg, skip_iteration = set_client_load_path(
-        cfg, config["server_round"], cfg["local_steps"]
+        cfg,
+        config["server_round"],
+        client_state_struct.local_steps_cumulative,
+        client_state_struct.local_steps_cumulative + num_batches_trained,
     )
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
@@ -1066,7 +1084,14 @@ def llm_fit(
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
-    n_samples_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+    # NOTE: Assuming that this is the correct value of local steps
+    # for the client to train in this particular round and no
+
+    n_samples_trained = num_batches_trained * int(cfg["global_train_batch_size"])
+
+    client_state_struct.local_steps_cumulative += num_batches_trained
+    client_state_struct.rng_state = reproducibility.get_rng_state()
+
     train_metrics: dict[str, Scalar] = {}
     # Retrieve training metrics
     train_metrics |= {
@@ -1110,6 +1135,9 @@ def llm_fit(
 
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+
+    train_metrics["client_state"] = str(asdict(client_state_struct))
+    train_metrics["cid"] = cid
 
     return model_parameters, n_samples_trained, train_metrics
 

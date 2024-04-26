@@ -305,6 +305,7 @@ class PollenServer(Server):
                 )
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
+            # Initialize client_state_dict
             # Save the checkpoint to S3 Object Store (w/ model parameters)
             if self.checkpoint or self.use_s3_comm:
                 log(INFO, "Create server state (server_round, history, time_offset)")

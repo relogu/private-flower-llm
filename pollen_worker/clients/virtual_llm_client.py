@@ -155,7 +155,7 @@ class VirtualLLMClient(fl.client.NumPyClient):
 
             config["client_streams"] = streams_dict
 
-        return llm_fit(parameters, config, cfg)
+        return llm_fit(parameters, config, cfg, self.cid)
 
     def evaluate(
         self,
