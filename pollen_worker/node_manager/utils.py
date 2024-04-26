@@ -15,8 +15,7 @@ from flwr.server.strategy.aggregate import aggregate
 from pollen_worker.utils import (
     partially_aggregate,
     partially_aggregate_metrics,
-    combine_partial_weighted_avg,
-    weighted_avg,
+    weighted_average,
 )
 
 POLLEN_CONFIG_SHM = "_pollen_config_shm"
@@ -44,7 +43,7 @@ def aggregate_training_results(
     return (
         aggregate(parameters),
         sum(samples),
-        weighted_avg(metrics),
+        weighted_average(metrics),
     )
 
 

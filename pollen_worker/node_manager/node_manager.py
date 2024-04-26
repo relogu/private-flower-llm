@@ -94,7 +94,7 @@ from pollen_worker.utils import (
     load_model_parameters_from_file,
     sum_of_squares,
     upload_file_to_s3,
-    combine_partial_weighted_avg,
+    weighted_average,
 )
 
 transformers.logging.set_verbosity_error()
@@ -569,10 +569,9 @@ class NodeManager(fl.client.NumPyClient):
             # Re-create and start the workers
             self._create_and_start_workers()
         # Extract assignments from config
-        assignments = cast(str, config.pop("merged", str([0, 1])))
+        assignments = cast(str, config.pop("merged", str([[0, 1]])))
         list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
-        assignments = cast(str, config.pop("merged", str([0, 1])))
-        list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
+
         node_train_metrics: dict[str, Scalar] = {}
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0
@@ -813,7 +812,7 @@ class NodeManager(fl.client.NumPyClient):
         # Aggregation of eval losses
         node_eval_loss = weighted_loss_avg(clients_eval_losses)
         # Aggregation of eval metrics
-        node_eval_metrics = combine_partial_weighted_avg(clients_eval_metrics)
+        node_eval_metrics = weighted_average(clients_eval_metrics)
         node_eval_metrics.update({"node_eval_time_s": float(time.time() - start_time)})
         # Aggregation of eval samples
         node_eval_samples = sum(clients_eval_samples)

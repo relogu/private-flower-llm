@@ -64,6 +64,7 @@ from pollen_worker.utils import (
 )
 from dataclasses import dataclass, asdict
 import ast
+from pollen_worker.utils import ClientState
 
 
 @dataclass
@@ -80,14 +81,6 @@ class StreamDict:
     download_timeout: float | None = None
     validate_hash: str | None = None
     keep_zip: bool | None = None
-
-
-@dataclass
-class ClientState:
-    """Dataclass for client state."""
-
-    local_steps_cumulative: int
-    rng_state: list[dict[str, Any]]
 
 
 COMPOSER_MODEL_REGISTRY = {
@@ -1057,6 +1050,8 @@ def llm_fit(
     client_state_struct = ClientState(**client_state[cid])
 
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+
+    global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
@@ -1111,12 +1106,10 @@ def llm_fit(
     # NOTE: Assuming that this is the correct value of local steps
     # for the client to train in this particular round and no
 
-    n_samples_trained = num_batches_trained * int(cfg["global_train_batch_size"])
+    n_samples_trained = num_batches_trained * global_train_batch_size
 
     client_state_struct.local_steps_cumulative += num_batches_trained
-    client_state_struct.rng_state = reproducibility.get_rng_state()
 
-    train_metrics: dict[str, Scalar] = {}
     # Retrieve training metrics
     train_metrics |= {
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
@@ -1168,8 +1161,8 @@ def llm_fit(
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
-    train_metrics["client_state"] = str(asdict(client_state_struct))
-    train_metrics["cid"] = cid
+    train_metrics |= {"client_state": str(asdict(client_state_struct))}
+    train_metrics |= {"cid": cid}
     train_metrics |= {
         "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
     }

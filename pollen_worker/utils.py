@@ -3,7 +3,9 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
+import ast
 import copy
+from dataclasses import dataclass
 import fcntl
 import gc
 import pickle
@@ -30,6 +32,14 @@ from torch import device as device_type
 from typing_extensions import Self
 
 import wandb
+
+
+@dataclass
+class ClientState:
+    """Dataclass for client state."""
+
+    local_steps_cumulative: int
+
 
 # NOTE: Setting the maximum value according to the documentation
 # https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
@@ -101,7 +111,7 @@ def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 
-def weighted_avg(
+def weighted_average(
     metrics: list[tuple[int, dict]],
 ) -> dict:
     """Compute a weighted average over pre-defined metrics.
@@ -116,67 +126,32 @@ def weighted_avg(
     Dict
         The weighted average over pre-defined metrics.
     """
+    client_state_accumulator: dict[int | str, dict[str, Any]] = {}
     total_num_examples = sum(
         [num_examples for num_examples, _ in metrics],
     )
-    # NOTE:accumulate the client state of the clients involved in training
-
-    client_state_accumulator: dict[int | str, str] = {}
     weighted_metrics: dict = defaultdict(float)
 
     for num_examples, metric in metrics:
         if metric is not None:
             cid = metric.pop("cid", None)
             client_state = metric.pop("client_state", None)
+            client_state_acc = metric.pop("client_state_acc", None)
             for key, value in metric.items():
-                weighted_metrics[key] += num_examples * value
+                if not isinstance(value, str):
+                    weighted_metrics[key] += num_examples * value
             if cid is not None and client_state is not None:
-                client_state_accumulator[cid] = client_state
+                client_state_accumulator[cid] = ast.literal_eval(client_state)
+            if client_state_acc is not None:
+                client_state_accumulator |= ast.literal_eval(client_state_acc)
 
-    return {
+    ret_dict = {
         key: value / total_num_examples for key, value in weighted_metrics.items()
-    } | {"client_state_acc": client_state_accumulator}
+    }
+    if client_state_accumulator:
+        ret_dict |= {"client_state_acc": str(client_state_accumulator)}
 
-
-# Server ####
-def combine_partial_weighted_avg(
-    current_agg: tuple[int, dict],
-    new_metrics: tuple[int, dict],
-) -> dict:
-    """Compute a weighted average over pre-defined metrics.
-
-    Parameters
-    ----------
-    metrics : List[Tuple[int, Dict]]
-        The metrics to aggregate.
-
-    Returns
-    -------
-    Dict
-        The weighted average over pre-defined metrics.
-    """
-    total_num_examples = new_metrics[0] + current_agg[0]
-    # NOTE:accumulate the client state of the clients involved in training
-
-    client_state_accumulator: dict[int | str, str] = current_agg[1].pop(
-        "client_state_acc", {}
-    )
-    weighted_metrics: dict = defaultdict(float)
-
-    metrics = [current_agg, new_metrics]
-
-    for num_examples, metric in metrics:
-        if metric is not None:
-            cid = metric.pop("cid", None)
-            client_state = metric.pop("client_state", None)
-            for key, value in metric.items():
-                weighted_metrics[key] += num_examples * value
-            if cid is not None and client_state is not None:
-                client_state_accumulator[cid] = client_state
-
-    return {
-        key: value / total_num_examples for key, value in weighted_metrics.items()
-    } | {"client_state_acc": client_state_accumulator}
+    return ret_dict
 
 
 def partially_aggregate(
@@ -207,7 +182,7 @@ def partially_aggregate_metrics(
         updated_agg = copy.deepcopy(new_results[1])
     else:
         total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
-        updated_agg = combine_partial_weighted_avg(current_agg, new_results)
+        updated_agg = weighted_average([current_agg, new_results])
     return total_num_examples, updated_agg
 
 
@@ -226,9 +201,9 @@ def set_parameters(
     net.eval()
     keys = [k for k in net.state_dict() if "bn" not in k]
     params_dict = zip(keys, parameters, strict=False)
-    state_dict = OrderedDict({
-        k: torch.tensor(v, device=device) for k, v in params_dict
-    })
+    state_dict = OrderedDict(
+        {k: torch.tensor(v, device=device) for k, v in params_dict}
+    )
     net.load_state_dict(state_dict=state_dict, strict=False)
 
 

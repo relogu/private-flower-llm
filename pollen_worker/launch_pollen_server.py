@@ -26,7 +26,7 @@ from pollen_worker.strategy.rs_nesterov import FedNesterov
 from pollen_worker.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     wandb_init,
-    combine_partial_weighted_avg,
+    weighted_average,
 )
 from pollen_worker.wandb_history import WandbHistory
 
@@ -98,8 +98,8 @@ def main(cfg: DictConfig) -> None:
         },
         accept_failures=False,
         initial_parameters=initial_parameters,
-        evaluate_metrics_aggregation_fn=combine_partial_weighted_avg,
-        fit_metrics_aggregation_fn=combine_partial_weighted_avg,
+        evaluate_metrics_aggregation_fn=weighted_average,
+        fit_metrics_aggregation_fn=weighted_average,
         seed=cfg.seed,
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
