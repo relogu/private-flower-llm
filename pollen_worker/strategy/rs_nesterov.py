@@ -10,7 +10,7 @@ Papers:
 
 from collections.abc import Callable, Iterable
 from copy import deepcopy
-from logging import INFO
+from logging import DEBUG, INFO
 from pathlib import Path
 
 from flwr.common import (
@@ -63,6 +63,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
         rescale_global_model: bool = False,
+        rescale_momentum_vector: bool = False,
         track_norms: bool = True,
         track_inplace_aggregation: bool = False,
     ) -> None:
@@ -137,6 +138,9 @@ class FedNesterov(FedAvgReproducibleSampling):
         # Rescale global model
         self.rescale_global_model = rescale_global_model
 
+        # Rescale momentum vector
+        self.rescale_momentum_vector = rescale_momentum_vector
+
         # Avoid translating between parameters and NDArrays every time unnecessarily
         self.ndarray_parameters: NDArrays = parameters_to_ndarrays(initial_parameters)
 
@@ -199,6 +203,17 @@ class FedNesterov(FedAvgReproducibleSampling):
                 self.ndarray_parameters, fedavg_pseudo_gradient, strict=False
             )
         ]
+        # Rescale the momentum vector if asked to
+        if self.rescale_momentum_vector:
+            log(DEBUG, "Rescaling the momentum vector")
+            fedavg_norm = l2_norm(fedavg_result)
+            current_norm = l2_norm(new_momentum_vector)
+            # Choose the minimum norm as the target norm
+            target_norm = min(fedavg_norm, current_norm)
+            # Compute the scaling factor
+            scaling_factor = target_norm / current_norm
+            # Rescale the norm of the fedavgm result to match the norm of the fedavg result
+            new_momentum_vector = [scaling_factor * v for v in new_momentum_vector]
 
         # Compute the new model
         fedavgm_result: NDArrays = [
@@ -210,6 +225,7 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         # Rescale the global model if asked to
         if self.rescale_global_model:
+            log(DEBUG, "Rescaling the global model")
             fedavg_norm = l2_norm(fedavg_result)
             current_norm = l2_norm(fedavgm_result)
             # Choose the minimum norm as the target norm

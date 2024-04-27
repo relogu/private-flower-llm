@@ -28,6 +28,7 @@ fl:
   n_local_epochs: 500
   n_local_steps: 0
   rescale_global_model: true
+  rescale_momentum_vector: true
 
 # Defaults
 defaults:
