@@ -173,6 +173,16 @@ def copy_old_checkpoints_to_new_run(
         )
 
 
+def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
+    """Adapt the batch size to the number of devices."""
+    if dist.is_initialized() and dist.get_world_size() > 1:
+        ratio = cfg.global_train_batch_size // dist.get_world_size()
+        cfg.global_train_batch_size = int(ratio * dist.get_world_size())
+        ratio = cfg.device_eval_batch_size // dist.get_world_size()
+        cfg.device_eval_batch_size = int(ratio * dist.get_world_size())
+    return cfg
+
+
 def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
@@ -1027,6 +1037,8 @@ def llm_fit(
     cfg, skip_iteration = set_client_load_path(
         cfg, config["server_round"], cfg["local_steps"]
     )
+    # Adapt batch size to the number of GPUs available
+    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
@@ -1137,6 +1149,8 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
     eval_metrics: dict[str, Scalar] = {}
+    # Adapt batch size to the number of GPUs available
+    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Force llm_config params to select the centralized eval set
