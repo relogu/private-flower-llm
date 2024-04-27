@@ -175,11 +175,11 @@ def copy_old_checkpoints_to_new_run(
 
 def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
     """Adapt the batch size to the number of devices."""
-    if dist.is_initialized() and dist.get_world_size() > 1:
-        ratio = cfg.global_train_batch_size // dist.get_world_size()
-        cfg.global_train_batch_size = int(ratio * dist.get_world_size())
-        ratio = cfg.device_eval_batch_size // dist.get_world_size()
-        cfg.device_eval_batch_size = int(ratio * dist.get_world_size())
+    if os.getenv("APPOINTED_CUDA_DEVICE") == "all" and torch.cuda.device_count() > 1:
+        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
+        cfg.global_train_batch_size = int(ratio * torch.cuda.device_count())
+        ratio = cfg.device_eval_batch_size // torch.cuda.device_count()
+        cfg.device_eval_batch_size = int(ratio * torch.cuda.device_count())
         log(
             DEBUG,
             "Adapted batch size to number of devices. train: %s, eval: %s",
