@@ -180,6 +180,12 @@ def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
         cfg.global_train_batch_size = int(ratio * dist.get_world_size())
         ratio = cfg.device_eval_batch_size // dist.get_world_size()
         cfg.device_eval_batch_size = int(ratio * dist.get_world_size())
+        log(
+            DEBUG,
+            "Adapted batch size to number of devices. train: %s, eval: %s",
+            cfg.global_train_batch_size,
+            cfg.device_eval_batch_size,
+        )
     return cfg
 
 
