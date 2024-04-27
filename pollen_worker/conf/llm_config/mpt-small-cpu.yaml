@@ -36,7 +36,7 @@ train_loader:
     local: ${llm_config.data_local}
     remote: ${llm_config.data_remote}
     split: train
-    shuffle: true
+    shuffle: false  # Shuffling happened at partitioning time
     max_seq_len: ${llm_config.max_seq_len}
     shuffle_seed: ${llm_config.global_seed}
     keep_zip: false
