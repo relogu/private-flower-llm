@@ -9,6 +9,7 @@ Papers:
 """
 
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from logging import DEBUG, INFO
 from pathlib import Path
 
@@ -150,7 +151,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: NDArrays = [0.0 * w for w in self.ndarray_parameters]
+        self.momentum_vector: NDArrays = deepcopy(self.ndarray_parameters)
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -190,17 +191,16 @@ class FedNesterov(FedAvgReproducibleSampling):
         if fedavg_result is None:
             return None, {}
 
-        # Get FedAvg pseudo-gradient from FedAvg aggregated model - g_t
+        # Get FedAvg pseudo-gradient from FedAvg aggregated model
         fedavg_pseudo_gradient: NDArrays = [
-            x - y for x, y in zip(fedavg_result, self.ndarray_parameters, strict=True)
+            x - y for x, y in zip(self.ndarray_parameters, fedavg_result, strict=False)
         ]
 
-        # Compute the new momentum vector - b_t
-        log(DEBUG, "Computing the new momentum vector")
+        # Compute the new momentum vector
         new_momentum_vector: NDArrays = [
-            self.server_momentum * w_old + g
+            w_old - self.server_learning_rate * g
             for w_old, g in zip(
-                self.momentum_vector, fedavg_pseudo_gradient, strict=True
+                self.ndarray_parameters, fedavg_pseudo_gradient, strict=False
             )
         ]
         # Rescale the momentum vector if asked to
@@ -215,19 +215,11 @@ class FedNesterov(FedAvgReproducibleSampling):
             # Rescale the norm of the fedavgm result to match the norm of the fedavg result
             new_momentum_vector = [scaling_factor * v for v in new_momentum_vector]
 
-        # Apply the nestorov mechanism to the update - g_t
-        nestorov_pseudo_gradient: NDArrays = [
-            g_t + self.server_momentum * b_t
-            for g_t, b_t in zip(
-                fedavg_pseudo_gradient, new_momentum_vector, strict=True
-            )
-        ]
-
-        # Apply the update
+        # Compute the new model
         fedavgm_result: NDArrays = [
-            w_old - self.server_learning_rate * g_t
-            for w_old, g_t in zip(
-                self.ndarray_parameters, nestorov_pseudo_gradient, strict=True
+            (1 + self.server_momentum) * v_new - self.server_momentum * v_old
+            for v_new, v_old in zip(
+                new_momentum_vector, self.momentum_vector, strict=False
             )
         ]
 
