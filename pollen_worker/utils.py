@@ -410,7 +410,7 @@ def namestr(obj: object, namespace: dict) -> list:
 
 def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True) -> str:
     """Inspect the tensors in the current Python session."""
-    # Initalizing the summary string and variables
+    # Initializing the summary string and variables
     summary = ""
     counter, total_size, gpu_size = 0, 0, 0
     gc.collect()
@@ -495,7 +495,7 @@ def get_selected_objects_types(
     selection: list[str], second_selection: list[str], verbose: bool = True
 ) -> str:
     """Inspect the tensors in the current Python session."""
-    # Initalizing the summary string and variables
+    # Initializing the summary string and variables
     summary = ""
     gc.collect()
     # Looping over the objects in the current Python session

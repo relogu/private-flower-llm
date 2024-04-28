@@ -1,7 +1,7 @@
 """Flower simulation using a pollen server.
 
 Starts a Flower server which awaits connections from Pollen node managers. It supports
-using wandb for logging and hydra for exeperiment configuration.
+using wandb for logging and hydra for experiment configuration.
 """
 
 import copy
