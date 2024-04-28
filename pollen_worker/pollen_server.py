@@ -869,7 +869,10 @@ class PollenServer(Server):
                         cast(str, inner_metrics["client_state_acc"])
                     )
                     client_state_accumulator |= acc
-                self.client_state = {
+                # NOTE: When using partial participation
+                # We need to accumulate the keys of the old state
+                # and the new state
+                self.client_state |= {
                     k: ClientState(**v) for k, v in client_state_accumulator.items()
                 }
 
