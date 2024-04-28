@@ -5,8 +5,6 @@ is_test: false
 pretrained_model_path: null
 store_init_model: false
 store_final_model: false
-cpu_only: false
-cpu_concurrency: 1
 
 # Pollen specific settings
 pollen:
@@ -35,7 +33,7 @@ fl:
 defaults:
   - _self_
   - llm_config: mpt-125m
-  - client_streams_list: none_based.yaml
+  - shared: base
 
 # S3 communication stack
 use_s3_comm: false

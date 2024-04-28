@@ -1,0 +1,11 @@
+---
+is_local: false
+is_federated: true
+
+federated:
+  local: fed-c4
+  remote: fed-c4
+
+centralized:
+  local: c4
+  remote: c4-dataset

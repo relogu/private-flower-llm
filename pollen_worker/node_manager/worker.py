@@ -56,6 +56,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         run_uuid: str,
         parameters: NDArrays,
         worker_rank: int,
+        cpu_only: bool,
+        cpu_concurrency: int,
     ) -> None:
         super().__init__()
         self.worker_uuid = worker_uuid
@@ -70,6 +72,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.worker_metrics: Config = {}
         self.auto_terminate = False
         self.n_samples = 0
+        self.cpu_only = cpu_only
+        self.cpu_concurrency = cpu_concurrency
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -214,6 +218,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             ),
             rank=str(self.worker_rank),
             master_port=str(fl_instructions_config["MASTER_PORT"]),
+            cpu_only=self.cpu_only,
+            cpu_concurrency=self.cpu_concurrency,
         ):
             # Try to execute the task of the client
             try:
@@ -333,6 +339,8 @@ def get_env_patcher(
     run_uuid: str,
     rank: str,
     master_port: str,
+    cpu_only: bool,
+    cpu_concurrency: int,
 ) -> Generator[None, Any, None]:
     """Yield a context manager to patch the environment variables."""
     try:
@@ -381,9 +389,17 @@ def get_env_patcher(
         else:
             with _patch_env(
                 RANK=rank,
-                WORLD_SIZE=str(torch.cuda.device_count()),
+                WORLD_SIZE=(
+                    str(torch.cuda.device_count())
+                    if not cpu_only
+                    else str(cpu_concurrency)
+                ),
                 LOCAL_RANK=rank,
-                LOCAL_WORLD_SIZE=str(torch.cuda.device_count()),
+                LOCAL_WORLD_SIZE=(
+                    str(torch.cuda.device_count())
+                    if not cpu_only
+                    else str(cpu_concurrency)
+                ),
                 NODE_RANK="0",
                 MASTER_ADDR="127.0.0.1",
                 MASTER_PORT=master_port,
@@ -519,6 +535,8 @@ def create_new_worker(
     run_uuid: str,
     parameters: NDArrays,
     worker_rank: int,
+    cpu_only: bool,
+    cpu_concurrency: int,
 ) -> Worker:
     """Create a new Worker."""
     # Generate the Worker's UUID
@@ -533,6 +551,8 @@ def create_new_worker(
         run_uuid=run_uuid,
         parameters=parameters,
         worker_rank=worker_rank,
+        cpu_only=cpu_only,
+        cpu_concurrency=cpu_concurrency,
     )
     # Return the Worker object, its UUID, and the shared objects
     return worker

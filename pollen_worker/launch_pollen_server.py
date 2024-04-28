@@ -41,17 +41,17 @@ def main(cfg: DictConfig) -> None:
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
     )
-    client_streams_list = cfg.client_streams_list
+    client_streams_list = cfg.shared.client_streams_list
     OmegaConf.resolve(client_streams_list)
     OmegaConf.set_struct(client_streams_list, False)
 
     if (
         client_streams_list is not None
-        and len(client_streams_list) != cfg.fl.n_total_clients
+        and len(client_streams_list) > cfg.fl.n_total_clients
     ):
         raise ValueError(
-            """When statically specifying client streams,
-            the number of entries must match the total number of clients."""
+            """When statically specifying client streams, the number of entries
+            must be greater or equal to the total number of clients."""
         )
 
     # Get initial model parameters

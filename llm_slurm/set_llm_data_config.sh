@@ -112,16 +112,18 @@ fi
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Set data configuration
 if $IS_FEDERATED; then
+	DATA_CONFIG="shared.dataset_config.is_federated=true"
 	if $IS_LOCAL; then
-		export DATA_CONFIG="llm_config.data_local=/local/scratch/fed-c4/c$N_CLIENTS $SPLIT_CONFIG"
+		export DATA_CONFIG="$DATA_CONFIG shared.dataset_config.is_local=true llm_config.data_local=/local/scratch/\{\}/c$N_CLIENTS $SPLIT_CONFIG"
 	else
-		export DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://fed-c4/c$N_CLIENTS $SPLIT_CONFIG"
+		export DATA_CONFIG="$DATA_CONFIG shared.dataset_config.is_local=false llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://\{\}/c$N_CLIENTS $SPLIT_CONFIG"
 	fi
 else
+	DATA_CONFIG="shared.dataset_config.is_federated=false"
 	if $IS_LOCAL; then
-		export DATA_CONFIG="llm_config.data_local=/local/scratch/c4 $SPLIT_CONFIG"
+		export DATA_CONFIG="$DATA_CONFIG shared.dataset_config.is_local=true llm_config.data_local=/local/scratch/\{\} $SPLIT_CONFIG"
 	else
-		export DATA_CONFIG="llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://c4-dataset $SPLIT_CONFIG"
+		export DATA_CONFIG="$DATA_CONFIG shared.dataset_config.is_local=false llm_config.data_local=$DATA_TMP_DIR llm_config.data_remote=s3://\{\} $SPLIT_CONFIG"
 	fi
 fi
 

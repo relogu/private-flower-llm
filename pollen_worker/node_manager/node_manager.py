@@ -247,6 +247,8 @@ class NodeManager(fl.client.NumPyClient):
                     run_uuid=self.run_uuid,
                     parameters=self.round_parameters,
                     worker_rank=rank,
+                    cpu_only=self.cpu_only,
+                    cpu_concurrency=self.cpu_concurrency,
                 )
                 start_worker(self.workers_dict[rank])
 
@@ -263,6 +265,8 @@ class NodeManager(fl.client.NumPyClient):
                 run_uuid=self.run_uuid,
                 parameters=self.round_parameters,
                 worker_rank=i,
+                cpu_only=self.cpu_only,
+                cpu_concurrency=self.cpu_concurrency,
             )
             self.workers_dict[i] = worker
             log(
@@ -858,11 +862,10 @@ def main(cfg: DictConfig) -> None:
         "NodeManager received the llm_config:\n%s",
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
-    client_streams_list = cfg.client_streams_list
-    OmegaConf.resolve(client_streams_list)
-    OmegaConf.set_struct(client_streams_list, False)
-    _llm_config.client_streams_list = client_streams_list
-    _llm_config.cpu_only = cfg.cpu_only
+    shared_config = cfg.shared
+    OmegaConf.resolve(shared_config)
+    OmegaConf.set_struct(shared_config, False)
+    _llm_config.shared = shared_config
 
     assert isinstance(_llm_config, DictConfig)
     # Get the client generator function
@@ -877,8 +880,8 @@ def main(cfg: DictConfig) -> None:
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
-        cpu_only=cfg.cpu_only,
-        cpu_concurrency=cfg.cpu_concurrency,
+        cpu_only=shared_config.cpu_only,
+        cpu_concurrency=shared_config.cpu_concurrency,
         use_s3_comm=cfg.use_s3_comm,
         s3_comm_config=cfg.s3_comm_config,
     )

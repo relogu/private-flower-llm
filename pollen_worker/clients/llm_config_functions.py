@@ -35,6 +35,25 @@ class StreamDict:
     keep_zip: bool | None = None
 
 
+def patch_dataset_config(cfg: DictConfig) -> DictConfig:
+    """Patch the dataset configuration for the client."""
+    dataset_config: DictConfig = cfg.shared.pop("dataset_config", None)
+
+    if dataset_config is None:
+        raise ValueError("The `dataset_config` must be provided in the shared config.")
+
+    if dataset_config.is_federated:
+        if dataset_config.is_local:
+            cfg.data_local = cfg.data_local.format(dataset_config.federated.local)
+        else:
+            cfg.data_remote = cfg.data_remote.format(dataset_config.federated.remote)
+    elif dataset_config.is_local:
+        cfg.data_local = cfg.data_local.format(dataset_config.centralized.local)
+    else:
+        cfg.data_remote = cfg.data_remote.format(dataset_config.centralized.remote)
+    return cfg
+
+
 def client_fit_set_data_config(cid: int | str, cfg: DictConfig) -> DictConfig:
     """Set the client data configuration for the client.
 
@@ -50,9 +69,11 @@ def client_fit_set_data_config(cid: int | str, cfg: DictConfig) -> DictConfig:
     DictConfig
         The updated configuration object.
     """
-    streams_dict_list: list[int | dict] | None = cfg.pop("client_streams_list", {}).get(
-        "client_streams_list", None
-    )
+    cfg = patch_dataset_config(cfg)
+
+    streams_dict_list: list[int | dict] | None = cfg.shared.pop(
+        "client_streams_list", {}
+    ).get("client_streams_list", None)
 
     client_streams = (
         streams_dict_list[int(cid)] if streams_dict_list is not None else None
@@ -123,6 +144,7 @@ def client_evaluate_set_data_config(cid: int | str, cfg: DictConfig) -> DictConf
     DictConfig
         The updated configuration object.
     """
+    cfg = patch_dataset_config(cfg)
     # TODO: Implement means of controlling evaluation
     # Set the appropriate path for the (centralized) val set
     if cfg.data_remote is not None:  # type: ignore[union-attr]
