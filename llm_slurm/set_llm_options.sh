@@ -28,7 +28,7 @@ while true; do
 done
 echo "set_llm_options: PROJECT_PATH=$PROJECT_PATH"
 #! Set the run configuration
-STEPS=$1
+STEPS=${1:-500}
 #! Test configuration: just 10 steps during training
 # STEPS="2"
 #! Configuration: local checkpointing, one local checkpoint, no callbacks
