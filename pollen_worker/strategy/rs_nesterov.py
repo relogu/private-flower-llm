@@ -9,7 +9,6 @@ Papers:
 """
 
 from collections.abc import Callable, Iterable
-from copy import deepcopy
 from logging import DEBUG, INFO
 from pathlib import Path
 
@@ -151,7 +150,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: NDArrays = deepcopy(self.ndarray_parameters)
+        self.momentum_vector: NDArrays = [0.0 * w for w in self.ndarray_parameters]
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -197,18 +196,13 @@ class FedNesterov(FedAvgReproducibleSampling):
         ]
 
         # Compute the new momentum vector - b_t
-        new_momentum_vector: NDArrays
-        if server_round == 1:
-            log(DEBUG, "First round, momentum vector is equal to the pseudo-gradient")
-            new_momentum_vector = deepcopy(fedavg_pseudo_gradient)
-        else:
-            log(DEBUG, "Computing the new momentum vector")
-            new_momentum_vector = [
-                self.server_momentum * w_old + g
-                for w_old, g in zip(
-                    self.momentum_vector, fedavg_pseudo_gradient, strict=True
-                )
-            ]
+        log(DEBUG, "Computing the new momentum vector")
+        new_momentum_vector: NDArrays = [
+            self.server_momentum * w_old + g
+            for w_old, g in zip(
+                self.momentum_vector, fedavg_pseudo_gradient, strict=True
+            )
+        ]
         # Rescale the momentum vector if asked to
         if self.rescale_momentum_vector:
             log(DEBUG, "Rescaling the momentum vector")
@@ -225,7 +219,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         nestorov_pseudo_gradient: NDArrays = [
             g_t + self.server_momentum * b_t
             for g_t, b_t in zip(
-                fedavg_pseudo_gradient, new_momentum_vector, strict=False
+                fedavg_pseudo_gradient, new_momentum_vector, strict=True
             )
         ]
 
