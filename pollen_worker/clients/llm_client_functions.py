@@ -10,7 +10,7 @@ import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
-from logging import DEBUG, ERROR, INFO, WARN, WARNING
+from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, cast
 
 import streaming
@@ -56,31 +56,18 @@ from composer.utils import S3ObjectStore
 from composer.utils.file_helpers import list_remote_objects
 
 import numpy as np
+from pollen_worker.clients.llm_config_functions import (
+    set_client_load_path,
+    validate_config,
+    set_n_workers_dataloaders,
+)
 from pollen_worker.utils import (
-    get_n_cpu_cores,
-    get_n_cuda_devices,
     get_trainable_params_dict,
     sum_of_squares,
 )
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 import ast
 from pollen_worker.utils import ClientState
-
-
-@dataclass
-class StreamDict:
-    """Dataclass for stream dictionary."""
-
-    remote: str | None = None
-    local: str | None = None
-    split: str | None = None
-    proportion: float | None = None
-    repeat: float | None = None
-    choose: int | None = None
-    download_retry: int | None = None
-    download_timeout: float | None = None
-    validate_hash: str | None = None
-    keep_zip: bool | None = None
 
 
 COMPOSER_MODEL_REGISTRY = {
@@ -192,217 +179,6 @@ def copy_old_checkpoints_to_new_run(
             )
         raise ValueError(
             f"Could not find the new run folder {new_run_folder} to copy checkpoints."
-        )
-
-
-def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the save and load path given the server round and client id."""
-    # Set the save folder specifically for this client and this run
-    if cfg.save_folder is not None:  # type: ignore[union-attr]
-        cfg.save_folder = (  # type: ignore[union-attr]
-            cfg.save_folder
-            + f"/{cfg.run_name}"
-            + "/client_"  # type: ignore[union-attr]
-            + str(cid)  # type: ignore[union-attr]
-        )
-
-    return cfg
-
-
-def set_client_load_path(
-    cfg: DictConfig, server_round: int, n_steps_done: int, n_steps: int
-) -> tuple[DictConfig, bool]:
-    """Set the save and load path given the server round and client id."""
-    # Flag to notify whether to skip this iteration or not
-    skip_iteration = False
-    # Set the save folder specifically for this client and this run
-    if cfg.save_folder is not None:  # type: ignore[union-attr]
-        try:
-            log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
-            if validate_given_remote_path(cfg.save_folder):
-                cfg.load_path = (
-                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
-                )
-                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
-            log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
-            path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
-            skip_iteration = validate_given_remote_path(path_to_check)
-            if skip_iteration:
-                cfg.load_path = cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank{rank}.pt"
-                log(
-                    INFO,
-                    "Skipping training iteration as checkpoint %s already exists.",
-                    cfg.load_path,
-                )
-                # NOTE: Don't re-save the checkpoint when resuming mid-round
-                cfg.save_folder = None
-        except Exception as e:
-            log(WARNING, "The `load_path` wasn't set.", exc_info=e)
-            # log(
-            #     DEBUG,
-            #     "Error running `os.listdir` for folder %s",
-            #     self.cfg.save_folder,
-            #     exc_info=e,
-            #     stack_info=True,
-            # )
-    return cfg, skip_iteration
-
-
-def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the wandb logger for the client."""
-    # Set the wandb run name
-    if cfg.loggers.wandb is not None:
-        # Get the server run name
-        run_name = cfg.loggers.wandb.init_kwargs.name
-        # Add the client id to the run name
-        new_run_name = run_name + f"_client_{cid}"
-        server_id = cfg.loggers.wandb.init_kwargs.id
-        cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
-        # Set the new run name
-        cfg.loggers.wandb.init_kwargs.name = new_run_name
-    return cfg
-
-
-def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the tensorboard logger for the client."""
-    # Set the tensorboard run name
-    if cfg.loggers.tensorboard is not None:
-        # Add the client id to the parameters
-        cfg.loggers.tensorboard.client_id = cid
-    return cfg
-
-
-def set_all_data_paths(
-    cfg: DictConfig, new_path: str | None, is_local: bool = True
-) -> DictConfig:
-    """Set the data paths for all dataloaders in the config."""
-    if is_local:
-        cfg.data_local = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.local = new_path
-        cfg.eval_loader.dataset.local = new_path
-    else:
-        cfg.data_remote = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.remote = new_path
-        cfg.eval_loader.dataset.remote = new_path
-    return cfg
-
-
-def set_n_workers_dataloaders(
-    cfg: DictConfig,
-    n_workers: int = -1,
-    cap: int = 32,
-) -> DictConfig:
-    """Set the `n_workers` parameter for all dataloaders in the config."""
-    if n_workers < 0:
-        n_workers = get_n_cpu_cores()
-    n_cuda_device = get_n_cuda_devices()
-    if n_cuda_device > 0:
-        n_workers = n_workers // n_cuda_device
-    cfg.train_loader.num_workers = min(n_workers, cap)
-    cfg.eval_loader.num_workers = min(n_workers, cap)
-    return cfg
-
-
-def validate_config(cfg: DictConfig) -> None:
-    """Validate compatible model and dataloader selection."""
-    loaders = [cfg.train_loader]
-    if "eval_loader" in cfg:
-        eval_loader = cfg.eval_loader
-        if isinstance(eval_loader, ListConfig):
-            for loader in eval_loader:
-                if loader.label is None:
-                    raise ValueError(
-                        "When specifying multiple evaluation datasets, each one must"
-                        "include the `label` attribute."
-                    )
-                loaders.append(loader)
-        else:
-            loaders.append(eval_loader)
-    for loader in loaders:
-        if loader is not None:
-            if loader.name == "text":
-                if cfg.model.name in {"hf_prefix_lm", "hf_t5"}:
-                    raise ValueError(
-                        f'Model type "{cfg.model.name}" is not supported when using the'
-                        '"text " dataloader. Please use the "text_denoising" dataloader'
-                        "to pre-train that model type."
-                    )
-            elif loader.name == "text_denoising":
-                if cfg.model.name == "hf_causal_lm":
-                    raise ValueError(
-                        f'Model type "{cfg.model.name}" is not supported when using the'
-                        '"text_denoising"  dataloader. Please use the "text" dataloader'
-                        "to pre-train that model type."
-                    )
-                if (
-                    loader.mixture_of_denoisers.decoder_only_format
-                    and cfg.model.name == "hf_t5"
-                ):
-                    log(
-                        WARN,
-                        'Model type "hf_t5" requires `decoder_only_format` to be '
-                        "``False``. Overriding `decoder_only_format` from ``True`` "
-                        "to ``False``.",
-                    )
-                    loader.mixture_of_denoisers.decoder_only_format = False
-                if (
-                    not loader.mixture_of_denoisers.decoder_only_format
-                ) and cfg.model.name == "hf_prefix_lm":
-                    log(
-                        WARN,
-                        'Model type "hf_prefix_lm" requires `decoder_only_format`'
-                        " to be``True``. Overriding `decoder_only_format` from"
-                        " ``False`` to``True``.",
-                    )
-                    loader.mixture_of_denoisers.decoder_only_format = True
-
-    if "icl_tasks" in cfg and cfg.model.name == "hf_t5":
-        raise ValueError(
-            "ICL evaluation does not currently support Encoder-Decoder models, such"
-            'as "hf_t5".'
-        )
-
-    if (
-        cfg.model.get("fc_type", "torch") != "te"
-        and "te" not in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp")
-        and "fp8" in cfg.precision
-    ):
-        log(
-            WARN,
-            "fp8 only supported for te.Linear layers. Either set"
-            "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-            "to enable layers using fp8 precision.",
-        )
-
-    if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
-        "ffn_config", {}
-    ).get("ffn_type", "mptmlp"):
-        fsdp_config = cfg.get("fsdp_config", None)
-        act_ckpt = fsdp_config.get("activation_checkpointing", False)
-        act_ckpt_reentrant = fsdp_config.get("activation_checkpointing_reentrant", True)
-        if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:
-            log(
-                WARN,
-                "`te.Linear` layers do not support activation_checkpointing with "
-                "`activation_checkpointing_reentrant = False`. "
-                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
-            )
-            cfg.fsdp_config.activation_checkpointing_reentrant = True
-
-    if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
-        log(
-            WARN,
-            "`te.LayerNormMLP` requires has issues with torch._dynamo."
-            " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
-            " to eager.",
-        )
-        torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
-
-    if cfg.model.get("load_in_8bit", False):
-        raise ValueError(
-            "`load_in_8bit` is only supported for evaluation rather than training."
         )
 
 

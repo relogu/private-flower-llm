@@ -252,32 +252,25 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_and_start_workers(self) -> None:
         """Create and start workers."""
-        if not self.cpu_only:
-            for i in range(get_n_cuda_devices()):
-                worker = create_new_worker(
-                    client_fn=self.client_fn,
-                    task_queue=self.task_queue,
-                    result_queue=self.result_queue,
-                    node_manager_uuid=self.node_manager_uuid,
-                    run_uuid=self.run_uuid,
-                    parameters=self.round_parameters,
-                    worker_rank=i,
-                )
-                self.workers_dict[i] = worker
-                log(DEBUG, f"Created worker with rank {i}")
-        else:
-            for i in range(self.cpu_concurrency):
-                worker = create_new_worker(
-                    client_fn=self.client_fn,
-                    task_queue=self.task_queue,
-                    result_queue=self.result_queue,
-                    node_manager_uuid=self.node_manager_uuid,
-                    run_uuid=self.run_uuid,
-                    parameters=self.round_parameters,
-                    worker_rank=i,
-                )
-                self.workers_dict[i] = worker
-                log(DEBUG, f"Created CPU worker with rank {i}")
+        for i in range(
+            get_n_cuda_devices() if not self.cpu_only else self.cpu_concurrency
+        ):
+            worker = create_new_worker(
+                client_fn=self.client_fn,
+                task_queue=self.task_queue,
+                result_queue=self.result_queue,
+                node_manager_uuid=self.node_manager_uuid,
+                run_uuid=self.run_uuid,
+                parameters=self.round_parameters,
+                worker_rank=i,
+            )
+            self.workers_dict[i] = worker
+            log(
+                DEBUG,
+                "Created %s worker with rank %s",
+                "cpu" if self.cpu_only else "gpu",
+                i,
+            )
         # log(
         #     DEBUG,
         #     "NodeManager %s: the worker dict has been build %s.",
