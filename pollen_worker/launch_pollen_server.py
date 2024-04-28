@@ -114,6 +114,8 @@ def main(cfg: DictConfig) -> None:
         evaluate_metrics_aggregation_fn=weighted_average,
         fit_metrics_aggregation_fn=weighted_average,
         seed=cfg.seed,
+        rescale_global_model=cfg.fl.rescale_global_model,
+        rescale_momentum_vector=cfg.fl.rescale_momentum_vector,
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager

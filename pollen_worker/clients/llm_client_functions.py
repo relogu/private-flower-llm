@@ -182,6 +182,22 @@ def copy_old_checkpoints_to_new_run(
         )
 
 
+def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
+    """Adapt the batch size to the number of devices."""
+    if os.getenv("APPOINTED_CUDA_DEVICE") == "all" and torch.cuda.device_count() > 1:
+        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
+        cfg.global_train_batch_size = int(ratio * torch.cuda.device_count())
+        ratio = cfg.device_eval_batch_size // torch.cuda.device_count()
+        cfg.device_eval_batch_size = int(ratio * torch.cuda.device_count())
+        log(
+            DEBUG,
+            "Adapted batch size to number of devices. train: %s, eval: %s",
+            cfg.global_train_batch_size,
+            cfg.device_eval_batch_size,
+        )
+    return cfg
+
+
 def build_composer_model(
     model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase
 ) -> Any:
@@ -808,7 +824,7 @@ def set_parameters_to_state(
     model_parameters_dict = get_trainable_params_dict(trainer.state.model)
     params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
     state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
-    trainer.state.model.load_state_dict(state_dict, strict=True)
+    trainer.state.model.load_state_dict(state_dict, strict=False)
     del state_dict
 
 
@@ -837,6 +853,8 @@ def llm_fit(
         client_state_struct.local_steps_cumulative,
         client_state_struct.local_steps_cumulative + num_batches_trained,
     )
+    # Adapt batch size to the number of GPUs available
+    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
@@ -954,6 +972,8 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
     eval_metrics: dict[str, Scalar] = {}
+    # Adapt batch size to the number of GPUs available
+    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
     # Automatically setting the `n_workers` parameter based on CPU available
     cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     # Force llm_config params to select the centralized eval set

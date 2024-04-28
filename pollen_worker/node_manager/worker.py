@@ -234,7 +234,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
                         self.result_queue.put(
                             WorkerResult(
                                 self.n_samples,
-                                end_time - start_time,
+                                (end_time - start_time) * 1e-9,
                                 self.worker_uuid,
                             )
                         )
@@ -249,7 +249,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
                         self.result_queue.put(
                             WorkerResult(
                                 self.n_samples,
-                                end_time - start_time,
+                                (end_time - start_time) * 1e-9,
                                 self.worker_uuid,
                             )
                         )
