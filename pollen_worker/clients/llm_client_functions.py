@@ -57,7 +57,11 @@ from composer.utils.file_helpers import list_remote_objects
 
 import numpy as np
 from pollen_worker.clients.llm_config_functions import (
+    adapt_train_batch_size_to_num_devices,
+    client_set_data_config,
     set_client_load_path,
+    set_client_tensorboard_logger,
+    set_client_wandb_logger,
     validate_config,
     set_n_workers_dataloaders,
 )
@@ -180,22 +184,6 @@ def copy_old_checkpoints_to_new_run(
         raise ValueError(
             f"Could not find the new run folder {new_run_folder} to copy checkpoints."
         )
-
-
-def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
-    """Adapt the batch size to the number of devices."""
-    if os.getenv("APPOINTED_CUDA_DEVICE") == "all" and torch.cuda.device_count() > 1:
-        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
-        cfg.global_train_batch_size = int(ratio * torch.cuda.device_count())
-        ratio = cfg.device_eval_batch_size // torch.cuda.device_count()
-        cfg.device_eval_batch_size = int(ratio * torch.cuda.device_count())
-        log(
-            DEBUG,
-            "Adapted batch size to number of devices. train: %s, eval: %s",
-            cfg.global_train_batch_size,
-            cfg.device_eval_batch_size,
-        )
-    return cfg
 
 
 def build_composer_model(
@@ -341,6 +329,7 @@ def get_raw_model_parameters(
 
 def _get_trainer_object(
     _cfg: DictConfig,
+    cid: int | str,
 ) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -383,22 +372,29 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    # TODO: Resolve the linter suggestion here
-    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
-    if type(visible_devices) is int and not _cfg.shared.cpu_only:
+    visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
+    log(DEBUG, f"Visible devices: {visible_devices}")
+    # The worker has been appointed a single GPU
+    if type(visible_devices) is int:
         device: DeviceGPU | DeviceCPU | None = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
-    elif _cfg.shared.cpu_only:
+    # The worker has been appointed all GPUs available
+    elif type(visible_devices) is tuple:
+        assert len(visible_devices) > 1
+        device = None
+    # The worker is in a CPU-only environment
+    else:
+        assert visible_devices is None
         device = DeviceCPU()
         log(DEBUG, f"Selecting device CPU, {device}")
-    else:
-        device = None
 
     # Get global and device batch size information from distributed/single node setting
     _cfg = update_batch_size_info(_cfg)
     logged_cfg.update(_cfg, merge=True)
 
     # Mandatory model training configs
+    set_n_workers_dataloaders(cfg=_cfg, device=device)
+    client_set_data_config(cfg=_cfg, cid=cid)
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
     tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
@@ -446,6 +442,8 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
+    set_client_wandb_logger(_cfg, cid)
+    set_client_tensorboard_logger(_cfg, cid)
     logger_configs: DictConfig | None = pop_config(
         _cfg, "loggers", must_exist=False, default_value=None
     )
@@ -457,6 +455,8 @@ def _get_trainer_object(
     )
 
     # Mandatory hyperparameters for training
+    # Adapt batch sizes to the number of GPUs available
+    adapt_train_batch_size_to_num_devices(_cfg)
     device_train_batch_size: int = pop_config(
         _cfg, "device_train_batch_size", must_exist=True
     )
@@ -670,8 +670,7 @@ def _get_trainer_object(
         else None
     )
 
-    # Dataloaders
-    # log(INFO, "Building train loader...")
+    # Train loader
     train_loader = None
     if train_loader_config is not None:
         train_loader = build_dataloader(
@@ -680,8 +679,7 @@ def _get_trainer_object(
             device_train_batch_size,
         )
 
-    # Evaluation
-    # log(INFO, "Building eval loader...")
+    # Evaluators and eval loaders
     evaluators = []
     eval_loaders = []
     if eval_loader_config is not None:
@@ -718,6 +716,7 @@ def _get_trainer_object(
     if eval_gauntlet_callback is not None:
         callbacks.append(eval_gauntlet_callback)
 
+    # Model
     model = _get_model_for_trainer(
         init_context,  # type: ignore[reportArgumentType]
         tokenizer,
@@ -739,10 +738,10 @@ def _get_trainer_object(
         eval_metric_names = list(model.train_metrics.keys())
         for eval_loader in eval_loaders:
             eval_loader.metric_names = eval_metric_names
-            evaluators.insert(0, eval_loader)  # Put the base eval_loaders first
+            # Put the base eval_loaders first
+            evaluators.insert(0, eval_loader)
 
     # Build the Trainer
-    # log(INFO, "Building trainer...")
     trainer = Trainer(
         run_name=run_name,
         seed=seed,
@@ -759,7 +758,7 @@ def _get_trainer_object(
         console_log_interval=console_log_interval,
         loggers=loggers,
         callbacks=callbacks,
-        precision=precision if not _cfg.shared.cpu_only else None,
+        precision=precision if not isinstance(device, DeviceCPU) else None,
         algorithms=algorithms,
         device_train_microbatch_size=device_train_microbatch_size,
         fsdp_config=fsdp_config,
@@ -784,6 +783,27 @@ def _get_trainer_object(
         device=device,
     )
     return trainer, eval_first, logged_cfg
+
+
+def close_trainer_and_clean_up(trainer_dict: dict[str, Trainer]) -> None:
+    """Close the trainer and clean up resources."""
+    # Close the trainer
+    trainer_dict["trainer"].close()
+    # NOTE: Clean up leaking shared memories
+    for shm in shared_memory_list:
+        SharedMemory.cleanup(shm)
+        atexit.unregister(SharedMemory.cleanup)
+    shared_memory_list.clear()
+    # Delete the trainer
+    try:
+        del trainer_dict["trainer"]
+    except Exception as e:
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
+    # Clean-up garbage collector and cuda cache
+    gc.collect()
+    torch.cuda.empty_cache()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
 
 def get_parameters(
@@ -847,16 +867,12 @@ def llm_fit(
     start_time = time.time_ns()
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
-    cfg, skip_iteration = set_client_load_path(
+    skip_iteration = set_client_load_path(
         cfg,
-        config["server_round"],
+        cid,
         client_state_struct.local_steps_cumulative,
         client_state_struct.local_steps_cumulative + num_batches_trained,
     )
-    # Adapt batch size to the number of GPUs available
-    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
-    # Automatically setting the `n_workers` parameter based on CPU available
-    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
         # Ignoring the optimizer state if loading a checkpoint
@@ -864,7 +880,7 @@ def llm_fit(
         # Ignoring the optimizer state when saving a checkpoint
         cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg)
+    trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg, cid=cid)
     # log(INFO, f"Trainer config: {logged_cfg}")
     train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
@@ -936,24 +952,9 @@ def llm_fit(
 
     # Close the trainer
     start_time = time.time_ns()
-    trainer.close()
-
-    # NOTE: Clean up leaking shared memories
-    for shm in shared_memory_list:
-        SharedMemory.cleanup(shm)
-        atexit.unregister(SharedMemory.cleanup)
-    shared_memory_list.clear()
-
-    # Delete the trainer
-    try:
-        del trainer
-    except Exception as e:
-        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    # NOTE: Using the dict trick to force the deletion of the trainer
+    trainer_dict = {"trainer": trainer}
+    close_trainer_and_clean_up(trainer_dict)
 
     train_metrics |= {"client_state": str(asdict(client_state_struct))}
     train_metrics |= {"cid": cid}
@@ -972,12 +973,6 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
     eval_metrics: dict[str, Scalar] = {}
-    # Adapt batch size to the number of GPUs available
-    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
-    # Automatically setting the `n_workers` parameter based on CPU available
-    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
-    # Force llm_config params to select the centralized eval set
-    cfg.train_loader = None  # type: ignore[union-attr]
     # NOTE: Trying to exclude checkpointing for eval
     cfg.autoresume = False  # type: ignore[union-attr]
     cfg.save_folder = None  # type: ignore[union-attr]
@@ -986,6 +981,7 @@ def llm_eval(
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
+        cid=0,
     )
     eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
     # Set the parameters
@@ -1015,25 +1011,9 @@ def llm_eval(
 
     # Close the trainer
     start_time = time.time_ns()
-    trainer.close()
-
-    # NOTE: Clean up leaking shared memories
-    for shm in shared_memory_list:
-        SharedMemory.cleanup(shm)
-        atexit.unregister(SharedMemory.cleanup)
-    shared_memory_list.clear()
-
-    # Delete the trainer
-    try:
-        del trainer
-    except Exception as e:
-        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    # NOTE: Using the dict trick to force the deletion of the trainer
+    trainer_dict = {"trainer": trainer}
+    close_trainer_and_clean_up(trainer_dict)
     eval_metrics |= {
         "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
     }

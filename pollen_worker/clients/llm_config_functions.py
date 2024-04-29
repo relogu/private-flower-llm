@@ -1,11 +1,11 @@
 """Provides functionality for manipulating MosaicML configs."""
 
-import copy
-from pathlib import Path
-from logging import INFO, WARN, WARNING
+import os
+from logging import DEBUG, INFO, WARN, WARNING
 
 import torch
 from composer.utils.file_helpers import validate_given_remote_path
+from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
 
@@ -35,26 +35,7 @@ class StreamDict:
     keep_zip: bool | None = None
 
 
-def patch_dataset_config(cfg: DictConfig) -> DictConfig:
-    """Patch the dataset configuration for the client."""
-    dataset_config: DictConfig = cfg.shared.pop("dataset_config", None)
-
-    if dataset_config is None:
-        raise ValueError("The `dataset_config` must be provided in the shared config.")
-
-    if dataset_config.is_federated:
-        if dataset_config.is_local:
-            cfg.data_local = cfg.data_local.format(dataset_config.federated.local)
-        else:
-            cfg.data_remote = cfg.data_remote.format(dataset_config.federated.remote)
-    elif dataset_config.is_local:
-        cfg.data_local = cfg.data_local.format(dataset_config.centralized.local)
-    else:
-        cfg.data_remote = cfg.data_remote.format(dataset_config.centralized.remote)
-    return cfg
-
-
-def client_fit_set_data_config(cid: int | str, cfg: DictConfig) -> DictConfig:
+def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
     """Set the client data configuration for the client.
 
     Parameters
@@ -69,117 +50,75 @@ def client_fit_set_data_config(cid: int | str, cfg: DictConfig) -> DictConfig:
     DictConfig
         The updated configuration object.
     """
-    cfg = patch_dataset_config(cfg)
-
-    streams_dict_list: list[int | dict] | None = cfg.shared.pop(
-        "client_streams_list", {}
-    ).get("client_streams_list", None)
-
-    client_streams = (
-        streams_dict_list[int(cid)] if streams_dict_list is not None else None
-    )
-
-    if client_streams is None or isinstance(client_streams, int):
-        cid_to_map_to = client_streams if client_streams is not None else cid
-        if cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Set the appropriate path given the `client_id`
-            new_remote_path = (
-                str(cfg.data_remote) + f"/client_{cid_to_map_to}"  # type: ignore[union-attr]
-            )
-            cfg = set_all_data_paths(cfg, new_remote_path, False)
-        # Tie the local path to the client_id and the run_uuid
-        new_local_path = (
-            str(cfg.data_local) + f"/client_{cid_to_map_to}"  # type: ignore[union-attr]
-        )
-        cfg = set_all_data_paths(cfg, new_local_path)
-        # Execute the fit function
-    else:
+    # Retrieve the train config to construct the dataset for the train loader
+    dataset_config: DictConfig
+    for split in ["train", "val"]:
+        if split == "train":
+            dataset_config = cfg.train_loader.dataset
+        elif split == "val":
+            dataset_config = cfg.eval_loader.dataset
+        else:
+            raise ValueError(f"Split {split} is not supported.")
+        # Get the root path for remote and local data
+        root_remote = dataset_config.pop("root_remote", "")
+        root_remote = root_remote + "/" if root_remote else root_remote
+        root_local = dataset_config.pop("root_local", "")
+        root_local = root_local + "/" if root_local else root_local
+        split = dataset_config.pop("split", "")
+        # Get the clients streams available
+        clients_streams = dataset_config.streams
+        # Extract the current client train stream -- it contains a dict of buckets
+        # NOTE: Here, we circumvent the possible limited size of the number of client
+        # streams since it should have been handled elsewhere
+        current_client_stream = clients_streams[int(cid) % len(clients_streams)][
+            "client_streams"
+        ]
+        # Set streams dictionary for the train loader
         actual_streams = {
-            key: StreamDict(**value) for key, value in client_streams["streams"].items()
+            key: StreamDict(**value) for key, value in current_client_stream.items()
         }
+        # Propagate the split and the remote and local paths to each stream
         for stream in actual_streams.values():
-            if cfg.data_remote is not None and stream.remote is not None:
-                stream.remote = (
-                    str(cfg.data_remote) + f"/{stream.remote}"
-                    if stream.remote
-                    else None
-                )
-            if stream.local is not None:
-                stream.local = str(cfg.data_local) + f"/{stream.local}"
-
-        set_all_data_paths(cfg, None, False)
-        set_all_data_paths(
-            cfg,
-            new_path=None,
-        )
-        test_streams = copy.deepcopy(actual_streams)
-        for stream in test_streams.values():
-            stream.split = "val"
-
+            # Set the split, remote, and local paths
+            stream.split = split if split else stream.split
+            stream.local = "" if stream.local is None else stream.local
+            stream.remote = "" if stream.remote is None else stream.remote
+            if root_local:
+                stream.local = root_local + stream.local
+            if root_remote:
+                stream.remote = root_remote + stream.remote
+            # Remove potential trailing slashes
+            assert stream.local is not None
+            assert stream.remote is not None
+            stream.local = stream.local.rstrip("/")
+            stream.remote = stream.remote.rstrip("/")
+        # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
-        test_streams_dict = {
-            name: asdict(stream) for name, stream in test_streams.items()
-        }
-        cfg.streams = streams_dict
-
-        cfg.train_loader.dataset.streams = streams_dict
-        cfg.eval_loader.dataset.streams = test_streams_dict
-    return cfg
+        # Assign the streams to the appropriate loaders
+        if split == "train":
+            cfg.train_loader.dataset.streams = streams_dict
+        elif split == "val":
+            cfg.eval_loader.dataset.streams = streams_dict
 
 
-def client_evaluate_set_data_config(cid: int | str, cfg: DictConfig) -> DictConfig:
-    """Set the client data configuration for eval.
-
-    # Only supports centralized evaluation for now.
-
-    Parameters
-    ----------
-    cid : int | str
-        The client id.
-    cfg : DictConfig
-        The configuration object.
-
-    Returns
-    -------
-    DictConfig
-        The updated configuration object.
-    """
-    cfg = patch_dataset_config(cfg)
-    # TODO: Implement means of controlling evaluation
-    # Set the appropriate path for the (centralized) val set
-    if cfg.data_remote is not None:  # type: ignore[union-attr]
-        # Extracts the parent folder from the remote path
-        new_remote_path = "s3:/" + str(
-            Path(
-                str(cfg.data_remote).replace("s3:/", "")  # type: ignore[union-attr]
-            ).parent  # type: ignore[union-attr]
-        )
-        cfg = set_all_data_paths(cfg, new_remote_path, False)
-    # Tie the local path to the client_id and the run_uuid
-    new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
-    cfg = set_all_data_paths(cfg, new_local_path)
-
-    return cfg
-
-
-def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
+def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         cfg.save_folder = (  # type: ignore[union-attr]
             cfg.save_folder
-            + f"/{cfg.run_name}"
             + "/client_"  # type: ignore[union-attr]
             + str(cid)  # type: ignore[union-attr]
         )
-
-    return cfg
+        log(DEBUG, "Set save folder: %s", cfg.save_folder)
 
 
 def set_client_load_path(
-    cfg: DictConfig, server_round: int, n_steps_done: int, n_steps: int
-) -> tuple[DictConfig, bool]:
+    cfg: DictConfig, cid: int | str, n_steps_done: int, n_steps: int
+) -> bool:
     """Set the save and load path given the server round and client id."""
+    # Set client load path
+    set_client_save_and_load_path(cfg, cid)
     # Flag to notify whether to skip this iteration or not
     skip_iteration = False
     # Set the save folder specifically for this client and this run
@@ -204,21 +143,14 @@ def set_client_load_path(
                 # NOTE: Don't re-save the checkpoint when resuming mid-round
                 cfg.save_folder = None
         except Exception as e:
-            log(WARNING, "The `load_path` wasn't set.", exc_info=e)
-            # log(
-            #     DEBUG,
-            #     "Error running `os.listdir` for folder %s",
-            #     self.cfg.save_folder,
-            #     exc_info=e,
-            #     stack_info=True,
-            # )
-    return cfg, skip_iteration
+            log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
+    return skip_iteration
 
 
-def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
+def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> None:
     """Set the wandb logger for the client."""
     # Set the wandb run name
-    if cfg.loggers.wandb is not None:
+    if cfg.loggers is not None and cfg.loggers.wandb is not None:
         # Get the server run name
         run_name = cfg.loggers.wandb.init_kwargs.name
         # Add the client id to the run name
@@ -227,49 +159,14 @@ def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
         cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
-    return cfg
 
 
-def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
+def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> None:
     """Set the tensorboard logger for the client."""
     # Set the tensorboard run name
     if cfg.loggers.tensorboard is not None:
         # Add the client id to the parameters
         cfg.loggers.tensorboard.client_id = cid
-    return cfg
-
-
-def set_all_data_paths(
-    cfg: DictConfig, new_path: str | None, is_local: bool = True
-) -> DictConfig:
-    """Set the data paths for all dataloaders in the config."""
-    if is_local:
-        cfg.data_local = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.local = new_path
-        cfg.eval_loader.dataset.local = new_path
-    else:
-        cfg.data_remote = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.remote = new_path
-        cfg.eval_loader.dataset.remote = new_path
-    return cfg
-
-
-def set_n_workers_dataloaders(
-    cfg: DictConfig,
-    n_workers: int = -1,
-    cap: int = 32,
-) -> DictConfig:
-    """Set the `n_workers` parameter for all dataloaders in the config."""
-    if n_workers < 0:
-        n_workers = get_n_cpu_cores()
-    n_cuda_device = get_n_cuda_devices()
-    if n_cuda_device > 0:
-        n_workers = n_workers // n_cuda_device
-    cfg.train_loader.num_workers = min(n_workers, cap)
-    cfg.eval_loader.num_workers = min(n_workers, cap)
-    return cfg
 
 
 def validate_config(cfg: DictConfig) -> None:
@@ -371,3 +268,50 @@ def validate_config(cfg: DictConfig) -> None:
         raise ValueError(
             "`load_in_8bit` is only supported for evaluation rather than training."
         )
+
+
+def adapt_train_batch_size_to_num_devices(cfg: DictConfig) -> None:
+    """Adapt the batch size to the number of devices."""
+    if (
+        os.getenv("APPOINTED_CUDA_DEVICE") == "all-gpus"
+        and torch.cuda.device_count() > 1
+    ):
+        original_batch_size = cfg.global_train_batch_size
+        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
+        estimated_batch_size = int(ratio * torch.cuda.device_count())
+        if estimated_batch_size != cfg.global_train_batch_size:
+            cfg.global_train_batch_size = estimated_batch_size
+            log(
+                WARNING,
+                "Train batch size (%s) was not appropriate for %s GPUs available. "
+                "New train batch size: %s",
+                original_batch_size,
+                torch.cuda.device_count(),
+                cfg.global_train_batch_size,
+            )
+
+
+def set_n_workers_dataloaders(
+    cfg: DictConfig,
+    device: Device | DeviceGPU | DeviceCPU | None,
+    cap: int = 32,
+) -> None:
+    """Set the `n_workers` parameter for all dataloaders in the config."""
+    # Retrieve system information
+    n_cpu_cores_available = get_n_cpu_cores()
+    n_workers: int
+    if isinstance(device, DeviceCPU):
+        # CPU-only environment that cannot be collaborative
+        cpu_concurrency = int(os.getenv("CPU_CONCURRENCY", "1"))
+        n_workers = n_cpu_cores_available // cpu_concurrency
+    elif isinstance(device, DeviceGPU) or device is None:
+        # Collaborative or not environment: multiple GPUs are concurrently used for
+        # training each having its own dataloader process
+        n_cuda_device = get_n_cuda_devices()
+        n_workers = n_cpu_cores_available // n_cuda_device
+    else:
+        raise TypeError(f"Device type {type(device)} is not supported.")
+    if cfg.train_loader.num_workers == "auto":
+        cfg.train_loader.num_workers = min(n_workers, cap)
+    if cfg.eval_loader.num_workers == "auto":
+        cfg.eval_loader.num_workers = min(n_workers, cap)
