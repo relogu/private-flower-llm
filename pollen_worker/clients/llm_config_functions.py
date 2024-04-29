@@ -164,7 +164,7 @@ def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> None:
 def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> None:
     """Set the tensorboard logger for the client."""
     # Set the tensorboard run name
-    if cfg.loggers.tensorboard is not None:
+    if cfg.loggers is not None and cfg.loggers.tensorboard is not None:
         # Add the client id to the parameters
         cfg.loggers.tensorboard.client_id = cid
 
