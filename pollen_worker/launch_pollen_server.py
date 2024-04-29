@@ -41,17 +41,19 @@ def main(cfg: DictConfig) -> None:
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
     )
-    client_streams_list = cfg.shared.client_streams_list
-    OmegaConf.resolve(client_streams_list)
-    OmegaConf.set_struct(client_streams_list, False)
+    num_train_client_streams = len(cfg.dataset.train.streams)
+    num_eval_client_streams = len(cfg.dataset.val.streams)
 
-    if (
-        client_streams_list is not None
-        and len(client_streams_list) > cfg.fl.n_total_clients
-    ):
+    if num_train_client_streams < cfg.fl.n_total_clients:
         raise ValueError(
-            """When statically specifying client streams, the number of entries
-            must be greater or equal to the total number of clients."""
+            """When statically specifying client streams for training, the number of
+            entries must be greater or equal to the total number of clients."""
+        )
+
+    if num_eval_client_streams < 1:
+        raise ValueError(
+            """When statically specifying client streams for eval, the number of entries
+            must be equal to 1."""
         )
 
     # Get initial model parameters
@@ -90,6 +92,8 @@ def main(cfg: DictConfig) -> None:
         initial_parameters = ndarrays_to_parameters(initial_parameters_ndarrays)
     # Instantiate the strategy
     strategy = FedNesterov(
+        server_learning_rate=cfg.fl.server_learning_rate,
+        server_momentum=cfg.fl.server_momentum,
         fraction_fit=sys.float_info.min,
         fraction_evaluate=sys.float_info.min,
         min_fit_clients=cfg.fl.n_clients_per_round,
