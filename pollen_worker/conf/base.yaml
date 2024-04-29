@@ -15,6 +15,8 @@ pollen:
   refresh_period: 50
   fit_collaborative: false
   eval_collaborative: true
+  cpu_only: false
+  cpu_concurrency: 1
   checkpoint: false
   # Set to null to only restore from the current run
   restore_run_uuid: null
@@ -27,14 +29,18 @@ fl:
   reset_optimizer: true
   n_local_epochs: 500
   n_local_steps: 0
-  rescale_global_model: true
-  rescale_momentum_vector: true
+  rescale_global_model: false
+  rescale_momentum_vector: false
+  server_learning_rate: 0.7
+  server_momentum: 0.7
 
 # Defaults
 defaults:
   - _self_
   - llm_config: mpt-125m
-  - shared: base
+  - dataset: fed-c4-c4
+  - dataset/streams@dataset.train.streams: 8_clients
+  - dataset/streams@dataset.val.streams: centralised
 
 # S3 communication stack
 use_s3_comm: false

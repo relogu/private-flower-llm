@@ -32,29 +32,13 @@ tokenizer:
 # Dataloaders
 train_loader:
   name: text
-  dataset:
-    local: ${llm_config.data_local}
-    remote: ${llm_config.data_remote}
-    split: train
-    shuffle: false  # Shuffling happened at partitioning time
-    max_seq_len: ${llm_config.max_seq_len}
-    shuffle_seed: ${llm_config.global_seed}
-    keep_zip: false
-    cache_limit: null
+  dataset: ${dataset.train}
   drop_last: true
   num_workers: 4
 
 eval_loader:
   name: text
-  dataset:
-    local: ${llm_config.data_local}
-    remote: ${llm_config.data_remote}
-    split: val
-    shuffle: false
-    max_seq_len: ${llm_config.max_seq_len}
-    shuffle_seed: ${llm_config.global_seed}
-    keep_zip: false
-    cache_limit: null
+  dataset: ${dataset.val}
   drop_last: false
   num_workers: 4
 

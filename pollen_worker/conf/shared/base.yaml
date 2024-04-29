@@ -1,7 +1,0 @@
----
-defaults:
-  - client_streams_list: none_based
-  - dataset_config: c4
-
-cpu_only: false
-cpu_concurrency: 1
