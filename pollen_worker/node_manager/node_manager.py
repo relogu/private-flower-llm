@@ -138,7 +138,9 @@ class NodeManager(fl.client.NumPyClient):
         # One result_queue for all GPUs
         self.result_queue: QueueType = Queue()
         # Get node properties about hardware accelerators
+        self.node: Node = Node()
         self.properties = self._get_node_properties()
+        assert self.node.device_info is not None
         # Set how many processes can be run on each GPU given the properties
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
         # log(DEBUG, "Max processes per device: %s", max_proc_device)
@@ -164,7 +166,7 @@ class NodeManager(fl.client.NumPyClient):
                 **device_info,
             )
         elif self.cpu_only:
-            device_info["merged"] = Device(
+            device_info["cpu-merged"] = Device(
                 device_id=0,
                 name="cpu:0",
                 device_type="cpu",
@@ -173,24 +175,28 @@ class NodeManager(fl.client.NumPyClient):
                 - psutil.virtual_memory().used,
                 concurrency=1,
             )
-
         else:
             raise ValueError("Running without cpu_only but GPU is not available.")
         try:
             cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
         except AttributeError:
             cpus = psutil.cpu_count()
-        # log(DEBUG, "NodeManager %s: device_info are %s", self.name, device_info)
         # Get general node properties
-        self.node = Node(
-            name=getfqdn(),
-            cpu_num=cpus,
-            cpu_ram_total=psutil.virtual_memory().total,
-            cpu_ram_available=psutil.virtual_memory().total
-            - psutil.virtual_memory().used,
-            device_info=device_info,
-        )
-        # log(DEBUG, "NodeManager %s: node properties are %s", self.name, self.node)
+        if self.node is None:
+            self.node = Node(
+                name=getfqdn(),
+                cpu_num=cpus,
+                cpu_ram_total=psutil.virtual_memory().total,
+                cpu_ram_available=psutil.virtual_memory().total
+                - psutil.virtual_memory().used,
+                device_info=device_info,
+            )
+        elif self.node.device_info is None:
+            self.node.device_info = device_info
+        else:
+            for k, v in device_info.items():
+                if k not in self.node.device_info:
+                    self.node.device_info[k] = v
         return {"node": str(self.node)}
 
     def get_properties(self, config: Config) -> dict[str, Scalar]:
@@ -566,7 +572,12 @@ class NodeManager(fl.client.NumPyClient):
             # Re-create and start the workers
             self._create_and_start_workers()
         # Extract assignments from config
-        assignments = cast(str, config.pop("merged", str([[0, 1]])))
+        assignments: str | None = None
+        assert self.node.device_info is not None
+        for key in self.node.device_info:
+            assignments = cast(str, config.pop(key, str([[0, 1]])))
+        if not assignments:
+            raise ValueError("No assignments found in the config.")
         list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
 
         node_train_metrics: dict[str, Scalar] = {}
@@ -600,14 +611,14 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
-        log(
-            DEBUG,
-            "NodeManager %s: Results (%s, %s, %s).",
-            self.name,
-            len(aggregated_params),
-            sum_of_samples,
-            node_train_metrics,
-        )
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: Results (%s, %s, %s).",
+        #     self.name,
+        #     len(aggregated_params),
+        #     sum_of_samples,
+        #     node_train_metrics,
+        # )
 
         # If applicable, push the aggregated parameters to S3 Object Store
         if self.use_s3_comm:
@@ -720,7 +731,12 @@ class NodeManager(fl.client.NumPyClient):
 
         start_time = time.time()
         # Extract assignments from config
-        assignments = cast(str, config.pop("merged", str([0, 1])))
+        assignments: str | None = None
+        assert self.node.device_info is not None
+        for key in self.node.device_info:
+            assignments = cast(str, config.pop(key, str([[0, 1]])))
+        if not assignments:
+            raise ValueError("No assignments found in the config.")
         list_of_cids_to_eval: list[str] = ast.literal_eval(assignments)[0]
         # Append NodeManager's config
         config["run_uuid"] = (
@@ -820,14 +836,14 @@ class NodeManager(fl.client.NumPyClient):
             self.name,
             time.time() - start_time,
         )
-        log(
-            DEBUG,
-            "NodeManager %s: Results (%s, %s, %s).",
-            self.name,
-            node_eval_loss,
-            int(node_eval_samples),
-            node_eval_metrics,
-        )
+        # log(
+        #     DEBUG,
+        #     "NodeManager %s: Results (%s, %s, %s).",
+        #     self.name,
+        #     node_eval_loss,
+        #     int(node_eval_samples),
+        #     node_eval_metrics,
+        # )
         # Return results
         return (
             node_eval_loss,
@@ -854,18 +870,14 @@ def main(cfg: DictConfig) -> None:
         "NodeManager received the following config:\n%s",
         OmegaConf.to_yaml(cfg, resolve=True),
     )
+    OmegaConf.resolve(cfg)
+    OmegaConf.set_struct(cfg, False)
     _llm_config = cfg.llm_config
-    OmegaConf.resolve(_llm_config)
-    OmegaConf.set_struct(_llm_config, False)
     log(
         INFO,
         "NodeManager received the llm_config:\n%s",
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
-    shared_config = cfg.shared
-    OmegaConf.resolve(shared_config)
-    OmegaConf.set_struct(shared_config, False)
-    _llm_config.shared = shared_config
 
     assert isinstance(_llm_config, DictConfig)
     # Get the client generator function
@@ -880,15 +892,15 @@ def main(cfg: DictConfig) -> None:
         run_uuid=cfg.run_uuid,
         parameters=parameters,
         refresh_period=int(cfg.pollen.refresh_period),
-        cpu_only=shared_config.cpu_only,
-        cpu_concurrency=shared_config.cpu_concurrency,
+        cpu_only=cfg.pollen.cpu_only,
+        cpu_concurrency=cfg.pollen.cpu_concurrency,
         use_s3_comm=cfg.use_s3_comm,
         s3_comm_config=cfg.s3_comm_config,
     )
     # Choose the type of execution
     if cfg.is_test:
         log(INFO, "NodeManager::test")
-        fl_instructions_config: Config = {"server_round": 1, "merged": "0,1,2"}
+        fl_instructions_config: Config = {"server_round": 1, "gpu-merged": "0,1,2"}
         loss, n_samples, train_metrics = node_manager.evaluate(
             parameters, fl_instructions_config
         )
