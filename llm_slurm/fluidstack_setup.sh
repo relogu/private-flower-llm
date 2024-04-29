@@ -98,7 +98,7 @@ pyenv global 3.10.13
 #! Upgrade pip
 pip install --upgrade pip
 #! Monitoring utilities
-sudo snap install bpytop
+sudo apt install bpytop
 pip install nvitop
 #! Install poetry
 pip install poetry
@@ -125,7 +125,7 @@ sudo mkdir -p /ephemeral/$USER/tmp
 #! Clone the repo and move to the 'llm' branch
 mkdir -p $HOME/projects
 cd $HOME/projects
-git clone https://github.com/relogu/pollen_worker.git
+git clone git@github.com:relogu/pollen_worker.git
 cd pollen_worker
 git fetch origin
 git checkout --track origin/llm
