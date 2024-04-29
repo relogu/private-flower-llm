@@ -27,13 +27,6 @@ from pollen_worker.clients.llm_client_functions import (
     llm_eval,
     llm_fit,
 )
-from pollen_worker.clients.llm_config_functions import (
-    client_evaluate_set_data_config,
-    client_fit_set_data_config,
-    set_client_save_and_load_path,
-    set_client_tensorboard_logger,
-    set_client_wandb_logger,
-)
 from pollen_worker.utils import (
     get_file_names_from_file_number,
     get_open_fds,
@@ -54,9 +47,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Set init parameters
         self.cid = cid
         self.cfg = cfg
-        self.cfg = set_client_save_and_load_path(self.cfg, self.cid)
-        self.cfg = set_client_wandb_logger(self.cfg, self.cid)
-        self.cfg = set_client_tensorboard_logger(self.cfg, self.cid)
 
         transformers.logging.set_verbosity_error()
 
@@ -95,9 +85,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the fit step."""
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Set the appropriate dataset path given the `client_id`
-        cfg = client_fit_set_data_config(self.cid, cfg)
-
         return llm_fit(parameters, config, cfg, self.cid)
 
     def evaluate(
@@ -108,8 +95,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        cfg = client_evaluate_set_data_config(self.cid, cfg)
-
         return llm_eval(parameters, config, cfg)
 
 
