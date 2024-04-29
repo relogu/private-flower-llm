@@ -37,24 +37,22 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
 else
 	echo "Assuming the script is executing NOT in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. $PROJECT_PATH/llm_slurm/install_env.sh "no_cuda"
 fi
-#! Activate Poetry environment
-POETRY_ENV_PATH=$(poetry env info --path)
-. $POETRY_ENV_PATH/bin/activate
 
 #! Set `LLM_CONFIG` environment variable
 . $PROJECT_PATH/llm_slurm/set_llm_config.sh
-
-#! Set `DATA_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
+#! Export the endpoint of the S3 object store
+# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+#! Using directly the IP to avoid name resolution issues
+export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 mkdir -p $SAVE_PATH
 
-#! Set `LLM_OPTIONS` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_options.sh
-
 #! Test `text_data.py`
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.dataset.text_data $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/text_data.log
+HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.dataset.text_data $LLM_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $SAVE_PATH/text_data.log

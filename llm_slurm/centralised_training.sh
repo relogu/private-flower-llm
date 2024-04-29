@@ -52,8 +52,10 @@ else
 fi
 #! Set `LLM_CONFIG` environment variable
 . $PROJECT_PATH/llm_slurm/set_llm_config.sh $MODEL_SIZE
-#! Set `DATA_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh "full" false false
+#! Export the endpoint of the S3 object store
+# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+#! Using directly the IP to avoid name resolution issues
+export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
@@ -67,7 +69,8 @@ if [ -z "$SAVE_PATH" ]; then
 fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH llm_config.save_num_checkpoints_to_keep=1"
+export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
