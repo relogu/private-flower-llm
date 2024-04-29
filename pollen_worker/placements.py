@@ -141,7 +141,8 @@ def pollen_learning_based_placement(
     """
     return learning_based_placement(
         fns=[_pollen_function, _jacobian_pollen_function],
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,
+        # fns=[_linear, _jacobian_linear], **kwargs
     )
 
 
@@ -156,9 +157,7 @@ def parrot_learning_based_placement(
         (client_proxy, device_assignment).
     """
     return learning_based_placement(
-        fns=[_linear, _jacobian_linear],
-        is_parrot=True,
-        **kwargs,  # type: ignore[arg-type]
+        fns=[_linear, _jacobian_linear], is_parrot=True, **kwargs
     )
 
 
@@ -246,7 +245,7 @@ def learning_based_placement(
     correction_tables: dict[str, pa.Table] | None = None,
     is_parrot: bool = False,
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement generic learning-based placement strategy.
 
@@ -419,7 +418,7 @@ def round_robin_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement Round-Robin placement strategy.
 
@@ -463,7 +462,7 @@ def round_robin_placement(
                     current_split = splits.pop(0)
                     if len(current_split) > 0:
                         device_assignment[device_id].append(current_split.tolist())
-    # Covert list of int to string
+    # Covert list of int to string``
     node_assignments: list[tuple[ClientProxy, dict[str, str]]] = [
         (
             c_p,
@@ -484,7 +483,7 @@ def sorted_round_robin_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement Sorted Round-Robin placement strategy.
 
@@ -556,7 +555,7 @@ def samples_placement(
     sampled_virtual_cids: list[tuple[int, int]],
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the number of samples.
 
@@ -596,6 +595,7 @@ def samples_placement(
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
+    # Loop over the splits created
     while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
@@ -629,7 +629,7 @@ def batches_placement(
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the number of batches.
 
@@ -671,6 +671,7 @@ def batches_placement(
         (client_proxy, copy(device_assignment))
         for _, (client_proxy, _) in nodes_dict.items()
     ]
+    # Loop over the splits created
     while len(splits) > 0:
         # Loop over nodes
         for (_c_p, device_assignment), (_, (_, node)) in zip(
@@ -704,7 +705,7 @@ def log_batches_placement(
     nodes_dict: dict[str, tuple[ClientProxy, Node]],
     batch_size: int,
     verbose: bool = False,
-    **kwargs: dict,
+    **kwargs: Any,
 ) -> list[tuple[ClientProxy, dict[str, str]]]:
     """Implement placement strategy based on the log of the number of batches.
 

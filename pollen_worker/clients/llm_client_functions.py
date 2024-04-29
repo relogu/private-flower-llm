@@ -10,13 +10,13 @@ import time
 import warnings
 from collections import OrderedDict
 from contextlib import _GeneratorContextManager
-from logging import DEBUG, ERROR, INFO, WARN, WARNING
+from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, cast
 
 import streaming
 import torch
 from composer import Callback, ComposerModel, Evaluator, Trainer
-from composer.devices import DeviceGPU
+from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility
 from composer.utils.file_helpers import validate_given_remote_path
@@ -30,6 +30,8 @@ from llmfoundry.models.inference_api_wrapper.openai_causal_lm import (
     OpenAICausalLMEvalWrapper,
     OpenAIChatAPIEvalWrapper,
 )
+
+
 from llmfoundry.models.mpt.modeling_mpt import ComposerMPTCausalLM, MPTForCausalLM
 from llmfoundry.utils.builders import (
     build_algorithm,
@@ -54,12 +56,23 @@ from composer.utils import S3ObjectStore
 from composer.utils.file_helpers import list_remote_objects
 
 import numpy as np
+from pollen_worker.clients.llm_config_functions import (
+    adapt_train_batch_size_to_num_devices,
+    client_set_data_config,
+    set_client_load_path,
+    set_client_tensorboard_logger,
+    set_client_wandb_logger,
+    validate_config,
+    set_n_workers_dataloaders,
+)
 from pollen_worker.utils import (
-    get_n_cpu_cores,
-    get_n_cuda_devices,
     get_trainable_params_dict,
     sum_of_squares,
 )
+from dataclasses import asdict
+import ast
+from pollen_worker.utils import ClientState
+
 
 COMPOSER_MODEL_REGISTRY = {
     "mpt_causal_lm": ComposerMPTCausalLM,
@@ -170,237 +183,6 @@ def copy_old_checkpoints_to_new_run(
             )
         raise ValueError(
             f"Could not find the new run folder {new_run_folder} to copy checkpoints."
-        )
-
-
-def adapt_batch_size_to_num_devices(cfg: DictConfig) -> DictConfig:
-    """Adapt the batch size to the number of devices."""
-    if os.getenv("APPOINTED_CUDA_DEVICE") == "all" and torch.cuda.device_count() > 1:
-        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
-        cfg.global_train_batch_size = int(ratio * torch.cuda.device_count())
-        ratio = cfg.device_eval_batch_size // torch.cuda.device_count()
-        cfg.device_eval_batch_size = int(ratio * torch.cuda.device_count())
-        log(
-            DEBUG,
-            "Adapted batch size to number of devices. train: %s, eval: %s",
-            cfg.global_train_batch_size,
-            cfg.device_eval_batch_size,
-        )
-    return cfg
-
-
-def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the save and load path given the server round and client id."""
-    # Set the save folder specifically for this client and this run
-    if cfg.save_folder is not None:  # type: ignore[union-attr]
-        cfg.save_folder = (  # type: ignore[union-attr]
-            cfg.save_folder
-            + f"/{cfg.run_name}"
-            + "/client_"  # type: ignore[union-attr]
-            + str(cid)  # type: ignore[union-attr]
-        )
-
-    return cfg
-
-
-def set_client_load_path(
-    cfg: DictConfig, server_round: int, local_steps: str
-) -> tuple[DictConfig, bool]:
-    """Set the save and load path given the server round and client id."""
-    # Flag to notify whether to skip this iteration or not
-    skip_iteration = False
-    # Set the save folder specifically for this client and this run
-    if cfg.save_folder is not None:  # type: ignore[union-attr]
-        try:
-            log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
-            if validate_given_remote_path(cfg.save_folder):
-                n_steps_done = int(
-                    int(local_steps.replace("ba", "")) * (server_round - 1)
-                )
-                cfg.load_path = (
-                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
-                )
-                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
-            log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
-            n_steps = int(int(local_steps.replace("ba", "")) * (server_round))
-            path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
-            skip_iteration = validate_given_remote_path(path_to_check)
-            if skip_iteration:
-                cfg.load_path = cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank{rank}.pt"
-                log(
-                    INFO,
-                    "Skipping training iteration as checkpoint %s already exists.",
-                    cfg.load_path,
-                )
-                # NOTE: Don't re-save the checkpoint when resuming mid-round
-                cfg.save_folder = None
-        except Exception as e:
-            log(WARNING, "The `load_path` wasn't set.", exc_info=e)
-            # log(
-            #     DEBUG,
-            #     "Error running `os.listdir` for folder %s",
-            #     self.cfg.save_folder,
-            #     exc_info=e,
-            #     stack_info=True,
-            # )
-    return cfg, skip_iteration
-
-
-def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the wandb logger for the client."""
-    # Set the wandb run name
-    if cfg.loggers.wandb is not None:
-        # Get the server run name
-        run_name = cfg.loggers.wandb.init_kwargs.name
-        # Add the client id to the run name
-        new_run_name = run_name + f"_client_{cid}"
-        server_id = cfg.loggers.wandb.init_kwargs.id
-        cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
-        # Set the new run name
-        cfg.loggers.wandb.init_kwargs.name = new_run_name
-    return cfg
-
-
-def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> DictConfig:
-    """Set the tensorboard logger for the client."""
-    # Set the tensorboard run name
-    if cfg.loggers.tensorboard is not None:
-        # Add the client id to the parameters
-        cfg.loggers.tensorboard.client_id = cid
-    return cfg
-
-
-def set_all_data_paths(
-    cfg: DictConfig, new_path: str, is_local: bool = True
-) -> DictConfig:
-    """Set the data paths for all dataloaders in the config."""
-    if is_local:
-        cfg.data_local = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.local = new_path
-        cfg.eval_loader.dataset.local = new_path
-    else:
-        cfg.data_remote = new_path
-        if cfg.train_loader is not None:
-            cfg.train_loader.dataset.remote = new_path
-        cfg.eval_loader.dataset.remote = new_path
-    return cfg
-
-
-def set_n_workers_dataloaders(
-    cfg: DictConfig,
-    n_workers: int = -1,
-    cap: int = 32,
-) -> DictConfig:
-    """Set the `n_workers` parameter for all dataloaders in the config."""
-    if n_workers < 0:
-        n_workers = get_n_cpu_cores()
-    n_cuda_device = get_n_cuda_devices()
-    if n_cuda_device > 0:
-        n_workers = n_workers // n_cuda_device
-    cfg.train_loader.num_workers = min(n_workers, cap)
-    cfg.eval_loader.num_workers = min(n_workers, cap)
-    return cfg
-
-
-def validate_config(cfg: DictConfig) -> None:
-    """Validate compatible model and dataloader selection."""
-    loaders = [cfg.train_loader]
-    if "eval_loader" in cfg:
-        eval_loader = cfg.eval_loader
-        if isinstance(eval_loader, ListConfig):
-            for loader in eval_loader:
-                if loader.label is None:
-                    raise ValueError(
-                        "When specifying multiple evaluation datasets, each one must"
-                        "include the `label` attribute."
-                    )
-                loaders.append(loader)
-        else:
-            loaders.append(eval_loader)
-    for loader in loaders:
-        if loader is not None:
-            if loader.name == "text":
-                if cfg.model.name in {"hf_prefix_lm", "hf_t5"}:
-                    raise ValueError(
-                        f'Model type "{cfg.model.name}" is not supported when using the'
-                        '"text " dataloader. Please use the "text_denoising" dataloader'
-                        "to pre-train that model type."
-                    )
-            elif loader.name == "text_denoising":
-                if cfg.model.name == "hf_causal_lm":
-                    raise ValueError(
-                        f'Model type "{cfg.model.name}" is not supported when using the'
-                        '"text_denoising"  dataloader. Please use the "text" dataloader'
-                        "to pre-train that model type."
-                    )
-                if (
-                    loader.mixture_of_denoisers.decoder_only_format
-                    and cfg.model.name == "hf_t5"
-                ):
-                    log(
-                        WARN,
-                        'Model type "hf_t5" requires `decoder_only_format` to be '
-                        "``False``. Overriding `decoder_only_format` from ``True`` "
-                        "to ``False``.",
-                    )
-                    loader.mixture_of_denoisers.decoder_only_format = False
-                if (
-                    not loader.mixture_of_denoisers.decoder_only_format
-                ) and cfg.model.name == "hf_prefix_lm":
-                    log(
-                        WARN,
-                        'Model type "hf_prefix_lm" requires `decoder_only_format`'
-                        " to be``True``. Overriding `decoder_only_format` from"
-                        " ``False`` to``True``.",
-                    )
-                    loader.mixture_of_denoisers.decoder_only_format = True
-
-    if "icl_tasks" in cfg and cfg.model.name == "hf_t5":
-        raise ValueError(
-            "ICL evaluation does not currently support Encoder-Decoder models, such"
-            'as "hf_t5".'
-        )
-
-    if (
-        cfg.model.get("fc_type", "torch") != "te"
-        and "te" not in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp")
-        and "fp8" in cfg.precision
-    ):
-        log(
-            WARN,
-            "fp8 only supported for te.Linear layers. Either set"
-            "`cfg.model.fc_typ='te'` or `cfg.model.ffn_config.ffn_type='te_ln_mlp'`"
-            "to enable layers using fp8 precision.",
-        )
-
-    if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
-        "ffn_config", {}
-    ).get("ffn_type", "mptmlp"):
-        fsdp_config = cfg.get("fsdp_config", None)
-        act_ckpt = fsdp_config.get("activation_checkpointing", False)
-        act_ckpt_reentrant = fsdp_config.get("activation_checkpointing_reentrant", True)
-        if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:
-            log(
-                WARN,
-                "`te.Linear` layers do not support activation_checkpointing with "
-                "`activation_checkpointing_reentrant = False`. "
-                "Setting cfg.fsdp_config.activation_checkpointing_reentrant=True.",
-            )
-            cfg.fsdp_config.activation_checkpointing_reentrant = True
-
-    if "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp"):
-        log(
-            WARN,
-            "`te.LayerNormMLP` requires has issues with torch._dynamo."
-            " Setting`torch._dynamo.config.suppress_errors = True` and falling back"
-            " to eager.",
-        )
-        torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
-
-    if cfg.model.get("load_in_8bit", False):
-        raise ValueError(
-            "`load_in_8bit` is only supported for evaluation rather than training."
         )
 
 
@@ -547,6 +329,7 @@ def get_raw_model_parameters(
 
 def _get_trainer_object(
     _cfg: DictConfig,
+    cid: int | str,
 ) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -589,19 +372,29 @@ def _get_trainer_object(
     # independent and not collaborative. If `device == None` the
     # Trainer will automatically initialize PyTorch Distributed
     # with the parameters from the environmental variables.
-    # TODO: Resolve the linter suggestion here
-    visible_devices = eval(os.getenv("APPOINTED_CUDA_DEVICE", "null"))
+    visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
+    log(DEBUG, f"Visible devices: {visible_devices}")
+    # The worker has been appointed a single GPU
     if type(visible_devices) is int:
-        device = DeviceGPU(device_id=int(visible_devices))
+        device: DeviceGPU | DeviceCPU | None = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
-    else:
+    # The worker has been appointed all GPUs available
+    elif type(visible_devices) is tuple:
+        assert len(visible_devices) > 1
         device = None
+    # The worker is in a CPU-only environment
+    else:
+        assert visible_devices is None
+        device = DeviceCPU()
+        log(DEBUG, f"Selecting device CPU, {device}")
 
     # Get global and device batch size information from distributed/single node setting
     _cfg = update_batch_size_info(_cfg)
     logged_cfg.update(_cfg, merge=True)
 
     # Mandatory model training configs
+    set_n_workers_dataloaders(cfg=_cfg, device=device)
+    client_set_data_config(cfg=_cfg, cid=cid)
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
     tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
@@ -649,6 +442,8 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
+    set_client_wandb_logger(_cfg, cid)
+    set_client_tensorboard_logger(_cfg, cid)
     logger_configs: DictConfig | None = pop_config(
         _cfg, "loggers", must_exist=False, default_value=None
     )
@@ -660,6 +455,8 @@ def _get_trainer_object(
     )
 
     # Mandatory hyperparameters for training
+    # Adapt batch sizes to the number of GPUs available
+    adapt_train_batch_size_to_num_devices(_cfg)
     device_train_batch_size: int = pop_config(
         _cfg, "device_train_batch_size", must_exist=True
     )
@@ -873,8 +670,7 @@ def _get_trainer_object(
         else None
     )
 
-    # Dataloaders
-    # log(INFO, "Building train loader...")
+    # Train loader
     train_loader = None
     if train_loader_config is not None:
         train_loader = build_dataloader(
@@ -883,8 +679,7 @@ def _get_trainer_object(
             device_train_batch_size,
         )
 
-    # Evaluation
-    # log(INFO, "Building eval loader...")
+    # Evaluators and eval loaders
     evaluators = []
     eval_loaders = []
     if eval_loader_config is not None:
@@ -921,6 +716,7 @@ def _get_trainer_object(
     if eval_gauntlet_callback is not None:
         callbacks.append(eval_gauntlet_callback)
 
+    # Model
     model = _get_model_for_trainer(
         init_context,  # type: ignore[reportArgumentType]
         tokenizer,
@@ -942,10 +738,10 @@ def _get_trainer_object(
         eval_metric_names = list(model.train_metrics.keys())
         for eval_loader in eval_loaders:
             eval_loader.metric_names = eval_metric_names
-            evaluators.insert(0, eval_loader)  # Put the base eval_loaders first
+            # Put the base eval_loaders first
+            evaluators.insert(0, eval_loader)
 
     # Build the Trainer
-    # log(INFO, "Building trainer...")
     trainer = Trainer(
         run_name=run_name,
         seed=seed,
@@ -962,7 +758,7 @@ def _get_trainer_object(
         console_log_interval=console_log_interval,
         loggers=loggers,
         callbacks=callbacks,
-        precision=precision,
+        precision=precision if not isinstance(device, DeviceCPU) else None,
         algorithms=algorithms,
         device_train_microbatch_size=device_train_microbatch_size,
         fsdp_config=fsdp_config,
@@ -987,6 +783,27 @@ def _get_trainer_object(
         device=device,
     )
     return trainer, eval_first, logged_cfg
+
+
+def close_trainer_and_clean_up(trainer_dict: dict[str, Trainer]) -> None:
+    """Close the trainer and clean up resources."""
+    # Close the trainer
+    trainer_dict["trainer"].close()
+    # NOTE: Clean up leaking shared memories
+    for shm in shared_memory_list:
+        SharedMemory.cleanup(shm)
+        atexit.unregister(SharedMemory.cleanup)
+    shared_memory_list.clear()
+    # Delete the trainer
+    try:
+        del trainer_dict["trainer"]
+    except Exception as e:
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
+    # Clean-up garbage collector and cuda cache
+    gc.collect()
+    torch.cuda.empty_cache()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
 
 def get_parameters(
@@ -1035,18 +852,27 @@ def llm_fit(
     parameters: NDArrays,
     config: dict,
     cfg: DictConfig,
+    cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
+        config["client_state"]
+    )
+
+    client_state_struct = ClientState(**client_state[cid])
+
+    num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+
+    global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
-    cfg, skip_iteration = set_client_load_path(
-        cfg, config["server_round"], cfg["local_steps"]
+    skip_iteration = set_client_load_path(
+        cfg,
+        cid,
+        client_state_struct.local_steps_cumulative,
+        client_state_struct.local_steps_cumulative + num_batches_trained,
     )
-    # Adapt batch size to the number of GPUs available
-    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
-    # Automatically setting the `n_workers` parameter based on CPU available
-    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
         # Ignoring the optimizer state if loading a checkpoint
@@ -1054,9 +880,7 @@ def llm_fit(
         # Ignoring the optimizer state when saving a checkpoint
         cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, eval_first, _logged_cfg = _get_trainer_object(
-        _cfg=cfg,
-    )
+    trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg, cid=cid)
     # log(INFO, f"Trainer config: {logged_cfg}")
     train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
@@ -1089,7 +913,13 @@ def llm_fit(
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
-    n_samples_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+    # NOTE: Assuming that this is the correct value of local steps
+    # for the client to train in this particular round and no
+
+    n_samples_trained = num_batches_trained * global_train_batch_size
+
+    client_state_struct.local_steps_cumulative += num_batches_trained
+
     # Retrieve training metrics
     train_metrics |= {
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
@@ -1122,24 +952,12 @@ def llm_fit(
 
     # Close the trainer
     start_time = time.time_ns()
-    trainer.close()
+    # NOTE: Using the dict trick to force the deletion of the trainer
+    trainer_dict = {"trainer": trainer}
+    close_trainer_and_clean_up(trainer_dict)
 
-    # NOTE: Clean up leaking shared memories
-    for shm in shared_memory_list:
-        SharedMemory.cleanup(shm)
-        atexit.unregister(SharedMemory.cleanup)
-    shared_memory_list.clear()
-
-    # Delete the trainer
-    try:
-        del trainer
-    except Exception as e:
-        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    train_metrics |= {"client_state": str(asdict(client_state_struct))}
+    train_metrics |= {"cid": cid}
     train_metrics |= {
         "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
     }
@@ -1155,12 +973,6 @@ def llm_eval(
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
     eval_metrics: dict[str, Scalar] = {}
-    # Adapt batch size to the number of GPUs available
-    cfg = adapt_batch_size_to_num_devices(cfg)  # type: ignore[union-attr]
-    # Automatically setting the `n_workers` parameter based on CPU available
-    cfg = set_n_workers_dataloaders(cfg)  # type: ignore[union-attr]
-    # Force llm_config params to select the centralized eval set
-    cfg.train_loader = None  # type: ignore[union-attr]
     # NOTE: Trying to exclude checkpointing for eval
     cfg.autoresume = False  # type: ignore[union-attr]
     cfg.save_folder = None  # type: ignore[union-attr]
@@ -1169,6 +981,7 @@ def llm_eval(
     # Extract configs to build the trainer
     trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
+        cid=0,
     )
     eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
     # Set the parameters
@@ -1198,25 +1011,9 @@ def llm_eval(
 
     # Close the trainer
     start_time = time.time_ns()
-    trainer.close()
-
-    # NOTE: Clean up leaking shared memories
-    for shm in shared_memory_list:
-        SharedMemory.cleanup(shm)
-        atexit.unregister(SharedMemory.cleanup)
-    shared_memory_list.clear()
-
-    # Delete the trainer
-    try:
-        del trainer
-    except Exception as e:
-        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+    # NOTE: Using the dict trick to force the deletion of the trainer
+    trainer_dict = {"trainer": trainer}
+    close_trainer_and_clean_up(trainer_dict)
     eval_metrics |= {
         "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
     }

@@ -1,7 +1,8 @@
 """Pollen server."""
 
+import ast
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import pickle
 import sys
 import time
@@ -41,7 +42,9 @@ from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
 from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
-from pollen_worker.clients.llm_client_functions import copy_old_checkpoints_to_new_run
+from pollen_worker.clients.llm_client_functions import (
+    copy_old_checkpoints_to_new_run,
+)
 from pollen_worker.placements import (
     get_placement_fn,
     get_pollen_models,
@@ -57,6 +60,7 @@ from pollen_worker.utils import (
     get_table_from_pyarrow_buffer,
     load_model_parameters_from_file,
     upload_file_to_s3,
+    ClientState,
 )
 
 FitResultsAndFailures = tuple[
@@ -159,6 +163,8 @@ class PollenServer(Server):
         self.resume_round = resume_round
         self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
         self.run_uuid = run_uuid
+
+        self.client_state: dict[str | int, ClientState] = {}
 
         if self.checkpoint or self.use_s3_comm:
             bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
@@ -279,6 +285,12 @@ class PollenServer(Server):
                     start_round == self.resume_round
                 ), "Server round mismatch with checkpoint"
                 history: History = server_state["history"]
+                saved_client_state: dict[str | int, dict[str, Any]] = ast.literal_eval(
+                    server_state["client_state"]
+                )
+                self.client_state = {
+                    k: ClientState(**v) for k, v in saved_client_state.items()
+                }
                 if "time_offset" in server_state:
                     time_offset = server_state["time_offset"]
                 if isinstance(self.strategy, FedNesterov):
@@ -305,6 +317,7 @@ class PollenServer(Server):
                 sys.exit(1)
         else:
             history = self.history if self.history is not None else History()
+            self.client_state = {cid: ClientState(0) for cid in self.cids}
             # Initialize parameters
             log(INFO, "Initializing global parameters")
             self.parameters = self._get_initial_parameters(timeout=timeout)
@@ -319,6 +332,7 @@ class PollenServer(Server):
                 )
                 history.add_loss_centralized(server_round=0, loss=res[0])
                 history.add_metrics_centralized(server_round=0, metrics=res[1])
+            # Initialize client_state_dict
             # Save the checkpoint to S3 Object Store (w/ model parameters)
             if self.checkpoint or self.use_s3_comm:
                 log(INFO, "Create server state (server_round, history, time_offset)")
@@ -326,6 +340,9 @@ class PollenServer(Server):
                     "server_round": start_round,
                     "history": history,
                     "time_offset": time_offset,
+                    "client_state": str(
+                        {k: asdict(v) for k, v in self.client_state.items()}
+                    ),
                 }
                 log(INFO, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
@@ -498,6 +515,9 @@ class PollenServer(Server):
                     "server_round": current_round,
                     "history": history,
                     "time_offset": time_offset,
+                    "client_state": str(
+                        {k: asdict(v) for k, v in self.client_state.items()}
+                    ),
                 }
                 log(INFO, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
@@ -579,7 +599,6 @@ class PollenServer(Server):
             if len(device_assignment) > 0:
                 # Get the `fit_config` for the virtual clients
                 node_evaluate_config = self.on_evaluate_config(server_round)
-
                 # NOTE: This key is used only when the training policy of workers
                 # is not `sequential`, and for setting the `num_workers` parameter
                 # in the `DataLoader`
@@ -677,6 +696,11 @@ class PollenServer(Server):
             client_manager=self._client_manager,
         )
 
+        # Add the desired client state to the client instructions for all clients
+        converted_client_state = str(
+            {k: asdict(v) for k, v in self.client_state.items()}
+        )
+
         if not client_instructions:
             log(INFO, "fit_round %s: no clients selected, cancel", server_round)
             return None
@@ -712,6 +736,7 @@ class PollenServer(Server):
         for client_proxy, device_assignment in node_assignments:
             # Get the `fit_config` for the virtual clients
             node_fit_config = self.on_fit_config(server_round)
+            node_fit_config["client_state"] = converted_client_state
 
             # NOTE: This key is used only when the training policy of workers
             # is not `sequential`, and for setting the `num_workers` parameter
@@ -838,10 +863,24 @@ class PollenServer(Server):
                     (num_examples, metrics)
                     for _, metrics, _, num_examples in metrics_accumulator
                 ]
+                client_state_accumulator: dict[str | int, dict[str, Any]] = {}
+                for _, inner_metrics in fit_metrics:
+                    acc: dict[str | int, dict[str, Any]] = ast.literal_eval(
+                        cast(str, inner_metrics["client_state_acc"])
+                    )
+                    client_state_accumulator |= acc
+                # NOTE: When using partial participation
+                # We need to accumulate the keys of the old state
+                # and the new state
+                self.client_state |= {
+                    k: ClientState(**v) for k, v in client_state_accumulator.items()
+                }
+
                 metrics_aggregated = (
                     metrics_aggregated
                     | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
                 )
+
             elif server_round == 1:  # Only log this warning once
                 log(WARNING, "No fit_metrics_aggregation_fn provided")
         except TooManyFailuresError as e:

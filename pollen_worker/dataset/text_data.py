@@ -14,6 +14,7 @@ import hydra
 import numpy as np
 import torch
 import transformers
+from composer.utils import get_device
 from composer.core.data_spec import DataSpec
 from composer.core.types import Batch
 from flwr.common.logger import log
@@ -405,7 +406,7 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.resolve(_llm_config)
     OmegaConf.set_struct(_llm_config, False)
     # Automatically setting the `n_workers` parameter based on CPU available
-    _llm_config = set_n_workers_dataloaders(_llm_config)
+    set_n_workers_dataloaders(cfg=_llm_config, device=get_device(None))
     # Elaborating data path
     if _llm_config.data_remote is not None:
         log(

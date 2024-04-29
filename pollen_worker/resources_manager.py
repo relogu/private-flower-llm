@@ -99,8 +99,8 @@ def merge_devices(devices: list[Device]) -> Device:
     else:
         return Device(
             device_id=0,
-            name="merged",
-            device_type="merged",
+            name="gpu-merged",
+            device_type="gpu-merged",
             total_memory=sum([d.total_memory for d in devices]),
             allocated_memory=sum([d.allocated_memory for d in devices]),
             concurrency=1,
@@ -125,7 +125,7 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
             device_type="cuda",
             total_memory=mem.total,
             allocated_memory=mem.used,
-            # NOTE: Forcing cuncurrency to one
+            # NOTE: Forcing concurrency to one
             concurrency=1,
         )
         # Loop over all running process on the current device
@@ -141,7 +141,7 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
     pynvml.nvmlShutdown()
     # If `merge`, the worker runs over multiple GPUs
     if merge:
-        gpus_prop = {"merged": merge_devices(list(gpus_prop.values()))}
+        gpus_prop = {"gpu-merged": merge_devices(list(gpus_prop.values()))}
     return gpus_prop
 
 
@@ -242,25 +242,11 @@ def get_cpu_prop(
 class Node:
     """Node info."""
 
-    name: str
-    cpu_num: int
-    cpu_ram_total: int
-    cpu_ram_available: int
-    device_info: dict[str, Device]
-
-    def __init__(
-        self,
-        name: str,
-        cpu_num: int,
-        cpu_ram_total: int,
-        cpu_ram_available: int,
-        device_info: dict[str, Device],
-    ) -> None:
-        self.name = name
-        self.cpu_num = cpu_num
-        self.cpu_ram_total = cpu_ram_total
-        self.cpu_ram_available = cpu_ram_available
-        self.device_info = device_info
+    name: str = ""
+    cpu_num: int = 0
+    cpu_ram_total: int = 0
+    cpu_ram_available: int = 0
+    device_info: dict[str, Device] | None = None
 
     def __repr__(self) -> str:
         """Return the string representation."""
@@ -334,8 +320,9 @@ class ResourcesMonitor(Thread):
             ) from e
         ret_val = (0.0, 0.0)
         try:
-            ret_val = float(current_gpu_stats.split(",")[0]), float(
-                current_gpu_stats.split(",")[1]
+            ret_val = (
+                float(current_gpu_stats.split(",")[0]),
+                float(current_gpu_stats.split(",")[1]),
             )
         except Exception as e:
             log(
@@ -459,4 +446,5 @@ if __name__ == "__main__":
     log(INFO, f"NodeManager's properties are: {node}")
     node = Node.from_str(str(node))
     log(INFO, f"Converted to Node object {node}")
+    assert node.device_info is not None
     log(INFO, f"Node {node.name} has {len(node.device_info)} acceleration devices.")

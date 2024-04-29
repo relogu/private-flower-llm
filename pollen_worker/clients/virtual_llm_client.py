@@ -17,7 +17,6 @@ import hydra
 import psutil
 import streaming
 import transformers
-from anyio import Path
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
@@ -27,10 +26,6 @@ from pollen_worker.clients.llm_client_functions import (
     get_raw_model_parameters,
     llm_eval,
     llm_fit,
-    set_all_data_paths,
-    set_client_save_and_load_path,
-    set_client_tensorboard_logger,
-    set_client_wandb_logger,
 )
 from pollen_worker.utils import (
     get_file_names_from_file_number,
@@ -52,9 +47,6 @@ class VirtualLLMClient(fl.client.NumPyClient):
         # Set init parameters
         self.cid = cid
         self.cfg = cfg
-        self.cfg = set_client_save_and_load_path(self.cfg, self.cid)
-        self.cfg = set_client_wandb_logger(self.cfg, self.cid)
-        self.cfg = set_client_tensorboard_logger(self.cfg, self.cid)
 
         transformers.logging.set_verbosity_error()
 
@@ -93,41 +85,16 @@ class VirtualLLMClient(fl.client.NumPyClient):
         """Implement the fit step."""
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Set the appropriate path given the `client_id`
-        if cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Set the appropriate path given the `client_id`
-            new_remote_path = (
-                str(cfg.data_remote) + f"/client_{self.cid}"  # type: ignore[union-attr]
-            )
-            cfg = set_all_data_paths(cfg, new_remote_path, False)
-        # Tie the local path to the client_id and the run_uuid
-        new_local_path = (
-            str(cfg.data_local) + f"/client_{self.cid}"  # type: ignore[union-attr]
-        )
-        cfg = set_all_data_paths(cfg, new_local_path)
-        # Execute the fit function
-        return llm_fit(parameters, config, cfg)
+        return llm_fit(parameters, config, cfg, self.cid)
 
     def evaluate(
         self,
         parameters: NDArrays,
-        config: dict[str, Scalar],
+        config: dict,
     ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
-        # Set the appropriate path for the (centralized) val set
-        if cfg.data_remote is not None:  # type: ignore[union-attr]
-            # Extracts the parent folder from the remote path
-            new_remote_path = "s3:/" + str(
-                Path(
-                    str(cfg.data_remote).replace("s3:/", "")  # type: ignore[union-attr]
-                ).parent  # type: ignore[union-attr]
-            )
-            cfg = set_all_data_paths(cfg, new_remote_path, False)
-        # Tie the local path to the client_id and the run_uuid
-        new_local_path = str(cfg.data_local) + "/val"  # type: ignore[union-attr]
-        cfg = set_all_data_paths(cfg, new_local_path)
         return llm_eval(parameters, config, cfg)
 
 

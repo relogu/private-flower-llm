@@ -3,7 +3,9 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
+import ast
 import copy
+from dataclasses import dataclass
 import fcntl
 import gc
 import pickle
@@ -30,6 +32,14 @@ from torch import device as device_type
 from typing_extensions import Self
 
 import wandb
+
+
+@dataclass
+class ClientState:
+    """Dataclass for client state."""
+
+    local_steps_cumulative: int
+
 
 # NOTE: Setting the maximum value according to the documentation
 # https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
@@ -101,7 +111,6 @@ def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 
-# Server ####
 def weighted_average(
     metrics: list[tuple[int, dict]],
 ) -> dict:
@@ -117,16 +126,32 @@ def weighted_average(
     Dict
         The weighted average over pre-defined metrics.
     """
+    client_state_accumulator: dict[int | str, dict[str, Any]] = {}
     total_num_examples = sum(
         [num_examples for num_examples, _ in metrics],
     )
     weighted_metrics: dict = defaultdict(float)
+
     for num_examples, metric in metrics:
         if metric is not None:
+            cid = metric.pop("cid", None)
+            client_state = metric.pop("client_state", None)
+            client_state_acc = metric.pop("client_state_acc", None)
             for key, value in metric.items():
-                weighted_metrics[key] += num_examples * value
+                if not isinstance(value, str):
+                    weighted_metrics[key] += num_examples * value
+            if cid is not None and client_state is not None:
+                client_state_accumulator[cid] = ast.literal_eval(client_state)
+            if client_state_acc is not None:
+                client_state_accumulator |= ast.literal_eval(client_state_acc)
 
-    return {key: value / total_num_examples for key, value in weighted_metrics.items()}
+    ret_dict = {
+        key: value / total_num_examples for key, value in weighted_metrics.items()
+    }
+    if client_state_accumulator:
+        ret_dict |= {"client_state_acc": str(client_state_accumulator)}
+
+    return ret_dict
 
 
 def partially_aggregate(
@@ -385,7 +410,7 @@ def namestr(obj: object, namespace: dict) -> list:
 
 def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True) -> str:
     """Inspect the tensors in the current Python session."""
-    # Initalizing the summary string and variables
+    # Initializing the summary string and variables
     summary = ""
     counter, total_size, gpu_size = 0, 0, 0
     gc.collect()
@@ -470,7 +495,7 @@ def get_selected_objects_types(
     selection: list[str], second_selection: list[str], verbose: bool = True
 ) -> str:
     """Inspect the tensors in the current Python session."""
-    # Initalizing the summary string and variables
+    # Initializing the summary string and variables
     summary = ""
     gc.collect()
     # Looping over the objects in the current Python session

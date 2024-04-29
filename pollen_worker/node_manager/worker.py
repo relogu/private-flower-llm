@@ -56,6 +56,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         run_uuid: str,
         parameters: NDArrays,
         worker_rank: int,
+        cpu_only: bool,
+        cpu_concurrency: int,
     ) -> None:
         super().__init__()
         self.worker_uuid = worker_uuid
@@ -70,6 +72,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.worker_metrics: Config = {}
         self.auto_terminate = False
         self.n_samples = 0
+        self.cpu_only = cpu_only
+        self.cpu_concurrency = cpu_concurrency
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
@@ -214,6 +218,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             ),
             rank=str(self.worker_rank),
             master_port=str(fl_instructions_config["MASTER_PORT"]),
+            cpu_only=self.cpu_only,
+            cpu_concurrency=self.cpu_concurrency,
         ):
             # Try to execute the task of the client
             try:
@@ -327,12 +333,24 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         close_all_shms(self.worker_uuid)
 
 
+def check_collaborative_and_cpu(collaborative: bool, cpu_only: bool) -> None:
+    """Check if the collaborative and cpu_only settings are compatible."""
+    if cpu_only and collaborative:
+        raise ValueError(
+            "Collaborative mode is not supported with CPU only."
+            "Changing to not collaborative, "
+            "this may impact your resource utilization.",
+        )
+
+
 @contextmanager
 def get_env_patcher(
     collaborative: bool,
     run_uuid: str,
     rank: str,
     master_port: str,
+    cpu_only: bool,
+    cpu_concurrency: int,
 ) -> Generator[None, Any, None]:
     """Yield a context manager to patch the environment variables."""
     try:
@@ -340,82 +358,63 @@ def get_env_patcher(
         # if any, to let the workers deal with this
         if dist.is_initialized():
             dist.destroy_process_group()
-        if not collaborative:
-            with _patch_env(
-                RANK="0",
-                WORLD_SIZE="1",
-                LOCAL_RANK="0",
-                LOCAL_WORLD_SIZE="1",
-                NODE_RANK="0",
-                MASTER_ADDR="127.0.0.1",
-                MASTER_PORT=str(get_free_tcp_port()),
-                PYTHONUNBUFFERED="1",
-                NCCL_ASYNC_ERROR_HANDLING="1",
-                RUN_UUID=run_uuid,
-                APPOINTED_CUDA_DEVICE=rank,
-            ) as env_patcher:
-                # Cleaning stale shared memory
-                streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
-                log(
-                    DEBUG,
-                    "Environment variables patched for worker with rank"
-                    " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
-                    " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
-                    " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
-                    " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
-                    " APPOINTED_CUDA_DEVICE=%s",
-                    rank,
-                    os.getenv("RANK"),
-                    os.getenv("WORLD_SIZE"),
-                    os.getenv("LOCAL_RANK"),
-                    os.getenv("LOCAL_WORLD_SIZE"),
-                    os.getenv("NODE_RANK"),
-                    os.getenv("MASTER_ADDR"),
-                    os.getenv("MASTER_PORT"),
-                    os.getenv("PYTHONUNBUFFERED"),
-                    os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
-                    os.getenv("RUN_UUID"),
-                    os.getenv("APPOINTED_CUDA_DEVICE"),
-                )
-                yield env_patcher
+        # Init environment variables
+        environs: dict[str, str] = {}
+        # Get the device type used in this settings
+        if cpu_only:
+            environs["APPOINTED_CUDA_DEVICE"] = "None"
+            environs["WORLD_SIZE"] = "1"
+            environs["LOCAL_WORLD_SIZE"] = "1"
+            environs["CPU_CONCURRENCY"] = str(cpu_concurrency)
+            check_collaborative_and_cpu(collaborative=collaborative, cpu_only=cpu_only)
         else:
-            with _patch_env(
-                RANK=rank,
-                WORLD_SIZE=str(torch.cuda.device_count()),
-                LOCAL_RANK=rank,
-                LOCAL_WORLD_SIZE=str(torch.cuda.device_count()),
-                NODE_RANK="0",
-                MASTER_ADDR="127.0.0.1",
-                MASTER_PORT=master_port,
-                PYTHONUNBUFFERED="1",
-                NCCL_ASYNC_ERROR_HANDLING="1",
-                RUN_UUID=run_uuid,
-                APPOINTED_CUDA_DEVICE="all",
-            ) as env_patcher:
-                # Cleaning stale shared memory
-                streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
-                log(
-                    DEBUG,
-                    "Environment variables patched for worker with rank"
-                    " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
-                    " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
-                    " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
-                    " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
-                    " APPOINTED_CUDA_DEVICE=%s",
-                    rank,
-                    os.getenv("RANK"),
-                    os.getenv("WORLD_SIZE"),
-                    os.getenv("LOCAL_RANK"),
-                    os.getenv("LOCAL_WORLD_SIZE"),
-                    os.getenv("NODE_RANK"),
-                    os.getenv("MASTER_ADDR"),
-                    os.getenv("MASTER_PORT"),
-                    os.getenv("PYTHONUNBUFFERED"),
-                    os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
-                    os.getenv("RUN_UUID"),
-                    os.getenv("APPOINTED_CUDA_DEVICE"),
-                )
-                yield env_patcher
+            devices = ",".join([str(i) for i in range(torch.cuda.device_count())])
+            environs["APPOINTED_CUDA_DEVICE"] = devices if collaborative else rank
+            environs["WORLD_SIZE"] = (
+                str(torch.cuda.device_count()) if collaborative else "1"
+            )
+            environs["LOCAL_WORLD_SIZE"] = (
+                str(torch.cuda.device_count()) if collaborative else "1"
+            )
+        # Set other environment variables
+        environs = environs | {
+            # Shared
+            "MASTER_ADDR": "127.0.0.1",
+            "PYTHONUNBUFFERED": "1",
+            "NCCL_ASYNC_ERROR_HANDLING": "1",
+            "NODE_RANK": "0",
+            "RUN_UUID": run_uuid,
+            # Collaboration dependent
+            "RANK": rank if collaborative else "0",
+            "LOCAL_RANK": rank if collaborative else "0",
+            "MASTER_PORT": master_port if collaborative else str(get_free_tcp_port()),
+        }
+        # Yield the context manager
+        with _patch_env(**environs) as env_patcher:
+            # Cleaning stale shared memory
+            streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
+            log(
+                DEBUG,
+                "Environment variables patched for worker with rank"
+                " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
+                " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
+                " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
+                " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                " APPOINTED_CUDA_DEVICE=%s",
+                rank,
+                os.getenv("RANK"),
+                os.getenv("WORLD_SIZE"),
+                os.getenv("LOCAL_RANK"),
+                os.getenv("LOCAL_WORLD_SIZE"),
+                os.getenv("NODE_RANK"),
+                os.getenv("MASTER_ADDR"),
+                os.getenv("MASTER_PORT"),
+                os.getenv("PYTHONUNBUFFERED"),
+                os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
+                os.getenv("RUN_UUID"),
+                os.getenv("APPOINTED_CUDA_DEVICE"),
+            )
+            yield env_patcher
     except Exception as e:
         log(
             ERROR,
@@ -519,6 +518,8 @@ def create_new_worker(
     run_uuid: str,
     parameters: NDArrays,
     worker_rank: int,
+    cpu_only: bool,
+    cpu_concurrency: int,
 ) -> Worker:
     """Create a new Worker."""
     # Generate the Worker's UUID
@@ -533,6 +534,8 @@ def create_new_worker(
         run_uuid=run_uuid,
         parameters=parameters,
         worker_rank=worker_rank,
+        cpu_only=cpu_only,
+        cpu_concurrency=cpu_concurrency,
     )
     # Return the Worker object, its UUID, and the shared objects
     return worker

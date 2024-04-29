@@ -48,44 +48,48 @@ else
 fi
 #! Set `LLM_CONFIG` environment variable
 . $PROJECT_PATH/llm_slurm/set_llm_config.sh $1
-shift
-#! Set `DATA_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_data_config.sh
+#! Export the endpoint of the S3 object store
+# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
+#! Using directly the IP to avoid name resolution issues
+export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
-mkdir -p $POLLEN_SAVE_PATH
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
 	export RUN_UUID="test-fed-pollen-$DATETIME"
 fi
-export SAVE_PATH="s3://checkpoints"
-#! Set `LLM_OPTIONS` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_options.sh
+#! If SAVE_PATH hasn't been set, set it to the default value
+if [ -z "$SAVE_PATH" ]; then
+	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+fi
+mkdir -p $POLLEN_SAVE_PATH
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0} # Default to 0 if not set
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 IFS=',' read -ra DEVICES <<<"$CUDA_VISIBLE_DEVICES" # Split on comma
+#! S3 communication stack settings
+MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
-POLLEN_CONFIG="pollen.server_address='localhost:50635' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_clients_per_round=8 fl.n_rounds=10 llm_config.scheduler.t_max=10ba llm_config.scheduler.t_warmup=0ba llm_config.save_overwrite=true pollen.checkpoint=true"
-# POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=5"
-#! Additional settings specific for the current testing
-aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
-aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
+N_LOCAL_STEPS=10
+POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 pollen.fit_collaborative=false pollen.restore_run_uuid=null "
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 TESTING_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=test"
 #! Launch ServerWithPollen
-HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $TESTING_OPTIONS pollen.saving_path=$SAVE_PATH 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
+GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 #! Launch NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 #! Uncommented the following lines when esting for multiple NodeManagers
 # for DEVICE in "${DEVICES[@]}"; do
-#     CUDA_VISIBLE_DEVICE=$DEVICE CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
+#     CUDA_VISIBLE_DEVICE=$DEVICE GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
 # done
 #! Uncommented the following line when testing for a single NodeManager
-CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $POLLEN_CONFIG $TESTING_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
+GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m pollen_worker.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID

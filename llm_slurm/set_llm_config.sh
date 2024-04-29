@@ -34,6 +34,8 @@ if [[ $# -eq 0 ]]; then
 fi
 #! Get info about GPU resources available
 GPU_TYPE=$(nvidia-smi -L)
+
+# NOTE: Add defaults
 #! Set `llm_config` names
 if [[ $GPU_TYPE == *'A40'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A40-equipped machines."
@@ -52,7 +54,8 @@ if [[ $GPU_TYPE == *'A40'* ]]; then
 	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=32"  # FSDP goes OOM
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"   # FSDP goes OOM
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # FSDP goes OOM
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # FSDP goes OOM]
+	echo "Selected GPU config: A40"
 elif [[ $GPU_TYPE == *'A100'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A100-equipped machines."
 	#! Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad bug
@@ -71,6 +74,7 @@ elif [[ $GPU_TYPE == *'A100'* ]]; then
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=4"
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1"
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1"
+	echo "Selected GPU config: A100"
 elif [[ $GPU_TYPE == *'H100'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on H100-equipped machines."
 	#! Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad bug
@@ -89,6 +93,7 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=8 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1"
+	echo "Selected GPU config: H100"
 elif [[ $GPU_TYPE == *'L40'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on L40-equipped machines."
 	#! NOTE: We're assiming 'amp_bf16' is used
@@ -104,6 +109,10 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=16"  # FSDP goes OOM
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"   # FSDP goes OOM
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # FSDP goes OOM
+	echo "Selected GPU config: L40"
+elif [[ $GPU_TYPE == *'failed'* ]]; then
+	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
+	echo "nvidia-smi failed"
 else
 	echo "set_llm_config.sh: Unknown GPU type: $GPU_TYPE. Using defaults..."
 fi
