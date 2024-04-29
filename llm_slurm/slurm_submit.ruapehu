@@ -1,7 +1,6 @@
 #!/bin/bash
-#SBATCH -c 20
-#SBATCH -w mauao
-#SBATCH --gres=gpu:2
+#SBATCH -c 192
+#SBATCH -w ruapehu
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=pollen_llm_75M
 #!SBATCH --job-name=centralised_llm_125M
