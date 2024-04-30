@@ -45,6 +45,8 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "160M"
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "420M"
 
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-small-$DATETIME"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "small"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "16M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "75M" "10ba"
