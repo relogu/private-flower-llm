@@ -1,5 +1,6 @@
 """Provides functionality for manipulating MosaicML configs."""
 
+import ast
 import os
 from logging import DEBUG, INFO, WARN, WARNING
 
@@ -272,13 +273,14 @@ def validate_config(cfg: DictConfig) -> None:
 
 def adapt_train_batch_size_to_num_devices(cfg: DictConfig) -> None:
     """Adapt the batch size to the number of devices."""
+    visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
     if (
-        os.getenv("APPOINTED_CUDA_DEVICE") == "all-gpus"
-        and torch.cuda.device_count() > 1
+        type(visible_devices) is tuple
     ):
+        assert len(visible_devices) > 1
         original_batch_size = cfg.global_train_batch_size
-        ratio = cfg.global_train_batch_size // torch.cuda.device_count()
-        estimated_batch_size = int(ratio * torch.cuda.device_count())
+        ratio = cfg.global_train_batch_size // len(visible_devices)
+        estimated_batch_size = int(ratio * len(visible_devices))
         if estimated_batch_size != cfg.global_train_batch_size:
             cfg.global_train_batch_size = estimated_batch_size
             log(
@@ -286,7 +288,7 @@ def adapt_train_batch_size_to_num_devices(cfg: DictConfig) -> None:
                 "Train batch size (%s) was not appropriate for %s GPUs available. "
                 "New train batch size: %s",
                 original_batch_size,
-                torch.cuda.device_count(),
+                len(visible_devices),
                 cfg.global_train_batch_size,
             )
 
