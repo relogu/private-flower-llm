@@ -785,27 +785,6 @@ def _get_trainer_object(
     return trainer, eval_first, logged_cfg
 
 
-def close_trainer_and_clean_up(trainer_dict: dict[str, Trainer]) -> None:
-    """Close the trainer and clean up resources."""
-    # Close the trainer
-    trainer_dict["trainer"].close()
-    # NOTE: Clean up leaking shared memories
-    for shm in shared_memory_list:
-        SharedMemory.cleanup(shm)
-        atexit.unregister(SharedMemory.cleanup)
-    shared_memory_list.clear()
-    # Delete the trainer
-    try:
-        del trainer_dict["trainer"]
-    except Exception as e:
-        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
-    # Clean-up garbage collector and cuda cache
-    gc.collect()
-    torch.cuda.empty_cache()
-    # Cleaning stale shared memory
-    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
-
-
 def get_parameters(
     config: dict[str, Scalar],
     cfg: DictConfig,
@@ -952,9 +931,23 @@ def llm_fit(
 
     # Close the trainer
     start_time = time.time_ns()
-    # NOTE: Using the dict trick to force the deletion of the trainer
-    trainer_dict = {"trainer": trainer}
-    close_trainer_and_clean_up(trainer_dict)
+    # Close the trainer
+    trainer.close()
+    # NOTE: Clean up leaking shared memories
+    for shm in shared_memory_list:
+        SharedMemory.cleanup(shm)
+        atexit.unregister(SharedMemory.cleanup)
+    shared_memory_list.clear()
+    # Delete the trainer
+    try:
+        del trainer
+    except Exception as e:
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
+    # Clean-up garbage collector and cuda cache
+    gc.collect()
+    torch.cuda.empty_cache()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
 
     train_metrics |= {"client_state": str(asdict(client_state_struct))}
     train_metrics |= {"cid": cid}
@@ -1011,9 +1004,22 @@ def llm_eval(
 
     # Close the trainer
     start_time = time.time_ns()
-    # NOTE: Using the dict trick to force the deletion of the trainer
-    trainer_dict = {"trainer": trainer}
-    close_trainer_and_clean_up(trainer_dict)
+    trainer.close()
+    # NOTE: Clean up leaking shared memories
+    for shm in shared_memory_list:
+        SharedMemory.cleanup(shm)
+        atexit.unregister(SharedMemory.cleanup)
+    shared_memory_list.clear()
+    # Delete the trainer
+    try:
+        del trainer
+    except Exception as e:
+        log(ERROR, "Error deleting trainer", exc_info=e, stack_info=True)
+    # Clean-up garbage collector and cuda cache
+    gc.collect()
+    torch.cuda.empty_cache()
+    # Cleaning stale shared memory
+    streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
     eval_metrics |= {
         "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
     }
