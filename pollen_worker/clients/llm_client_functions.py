@@ -389,6 +389,7 @@ def _get_trainer_object(
         log(DEBUG, f"Selecting device CPU, {device}")
 
     # Get global and device batch size information from distributed/single node setting
+    adapt_train_batch_size_to_num_devices(_cfg)
     _cfg = update_batch_size_info(_cfg)
     logged_cfg.update(_cfg, merge=True)
 
@@ -456,7 +457,6 @@ def _get_trainer_object(
 
     # Mandatory hyperparameters for training
     # Adapt batch sizes to the number of GPUs available
-    adapt_train_batch_size_to_num_devices(_cfg)
     device_train_batch_size: int = pop_config(
         _cfg, "device_train_batch_size", must_exist=True
     )
