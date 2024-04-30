@@ -807,12 +807,17 @@ def get_parameters(
 
 
 def get_parameters_from_state(
-    config: Config,
-    trainer: Trainer,
+    config: Config, trainer: Trainer, rank: int = 0
 ) -> NDArrays:
     """Implement how to get parameters."""
     model_parameters_dict = get_trainable_params_dict(trainer.state.model)
-    return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
+    # Only rank 0 returns the model parameters to avoid overheads
+    if rank == 0:
+        return [
+            val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()
+        ]
+    else:
+        return []
 
 
 def set_parameters_to_state(
@@ -844,6 +849,8 @@ def llm_fit(
 
     global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
+    model_parameters = []
+    n_samples_trained = 0
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     skip_iteration = set_client_load_path(
@@ -880,7 +887,7 @@ def llm_fit(
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
             }
         # log(INFO, "Starting training...")
-        # Prevent to run any evaluator
+        # Prevent to run any evaluator -- by default it runs an evaluation at the end
         trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
         # Execute fit step for the appointed duration
         try:
@@ -907,31 +914,38 @@ def llm_fit(
     log(INFO, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
     start_time = time.time_ns()
-    model_parameters = get_parameters_from_state({}, trainer)
+    model_parameters = get_parameters_from_state(
+        {}, trainer, int(os.getenv("LOCAL_RANK", ""))
+    )
     train_metrics |= {
         "client/fit_get_parameters_time": (time.time_ns() - start_time) * 1e-9
     }
-    start_time = time.time_ns()
-    per_layer_sum_of_squares = [
-        sum_of_squares([x - y])
-        for x, y in zip(parameters, model_parameters, strict=False)
-    ]
+    # Only rank 0 collects metrics related to the pseudo gradients
+    if int(os.getenv("LOCAL_RANK", "")) == 0:
+        start_time = time.time_ns()
+        per_layer_sum_of_squares = [
+            sum_of_squares([x - y])
+            for x, y in zip(parameters, model_parameters, strict=False)
+        ]
 
-    for i, plss in enumerate(per_layer_sum_of_squares):
+        for i, plss in enumerate(per_layer_sum_of_squares):
+            train_metrics |= {
+                f"client/layer/{i}/l2_norm_of_pseudo_gradient": float(np.sqrt(plss))
+            }
+
+        l2_norm_of_pseudo_gradient: float = float(
+            np.sqrt(sum(per_layer_sum_of_squares))
+        )
+
+        train_metrics |= {"client/l2_norm_pseudo_gradient": l2_norm_of_pseudo_gradient}
         train_metrics |= {
-            f"client/layer/{i}/l2_norm_of_pseudo_gradient": float(np.sqrt(plss))
+            "client/fit_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
         }
 
-    l2_norm_of_pseudo_gradient: float = float(np.sqrt(sum(per_layer_sum_of_squares)))
-
-    train_metrics |= {"client/l2_norm_pseudo_gradient": l2_norm_of_pseudo_gradient}
-    train_metrics |= {
-        "client/fit_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
-    }
-
     # Close the trainer
     start_time = time.time_ns()
-    # Close the trainer
+    # Close the trainer, wait for all the collaborators first
+    dist.barrier()
     trainer.close()
     # NOTE: Clean up leaking shared memories
     for shm in shared_memory_list:
@@ -948,12 +962,13 @@ def llm_fit(
     torch.cuda.empty_cache()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
-
-    train_metrics |= {"client_state": str(asdict(client_state_struct))}
-    train_metrics |= {"cid": cid}
-    train_metrics |= {
-        "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
-    }
+    # Only rank 0 collects metrics
+    if int(os.getenv("LOCAL_RANK", "")) == 0:
+        train_metrics |= {"client_state": str(asdict(client_state_struct))}
+        train_metrics |= {"cid": cid}
+        train_metrics |= {
+            "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+        }
 
     return model_parameters, n_samples_trained, train_metrics
 
@@ -965,8 +980,9 @@ def llm_eval(
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
+    num_samples = 0
     eval_metrics: dict[str, Scalar] = {}
-    # NOTE: Trying to exclude checkpointing for eval
+    # NOTE: Exclude unnecessary checkpointing and loggers for eval
     cfg.autoresume = False  # type: ignore[union-attr]
     cfg.save_folder = None  # type: ignore[union-attr]
     cfg.load_path = None  # type: ignore[union-attr]
@@ -991,16 +1007,18 @@ def llm_eval(
     trainer.eval()
     eval_metrics |= {"client/eval_time": (time.time_ns() - start_time) * 1e-9}
     start_time = time.time_ns()
-    # Retrieve number of samples evaluated
-    num_samples = trainer.state.eval_timestamp._sample.value
-    # Retrieve evaluation metrics
-    eval_metrics = eval_metrics | {
-        "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
-        for k, v in trainer.state.eval_metric_values.items()
-    }
-    eval_metrics |= {
-        "client/eval_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
-    }
+    # Only rank 0 collects metrics
+    if int(os.getenv("LOCAL_RANK", "")) == 0:
+        # Retrieve number of samples evaluated
+        num_samples = trainer.state.eval_timestamp._sample.value
+        # Retrieve evaluation metrics
+        eval_metrics = eval_metrics | {
+            "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
+            for k, v in trainer.state.eval_metric_values.items()
+        }
+        eval_metrics |= {
+            "client/eval_metrics_collection_time": (time.time_ns() - start_time) * 1e-9
+        }
 
     # Close the trainer
     start_time = time.time_ns()
@@ -1020,9 +1038,10 @@ def llm_eval(
     torch.cuda.empty_cache()
     # Cleaning stale shared memory
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
-    eval_metrics |= {
-        "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
-    }
+    if int(os.getenv("LOCAL_RANK", "")) == 0:
+        eval_metrics |= {
+            "client/eval_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
+        }
 
     # Return the evaluation metrics
     return 0.0, num_samples, eval_metrics

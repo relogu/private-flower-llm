@@ -23,6 +23,7 @@ import psutil
 import pyarrow as pa
 import ray
 import torch
+from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel
 from composer import Trainer
 from composer.loggers import RemoteUploaderDownloader
 from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
@@ -34,6 +35,11 @@ from typing_extensions import Self
 import wandb
 
 
+# NOTE: Setting the maximum value according to the documentation
+# https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
+POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
+
+
 @dataclass
 class ClientState:
     """Dataclass for client state."""
@@ -41,18 +47,44 @@ class ClientState:
     local_steps_cumulative: int
 
 
-# NOTE: Setting the maximum value according to the documentation
-# https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
-POLLEN_LLM_MAX_MESSAGE_LENGTH = -1
+class NoOpContextManager:
+    """A context manager that does nothing."""
+
+    def __enter__(self) -> None:
+        """Do nothing."""
+        return
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        """Do nothing."""
 
 
 def get_trainable_params_dict(
     model: torch.nn.Module, sort_dict: bool = True
-) -> dict[str, torch.nn.Parameter]:
+) -> dict[str, torch.nn.Parameter] | dict[str, torch.Tensor]:
     """Get the trainable parameters of a model as a dictionary."""
-    params_dict = {
-        name: param for name, param in model.named_parameters() if param.requires_grad
-    }
+    params_dict: dict[str, torch.nn.Parameter] | dict[str, torch.Tensor] = {}
+    log(INFO, "Model: %s", model)
+    # NOTE: This function is weird because the encapsulation done by FSDP or DDP is
+    # weird, so this will likely change when they decide to fix their code
+    if hasattr(model, "model") and type(model.model) is FullyShardedDataParallel:
+        assert model.model is not None
+        inner_model = model.model
+        inner_model.eval()
+        # NOTE: This doesn't work in the case in use_orig_params is True if the FSDP
+        # configuration as the tensors returned are flattened breaking some assumptions
+        # of the rest of the codebase
+        with FullyShardedDataParallel.summon_full_params(inner_model):
+            params_dict = {
+                name: param.detach().clone()
+                for name, param in inner_model.named_parameters()
+                if param.requires_grad
+            }
+    else:
+        params_dict = {
+            name: param
+            for name, param in model.named_parameters()
+            if param.requires_grad
+        }
     if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     return params_dict
@@ -199,11 +231,9 @@ def set_parameters(
 ) -> None:
     """Implement generic `set_parameters` for Flower Client."""
     net.eval()
-    keys = [k for k in net.state_dict() if "bn" not in k]
-    params_dict = zip(keys, parameters, strict=False)
-    state_dict = OrderedDict(
-        {k: torch.tensor(v, device=device) for k, v in params_dict}
-    )
+    model_parameters_dict = get_trainable_params_dict(net)
+    params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
+    state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
     net.load_state_dict(state_dict=state_dict, strict=False)
 
 
@@ -226,17 +256,6 @@ def invert_one_to_many_dictionary(
         for w in v:
             output[w] = k
     return output
-
-
-class NoOpContextManager:
-    """A context manager that does nothing."""
-
-    def __enter__(self) -> None:
-        """Do nothing."""
-        return
-
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        """Do nothing."""
 
 
 def wandb_init(
