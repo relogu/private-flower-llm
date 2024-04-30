@@ -209,3 +209,7 @@ checkpoints
 
 # Tensorboard logs
 events.out.tfevents.*
+
+# Dataset shards and metadata
+*.mds
+*.json
