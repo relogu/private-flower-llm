@@ -1,0 +1,353 @@
+---
+- client_streams:
+    stream_0:
+      remote: c32/client_0
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_1
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_2
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_3
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_4
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_5
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_6
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_7
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_8
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_9
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_10
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_11
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_12
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_13
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_14
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_15
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_16
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_17
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_18
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_19
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_20
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_21
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_22
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_23
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_24
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_25
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_26
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_27
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_28
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_29
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_30
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c32/client_31
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null

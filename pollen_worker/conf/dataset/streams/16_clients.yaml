@@ -1,0 +1,177 @@
+---
+- client_streams:
+    stream_0:
+      remote: c16/client_0
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_1
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_2
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_3
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_4
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_5
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_6
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_7
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_8
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_9
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_10
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_11
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_12
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_13
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_14
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c16/client_15
+      local: null
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
