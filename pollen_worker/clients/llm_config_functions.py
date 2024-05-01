@@ -82,17 +82,17 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
         for stream in actual_streams.values():
             # Set the split, remote, and local paths
             stream.split = split if split else stream.split
-            stream.local = "" if stream.local is None else stream.local
-            stream.remote = "" if stream.remote is None else stream.remote
             if root_local:
-                stream.local = root_local + stream.local
+                stream.local = root_local + stream.local if stream.local else root_local
             if root_remote:
-                stream.remote = root_remote + stream.remote
+                stream.remote = (
+                    root_remote + stream.remote if stream.remote else root_remote
+                )
             # Remove potential trailing slashes
-            assert stream.local is not None
-            assert stream.remote is not None
-            stream.local = stream.local.rstrip("/")
-            stream.remote = stream.remote.rstrip("/")
+            stream.local = stream.local.rstrip("/") if stream.local else stream.local
+            stream.remote = (
+                stream.remote.rstrip("/") if stream.remote else stream.remote
+            )
         # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
         # Assign the streams to the appropriate loaders
@@ -274,9 +274,7 @@ def validate_config(cfg: DictConfig) -> None:
 def adapt_train_batch_size_to_num_devices(cfg: DictConfig) -> None:
     """Adapt the batch size to the number of devices."""
     visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
-    if (
-        type(visible_devices) is tuple
-    ):
+    if type(visible_devices) is tuple:
         assert len(visible_devices) > 1
         original_batch_size = cfg.global_train_batch_size
         ratio = cfg.global_train_batch_size // len(visible_devices)

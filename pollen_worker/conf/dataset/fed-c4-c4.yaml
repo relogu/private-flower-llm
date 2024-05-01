@@ -22,12 +22,12 @@ train:
   streams: null  # This will be interpreted by Python and changed
   split: train  # This will be interpreted by Python and removed
   root_remote: s3://fed-c4  # This will be interpreted by Python and removed
-  root_local: null  # This will be interpreted by Python and removed
+  root_local: fed-c4  # This will be interpreted by Python and removed
   <<: *dataset_defaults
 
 val:
   streams: null  # This will be interpreted by Python and changed
   split: val  # This will be interpreted by Python and removed
   root_remote: s3://c4-dataset  # This will be interpreted by Python and removed
-  root_local: null  # This will be interpreted by Python and removed
+  root_local: c4-dataset  # This will be interpreted by Python and removed
   <<: *dataset_defaults

@@ -2,7 +2,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_0
-      local: null
+      local: c16/client_0
       proportion: null
       repeat: null
       choose: null
@@ -13,7 +13,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_1
-      local: null
+      local: c16/client_1
       proportion: null
       repeat: null
       choose: null
@@ -24,7 +24,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_2
-      local: null
+      local: c16/client_2
       proportion: null
       repeat: null
       choose: null
@@ -35,7 +35,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_3
-      local: null
+      local: c16/client_3
       proportion: null
       repeat: null
       choose: null
@@ -46,7 +46,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_4
-      local: null
+      local: c16/client_4
       proportion: null
       repeat: null
       choose: null
@@ -57,7 +57,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_5
-      local: null
+      local: c16/client_5
       proportion: null
       repeat: null
       choose: null
@@ -68,7 +68,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_6
-      local: null
+      local: c16/client_6
       proportion: null
       repeat: null
       choose: null
@@ -79,7 +79,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_7
-      local: null
+      local: c16/client_7
       proportion: null
       repeat: null
       choose: null
@@ -90,7 +90,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_8
-      local: null
+      local: c16/client_8
       proportion: null
       repeat: null
       choose: null
@@ -101,7 +101,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_9
-      local: null
+      local: c16/client_9
       proportion: null
       repeat: null
       choose: null
@@ -112,7 +112,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_10
-      local: null
+      local: c16/client_10
       proportion: null
       repeat: null
       choose: null
@@ -123,7 +123,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_11
-      local: null
+      local: c16/client_11
       proportion: null
       repeat: null
       choose: null
@@ -134,7 +134,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_12
-      local: null
+      local: c16/client_12
       proportion: null
       repeat: null
       choose: null
@@ -145,7 +145,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_13
-      local: null
+      local: c16/client_13
       proportion: null
       repeat: null
       choose: null
@@ -156,7 +156,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_14
-      local: null
+      local: c16/client_14
       proportion: null
       repeat: null
       choose: null
@@ -167,7 +167,7 @@
 - client_streams:
     stream_0:
       remote: c16/client_15
-      local: null
+      local: c16/client_15
       proportion: null
       repeat: null
       choose: null

@@ -2,7 +2,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_0
-      local: null
+      local: c64/client_0
       proportion: null
       repeat: null
       choose: null
@@ -13,7 +13,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_1
-      local: null
+      local: c64/client_1
       proportion: null
       repeat: null
       choose: null
@@ -24,7 +24,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_2
-      local: null
+      local: c64/client_2
       proportion: null
       repeat: null
       choose: null
@@ -35,7 +35,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_3
-      local: null
+      local: c64/client_3
       proportion: null
       repeat: null
       choose: null
@@ -46,7 +46,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_4
-      local: null
+      local: c64/client_4
       proportion: null
       repeat: null
       choose: null
@@ -57,7 +57,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_5
-      local: null
+      local: c64/client_5
       proportion: null
       repeat: null
       choose: null
@@ -68,7 +68,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_6
-      local: null
+      local: c64/client_6
       proportion: null
       repeat: null
       choose: null
@@ -79,7 +79,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_7
-      local: null
+      local: c64/client_7
       proportion: null
       repeat: null
       choose: null
@@ -90,7 +90,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_8
-      local: null
+      local: c64/client_8
       proportion: null
       repeat: null
       choose: null
@@ -101,7 +101,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_9
-      local: null
+      local: c64/client_9
       proportion: null
       repeat: null
       choose: null
@@ -112,7 +112,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_10
-      local: null
+      local: c64/client_10
       proportion: null
       repeat: null
       choose: null
@@ -123,7 +123,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_11
-      local: null
+      local: c64/client_11
       proportion: null
       repeat: null
       choose: null
@@ -134,7 +134,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_12
-      local: null
+      local: c64/client_12
       proportion: null
       repeat: null
       choose: null
@@ -145,7 +145,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_13
-      local: null
+      local: c64/client_13
       proportion: null
       repeat: null
       choose: null
@@ -156,7 +156,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_14
-      local: null
+      local: c64/client_14
       proportion: null
       repeat: null
       choose: null
@@ -167,7 +167,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_15
-      local: null
+      local: c64/client_15
       proportion: null
       repeat: null
       choose: null
@@ -178,7 +178,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_16
-      local: null
+      local: c64/client_16
       proportion: null
       repeat: null
       choose: null
@@ -189,7 +189,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_17
-      local: null
+      local: c64/client_17
       proportion: null
       repeat: null
       choose: null
@@ -200,7 +200,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_18
-      local: null
+      local: c64/client_18
       proportion: null
       repeat: null
       choose: null
@@ -211,7 +211,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_19
-      local: null
+      local: c64/client_19
       proportion: null
       repeat: null
       choose: null
@@ -222,7 +222,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_20
-      local: null
+      local: c64/client_20
       proportion: null
       repeat: null
       choose: null
@@ -233,7 +233,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_21
-      local: null
+      local: c64/client_21
       proportion: null
       repeat: null
       choose: null
@@ -244,7 +244,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_22
-      local: null
+      local: c64/client_22
       proportion: null
       repeat: null
       choose: null
@@ -255,7 +255,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_23
-      local: null
+      local: c64/client_23
       proportion: null
       repeat: null
       choose: null
@@ -266,7 +266,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_24
-      local: null
+      local: c64/client_24
       proportion: null
       repeat: null
       choose: null
@@ -277,7 +277,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_25
-      local: null
+      local: c64/client_25
       proportion: null
       repeat: null
       choose: null
@@ -288,7 +288,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_26
-      local: null
+      local: c64/client_26
       proportion: null
       repeat: null
       choose: null
@@ -299,7 +299,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_27
-      local: null
+      local: c64/client_27
       proportion: null
       repeat: null
       choose: null
@@ -310,7 +310,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_28
-      local: null
+      local: c64/client_28
       proportion: null
       repeat: null
       choose: null
@@ -321,7 +321,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_29
-      local: null
+      local: c64/client_29
       proportion: null
       repeat: null
       choose: null
@@ -332,7 +332,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_30
-      local: null
+      local: c64/client_30
       proportion: null
       repeat: null
       choose: null
@@ -343,7 +343,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_31
-      local: null
+      local: c64/client_31
       proportion: null
       repeat: null
       choose: null
@@ -354,7 +354,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_32
-      local: null
+      local: c64/client_32
       proportion: null
       repeat: null
       choose: null
@@ -365,7 +365,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_33
-      local: null
+      local: c64/client_33
       proportion: null
       repeat: null
       choose: null
@@ -376,7 +376,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_34
-      local: null
+      local: c64/client_34
       proportion: null
       repeat: null
       choose: null
@@ -387,7 +387,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_35
-      local: null
+      local: c64/client_35
       proportion: null
       repeat: null
       choose: null
@@ -398,7 +398,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_36
-      local: null
+      local: c64/client_36
       proportion: null
       repeat: null
       choose: null
@@ -409,7 +409,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_37
-      local: null
+      local: c64/client_37
       proportion: null
       repeat: null
       choose: null
@@ -420,7 +420,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_38
-      local: null
+      local: c64/client_38
       proportion: null
       repeat: null
       choose: null
@@ -431,7 +431,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_39
-      local: null
+      local: c64/client_39
       proportion: null
       repeat: null
       choose: null
@@ -442,7 +442,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_40
-      local: null
+      local: c64/client_40
       proportion: null
       repeat: null
       choose: null
@@ -453,7 +453,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_41
-      local: null
+      local: c64/client_41
       proportion: null
       repeat: null
       choose: null
@@ -464,7 +464,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_42
-      local: null
+      local: c64/client_42
       proportion: null
       repeat: null
       choose: null
@@ -475,7 +475,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_43
-      local: null
+      local: c64/client_43
       proportion: null
       repeat: null
       choose: null
@@ -486,7 +486,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_44
-      local: null
+      local: c64/client_44
       proportion: null
       repeat: null
       choose: null
@@ -497,7 +497,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_45
-      local: null
+      local: c64/client_45
       proportion: null
       repeat: null
       choose: null
@@ -508,7 +508,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_46
-      local: null
+      local: c64/client_46
       proportion: null
       repeat: null
       choose: null
@@ -519,7 +519,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_47
-      local: null
+      local: c64/client_47
       proportion: null
       repeat: null
       choose: null
@@ -530,7 +530,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_48
-      local: null
+      local: c64/client_48
       proportion: null
       repeat: null
       choose: null
@@ -541,7 +541,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_49
-      local: null
+      local: c64/client_49
       proportion: null
       repeat: null
       choose: null
@@ -552,7 +552,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_50
-      local: null
+      local: c64/client_50
       proportion: null
       repeat: null
       choose: null
@@ -563,7 +563,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_51
-      local: null
+      local: c64/client_51
       proportion: null
       repeat: null
       choose: null
@@ -574,7 +574,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_52
-      local: null
+      local: c64/client_52
       proportion: null
       repeat: null
       choose: null
@@ -585,7 +585,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_53
-      local: null
+      local: c64/client_53
       proportion: null
       repeat: null
       choose: null
@@ -596,7 +596,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_54
-      local: null
+      local: c64/client_54
       proportion: null
       repeat: null
       choose: null
@@ -607,7 +607,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_55
-      local: null
+      local: c64/client_55
       proportion: null
       repeat: null
       choose: null
@@ -618,7 +618,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_56
-      local: null
+      local: c64/client_56
       proportion: null
       repeat: null
       choose: null
@@ -629,7 +629,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_57
-      local: null
+      local: c64/client_57
       proportion: null
       repeat: null
       choose: null
@@ -640,7 +640,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_58
-      local: null
+      local: c64/client_58
       proportion: null
       repeat: null
       choose: null
@@ -651,7 +651,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_59
-      local: null
+      local: c64/client_59
       proportion: null
       repeat: null
       choose: null
@@ -662,7 +662,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_60
-      local: null
+      local: c64/client_60
       proportion: null
       repeat: null
       choose: null
@@ -673,7 +673,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_61
-      local: null
+      local: c64/client_61
       proportion: null
       repeat: null
       choose: null
@@ -684,7 +684,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_62
-      local: null
+      local: c64/client_62
       proportion: null
       repeat: null
       choose: null
@@ -695,7 +695,7 @@
 - client_streams:
     stream_0:
       remote: c64/client_63
-      local: null
+      local: c64/client_63
       proportion: null
       repeat: null
       choose: null

@@ -2,7 +2,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_0
-      local: null
+      local: c32/client_0
       proportion: null
       repeat: null
       choose: null
@@ -13,7 +13,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_1
-      local: null
+      local: c32/client_1
       proportion: null
       repeat: null
       choose: null
@@ -24,7 +24,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_2
-      local: null
+      local: c32/client_2
       proportion: null
       repeat: null
       choose: null
@@ -35,7 +35,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_3
-      local: null
+      local: c32/client_3
       proportion: null
       repeat: null
       choose: null
@@ -46,7 +46,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_4
-      local: null
+      local: c32/client_4
       proportion: null
       repeat: null
       choose: null
@@ -57,7 +57,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_5
-      local: null
+      local: c32/client_5
       proportion: null
       repeat: null
       choose: null
@@ -68,7 +68,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_6
-      local: null
+      local: c32/client_6
       proportion: null
       repeat: null
       choose: null
@@ -79,7 +79,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_7
-      local: null
+      local: c32/client_7
       proportion: null
       repeat: null
       choose: null
@@ -90,7 +90,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_8
-      local: null
+      local: c32/client_8
       proportion: null
       repeat: null
       choose: null
@@ -101,7 +101,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_9
-      local: null
+      local: c32/client_9
       proportion: null
       repeat: null
       choose: null
@@ -112,7 +112,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_10
-      local: null
+      local: c32/client_10
       proportion: null
       repeat: null
       choose: null
@@ -123,7 +123,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_11
-      local: null
+      local: c32/client_11
       proportion: null
       repeat: null
       choose: null
@@ -134,7 +134,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_12
-      local: null
+      local: c32/client_12
       proportion: null
       repeat: null
       choose: null
@@ -145,7 +145,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_13
-      local: null
+      local: c32/client_13
       proportion: null
       repeat: null
       choose: null
@@ -156,7 +156,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_14
-      local: null
+      local: c32/client_14
       proportion: null
       repeat: null
       choose: null
@@ -167,7 +167,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_15
-      local: null
+      local: c32/client_15
       proportion: null
       repeat: null
       choose: null
@@ -178,7 +178,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_16
-      local: null
+      local: c32/client_16
       proportion: null
       repeat: null
       choose: null
@@ -189,7 +189,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_17
-      local: null
+      local: c32/client_17
       proportion: null
       repeat: null
       choose: null
@@ -200,7 +200,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_18
-      local: null
+      local: c32/client_18
       proportion: null
       repeat: null
       choose: null
@@ -211,7 +211,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_19
-      local: null
+      local: c32/client_19
       proportion: null
       repeat: null
       choose: null
@@ -222,7 +222,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_20
-      local: null
+      local: c32/client_20
       proportion: null
       repeat: null
       choose: null
@@ -233,7 +233,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_21
-      local: null
+      local: c32/client_21
       proportion: null
       repeat: null
       choose: null
@@ -244,7 +244,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_22
-      local: null
+      local: c32/client_22
       proportion: null
       repeat: null
       choose: null
@@ -255,7 +255,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_23
-      local: null
+      local: c32/client_23
       proportion: null
       repeat: null
       choose: null
@@ -266,7 +266,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_24
-      local: null
+      local: c32/client_24
       proportion: null
       repeat: null
       choose: null
@@ -277,7 +277,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_25
-      local: null
+      local: c32/client_25
       proportion: null
       repeat: null
       choose: null
@@ -288,7 +288,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_26
-      local: null
+      local: c32/client_26
       proportion: null
       repeat: null
       choose: null
@@ -299,7 +299,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_27
-      local: null
+      local: c32/client_27
       proportion: null
       repeat: null
       choose: null
@@ -310,7 +310,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_28
-      local: null
+      local: c32/client_28
       proportion: null
       repeat: null
       choose: null
@@ -321,7 +321,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_29
-      local: null
+      local: c32/client_29
       proportion: null
       repeat: null
       choose: null
@@ -332,7 +332,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_30
-      local: null
+      local: c32/client_30
       proportion: null
       repeat: null
       choose: null
@@ -343,7 +343,7 @@
 - client_streams:
     stream_0:
       remote: c32/client_31
-      local: null
+      local: c32/client_31
       proportion: null
       repeat: null
       choose: null
