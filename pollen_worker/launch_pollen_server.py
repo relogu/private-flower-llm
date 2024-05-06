@@ -10,6 +10,7 @@ import pickle
 import sys
 from pathlib import Path
 from typing import cast
+import warnings
 
 import flwr as fl
 import hydra
@@ -37,6 +38,13 @@ transformers.logging.set_verbosity_error()
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
+    # Filter user warning from configuration of MPT
+    warnings.filterwarnings(
+        action="ignore",
+        category=UserWarning,
+        message=("If not using a Prefix Language Model*"),
+        append=True,
+    )
     # Get a fake list of cids
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
