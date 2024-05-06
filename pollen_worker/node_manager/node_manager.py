@@ -33,6 +33,7 @@ from logging import DEBUG, ERROR, INFO
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
 from typing import Any, cast
+import warnings
 
 import cloudpickle
 import flwr as fl
@@ -864,6 +865,13 @@ class NodeManager(fl.client.NumPyClient):
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Start a node manager directly with hydra."""
+    # Filter user warning from configuration of MPT
+    warnings.filterwarnings(
+        action="ignore",
+        category=UserWarning,
+        message=("If not using a Prefix Language Model*"),
+        append=True,
+    )
     start_time = time.time()
     log(
         INFO,
