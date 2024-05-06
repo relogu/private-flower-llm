@@ -205,11 +205,11 @@ checkpoints
 
 # Temporary parameters for different communication stack
 *.bin
-*.npz
+*.npz*
 
 # Tensorboard logs
 events.out.tfevents.*
 
 # Dataset shards and metadata
-*.mds
+*.mds*
 *.json
