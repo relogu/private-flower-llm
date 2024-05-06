@@ -233,8 +233,11 @@ def set_parameters(
     net.eval()
     model_parameters_dict = get_trainable_params_dict(net)
     params_dict = zip(model_parameters_dict.keys(), parameters, strict=True)
-    state_dict = OrderedDict({k: torch.as_tensor(v) for k, v in params_dict})
+    state_dict = OrderedDict(
+        {k: torch.as_tensor(v, device=device) for k, v in params_dict}
+    )
     net.load_state_dict(state_dict=state_dict, strict=False)
+    del state_dict
 
 
 def invert_many_to_one_dictionary(
