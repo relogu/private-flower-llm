@@ -119,12 +119,16 @@ def get_gpu_prop(merge: bool = False) -> dict[str, Device]:
         handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
         # Get memory info
         mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        # Get name
+        name = pynvml.nvmlDeviceGetName(handle)
+        if type(name) is bytes:
+            name = name.decode("utf-8")
         gpus_prop[f"cuda:{dev_id}"] = Device(
             device_id=dev_id,
-            name=pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
+            name=name,
             device_type="cuda",
-            total_memory=mem.total,
-            allocated_memory=mem.used,
+            total_memory=float(mem.total),
+            allocated_memory=float(mem.used),
             # NOTE: Forcing concurrency to one
             concurrency=1,
         )
