@@ -14,7 +14,7 @@ import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
 from functools import reduce
-from logging import ERROR, INFO
+from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -85,7 +85,14 @@ def get_trainable_params_dict(
             for name, param in model.named_parameters()
             if param.requires_grad
         }
-    if sort_dict:
+    # TODO: Fix this when back compatibility issues are gone
+    if len(params_dict) >= 290:  # noqa: PLR2004
+        log(
+            DEBUG,
+            "Model parameters length is %s and the dict won't be sorted",
+            len(params_dict),
+        )
+    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
         params_dict = dict(sorted(params_dict.items()))
     return params_dict
 
