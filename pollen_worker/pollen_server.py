@@ -285,9 +285,15 @@ class PollenServer(Server):
                     start_round == self.resume_round
                 ), "Server round mismatch with checkpoint"
                 history: History = server_state["history"]
-                saved_client_state: dict[str | int, dict[str, Any]] = ast.literal_eval(
-                    server_state["client_state"]
-                )
+                if "client_state" in server_state:
+                    saved_client_state: dict[str | int, dict[str, Any]] = (
+                        ast.literal_eval(server_state["client_state"])
+                    )
+                else:
+                    saved_client_state = {
+                        cid: {"local_steps_cumulative": int(500 * self.resume_round)}
+                        for cid in self.cids
+                    }
                 self.client_state = {
                     k: ClientState(**v) for k, v in saved_client_state.items()
                 }
