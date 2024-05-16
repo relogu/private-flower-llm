@@ -69,10 +69,10 @@ if [ -z "$SAVE_PATH" ]; then
 fi
 mkdir -p $POLLEN_SAVE_PATH
 #! Set `LLM_OPTIONS` environment variable
-# export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=128_clients dataset/streams@dataset.val.streams=centralised"
+# export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=100ba llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.scheduler.t_max=25000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-4 "
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
