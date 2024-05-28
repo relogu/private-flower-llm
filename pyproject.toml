@@ -3,8 +3,8 @@ requires = ["poetry-core>=1.4.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "flower_llm" # <----- Ensure it matches the name of your baseline directory containing all the source code
-version = "1.0.0"
+name = "flower_llm"
+version = "0.1.0"
 description = "FlowerLLM: federated generative pre-training of large language models using Flower and Pollen."
 license = "Apache-2.0"
 authors = ["Lorenzo Sani <ls985@cam.ac.uk>", "Alexandru-Andrei Iacob <aai30@cam.ac.uk>"]
@@ -52,7 +52,7 @@ psutil = "^5.9.5"
 pandas = "^2.1.1"
 scipy = ">=1.10.0,<=1.11.0"
 librosa = "^0.10.1"
-flwr = {extras = ["simulation"], version = "^1.5.0"}
+flwr = {extras = ["simulation"], version = "1.6.0"}
 nvidia-ml-py = "11.495.46"
 sentencepiece = "0.1.97"
 ipykernel = "^6.25.2"
@@ -64,9 +64,9 @@ ipython = "^8.17.2"
 torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=b2184b7729ef3b9b10065c074a37c1e603fd99f91e38376e25cb7ed6e1d54696"}
 torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=1e8a9207631e8ba6ecbdee3c9d66f1e9d438ad62b0b4d4f184016d8be89d68a7"}
 torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=baa7970c6b5437312e5dd0bd0f2571a20b786c3e285bafd6ed3e4f62a5c3c76e"}
-mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
+mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.1.0", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
 accelerate = ">=0.25,<0.26"
-mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl" }
+mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", tag = "dodo_v0.1.0" }
 datasets = ">=2.16,<2.17"
 fsspec = "2023.6.0"
 einops = "0.7.0"
@@ -76,15 +76,13 @@ mosaicml-cli = ">=0.3,<1"
 onnx = "1.14.0"
 onnxruntime = "1.15.1"
 cmake = ">=3.25.0,<=3.26.3"  # required for triton-pre-mlir below
-# PyPI does not support direct dependencies, so we remove this line before uploading from PyPI
 triton-pre-mlir = { git = "https://github.com/vchiley/triton.git", branch = "triton_pre_mlir_sm90", subdirectory = "python" }
 boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
-llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl" }
+llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", tag = "dodo_v0.1.0" }
 wheel = "^0.42.0"
-# mosaicml-turbo = "0.0.4"
 loralib = "0.1.1"
 bitsandbytes = "0.39.1"
 peft = "0.4.0"
@@ -96,7 +94,6 @@ minio = "^7.2.4"
 watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 tensorboard = "^2.16.2"
-deepspeed = "^0.14.2"
 
 
 [tool.poetry.dev-dependencies]
