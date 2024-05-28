@@ -64,9 +64,9 @@ ipython = "^8.17.2"
 torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=b2184b7729ef3b9b10065c074a37c1e603fd99f91e38376e25cb7ed6e1d54696"}
 torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=1e8a9207631e8ba6ecbdee3c9d66f1e9d438ad62b0b4d4f184016d8be89d68a7"}
 torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.16.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=baa7970c6b5437312e5dd0bd0f2571a20b786c3e285bafd6ed3e4f62a5c3c76e"}
-mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl-update", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
+mosaicml = { git = "https://github.com/relogu/composer.git", branch = "fl", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
 accelerate = ">=0.25,<0.26"
-mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl-update" }
+mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", branch = "fl" }
 datasets = ">=2.16,<2.17"
 fsspec = "2023.6.0"
 einops = "0.7.0"
@@ -82,7 +82,7 @@ boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
-llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl-update" }
+llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", branch = "fl" }
 wheel = "^0.42.0"
 # mosaicml-turbo = "0.0.4"
 loralib = "0.1.1"
