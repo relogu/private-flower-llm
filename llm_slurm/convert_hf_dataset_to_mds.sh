@@ -109,7 +109,7 @@ echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
 #! Using directly the IP to avoid name resolution issues
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Execute the command
-poetry run python -m pollen_worker.dataset.convert_dataset_hf \
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
 	--dataset $DATASET \
 	--data_subset $DATASET_SUBSET \
 	--splits $SPLIT_NAME \

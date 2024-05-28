@@ -1,17 +1,17 @@
 #!/bin/bash
-#SBATCH -c 40
+#SBATCH -c 20
 #SBATCH -w mauao
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:2
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
 #!SBATCH --job-name=fed_llm_1B
 #!SBATCH --job-name=centralised_llm_75M
-#SBATCH --job-name=centralised_llm_125M
+#!SBATCH --job-name=centralised_llm_125M
 #!SBATCH --job-name=centralised_llm_160M
 #!SBATCH --job-name=centralised_llm_350M
 #!SBATCH --job-name=centralised_llm_760M
-#!SBATCH --job-name=llm_test
+#SBATCH --job-name=llm_test
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --time=01:00:00
@@ -49,14 +49,14 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "160M"
 # bash $PROJECT_PATH/llm_slurm/test_virtual_llm_client.sh "420M"
 
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-small-$DATETIME"
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="test-$DATETIME"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "small"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "16M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "75M"
-bash $PROJECT_PATH/llm_slurm/centralised_training.sh "125M"
+# bash $PROJECT_PATH/llm_slurm/centralised_training.sh "125M"
 # export RUN_UUID="centralised-350M-20240414_225031"
-# export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/pollen_worker/centralised-350M-20240424_084956/latest-rank0.pt"
+# export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "350M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "760M"
 # bash $PROJECT_PATH/llm_slurm/centralised_training.sh "1B"
@@ -76,7 +76,7 @@ bash $PROJECT_PATH/llm_slurm/centralised_training.sh "125M"
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="test-fed-small-$DATETIME"
-# bash $PROJECT_PATH/llm_slurm/pollen_llm_small.sh
+bash $PROJECT_PATH/llm_slurm/pollen_llm_small.sh
 # bash $PROJECT_PATH/llm_slurm/pollen_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
 # DATETIME=$(date '+%Y%m%d_%H%M%S')

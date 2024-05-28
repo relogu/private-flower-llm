@@ -140,7 +140,7 @@ export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 for SUBSET in "${DATASET_SUBSET_ARRAY[@]}"; do
 	LOCAL_DATA_ROOT="$DATA_ROOT/$SUBSET"
 	if [ -n "$EOS_TOKEN" ]; then
-		poetry run python -m pollen_worker.dataset.convert_and_partition_dataset \
+		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
 			--dataset $DATASET \
 			--data_subset $SUBSET \
 			--num_clients 8 \
@@ -153,7 +153,7 @@ for SUBSET in "${DATASET_SUBSET_ARRAY[@]}"; do
 			--num_workers $NUM_CPUS
 
 	else
-		poetry run python -m pollen_worker.dataset.convert_and_partition_dataset \
+		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
 			--dataset $DATASET \
 			--data_subset $SUBSET \
 			--num_clients 8 \

@@ -125,8 +125,8 @@ sudo mkdir -p /ephemeral/$USER/tmp
 #! Clone the repo and move to the 'llm' branch
 mkdir -p $HOME/projects
 cd $HOME/projects
-git clone git@github.com:relogu/pollen_worker.git
-cd pollen_worker
+git clone git@github.com:relogu/flower_llm.git
+cd flower_llm
 git fetch origin
 git checkout --track origin/llm
 #! Changing permissions to the 'ephemeral storage' folder again

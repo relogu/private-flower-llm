@@ -84,3 +84,6 @@ else
 	#! Final message
 	echo "install_env.sh: Environment is ready."
 fi
+
+# TODO: Set 'TMPDIR' env var to depend on the run_uid and username
+# TODO: Set 'TRITON_CACHE_DIR' not to be in an NFS filesystem

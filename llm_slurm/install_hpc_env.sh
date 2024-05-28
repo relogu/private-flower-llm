@@ -134,3 +134,6 @@ else
 fi
 #! Final message
 echo "install_hpc_env.sh: Environment is ready."
+
+# TODO: Set 'TMPDIR' env var to depend on the run_uid and username
+# TODO: Set 'TRITON_CACHE_DIR' not to be in an NFS filesystem
