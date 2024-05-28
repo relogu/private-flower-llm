@@ -21,8 +21,8 @@ from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 
-from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
-from pollen_worker.node_manager.utils import (
+from flower_llm.clients.virtual_llm_client import VirtualLLMClient
+from flower_llm.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
     POLLEN_METRICS_SHM,
@@ -40,7 +40,7 @@ from pollen_worker.node_manager.utils import (
     set_num_samples_shm,
     set_parameters_shm,
 )
-from pollen_worker.utils import partially_aggregate, partially_aggregate_metrics
+from flower_llm.utils import partially_aggregate, partially_aggregate_metrics
 
 
 class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]

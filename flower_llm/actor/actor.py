@@ -24,8 +24,8 @@ from flwr.common import (
 )
 from omegaconf import DictConfig
 
-from pollen_worker.clients.virtual_llm_client import VirtualLLMClient
-from pollen_worker.node_manager.node_manager import NodeManager
+from flower_llm.clients.virtual_llm_client import VirtualLLMClient
+from flower_llm.node_manager.node_manager import NodeManager
 
 
 @ray.remote

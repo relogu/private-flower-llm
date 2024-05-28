@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: ./monitoring.sh <PID of the process>
+# Usage: ./system_monitor.sh <PID of the process>
 # It also uses environmental variables $RUN_UUID and $CONCURRENCY that are set in the parent script
 # Output: pidstat-$RUN_UUID-$CONCURRENCY.dat with lines such as `1539689171 305m 2.0`, i.e. unix time - memory with m/g suffix - CPU load in %
 # To plot the output, see https://gist.github.com/jakubholynet/931a3441982c833f5f8fcdcf54d05c91

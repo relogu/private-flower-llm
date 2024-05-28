@@ -9,7 +9,7 @@ from flwr.server.client_manager import ClientManager
 from flwr.server.history import History
 from flwr.server.strategy import FedAvg
 
-from pollen_worker.large_scale_flwr_server import LargeScaleServer
+from flower_llm.large_scale_flwr_server import LargeScaleServer
 
 
 class WandbServer(LargeScaleServer):

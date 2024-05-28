@@ -21,13 +21,13 @@ from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from omegaconf import DictConfig, OmegaConf
 
-from pollen_worker.clients.llm_client_functions import (
+from flower_llm.clients.llm_client_functions import (
     get_parameters,
     get_raw_model_parameters,
     llm_eval,
     llm_fit,
 )
-from pollen_worker.utils import (
+from flower_llm.utils import (
     get_file_names_from_file_number,
     get_open_fds,
     get_referenced_tensors_summary,

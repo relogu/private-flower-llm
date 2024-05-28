@@ -12,7 +12,7 @@ from flwr.server.client_proxy import ClientProxy
 
 
 def aggregate_cumulative_average(
-    results: Iterable[tuple[ClientProxy, FitRes]]
+    results: Iterable[tuple[ClientProxy, FitRes]],
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # Initialize params,

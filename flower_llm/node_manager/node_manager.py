@@ -56,9 +56,9 @@ from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
-from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
-from pollen_worker.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
-from pollen_worker.node_manager.utils import (
+from flower_llm.clients.llm_client_functions import get_raw_model_parameters
+from flower_llm.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
+from flower_llm.node_manager.utils import (
     POLLEN_CONFIG_SHM,
     POLLEN_EVAL_LOSS_SHM,
     POLLEN_METRICS_SHM,
@@ -77,16 +77,16 @@ from pollen_worker.node_manager.utils import (
     set_num_samples_shm,
     set_parameters_shm,
 )
-from pollen_worker.node_manager.worker import (
+from flower_llm.node_manager.worker import (
     Worker,
     create_new_worker,
     get_training_results_from_worker,
     get_training_results_from_workers_dict,
     start_worker,
 )
-from pollen_worker.placements import add_constant_column_to_clients_stats_table
-from pollen_worker.resources_manager import Device, Node, get_gpu_prop
-from pollen_worker.utils import (
+from flower_llm.placements import add_constant_column_to_clients_stats_table
+from flower_llm.resources_manager import Device, Node, get_gpu_prop
+from flower_llm.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     download_file_from_s3,
     dump_model_parameters_to_file,

@@ -25,7 +25,7 @@ from transformers import PreTrainedTokenizerBase
 
 import datasets as hf_datasets
 
-from pollen_worker.dataset.text_data import StreamingTextDataset
+from flower_llm.dataset.text_data import StreamingTextDataset
 
 
 class ConcatMode(Enum):

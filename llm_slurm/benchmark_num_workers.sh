@@ -6,7 +6,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=%x-%j.out
 # Default project path
-PROJECT_PATH="$HOME/projects/pollen_worker"
+PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
