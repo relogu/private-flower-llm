@@ -9,13 +9,12 @@ import re
 import time
 import warnings
 from collections import OrderedDict
-from contextlib import _GeneratorContextManager
 from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, cast
 
 import streaming
 import torch
-from composer import Callback, ComposerModel, Evaluator, Trainer
+from composer import Callback, Evaluator, Trainer
 from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility
@@ -23,16 +22,7 @@ from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
-from llmfoundry.models.hf.hf_causal_lm import ComposerHFCausalLM
-from llmfoundry.models.hf.hf_prefix_lm import ComposerHFPrefixLM
-from llmfoundry.models.hf.hf_t5 import ComposerHFT5
-from llmfoundry.models.inference_api_wrapper.openai_causal_lm import (
-    OpenAICausalLMEvalWrapper,
-    OpenAIChatAPIEvalWrapper,
-)
 
-
-from llmfoundry.models.mpt.modeling_mpt import ComposerMPTCausalLM, MPTForCausalLM
 from llmfoundry.utils.builders import (
     build_algorithm,
     build_callback,
@@ -41,6 +31,7 @@ from llmfoundry.utils.builders import (
     build_optimizer,
     build_scheduler,
     build_tokenizer,
+    build_composer_model,
 )
 from llmfoundry.utils.config_utils import (
     pop_config,
@@ -49,7 +40,6 @@ from llmfoundry.utils.config_utils import (
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
-from transformers import PreTrainedTokenizerBase
 
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils import S3ObjectStore
@@ -72,16 +62,6 @@ from flower_llm.utils import (
 from dataclasses import asdict
 import ast
 from flower_llm.utils import ClientState
-
-
-COMPOSER_MODEL_REGISTRY = {
-    "mpt_causal_lm": ComposerMPTCausalLM,
-    "hf_causal_lm": ComposerHFCausalLM,
-    "hf_prefix_lm": ComposerHFPrefixLM,
-    "hf_t5": ComposerHFT5,
-    "openai_causal_lm": OpenAICausalLMEvalWrapper,
-    "openai_chat": OpenAIChatAPIEvalWrapper,
-}
 
 
 def copy_old_checkpoints_to_new_run(
@@ -186,53 +166,6 @@ def copy_old_checkpoints_to_new_run(
         )
 
 
-def build_composer_model(
-    model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase
-) -> Any:
-    """Build the Composer model given the config and tokenizer."""
-    warnings.filterwarnings(
-        action="ignore",
-        message="Torchmetrics v0.9 introduced a new argument class property",
-    )
-    if model_cfg.name not in COMPOSER_MODEL_REGISTRY:
-        raise ValueError(f"Not sure how to build model with name={model_cfg.name}")
-    return COMPOSER_MODEL_REGISTRY[model_cfg.name](model_cfg, tokenizer)
-
-
-def build_composer_peft_model(
-    pretrained_model_name_or_path: str,
-    lora_args: dict[str, Any],
-    tokenizer: PreTrainedTokenizerBase,
-) -> ComposerHFCausalLM:
-    """Build the Composer model with Lora modules (if asked for)."""
-    try:
-        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
-    except ImportError as e:
-        raise ImportError(
-            "Error importing from peft. Please verify that peft and peft utils "
-            "are installed by running `pip install -e .[peft]` from `llm-foundry/`. "
-            f"Error encountered: {e}"
-        ) from e
-
-    # 1) loads a hf model, 2) adds peft modules, 3) wraps it in a ComposerHFCausalLM.
-    # log(INFO, "Building Lora config...")
-    lora_cfg = LoraConfig(**lora_args)
-
-    # log(INFO, "Building model from HuggingFace checkpoint...")
-    model = MPTForCausalLM.from_pretrained(
-        pretrained_model_name_or_path, trust_remote_code=True
-    )
-    # log(INFO, "Model built!")
-
-    # log(INFO, "Adding Lora modules...")
-    model = get_peft_model(model, lora_cfg)  # type: ignore[reportArgumentType]
-    # log(INFO, "Lora modules added!")
-
-    model = ComposerHFCausalLM(model, tokenizer)  # type: ignore[reportArgumentType]
-
-    return model
-
-
 def print_trainable_parameters(model: torch.nn.Module) -> None:
     """Print the number of trainable parameters in the model."""
     trainable_params = 0
@@ -246,33 +179,6 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         f"trainable params: {trainable_params} || all params: {all_param} || "
         f"trainable params (%): {100 * trainable_params / all_param}",
     )
-
-
-def _get_model_for_trainer(
-    init_context: _GeneratorContextManager,
-    tokenizer: PreTrainedTokenizerBase,
-    model_config: DictConfig,
-    lora_config: dict[str, Any] | None,
-) -> ComposerModel:
-    # Build Model
-    # log(INFO, "Initializing model...")
-    with init_context:
-        if lora_config is not None:  # frozen model + trainable lora modules
-            model: ComposerHFCausalLM = build_composer_peft_model(
-                model_config.pretrained_model_name_or_path,
-                lora_config["args"],
-                tokenizer,
-            )
-            print_trainable_parameters(model)  # should not be 100%
-        else:  # standard model
-            model = build_composer_model(model_config, tokenizer)
-
-        if model_config.get("master_weights_dtype") in {"bf16", "bfloat16"}:
-            model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in {"f16", "float16"}:
-            model = model.to(dtype=torch.float16)
-        print_trainable_parameters(model)  # should not be 100%
-    return model
 
 
 def get_raw_model_parameters(
@@ -301,17 +207,14 @@ def get_raw_model_parameters(
     )
     tokenizer_name = tokenizer_config["name"]
     tokenizer_kwargs = tokenizer_config.get("kwargs", {})
-    # Get LoRa config
-    lora_config: dict[str, Any] | None = pop_config(
-        _cfg, "lora", must_exist=False, default_value=None, convert=True
-    )
     # Get model while forcing cpu to prevent any GPU allocation
     model_config.init_device = "cpu"
-    model = _get_model_for_trainer(
-        init_context=process_init_device(model_config, None),  # type: ignore[reportArgumentType]
+    model = build_composer_model(
+        name=model_config.name,
+        cfg=model_config,
         tokenizer=build_tokenizer(tokenizer_name, tokenizer_kwargs),
-        model_config=model_config,
-        lora_config=lora_config,
+        init_context=process_init_device(model_config, None),
+        master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
     model.cpu()
     # Get model summary
@@ -413,9 +316,6 @@ def _get_trainer_object(
     # Optional fsdp data, fine-tuning, and eval configs
     fsdp_config: dict[str, Any] | None = pop_config(
         _cfg, "fsdp_config", must_exist=False, default_value=None, convert=True
-    )
-    lora_config: dict[str, Any] | None = pop_config(
-        _cfg, "lora", must_exist=False, default_value=None, convert=True
     )
     eval_loader_config: DictConfig | ListConfig | None = pop_config(
         _cfg, "eval_loader", must_exist=False, default_value=None
@@ -717,11 +617,12 @@ def _get_trainer_object(
         callbacks.append(eval_gauntlet_callback)
 
     # Model
-    model = _get_model_for_trainer(
-        init_context,  # type: ignore[reportArgumentType]
-        tokenizer,
-        model_config,
-        lora_config,
+    model = build_composer_model(
+        name=model_config.name,
+        cfg=model_config,
+        tokenizer=tokenizer,
+        init_context=init_context,
+        master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
 
     # Log number of parameters

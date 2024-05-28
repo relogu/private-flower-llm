@@ -70,14 +70,14 @@ else
 	#! Install `flash-attn`
 	if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
 		echo "install_env.sh: Installing flash-attn..."
-		poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
+		poetry run pip install -q flash-attn==2.5.8 --no-build-isolation
 	else
 		echo "install_env.sh: flash-attn is already installed."
 	fi
 	#! Install `xentropy-cuda-lib`
 	if ! [[ $(poetry run pip list | grep xentropy) ]]; then
 		echo "install_env.sh: Installing xentropy-cuda-lib..."
-		poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
+		poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.5.8#subdirectory=csrc/xentropy
 	else
 		echo "install_env.sh: xentropy-cuda-lib is already installed."
 	fi
