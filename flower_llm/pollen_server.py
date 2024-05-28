@@ -41,19 +41,19 @@ from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
-from pollen_worker.clients.empty_virtual_client import EmptyVirtualClient
-from pollen_worker.clients.llm_client_functions import (
+from flower_llm.clients.empty_virtual_client import EmptyVirtualClient
+from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
 )
-from pollen_worker.placements import (
+from flower_llm.placements import (
     get_placement_fn,
     get_pollen_models,
     skim_clients_training_stats,
 )
-from pollen_worker.pollen_client_manager import PollenClientManager
-from pollen_worker.resources_manager import Node
-from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import (
+from flower_llm.pollen_client_manager import PollenClientManager
+from flower_llm.resources_manager import Node
+from flower_llm.strategy.rs_nesterov import FedNesterov
+from flower_llm.utils import (
     IntentionalClientDropoutError,
     download_file_from_s3,
     dump_model_parameters_to_file,

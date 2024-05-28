@@ -12,7 +12,7 @@ from flwr.common import Config, NDArrays
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import aggregate
 
-from pollen_worker.utils import (
+from flower_llm.utils import (
     partially_aggregate,
     partially_aggregate_metrics,
     weighted_average,

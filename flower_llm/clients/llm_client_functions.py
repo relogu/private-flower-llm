@@ -56,7 +56,7 @@ from composer.utils import S3ObjectStore
 from composer.utils.file_helpers import list_remote_objects
 
 import numpy as np
-from pollen_worker.clients.llm_config_functions import (
+from flower_llm.clients.llm_config_functions import (
     adapt_train_batch_size_to_num_devices,
     client_set_data_config,
     set_client_load_path,
@@ -65,13 +65,13 @@ from pollen_worker.clients.llm_config_functions import (
     validate_config,
     set_n_workers_dataloaders,
 )
-from pollen_worker.utils import (
+from flower_llm.utils import (
     get_trainable_params_dict,
     sum_of_squares,
 )
 from dataclasses import asdict
 import ast
-from pollen_worker.utils import ClientState
+from flower_llm.utils import ClientState
 
 
 COMPOSER_MODEL_REGISTRY = {

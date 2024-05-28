@@ -9,7 +9,7 @@ Papers:
 """
 
 from collections.abc import Callable, Iterable
-from logging import INFO
+from logging import DEBUG, INFO
 from pathlib import Path
 
 from flwr.common import (
@@ -26,9 +26,9 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 import numpy as np
 
-from pollen_worker.strategy.aggregation import aggregate_cumulative_average
-from pollen_worker.strategy.rs_fedavg import FedAvgReproducibleSampling
-from pollen_worker.utils import l2_norm, sum_of_squares
+from flower_llm.strategy.aggregation import aggregate_cumulative_average
+from flower_llm.strategy.rs_fedavg import FedAvgReproducibleSampling
+from flower_llm.utils import l2_norm, sum_of_squares
 
 
 # flake8: noqa: E501
@@ -39,6 +39,7 @@ class FedNesterov(FedAvgReproducibleSampling):
     def __init__(
         self,
         *,
+        initial_parameters: Parameters,
         saving_path: Path | None = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
@@ -55,12 +56,13 @@ class FedNesterov(FedAvgReproducibleSampling):
         on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Parameters | None = None,
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         seed: int = 1337,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
+        rescale_global_model: bool = False,
+        rescale_momentum_vector: bool = False,
         track_norms: bool = True,
         track_inplace_aggregation: bool = False,
     ) -> None:
@@ -132,12 +134,14 @@ class FedNesterov(FedAvgReproducibleSampling):
         self.server_learning_rate = server_learning_rate
         self.server_momentum = server_momentum
 
+        # Rescale global model
+        self.rescale_global_model = rescale_global_model
+
+        # Rescale momentum vector
+        self.rescale_momentum_vector = rescale_momentum_vector
+
         # Avoid translating between parameters and NDArrays every time unnecessarily
-        self.ndarray_parameters: NDArrays | None = (
-            parameters_to_ndarrays(initial_parameters)
-            if initial_parameters is not None
-            else None
-        )
+        self.ndarray_parameters: NDArrays = parameters_to_ndarrays(initial_parameters)
 
         log(
             INFO,
@@ -146,7 +150,7 @@ class FedNesterov(FedAvgReproducibleSampling):
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: NDArrays | None = None
+        self.momentum_vector: NDArrays = [0.0 * w for w in self.ndarray_parameters]
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -179,40 +183,68 @@ class FedNesterov(FedAvgReproducibleSampling):
             results_cached = list(results)
             results = (val for val in results_cached)
 
+        # Get the cumulative average of the results
         fedavg_result = aggregate_cumulative_average(results)
 
+        # Return None if no results were aggregated
         if fedavg_result is None:
             return None, {}
 
-        pseudo_gradient: NDArrays = [
-            x - y for x, y in zip(self.ndarray_parameters, fedavg_result, strict=False)
+        # Get FedAvg pseudo-gradient from FedAvg aggregated model - g_t
+        fedavg_pseudo_gradient: NDArrays = [
+            x - y for x, y in zip(fedavg_result, self.ndarray_parameters, strict=True)
         ]
 
-        if server_round > 1:
-            assert self.momentum_vector, "Momentum should have been created on round 1."
+        # Compute the new momentum vector - b_t
+        log(DEBUG, "Computing the new momentum vector")
+        new_momentum_vector: NDArrays = [
+            self.server_momentum * w_old + g
+            for w_old, g in zip(
+                self.momentum_vector, fedavg_pseudo_gradient, strict=True
+            )
+        ]
+        # Rescale the momentum vector if asked to
+        if self.rescale_momentum_vector:
+            log(DEBUG, "Rescaling the momentum vector")
+            fedavg_norm = l2_norm(fedavg_result)
+            current_norm = l2_norm(new_momentum_vector)
+            # Choose the minimum norm as the target norm
+            target_norm = min(fedavg_norm, current_norm)
+            # Compute the scaling factor
+            scaling_factor = target_norm / current_norm
+            # Rescale the norm of the fedavgm result to match the norm of the fedavg result
+            new_momentum_vector = [scaling_factor * v for v in new_momentum_vector]
 
-            self.momentum_vector = [
-                self.server_momentum * v + w
-                for w, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
-            ]
-        else:  # Round 1
-            # Initialize server-side model
-
-            # Initialize momentum vector
-            self.momentum_vector = pseudo_gradient
-
-        # Applying Nesterov
-        pseudo_gradient = [
-            g + self.server_momentum * v
-            for g, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
+        # Apply the nestorov mechanism to the update - g_t
+        nestorov_pseudo_gradient: NDArrays = [
+            g_t + self.server_momentum * b_t
+            for g_t, b_t in zip(
+                fedavg_pseudo_gradient, new_momentum_vector, strict=True
+            )
         ]
 
-        # Federated Averaging with Server Momentum
-        fedavgm_result = [
-            w - self.server_learning_rate * v
-            for w, v in zip(self.ndarray_parameters, pseudo_gradient, strict=False)
+        # Apply the update
+        fedavgm_result: NDArrays = [
+            w_old - self.server_learning_rate * g_t
+            for w_old, g_t in zip(
+                self.ndarray_parameters, nestorov_pseudo_gradient, strict=True
+            )
         ]
 
+        # Rescale the global model if asked to
+        if self.rescale_global_model:
+            log(DEBUG, "Rescaling the global model")
+            fedavg_norm = l2_norm(fedavg_result)
+            current_norm = l2_norm(fedavgm_result)
+            # Choose the minimum norm as the target norm
+            target_norm = min(fedavg_norm, current_norm)
+            # Compute the scaling factor
+            scaling_factor = target_norm / current_norm
+            # Rescale the norm of the fedavgm result to match the norm of the fedavg result
+            fedavgm_result = [scaling_factor * v for v in fedavgm_result]
+
+        # Update the momentum vector and the model
+        self.momentum_vector = new_momentum_vector
         self.ndarray_parameters = fedavgm_result
 
         parameters_aggregated = ndarrays_to_parameters(fedavgm_result)
@@ -227,31 +259,33 @@ class FedNesterov(FedAvgReproducibleSampling):
 
         if self.track_norms:
             metrics_aggregated |= {
-                "server/l2_norm_pseudo_gradient": l2_norm(pseudo_gradient),
+                "server/l2_norm_pseudo_gradient": l2_norm(fedavg_pseudo_gradient),
                 "server/l2_norm_momentum_vector": l2_norm(self.momentum_vector),
                 "server/l2_norm_model": l2_norm(fedavgm_result),
                 "server/l2_norm_fedavg_result": l2_norm(fedavg_result),
             }
-            for i, plnpg in enumerate([l2_norm([layer]) for layer in pseudo_gradient]):
+            for i, plnpg in enumerate(
+                [l2_norm([layer]) for layer in fedavg_pseudo_gradient]
+            ):
                 metrics_aggregated |= {
-                    f"server/layer_{i}/l2_norm_pseudo_gradient": plnpg
+                    f"server/layer/{i}/l2_norm_pseudo_gradient": plnpg
                 }
             for i, plnpg in enumerate(
                 [l2_norm([layer]) for layer in self.momentum_vector]
             ):
                 metrics_aggregated |= {
-                    f"server/layer_{i}/l2_norm_momentum_vector": plnpg
+                    f"server/layer/{i}/l2_norm_momentum_vector": plnpg
                 }
             for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavgm_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l2_norm_model": plnpg}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_model": plnpg}
             for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavg_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l2_norm_fedavg_result": plnpg}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_fedavg_result": plnpg}
             log(
                 INFO,
                 "Nesterov Momentum: l2_norm(pseudo_gradient)=%s,"
                 " l2_norm(self.momentum_vector)=%s, l2_norm(model)=%s,"
                 " l2_norm(fedavg_result)=%s",
-                l2_norm(pseudo_gradient),
+                l2_norm(fedavg_pseudo_gradient),
                 l2_norm(self.momentum_vector),
                 l2_norm(fedavgm_result),
                 l2_norm(fedavg_result),

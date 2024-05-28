@@ -13,7 +13,7 @@ from flwr.common.logger import log
 from omegaconf import DictConfig, ListConfig
 
 
-from pollen_worker.utils import (
+from flower_llm.utils import (
     get_n_cpu_cores,
     get_n_cuda_devices,
 )

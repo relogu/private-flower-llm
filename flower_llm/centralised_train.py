@@ -18,11 +18,11 @@ from llmfoundry.utils.config_utils import (
 )
 from omegaconf import DictConfig, OmegaConf
 
-from pollen_worker.clients.llm_client_functions import (
+from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters_from_state,
 )
-from pollen_worker.clients.llm_config_functions import validate_config
+from flower_llm.clients.llm_config_functions import validate_config
 
 
 @hydra.main(config_path="conf/", config_name="base", version_base=None)

@@ -19,17 +19,17 @@ from flwr.common import ndarrays_to_parameters, log, NDArrays
 from omegaconf import DictConfig, OmegaConf
 
 import wandb
-from pollen_worker.clients.empty_virtual_client import gen_client_fn
-from pollen_worker.clients.llm_client_functions import get_raw_model_parameters
-from pollen_worker.pollen_client_manager import PollenClientManager
-from pollen_worker.pollen_server import PollenServer
-from pollen_worker.strategy.rs_nesterov import FedNesterov
-from pollen_worker.utils import (
+from flower_llm.clients.empty_virtual_client import gen_client_fn
+from flower_llm.clients.llm_client_functions import get_raw_model_parameters
+from flower_llm.pollen_client_manager import PollenClientManager
+from flower_llm.pollen_server import PollenServer
+from flower_llm.strategy.rs_nesterov import FedNesterov
+from flower_llm.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     wandb_init,
     weighted_average,
 )
-from pollen_worker.wandb_history import WandbHistory
+from flower_llm.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
 

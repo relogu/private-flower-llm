@@ -92,7 +92,7 @@ class PartitionTokensDataset(ConcatTokensDataset):
                 yield {
                     # convert to bytes to store in MDS binary format
                     "tokens": np.asarray(concat_sample).tobytes(),
-                    "partition": intended_key,  # type: ignore[reportReturnType]
+                    "partition": intended_key,  # type: ignore[reportReturnType, dict-item]
                 }
 
 
@@ -550,11 +550,11 @@ def main(args: Namespace) -> None:
 
         with ExitStack() as stack:
             # Create a dictionary to store the MDSWriter for each key
-            writers = {}
+            writers: dict[str, dict[int, Any]] = {}
 
             client = 0
             for sample in tqdm(samples_generator, desc=folder_split, total=denominator):
-                intended_key = sample.pop("partition")
+                intended_key = str(sample.pop("partition"))
                 if intended_key not in writers:
                     writers |= {
                         intended_key: {

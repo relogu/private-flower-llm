@@ -18,7 +18,7 @@ from flwr.server.server import _handle_finished_future_after_fit  # noqa: PLC270
 from flwr.server.server import FitResultsAndFailures, Server, fit_client
 from flwr.server.strategy import FedAvg
 
-from pollen_worker.utils import aggregate, aggregate_inplace, chunks_idx
+from flower_llm.utils import aggregate, aggregate_inplace, chunks_idx
 
 
 class LargeScaleServer(Server):

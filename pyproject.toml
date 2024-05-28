@@ -3,11 +3,11 @@ requires = ["poetry-core>=1.4.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "pollen_worker" # <----- Ensure it matches the name of your baseline directory containing all the source code
+name = "flower_llm" # <----- Ensure it matches the name of your baseline directory containing all the source code
 version = "1.0.0"
-description = "Pollen with LLM"
+description = "FlowerLLM: federated generative pre-training of large language models using Flower and Pollen."
 license = "Apache-2.0"
-authors = ["Lorenzo Sani <ls985@cam.ac.uk>", "Pedro Porto Buarque de Gusmão <pedropgusmao@gmail.com>", "Alexandru-Andrei Iacob <aai30@cam.ac.uk>"]
+authors = ["Lorenzo Sani <ls985@cam.ac.uk>", "Alexandru-Andrei Iacob <aai30@cam.ac.uk>"]
 readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -42,7 +42,7 @@ types-pyyaml = "^6.0.12.12"
 types-decorator = "^5.1.8.4"
 types-setuptools = "^68.2.0.0"
 wandb = "^0.16.1"
-pyarrow = "^13.0.0"
+pyarrow = "^14.0.1"
 multiprocess = "^0.70.15"
 nvsmi = "^0.4.2"
 transformers = ">=4.37,<4.38"

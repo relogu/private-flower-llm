@@ -26,7 +26,7 @@ from streaming import Stream, StreamingDataset
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
 
-from pollen_worker.clients.llm_client_functions import set_n_workers_dataloaders
+from flower_llm.clients.llm_client_functions import set_n_workers_dataloaders
 
 
 class StreamingTextDataset(StreamingDataset):
