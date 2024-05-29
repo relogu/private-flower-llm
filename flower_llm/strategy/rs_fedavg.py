@@ -340,8 +340,6 @@ class FedAvgRSModel(FedAvgReproducibleSampling):
         #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
         # elif server_round == 1:  # Only log this warning once
         #     log(WARNING, "No fit_metrics_aggregation_fn provided")
-        metrics_aggregated = metrics_aggregated | {
-            "server/aggregate_fit_time": aggregation_time
-        }
+        metrics_aggregated |= {"server/aggregate_fit_time": aggregation_time}
 
         return parameters_aggregated, metrics_aggregated

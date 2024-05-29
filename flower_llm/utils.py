@@ -166,9 +166,7 @@ def weighted_average(
         The weighted average over pre-defined metrics.
     """
     client_state_accumulator: dict[int | str, dict[str, Any]] = {}
-    total_num_examples = sum(
-        [num_examples for num_examples, _ in metrics],
-    )
+    total_num_examples = sum(num_examples for num_examples, _ in metrics)
     weighted_metrics: dict = defaultdict(float)
 
     for num_examples, metric in metrics:
@@ -359,7 +357,7 @@ def l2_norm(arrays: NDArrays) -> float:
 def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
-    num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
+    num_examples_total = sum(fit_res.num_examples for _, fit_res in results)
 
     # Compute scaling factors for each result
     scaling_factors = [
