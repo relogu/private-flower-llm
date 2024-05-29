@@ -52,7 +52,7 @@ psutil = "^5.9.5"
 pandas = "^2.1.1"
 scipy = ">=1.10.0,<=1.11.0"
 librosa = "^0.10.1"
-flwr = {extras = ["simulation"], version = "^1.5.0"}
+flwr = {extras = ["simulation"], version = "1.7.0"}
 nvidia-ml-py = "11.495.46"
 sentencepiece = "0.1.97"
 ipykernel = "^6.25.2"
@@ -96,8 +96,6 @@ minio = "^7.2.4"
 watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 tensorboard = "^2.16.2"
-deepspeed = "^0.14.2"
-
 
 [tool.poetry.dev-dependencies]
 isort = "==5.11.5"
