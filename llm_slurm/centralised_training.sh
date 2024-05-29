@@ -4,7 +4,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! $?; then
 	echo "centralised_training.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -26,7 +26,7 @@ while true; do
 		;;
 	esac
 done
-MODEL_SIZE=$1
+MODEL_SIZE="$1"
 echo "centralised_training.sh: MODEL_SIZE=$MODEL_SIZE"
 
 #! Check if at least one arguments are passed
@@ -37,21 +37,21 @@ if [[ $# -lt 1 ]]; then
 fi
 echo "centralised_training.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
 	echo "centralised_training.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
+	. "$PROJECT_PATH"/llm_slurm/install_hpc_env.sh
 else
 	echo "centralised_training.sh: Assuming the script is executing NOT in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. $PROJECT_PATH/llm_slurm/install_env.sh
+	. "$PROJECT_PATH"/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_config.sh $MODEL_SIZE
+. "$PROJECT_PATH"/llm_slurm/set_llm_config.sh "$MODEL_SIZE"
 #! Export the endpoint of the S3 object store
 # export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Using directly the IP to avoid name resolution issues
@@ -67,7 +67,7 @@ fi
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 fi
-mkdir -p $POLLEN_SAVE_PATH
+mkdir -p "$POLLEN_SAVE_PATH"
 #! Set `LLM_OPTIONS` environment variable
 # export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
@@ -82,7 +82,7 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
+APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size "$N_GPUS" --node_rank 0 --master_addr 127.0.0.1 "$PROJECT_PATH"/flower_llm/centralised_train.py "$EXTERNAL_CONFIGS" "$LLM_CONFIG" "$LLM_OPTIONS" "$DATA_CONFIG" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/centralised_train.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID

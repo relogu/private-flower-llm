@@ -4,7 +4,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! $?; then
 	echo "convert_hf_dataset_to_mds.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -69,42 +69,42 @@ fi
 if [[ $# -eq 0 ]]; then
 	echo "convert_hf_dataset_to_mds.sh: Using default values for all input arguments."
 elif [[ $# -eq 1 ]]; then
-	SPLIT=$1
+	SPLIT="$1"
 elif [[ $# -eq 2 ]]; then
-	SPLIT=$1
-	TOKENIZER=$2
+	SPLIT="$1"
+	TOKENIZER="$2"
 elif [[ $# -eq 3 ]]; then
-	SPLIT=$1
-	TOKENIZER=$2
-	EOS_TOKEN=$3
+	SPLIT="$1"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
 elif [[ $# -eq 4 ]]; then
-	SPLIT=$1
-	TOKENIZER=$2
-	EOS_TOKEN=$3
-	DATASET=$4
+	SPLIT="$1"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
 elif [[ $# -eq 5 ]]; then
-	SPLIT=$1
-	TOKENIZER=$2
-	EOS_TOKEN=$3
-	DATASET=$4
-	DATASET_SUBSET=$5
+	SPLIT="$1"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
+	DATASET_SUBSET="$5"
 elif [[ $# -eq 6 ]]; then
-	SPLIT=$1
-	TOKENIZER=$2
-	EOS_TOKEN=$3
-	DATASET=$4
-	DATASET_SUBSET=$5
-	DATA_ROOT=$6
+	SPLIT="$1"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
+	DATASET_SUBSET="$5"
+	DATA_ROOT="$6"
 else
 	echo "convert_hf_dataset_to_mds.sh: Invalid number of input arguments. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
 	exit 1
 fi
-mkdir -p $DATA_ROOT
+mkdir -p "$DATA_ROOT"
 if [[ $SPLIT == "full" ]]; then
 	SPLIT_NAME="val train"
 	echo "convert_hf_dataset_to_mds.sh: Default splits selected: $SPLIT_NAME."
 else
-	SPLIT_NAME=$SPLIT
+	SPLIT_NAME="$SPLIT"
 	echo "convert_hf_dataset_to_mds.sh: The selected splits are $SPLIT_NAME."
 fi
 
@@ -112,24 +112,27 @@ IFS=' ' read -r -a DATASET_SUBSET_ARRAY <<<"$DATASET_SUBSET"
 
 echo "convert_hf_dataset_to_mds.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
 	echo "convert_hf_dataset_to_mds.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
+	. "$PROJECT_PATH"/llm_slurm/install_hpc_env.sh
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
-. $POETRY_ENV_PATH/bin/activate
+# shellcheck disable=SC1091
+. "$POETRY_ENV_PATH"/bin/activate
 echo "convert_hf_dataset_to_mds.sh: Creating the partition data root directory: $DATA_ROOT"
-mkdir -p $DATA_ROOT
+mkdir -p "$DATA_ROOT"
 #! Get info about CPU resources available
 if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
-	export NUM_CPUS=$(nproc --all)
+	NUM_CPUS=$(nproc --all)
+	export NUM_CPUS
 else
-	export NUM_CPUS=$SLURM_CPUS_PER_TASK
+	NUM_CPUS="$SLURM_CPUS_PER_TASK"
+	export NUM_CPUS
 fi
 echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
 #! Export the endpoint of the S3 object store
@@ -141,28 +144,28 @@ for SUBSET in "${DATASET_SUBSET_ARRAY[@]}"; do
 	LOCAL_DATA_ROOT="$DATA_ROOT/$SUBSET"
 	if [ -n "$EOS_TOKEN" ]; then
 		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
-			--dataset $DATASET \
-			--data_subset $SUBSET \
+			--dataset "$DATASET" \
+			--data_subset "$SUBSET" \
 			--num_clients 8 \
-			--splits $SPLIT_NAME \
-			--out_root $LOCAL_DATA_ROOT \
+			--splits "$SPLIT_NAME" \
+			--out_root "$LOCAL_DATA_ROOT" \
 			--compression zstd \
 			--concat_tokens 2048 \
-			--tokenizer $TOKENIZER \
-			--eos_text $EOS_TOKEN \
-			--num_workers $NUM_CPUS
+			--tokenizer "$TOKENIZER" \
+			--eos_text "$EOS_TOKEN" \
+			--num_workers "$NUM_CPUS"
 
 	else
 		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
-			--dataset $DATASET \
-			--data_subset $SUBSET \
+			--dataset "$DATASET" \
+			--data_subset "$SUBSET" \
 			--num_clients 8 \
-			--splits $SPLIT_NAME \
-			--out_root $LOCAL_DATA_ROOT \
+			--splits "$SPLIT_NAME" \
+			--out_root "$LOCAL_DATA_ROOT" \
 			--compression zstd \
 			--concat_tokens 2048 \
-			--tokenizer $TOKENIZER \
-			--num_workers $NUM_CPUS
+			--tokenizer "$TOKENIZER" \
+			--num_workers "$NUM_CPUS"
 
 	fi
 done
