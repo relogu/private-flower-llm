@@ -1,9 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2181
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if ! $?; then
+if [ $? -ne 0 ]; then
 	echo "launch_tensorboard_s3.sh: Error parsing options" >&2
 	exit 1
 fi

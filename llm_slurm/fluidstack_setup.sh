@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2181
 ## This script aims to setup the OS for a fluidstack machine
 ## starting from the "Plain Ubuntu 20.04" image
 #! Update and upgrade package manager

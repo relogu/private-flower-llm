@@ -22,7 +22,7 @@ from collections.abc import Callable
 from flwr.common import (
     NDArrays,
 )
-from omegaconf import DictConfig
+from conf.base_schema import S3CommConfig
 
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient
 from flower_llm.node_manager.node_manager import NodeManager
@@ -41,7 +41,7 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
         cpu_only: bool,
         cpu_concurrency: int,
         use_s3_comm: bool = False,
-        s3_comm_config: DictConfig | None = None,
+        s3_comm_config: S3CommConfig | None = None,
     ) -> None:
         super().__init__()
         self.node_manager = NodeManager(

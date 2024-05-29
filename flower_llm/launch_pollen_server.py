@@ -11,14 +11,17 @@ import sys
 from pathlib import Path
 from typing import cast
 import warnings
+import conf
 
 import flwr as fl
 import hydra
 import transformers
 from flwr.common import ndarrays_to_parameters, log, NDArrays
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
 import wandb
+import conf.base_schema
+from conf.base_schema import BaseConfig
 from flower_llm.clients.empty_virtual_client import gen_client_fn
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.pollen_client_manager import PollenClientManager
@@ -33,10 +36,12 @@ from flower_llm.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
 
+conf.base_schema.register_config(name="base")
+
 
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(cfg: DictConfig) -> None:
+def main(cfg: BaseConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
     # Filter user warning from configuration of MPT
     warnings.filterwarnings(
@@ -133,7 +138,7 @@ def main(cfg: DictConfig) -> None:
     # Wrap with wandb context manager
     with wandb_init(  # type: ignore[union-attr]
         cfg.use_wandb,
-        **cfg.wandb.setup,
+        **cfg.wandb.setup,  # type: ignore[reportCallIssue]
         settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
         config=wandb_config,  # type: ignore[arg-type]
     ) as _:
