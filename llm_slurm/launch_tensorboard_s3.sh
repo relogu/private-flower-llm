@@ -3,7 +3,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! $?; then
 	echo "launch_tensorboard_s3.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -34,7 +34,7 @@ if [[ $# -lt 1 ]]; then
 fi
 echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
@@ -49,12 +49,13 @@ else
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
 fi
-. $POETRY_ENV_PATH/bin/activate
+# shellcheck disable=SC1091
+. "$POETRY_ENV_PATH"/bin/activate
 #! AWS S3 object store settings
 aws_access_key_id=$(grep 'aws_access_key_id' ~/.aws/credentials | awk -F' = ' '{print $2}')
 aws_secret_access_key=$(grep 'aws_secret_access_key' ~/.aws/credentials | awk -F' = ' '{print $2}')
-export AWS_ACCESS_KEY_ID=$aws_access_key_id
-export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
+export AWS_ACCESS_KEY_ID="$aws_access_key_id"
+export AWS_SECRET_ACCESS_KEY="$aws_secret_access_key"
 #! Export the endpoint of the S3 object store
 # export S3_ENDPOINT='http://mauao.cl.cam.ac.uk:9000'
 #! Using directly the IP to avoid name resolution issues
@@ -67,7 +68,7 @@ unset S3_USE_HTTPS
 unset S3_REGION
 export AWS_LOG_LEVEL=1
 #! Launch tensorboard
-poetry run tensorboard --logdir s3://checkpoints/tensorboard_logs/$1
+poetry run tensorboard --logdir s3://checkpoints/tensorboard_logs/"$1"
 
 #! ssh -L <local_port>:<forward_to_host>:<port_on_forward_to_host> -N <username>@<node_name>.cl.cam.ac.uk
 #! ssh -L 6006:localhost:6006 -N mauao

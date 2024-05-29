@@ -1,0 +1,649 @@
+---
+- client_streams:
+    stream_0:
+      remote: c8/Wikipedia (en)_0
+      local: c8/Wikipedia (en)_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/Wikipedia (en)_1
+      local: c8/Wikipedia (en)_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/Wikipedia (en)_2
+      local: c8/Wikipedia (en)_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/Wikipedia (en)_3
+      local: c8/Wikipedia (en)_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/Wikipedia (en)_4
+      local: c8/Wikipedia (en)_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/Wikipedia (en)_5
+      local: c8/Wikipedia (en)_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/Wikipedia (en)_6
+      local: c8/Wikipedia (en)_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/Wikipedia (en)_7
+      local: c8/Wikipedia (en)_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/ArXiv_0
+      local: c8/ArXiv_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/ArXiv_1
+      local: c8/ArXiv_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/ArXiv_2
+      local: c8/ArXiv_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/ArXiv_3
+      local: c8/ArXiv_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/ArXiv_4
+      local: c8/ArXiv_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/ArXiv_5
+      local: c8/ArXiv_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/ArXiv_6
+      local: c8/ArXiv_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/ArXiv_7
+      local: c8/ArXiv_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/Gutenberg (PG-19)_0
+      local: c8/Gutenberg (PG-19)_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/Gutenberg (PG-19)_1
+      local: c8/Gutenberg (PG-19)_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/Gutenberg (PG-19)_2
+      local: c8/Gutenberg (PG-19)_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/Gutenberg (PG-19)_3
+      local: c8/Gutenberg (PG-19)_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/Gutenberg (PG-19)_4
+      local: c8/Gutenberg (PG-19)_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/Gutenberg (PG-19)_5
+      local: c8/Gutenberg (PG-19)_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/Gutenberg (PG-19)_6
+      local: c8/Gutenberg (PG-19)_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/Gutenberg (PG-19)_7
+      local: c8/Gutenberg (PG-19)_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/HackerNews_0
+      local: c8/HackerNews_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/HackerNews_1
+      local: c8/HackerNews_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/HackerNews_2
+      local: c8/HackerNews_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/HackerNews_3
+      local: c8/HackerNews_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/HackerNews_4
+      local: c8/HackerNews_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/HackerNews_5
+      local: c8/HackerNews_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/HackerNews_6
+      local: c8/HackerNews_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/HackerNews_7
+      local: c8/HackerNews_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/PubMed Central_0
+      local: c8/PubMed Central_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/PubMed Central_1
+      local: c8/PubMed Central_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/PubMed Central_2
+      local: c8/PubMed Central_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/PubMed Central_3
+      local: c8/PubMed Central_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/PubMed Central_4
+      local: c8/PubMed Central_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/PubMed Central_5
+      local: c8/PubMed Central_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/PubMed Central_6
+      local: c8/PubMed Central_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/PubMed Central_7
+      local: c8/PubMed Central_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/FreeLaw_0
+      local: c8/FreeLaw_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/FreeLaw_1
+      local: c8/FreeLaw_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/FreeLaw_2
+      local: c8/FreeLaw_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/FreeLaw_3
+      local: c8/FreeLaw_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/FreeLaw_4
+      local: c8/FreeLaw_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/FreeLaw_5
+      local: c8/FreeLaw_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/FreeLaw_6
+      local: c8/FreeLaw_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/FreeLaw_7
+      local: c8/FreeLaw_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/PhilPapers_0
+      local: c8/PhilPapers_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/PhilPapers_1
+      local: c8/PhilPapers_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/PhilPapers_2
+      local: c8/PhilPapers_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/PhilPapers_3
+      local: c8/PhilPapers_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/PhilPapers_4
+      local: c8/PhilPapers_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/PhilPapers_5
+      local: c8/PhilPapers_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/PhilPapers_6
+      local: c8/PhilPapers_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/PhilPapers_7
+      local: c8/PhilPapers_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/StackExchange_0
+      local: c8/StackExchange_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/StackExchange_1
+      local: c8/StackExchange_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_2:
+      remote: c8/StackExchange_2
+      local: c8/StackExchange_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/StackExchange_3
+      local: c8/StackExchange_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_4:
+      remote: c8/StackExchange_4
+      local: c8/StackExchange_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/StackExchange_5
+      local: c8/StackExchange_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_6:
+      remote: c8/StackExchange_6
+      local: c8/StackExchange_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/StackExchange_7
+      local: c8/StackExchange_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null

@@ -81,7 +81,7 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
         # Propagate the split and the remote and local paths to each stream
         for stream in actual_streams.values():
             # Set the split, remote, and local paths
-            stream.split = split if split else stream.split
+            stream.split = split or stream.split
             if root_local:
                 stream.local = root_local + stream.local if stream.local else root_local
             if root_remote:

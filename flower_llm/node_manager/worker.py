@@ -103,7 +103,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
                 (fit_trained_weights, fit_num_samples),
             )
             partial_aggregation_time = time.time_ns() - start_time
-            train_metrics = train_metrics | {
+            train_metrics |= {
                 "worker/partial_aggregation_time": partial_aggregation_time * 1e-9
             }
             # Worker's partial aggregation for metrics
@@ -377,7 +377,7 @@ def get_env_patcher(
                 str(torch.cuda.device_count()) if collaborative else "1"
             )
         # Set other environment variables
-        environs = environs | {
+        environs |= {
             # Shared
             "MASTER_ADDR": "127.0.0.1",
             "PYTHONUNBUFFERED": "1",

@@ -4,7 +4,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! $?; then
 	echo "set_llm_config.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -150,7 +150,7 @@ else
 fi
 
 echo "set_llm_config.sh: Selected LLM config: $1"
-echo "set_llm_config.sh: arguments=$@, first argument=$1"
+printf "set_llm_config.sh: arguments=%s, first argument=%s\n" "$@" "$1"
 
 #! Remove the positional arguments
 eval set --

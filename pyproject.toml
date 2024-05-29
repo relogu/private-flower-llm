@@ -52,7 +52,7 @@ psutil = "^5.9.5"
 pandas = "^2.1.1"
 scipy = ">=1.10.0,<=1.11.0"
 librosa = "^0.10.1"
-flwr = {extras = ["simulation"], version = "1.6.0"}
+flwr = {extras = ["simulation"], version = "1.7.0"}
 nvidia-ml-py = "11.495.46"
 sentencepiece = "0.1.97"
 ipykernel = "^6.25.2"
@@ -98,14 +98,14 @@ tensorboard = "^2.16.2"
 
 [tool.poetry.dev-dependencies]
 isort = "==5.11.5"
-black = { version = ">=23.1.0", extras = ["jupyter"] }
+black = { version = ">=24.4.2", extras = ["jupyter"] }
 docformatter = "==1.5.1"
 mypy = ">=1.8.0"
 pylint = "==3.2.2"
 flake8 = "==3.9.2"
 pytest-watch = "==4.2.0"
-ruff = ">=0.3.4"
-types-requests = "==2.31.0.6"
+ruff = ">=0.4.6"
+types-requests = "==2.27.7"
 yamlfix = ">=1.15.0"
 pre-commit = ">=2.18.1"
 pytest = ">=7.2.1,<9"

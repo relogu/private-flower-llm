@@ -708,7 +708,7 @@ def _get_trainer_object(
             eval_gauntlet_config,
             tokenizer,
             device_eval_batch_size,
-            icl_seq_len if icl_seq_len else max_seq_len,
+            icl_seq_len or max_seq_len,
             icl_subset_num_batches,
         )
         evaluators.extend(icl_evaluators)
@@ -1012,7 +1012,7 @@ def llm_eval(
         # Retrieve number of samples evaluated
         num_samples = trainer.state.eval_timestamp._sample.value
         # Retrieve evaluation metrics
-        eval_metrics = eval_metrics | {
+        eval_metrics |= {
             "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
             for k, v in trainer.state.eval_metric_values.items()
         }

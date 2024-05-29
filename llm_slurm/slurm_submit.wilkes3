@@ -83,10 +83,10 @@ CMD="$application $options"
 ### You should not have to change anything below this line ####
 ###############################################################
 
-cd $workdir
+cd "$workdir" || exit
 echo -e "Changed directory to `pwd`.\n"
 
-JOBID=$SLURM_JOB_ID
+JOBID="$SLURM_JOB_ID"
 
 echo -e "JobID: $JOBID\n======"
 echo "Time: `date`"
@@ -129,4 +129,4 @@ while true; do
 done
 echo "PROJECT_PATH=$PROJECT_PATH"
 
-. $PROJECT_PATH/llm_slurm/series_of_centralised_trainings.sh
+. "$PROJECT_PATH"/llm_slurm/series_of_centralised_trainings.sh
