@@ -618,20 +618,24 @@ class PollenServer(Server):
 
                 # Append instruction
                 if self.use_s3_comm:
-                    node_instructions.append((
-                        client_proxy,
-                        EvaluateIns(
-                            # NOTE: We must pass a real NDArrays object,
-                            # Flower crashes otherwise
-                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                            node_evaluate_config,
-                        ),
-                    ))
+                    node_instructions.append(
+                        (
+                            client_proxy,
+                            EvaluateIns(
+                                # NOTE: We must pass a real NDArrays object,
+                                # Flower crashes otherwise
+                                ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                                node_evaluate_config,
+                            ),
+                        )
+                    )
                 else:
-                    node_instructions.append((
-                        client_proxy,
-                        EvaluateIns(self.parameters, node_evaluate_config),
-                    ))
+                    node_instructions.append(
+                        (
+                            client_proxy,
+                            EvaluateIns(self.parameters, node_evaluate_config),
+                        )
+                    )
 
         log(
             DEBUG,
@@ -757,20 +761,24 @@ class PollenServer(Server):
 
             # Append instruction
             if self.use_s3_comm:
-                node_instructions.append((
-                    client_proxy,
-                    FitIns(
-                        # NOTE: We must pass a real NDArrays object,
-                        # Flower crashes otherwise
-                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                        node_fit_config,
-                    ),
-                ))
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        FitIns(
+                            # NOTE: We must pass a real NDArrays object,
+                            # Flower crashes otherwise
+                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                            node_fit_config,
+                        ),
+                    )
+                )
             else:
-                node_instructions.append((
-                    client_proxy,
-                    FitIns(self.parameters, node_fit_config),
-                ))
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        FitIns(self.parameters, node_fit_config),
+                    )
+                )
 
         log(
             DEBUG,
@@ -882,9 +890,8 @@ class PollenServer(Server):
                     k: ClientState(**v) for k, v in client_state_accumulator.items()
                 }
 
-                metrics_aggregated = (
-                    metrics_aggregated
-                    | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
+                metrics_aggregated |= self.strategy.fit_metrics_aggregation_fn(
+                    fit_metrics
                 )
 
             elif server_round == 1:  # Only log this warning once
@@ -1273,12 +1280,14 @@ def get_handle_success_and_failure(
             case (True, res):
                 cast_res = cast(tuple[ClientProxy, FitRes], res)
                 client_proxy, fit_res = cast_res
-                metrics_accumulator.append((
-                    client_proxy,
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        client_proxy,
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, cast_res)
             case (False, res) if isinstance(res, IntentionalClientDropoutError):
                 intentional_failures.append(res)

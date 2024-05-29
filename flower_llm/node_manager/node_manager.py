@@ -374,7 +374,7 @@ class NodeManager(fl.client.NumPyClient):
         # Prepare statistics to be sent to the server
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         # Append the statistics to the node_train_metrics
-        node_train_metrics = node_train_metrics | {
+        node_train_metrics |= {
             "stats": clients_training_buf.to_pybytes(),
         }
         # Return the results
@@ -492,7 +492,7 @@ class NodeManager(fl.client.NumPyClient):
         # Prepare statistics to be sent to the server
         clients_training_buf = get_pyarrow_buffer_from_table(clients_training_stats)
         # Append the statistics to the node_train_metrics
-        node_train_metrics = node_train_metrics | {
+        node_train_metrics |= {
             "stats": clients_training_buf.to_pybytes(),
         }
         # Return the results
@@ -602,9 +602,11 @@ class NodeManager(fl.client.NumPyClient):
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
-        node_train_metrics.update({
-            "node_training_time_s": float(time.time() - start_time),
-        })
+        node_train_metrics.update(
+            {
+                "node_training_time_s": float(time.time() - start_time),
+            }
+        )
         log(
             DEBUG,
             "NodeManager %s: results have been processed. "
@@ -650,9 +652,11 @@ class NodeManager(fl.client.NumPyClient):
                 self.remote_up_down.post_close()
                 self._create_remote_up_down()
             log(INFO, "Node parameters have been pushed to S3 Object Store")
-            node_train_metrics.update({
-                "endpoint_id": self.node_manager_uuid,
-            })
+            node_train_metrics.update(
+                {
+                    "endpoint_id": self.node_manager_uuid,
+                }
+            )
 
             # Return results
             return (
