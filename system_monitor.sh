@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Usage: ./system_monitor.sh <PID of the process>
 # It also uses environmental variables $RUN_UUID and $CONCURRENCY that are set in the parent script
 # Output: pidstat-$RUN_UUID-$CONCURRENCY.dat with lines such as `1539689171 305m 2.0`, i.e. unix time - memory with m/g suffix - CPU load in %

@@ -11,9 +11,10 @@ from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from typing import Any, Literal, cast
+from flower_llm.conf.base_schema import S3CommConfig
 
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 import pyarrow as pa
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
@@ -119,7 +120,7 @@ class PollenServer(Server):
         print_failures: bool = True,
         print_intentional_failures: bool = True,
         use_s3_comm: bool = False,
-        s3_comm_config: DictConfig | None = None,
+        s3_comm_config: S3CommConfig | None = None,
         checkpoint: bool = False,
         resume_round: int | None = None,
         restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
