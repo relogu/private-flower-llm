@@ -1,11 +1,11 @@
 #!/bin/bash
-# shellcheck disable=SC2181
+# shellcheck disable=SC2090,SC2086,SC2089
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "Error parsing options" >&2
 	exit 1
 fi
@@ -79,7 +79,7 @@ TESTING_OPTIONS=""
 
 #! Test NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" "$TESTING_OPTIONS" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS "$TESTING_OPTIONS" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 # Enable CTRL+C to stop all background processes

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089
 #!
 #! Example SLURM job script for Wilkes3 (AMD EPYC 7763, ConnectX-6, A100)
 #! Last updated: Fri 30 Jul 11:07:58 BST 2021
@@ -110,7 +111,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
   echo "Error parsing options" >&2
   exit 1
 fi

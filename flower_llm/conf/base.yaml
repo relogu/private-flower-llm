@@ -36,6 +36,7 @@ fl:
 
 # Defaults
 defaults:
+  - base_schema
   - _self_
   - llm_config: mpt-125m
   - dataset: fed-c4-c4

@@ -1,11 +1,11 @@
 #!/bin/bash
-# shellcheck disable=SC2181
+# shellcheck disable=SC2090,SC2086,SC2089
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "set_llm_config.sh: Error parsing options" >&2
 	exit 1
 fi

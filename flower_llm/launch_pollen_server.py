@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import cast
 import warnings
-import conf
 
 import flwr as fl
 import hydra
@@ -20,8 +19,8 @@ from flwr.common import ndarrays_to_parameters, log, NDArrays
 from omegaconf import OmegaConf
 
 import wandb
-import conf.base_schema
-from conf.base_schema import BaseConfig
+from flower_llm.conf import base_schema
+from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.empty_virtual_client import gen_client_fn
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.pollen_client_manager import PollenClientManager
@@ -36,7 +35,7 @@ from flower_llm.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
 
-conf.base_schema.register_config(name="base")
+base_schema.register_config(name="base_schema")
 
 
 # Define strategy
@@ -50,6 +49,7 @@ def main(cfg: BaseConfig) -> None:
         message=("If not using a Prefix Language Model*"),
         append=True,
     )
+
     # Get a fake list of cids
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
@@ -136,7 +136,7 @@ def main(cfg: BaseConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
-    with wandb_init(  # type: ignore[union-attr]
+    with wandb_init(  # type: ignore[union-attr,misc]
         cfg.use_wandb,
         **cfg.wandb.setup,  # type: ignore[reportCallIssue]
         settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]

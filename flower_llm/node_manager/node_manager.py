@@ -34,8 +34,8 @@ from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
 from typing import Any, cast
 import warnings
-import conf
-from conf.base_schema import BaseConfig
+
+from flower_llm.conf.base_schema import BaseConfig
 
 import cloudpickle
 import flwr as fl
@@ -57,9 +57,9 @@ from multiprocess import Queue, set_start_method  # type: ignore[reportAttribute
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
-from conf.base_schema import S3CommConfig
+from flower_llm.conf.base_schema import S3CommConfig
 
-import conf.base_schema
+from flower_llm.conf import base_schema
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
 from flower_llm.node_manager.utils import (
@@ -870,7 +870,7 @@ class NodeManager(fl.client.NumPyClient):
         log(DEBUG, "Shared memories closed")
 
 
-conf.base_schema.register_config(name="base")
+base_schema.register_config(name="base_schema")
 
 
 @hydra.main(config_path="../conf/", config_name="base", version_base=None)

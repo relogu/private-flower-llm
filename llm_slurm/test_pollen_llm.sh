@@ -1,11 +1,11 @@
 #!/bin/bash
-# shellcheck disable=SC2181
+# shellcheck disable=SC2090,SC2086,SC2089
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "Error parsing options" >&2
 	exit 1
 fi
@@ -78,14 +78,14 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.sched
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 TESTING_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=test"
 #! Launch ServerWithPollen
-GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server "$TESTING_OPTIONS" "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server "$TESTING_OPTIONS" "$LLM_CONFIG" $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
 sleep 30
 #! Launch NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 #! Uncommented the following lines when esting for multiple NodeManagers
 # for DEVICE in "${DEVICES[@]}"; do
-#     CUDA_VISIBLE_DEVICE=$DEVICE GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+#     CUDA_VISIBLE_DEVICE=$DEVICE GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 # done
 #! Uncommented the following line when testing for a single NodeManager
 GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager "$TESTING_OPTIONS" "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &

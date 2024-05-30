@@ -11,7 +11,7 @@ from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from typing import Any, Literal, cast
-from conf.base_schema import S3CommConfig
+from flower_llm.conf.base_schema import S3CommConfig
 
 import numpy as np
 from omegaconf import OmegaConf
