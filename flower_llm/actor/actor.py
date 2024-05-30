@@ -22,7 +22,7 @@ from collections.abc import Callable
 from flwr.common import (
     NDArrays,
 )
-from conf.base_schema import S3CommConfig
+from flower_llm.conf.base_schema import S3CommConfig
 
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient
 from flower_llm.node_manager.node_manager import NodeManager
