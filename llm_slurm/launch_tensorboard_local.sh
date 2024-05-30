@@ -3,7 +3,6 @@
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "launch_tensorboard_s3.sh: Error parsing options" >&2
 	exit 1
