@@ -100,7 +100,7 @@ pydantic = "<2.0.0"
 [tool.poetry.dev-dependencies]
 isort = "==5.13.2"
 black = { version = ">=24.4.2", extras = ["jupyter"] }
-docformatter = "==1.5.1"
+docformatter = "==1.7.5"
 mypy = ">=1.8.0"
 pylint = "==3.2.2"
 flake8 = "==3.9.2"
