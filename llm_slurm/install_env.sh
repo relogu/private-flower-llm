@@ -1,10 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if ! $?; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "install_env.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -69,7 +69,7 @@ else
 
 	fi
 	#! Install `flash-attn`
-	if ! poetry run pip list | grep -q flash-attn; then
+	if ! poetry run pip list | grep "flash-attn"; then
 		echo "install_env.sh: Installing flash-attn..."
 		poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
 	else
