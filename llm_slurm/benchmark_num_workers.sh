@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC2090,SC2086,SC2089
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 #SBATCH -c 192
 #SBATCH -w ruapehu
 #SBATCH --job-name=benchmark_cpu_workers
@@ -10,6 +10,7 @@
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
+OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
 if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "Error parsing options" >&2
 	exit 1

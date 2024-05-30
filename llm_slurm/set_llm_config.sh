@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC2090,SC2086,SC2089
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
