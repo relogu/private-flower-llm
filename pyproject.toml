@@ -94,10 +94,11 @@ minio = "^7.2.4"
 watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 tensorboard = "^2.16.2"
+pydantic = "<2.0.0"
 
 
 [tool.poetry.dev-dependencies]
-isort = "==5.11.5"
+isort = "==5.13.2"
 black = { version = ">=24.4.2", extras = ["jupyter"] }
 docformatter = "==1.7.5"
 mypy = ">=1.8.0"
@@ -110,7 +111,7 @@ yamlfix = ">=1.15.0"
 pre-commit = ">=2.18.1"
 pytest = ">=7.2.1,<9"
 pytest_codeblocks = ">=0.16.1,<0.18"
-pytest-cov = ">=4,<5"
+pytest-cov = ">=4,<6"
 pyright = "1.1.256"
 toml = ">=0.10.2,<0.11"
 packaging = ">=21,<23"

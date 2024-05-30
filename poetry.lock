@@ -2722,20 +2722,17 @@ arrow = ">=0.15.0"
 
 [[package]]
 name = "isort"
-version = "5.11.5"
+version = "5.13.2"
 description = "A Python utility / library to sort Python imports."
 optional = false
-python-versions = ">=3.7.0"
+python-versions = ">=3.8.0"
 files = [
-    {file = "isort-5.11.5-py3-none-any.whl", hash = "sha256:ba1d72fb2595a01c7895a5128f9585a5cc4b6d395f1c8d514989b9a7eb2a8746"},
-    {file = "isort-5.11.5.tar.gz", hash = "sha256:6be1f76a507cb2ecf16c7cf14a37e41609ca082330be4e3436a18ef74add55db"},
+    {file = "isort-5.13.2-py3-none-any.whl", hash = "sha256:8ca5e72a8d85860d5a3fa69b8745237f2939afe12dbf656afbcb47fe72d947a6"},
+    {file = "isort-5.13.2.tar.gz", hash = "sha256:48fdfcb9face5d58a4f6dde2e72a1fb8dcaf8ab26f95ab49fab84c2ddefb0109"},
 ]
 
 [package.extras]
-colors = ["colorama (>=0.4.3,<0.5.0)"]
-pipfile-deprecated-finder = ["pip-shims (>=0.5.2)", "pipreqs", "requirementslib"]
-plugins = ["setuptools"]
-requirements-deprecated-finder = ["pip-api", "pipreqs"]
+colors = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "iterators"
@@ -5469,13 +5466,13 @@ pytest = ">=7.0.0"
 
 [[package]]
 name = "pytest-cov"
-version = "4.1.0"
+version = "5.0.0"
 description = "Pytest plugin for measuring coverage."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "pytest-cov-4.1.0.tar.gz", hash = "sha256:3904b13dfbfec47f003b8e77fd5b589cd11904a21ddf1ab38a64f204d6a10ef6"},
-    {file = "pytest_cov-4.1.0-py3-none-any.whl", hash = "sha256:6ba70b9e97e69fcc3fb45bfeab2d0a138fb65c4d0d6a41ef33983ad114be8c3a"},
+    {file = "pytest-cov-5.0.0.tar.gz", hash = "sha256:5837b58e9f6ebd335b0f8060eecce69b662415b16dc503883a02f45dfeb14857"},
+    {file = "pytest_cov-5.0.0-py3-none-any.whl", hash = "sha256:4f0764a1219df53214206bf1feea4633c3b558a2925c8b59f144f682861ce652"},
 ]
 
 [package.dependencies]
@@ -5483,7 +5480,7 @@ coverage = {version = ">=5.2.1", extras = ["toml"]}
 pytest = ">=4.6"
 
 [package.extras]
-testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
+testing = ["fields", "hunter", "process-tests", "pytest-xdist", "virtualenv"]
 
 [[package]]
 name = "pytest-watch"
@@ -5628,7 +5625,6 @@ files = [
     {file = "PyYAML-6.0.1-cp311-cp311-win_amd64.whl", hash = "sha256:bf07ee2fef7014951eeb99f56f39c9bb4af143d8aa3c21b1677805985307da34"},
     {file = "PyYAML-6.0.1-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:855fb52b0dc35af121542a76b9a84f8d1cd886ea97c84703eaa6d88e37a2ad28"},
     {file = "PyYAML-6.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:40df9b996c2b73138957fe23a16a4f0ba614f4c0efce1e9406a184b6d07fa3a9"},
-    {file = "PyYAML-6.0.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a08c6f0fe150303c1c6b71ebcd7213c2858041a7e01975da3a99aed1e7a378ef"},
     {file = "PyYAML-6.0.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6c22bec3fbe2524cde73d7ada88f6566758a8f7227bfbf93a408a9d86bcc12a0"},
     {file = "PyYAML-6.0.1-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:8d4e9c88387b0f5c7d5f281e55304de64cf7f9c0021a3525bd3b1c542da3b0e4"},
     {file = "PyYAML-6.0.1-cp312-cp312-win32.whl", hash = "sha256:d483d2cdf104e7c9fa60c544d92981f12ad66a457afae824d146093b8c294c54"},
@@ -7644,17 +7640,17 @@ files = [
 
 [[package]]
 name = "types-requests"
-version = "2.31.0.6"
+version = "2.27.7"
 description = "Typing stubs for requests"
 optional = false
-python-versions = ">=3.7"
+python-versions = "*"
 files = [
-    {file = "types-requests-2.31.0.6.tar.gz", hash = "sha256:cd74ce3b53c461f1228a9b783929ac73a666658f223e28ed29753771477b3bd0"},
-    {file = "types_requests-2.31.0.6-py3-none-any.whl", hash = "sha256:a2db9cb228a81da8348b49ad6db3f5519452dd20a9c1e1a868c83c5fe88fd1a9"},
+    {file = "types-requests-2.27.7.tar.gz", hash = "sha256:f38bd488528cdcbce5b01dc953972f3cead0d060cfd9ee35b363066c25bab13c"},
+    {file = "types_requests-2.27.7-py3-none-any.whl", hash = "sha256:2e0e100dd489f83870d4f61949d3a7eae4821e7bfbf46c57e463c38f92d473d4"},
 ]
 
 [package.dependencies]
-types-urllib3 = "*"
+types-urllib3 = "<1.27"
 
 [[package]]
 name = "types-setuptools"
@@ -8513,3 +8509,4 @@ files = [
 lock-version = "2.0"
 python-versions = ">=3.9.17, <=3.11.6"
 content-hash = "1334eeaeae09edf116e704a63086a188ebb9c846bba77c6d638682cad38a8e37"
+
