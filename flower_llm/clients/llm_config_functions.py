@@ -3,9 +3,10 @@
 import ast
 import os
 from logging import DEBUG, INFO, WARN, WARNING
+import re
 
 import torch
-from composer.utils.file_helpers import validate_given_remote_path
+from composer.utils.file_helpers import validate_given_remote_path, list_remote_objects
 from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
@@ -18,6 +19,7 @@ from flower_llm.utils import (
     get_n_cuda_devices,
 )
 from dataclasses import dataclass, asdict
+import operator
 
 
 @dataclass
@@ -81,7 +83,7 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
         # Propagate the split and the remote and local paths to each stream
         for stream in actual_streams.values():
             # Set the split, remote, and local paths
-            stream.split = split if split else stream.split
+            stream.split = split or stream.split
             if root_local:
                 stream.local = root_local + stream.local if stream.local else root_local
             if root_remote:
@@ -100,6 +102,30 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
             cfg.train_loader.dataset.streams = streams_dict
         elif split == "val":
             cfg.eval_loader.dataset.streams = streams_dict
+
+
+def set_dataset_default_params(cfg: DictConfig) -> None:
+    """Set the default parameters for the dataset."""
+    # Set the `pre-download` value as 8*batch_size
+    if cfg.train_loader.dataset.get("predownload", None) is None:
+        cfg.train_loader.dataset.predownload = 8 * cfg.global_train_batch_size
+    if cfg.eval_loader.dataset.get("pre_download", None) is None:
+        cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
+    # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
+    # that we will always have just 1 real node (server)
+    if cfg.train_loader.dataset.get("num_canonical_nodes", None) is None:
+        cfg.train_loader.dataset.num_canonical_nodes = 64 * 1
+    if cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
+        cfg.eval_loader.dataset.num_canonical_nodes = 64 * 1
+    # Set the `shuffle_block_size` value as 8*batch_size
+    if cfg.train_loader.dataset.get("shuffle_block_size", None) is None:
+        cfg.train_loader.dataset.shuffle_block_size = max(
+            4_000_000 // cfg.train_loader.dataset.num_canonical_nodes, 1 << 18
+        )
+    if cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
+        cfg.eval_loader.dataset.shuffle_block_size = max(
+            4_000_000 // cfg.eval_loader.dataset.num_canonical_nodes, 1 << 18
+        )
 
 
 def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
@@ -125,12 +151,19 @@ def set_client_load_path(
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         try:
-            log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
-            if validate_given_remote_path(cfg.save_folder):
-                cfg.load_path = (
-                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
+            # Are there any checkpoints?
+            remote_objects = list_remote_objects(cfg.save_folder)
+            if not remote_objects:
+                log(
+                    INFO,
+                    "No checkpoints found in %s. Starting training from scratch.",
+                    cfg.save_folder,
                 )
-                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+                assert cfg.load_path is None
+                return skip_iteration
+            # TODO: Replace the relevant lines of code to substitute regex to the epoch
+            # enumeration
+            # Is there the next checkpoint?
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
             path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
             skip_iteration = validate_given_remote_path(path_to_check)
@@ -143,6 +176,26 @@ def set_client_load_path(
                 )
                 # NOTE: Don't re-save the checkpoint when resuming mid-round
                 cfg.save_folder = None
+                return skip_iteration
+            # Load the latest checkpoint
+            log(
+                INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
+            )
+            sorted_pairs = sorted(
+                [
+                    (
+                        path,
+                        int(reg.group(1)),
+                    )
+                    for path in remote_objects
+                    if re.search(r"client_.*/ep0-ba(\d+)", path)
+                    and (reg := re.search(r"ep0-ba(\d+)", path)) is not None
+                ],
+                key=operator.itemgetter(1),
+            )
+            log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
+            cfg.load_path = sorted_pairs[-1][0]
+            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
     return skip_iteration

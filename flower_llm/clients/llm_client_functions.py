@@ -17,7 +17,7 @@ import torch
 from composer import Callback, Evaluator, Trainer
 from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
-from composer.utils import dist, reproducibility
+from composer.utils import dist, reproducibility, get_device
 from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
@@ -52,6 +52,7 @@ from flower_llm.clients.llm_config_functions import (
     set_client_load_path,
     set_client_tensorboard_logger,
     set_client_wandb_logger,
+    set_dataset_default_params,
     validate_config,
     set_n_workers_dataloaders,
 )
@@ -164,6 +165,13 @@ def copy_old_checkpoints_to_new_run(
         raise ValueError(
             f"Could not find the new run folder {new_run_folder} to copy checkpoints."
         )
+
+
+def set_trainer_timestamp(trainer: Trainer, timestamp: int) -> None:
+    """Set the timestamp of the trainer."""
+    log(INFO, "Stepping the timestamp.")
+    while trainer.state.timestamp.batch.value < timestamp:
+        trainer.state.timestamp = trainer.state.timestamp.to_next_batch()
 
 
 def print_trainable_parameters(model: torch.nn.Module) -> None:
@@ -290,6 +298,11 @@ def _get_trainer_object(
         assert visible_devices is None
         device = DeviceCPU()
         log(DEBUG, f"Selecting device CPU, {device}")
+    log(DEBUG, "Initializing dist with device...")
+    dist.initialize_dist(get_device(device), timeout=dist_timeout)
+    log(DEBUG, "Testing barrier with device...")
+    dist.barrier()
+    log(DEBUG, "Barrier test passed with device.")
 
     # Get global and device batch size information from distributed/single node setting
     adapt_train_batch_size_to_num_devices(_cfg)
@@ -299,6 +312,8 @@ def _get_trainer_object(
     # Mandatory model training configs
     set_n_workers_dataloaders(cfg=_cfg, device=device)
     client_set_data_config(cfg=_cfg, cid=cid)
+    # Apply dataset defaults
+    set_dataset_default_params(_cfg)
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
     tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
@@ -400,6 +415,7 @@ def _get_trainer_object(
     save_num_checkpoints_to_keep: int = pop_config(
         _cfg, "save_num_checkpoints_to_keep", must_exist=False, default_value=-1
     )
+
     save_ignore_keys: list[str] | None = pop_config(
         _cfg, "save_ignore_keys", must_exist=False, default_value=None
     )
@@ -740,14 +756,15 @@ def llm_fit(
     cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    # Retrieve the clients' states
     client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
         config["client_state"]
     )
-
+    # Extract current client's state
     client_state_struct = ClientState(**client_state[cid])
-
+    # Get the number of local steps done by the current client
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
-
+    # Initialize training hyperparameters
     global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
     model_parameters = []
@@ -757,8 +774,8 @@ def llm_fit(
     skip_iteration = set_client_load_path(
         cfg,
         cid,
-        client_state_struct.local_steps_cumulative,
-        client_state_struct.local_steps_cumulative + num_batches_trained,
+        config["server_steps_cumulative"],
+        config["server_steps_cumulative"] + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
@@ -769,9 +786,12 @@ def llm_fit(
     # Extract configs to build the trainer
     trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg, cid=cid)
     # log(INFO, f"Trainer config: {logged_cfg}")
+    log(INFO, "Trainer object created.")
     train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
+        # Set the timestamp to the current time
+        set_trainer_timestamp(trainer, config["server_steps_cumulative"])
         # Set the parameters
         if parameters is not None and not skip_iteration:
             # log(INFO, "Initializing model...")
@@ -781,15 +801,13 @@ def llm_fit(
                 "client/fit_set_parameters_time": (time.time_ns() - start_time) * 1e-9
             }
         # Eval first if requested
-        if eval_first and trainer.state.timestamp.batch.value == 0:
+        if eval_first:
             start_time = time.time_ns()
             trainer.eval()
             train_metrics |= {
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
             }
         # log(INFO, "Starting training...")
-        # Prevent to run any evaluator -- by default it runs an evaluation at the end
-        trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
         # Execute fit step for the appointed duration
         try:
             start_time = time.time_ns()
@@ -797,6 +815,7 @@ def llm_fit(
             train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
+    client_state_struct.steps_done += num_batches_trained
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
@@ -865,11 +884,10 @@ def llm_fit(
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
     # Only rank 0 collects metrics
     if int(os.getenv("LOCAL_RANK", "")) == 0:
-        train_metrics |= {"client_state": str(asdict(client_state_struct))}
-        train_metrics |= {"cid": cid}
         train_metrics |= {
             "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
         }
+        train_metrics |= {"client_state_acc": str({cid: asdict(client_state_struct)})}
 
     return model_parameters, n_samples_trained, train_metrics
 
