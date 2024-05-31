@@ -45,6 +45,7 @@ class ClientState:
     """Dataclass for client state."""
 
     local_steps_cumulative: int
+    steps_done: int = 0
 
 
 class NoOpContextManager:

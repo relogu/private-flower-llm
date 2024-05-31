@@ -165,6 +165,7 @@ class PollenServer(Server):
         self.run_uuid = run_uuid
 
         self.client_state: dict[str | int, ClientState] = {}
+        self.server_steps_cumulative = 0
 
         if self.checkpoint or self.use_s3_comm:
             bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
@@ -299,6 +300,19 @@ class PollenServer(Server):
                 }
                 if "time_offset" in server_state:
                     time_offset = server_state["time_offset"]
+                if "server_steps_cumulative" in server_state:
+                    self.server_steps_cumulative = server_state[
+                        "server_steps_cumulative"
+                    ]
+                else:
+                    # Make it back compatible with the previous versions
+                    self.server_steps_cumulative = max(
+                        *[
+                            _client_state.local_steps_cumulative
+                            for _client_state in self.client_state.values()
+                        ],
+                        0,
+                    )
                 if isinstance(self.strategy, FedNesterov):
                     if "momentum" in server_state:
                         log(INFO, "Get momentum vector from server state")
@@ -349,6 +363,7 @@ class PollenServer(Server):
                     "client_state": str(
                         {k: asdict(v) for k, v in self.client_state.items()}
                     ),
+                    "server_steps_cumulative": self.server_steps_cumulative,
                 }
                 log(INFO, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
@@ -751,6 +766,10 @@ class PollenServer(Server):
                 node_fit_config["server_round"] = server_round
             if "n_workers" not in node_fit_config:
                 node_fit_config["n_workers"] = 1
+            if "server_steps_cumulative" not in node_fit_config:
+                node_fit_config["server_steps_cumulative"] = (
+                    self.server_steps_cumulative
+                )
 
             # Assign `cids` to NodeManagers' devices
             node_fit_config.update(device_assignment)
@@ -881,6 +900,22 @@ class PollenServer(Server):
                 self.client_state |= {
                     k: ClientState(**v) for k, v in client_state_accumulator.items()
                 }
+                # NOTE: Update the server steps cumulative by adding to the previous
+                # value the maximum number of local steps done across the clients sample
+                # in this round
+                max_steps = max(
+                    *[
+                        _client_state.steps_done
+                        for _client_state in self.client_state.values()
+                    ],
+                    0,
+                )
+                self.server_steps_cumulative += max_steps
+                # NOTE: Reset the steps_done for all clients to zero as it is just meant
+                # to be an ephemeral record of the local steps done during one federated
+                # round
+                for client_state in self.client_state.values():
+                    client_state.steps_done = 0
 
                 metrics_aggregated = (
                     metrics_aggregated
