@@ -1,4 +1,4 @@
-# FlowerLLM: "The Future of Large Language Model Pre-training is Federated" ''"
+# FlowerLLM: "The Future of Large Language Model Pre-training is Federated"
 
 Codebase for the FlowerLLM project: federated generative pre-training of large language models using Flower and Pollen.
 
