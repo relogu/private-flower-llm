@@ -29,7 +29,7 @@ import pickle
 import time
 import uuid
 from collections.abc import Callable
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR
 from multiprocessing.queues import Queue as QueueType
 from socket import getfqdn
 from typing import Any, cast
@@ -560,9 +560,9 @@ class NodeManager(fl.client.NumPyClient):
                     )
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
-            log(INFO, "Read server parameters from disk")
+            log(DEBUG, "Read server parameters from disk")
             parameters = load_model_parameters_from_file(local_file_name)
-            log(INFO, "Server parameters have been read from disk")
+            log(DEBUG, "Server parameters have been read from disk")
 
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
@@ -626,7 +626,7 @@ class NodeManager(fl.client.NumPyClient):
             # Set the file names
             remote_file_name = f"{server_round}/{self.node_manager_uuid}/parameters.npz"
             local_file_name = Path.cwd() / f"{self.node_manager_uuid}_parameters.npz"
-            log(INFO, "Dump node parameters to disk")
+            log(DEBUG, "Dump node parameters to disk")
             dump_model_parameters_to_file(local_file_name, aggregated_params)
             log(
                 DEBUG,
@@ -649,7 +649,7 @@ class NodeManager(fl.client.NumPyClient):
                 )
                 self.remote_up_down.post_close()
                 self._create_remote_up_down()
-            log(INFO, "Node parameters have been pushed to S3 Object Store")
+            log(DEBUG, "Node parameters have been pushed to S3 Object Store")
             node_train_metrics.update({
                 "endpoint_id": self.node_manager_uuid,
             })
@@ -726,9 +726,9 @@ class NodeManager(fl.client.NumPyClient):
                     )
                     self.remote_up_down.post_close()
                     self._create_remote_up_down()
-            log(INFO, "Read server parameters from disk")
+            log(DEBUG, "Read server parameters from disk")
             parameters = load_model_parameters_from_file(local_file_name)
-            log(INFO, "Server parameters have been read from disk")
+            log(DEBUG, "Server parameters have been read from disk")
 
         start_time = time.time()
         # Extract assignments from config
@@ -874,7 +874,7 @@ def main(cfg: DictConfig) -> None:
     )
     start_time = time.time()
     log(
-        INFO,
+        DEBUG,
         "NodeManager received the following config:\n%s",
         OmegaConf.to_yaml(cfg, resolve=True),
     )
@@ -882,7 +882,7 @@ def main(cfg: DictConfig) -> None:
     OmegaConf.set_struct(cfg, False)
     _llm_config = cfg.llm_config
     log(
-        INFO,
+        DEBUG,
         "NodeManager received the llm_config:\n%s",
         OmegaConf.to_yaml(_llm_config, resolve=True),
     )
@@ -907,23 +907,23 @@ def main(cfg: DictConfig) -> None:
     )
     # Choose the type of execution
     if cfg.is_test:
-        log(INFO, "NodeManager::test")
+        log(DEBUG, "NodeManager::test")
         fl_instructions_config: Config = {"server_round": 1, "gpu-merged": "0,1,2"}
         loss, n_samples, train_metrics = node_manager.evaluate(
             parameters, fl_instructions_config
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::evaluate : loss=%s",
             loss,
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::evaluate : n_samples=%s",
             n_samples,
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::evaluate : train_metrics=%s",
             train_metrics,
         )
@@ -931,29 +931,29 @@ def main(cfg: DictConfig) -> None:
             parameters, fl_instructions_config
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::fit : len(parameters)=%s",
             len(parameters),
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::fit : n_samples=%s",
             n_samples,
         )
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::fit : train_metrics=%s",
             train_metrics,
         )
         properties = node_manager.get_properties(fl_instructions_config)
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::get_properties : properties=%s",
             properties,
         )
         parameters = node_manager.get_parameters(fl_instructions_config)
         log(
-            INFO,
+            DEBUG,
             "NodeManager::test::get_parameters : len(parameters)=%s",
             len(parameters),
         )
@@ -965,7 +965,7 @@ def main(cfg: DictConfig) -> None:
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
         )
     log(
-        INFO,
+        DEBUG,
         "NodeManager::Total time spent is %s seconds.",
         time.time() - start_time,
     )

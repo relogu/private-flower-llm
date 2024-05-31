@@ -261,24 +261,24 @@ class PollenServer(Server):
                     if validate_given_remote_path(remote_file_name_no_ext + ".bin")
                     else Path.cwd() / "current_server_parameters.npz"
                 )
-                log(INFO, "Pull server parameters from S3 Object Store")
+                log(DEBUG, "Pull server parameters from S3 Object Store")
                 # Download the parameters
                 download_file_from_s3(
                     self.remote_up_down, remote_file_name, local_file_name
                 )
-                log(INFO, "Read server parameters from disk")
+                log(DEBUG, "Read server parameters from disk")
                 checkpoint_parameters = load_model_parameters_from_file(local_file_name)
                 self.parameters = ndarrays_to_parameters(checkpoint_parameters)
                 if isinstance(self.strategy, FedNesterov):
                     self.strategy.ndarray_parameters = checkpoint_parameters
-                log(INFO, "Pull server state from S3 Object Store")
+                log(DEBUG, "Pull server state from S3 Object Store")
                 # Download the server state from S3 Object Store
                 download_file_from_s3(
                     self.remote_up_down,
                     f"{self.resume_round}/state.bin",
                     str(Path.cwd() / "current_server_state.bin"),
                 )
-                log(INFO, "Read server state from disk")
+                log(DEBUG, "Read server state from disk")
                 with open(Path.cwd() / "current_server_state.bin", "rb") as f:
                     server_state = pickle.load(f)
                 start_round = server_state["server_round"]
@@ -315,10 +315,10 @@ class PollenServer(Server):
                     )
                 if isinstance(self.strategy, FedNesterov):
                     if "momentum" in server_state:
-                        log(INFO, "Get momentum vector from server state")
+                        log(DEBUG, "Get momentum vector from server state")
                         self.strategy.momentum_vector = server_state["momentum"]
                     else:
-                        log(INFO, "Pull momentum from S3 Object Store")
+                        log(DEBUG, "Pull momentum from S3 Object Store")
                         # Set the file names depending on the extension found
                         remote_file_name = (
                             f"{self.resume_round}/current_momentum_vector.npz"
@@ -331,7 +331,7 @@ class PollenServer(Server):
                         self.strategy.momentum_vector = load_model_parameters_from_file(
                             local_file_name
                         )
-                log(INFO, "Server state has been read from disk")
+                log(DEBUG, "Server state has been read from disk")
             except Exception as e:
                 log(ERROR, "Failed to resume from checkpoint: %s", e)
                 sys.exit(1)
@@ -355,7 +355,7 @@ class PollenServer(Server):
             # Initialize client_state_dict
             # Save the checkpoint to S3 Object Store (w/ model parameters)
             if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Create server state (server_round, history, time_offset)")
+                log(DEBUG, "Create server state (server_round, history, time_offset)")
                 current_server_state = {
                     "server_round": start_round,
                     "history": history,
@@ -365,10 +365,10 @@ class PollenServer(Server):
                     ),
                     "server_steps_cumulative": self.server_steps_cumulative,
                 }
-                log(INFO, "Dump server state to disk")
+                log(DEBUG, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
-                log(INFO, "Push server state to S3")
+                log(DEBUG, "Push server state to S3")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{start_round}/state.bin",
@@ -378,23 +378,23 @@ class PollenServer(Server):
                     isinstance(self.strategy, FedNesterov)
                     and self.strategy.momentum_vector is not None
                 ):
-                    log(INFO, "Dump momentum vector to disk")
+                    log(DEBUG, "Dump momentum vector to disk")
                     dump_model_parameters_to_file(
                         Path.cwd() / "current_momentum_vector.npz",
                         self.strategy.momentum_vector,
                     )
-                    log(INFO, "Push momentum vector to S3 Object Store")
+                    log(DEBUG, "Push momentum vector to S3 Object Store")
                     upload_file_to_s3(
                         self.remote_up_down,
                         f"{start_round}/current_momentum_vector.npz",
                         Path.cwd() / "current_momentum_vector.npz",
                     )
-                log(INFO, "Dump server parameters to disk")
+                log(DEBUG, "Dump server parameters to disk")
                 dump_model_parameters_to_file(
                     Path.cwd() / "current_server_parameters.npz",
                     parameters_to_ndarrays(self.parameters),
                 )
-                log(INFO, "Push parameters to S3 Object Store")
+                log(DEBUG, "Push parameters to S3 Object Store")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{start_round}/current_server_parameters.npz",
@@ -454,12 +454,12 @@ class PollenServer(Server):
 
             # Push the global model to S3 Object Store (but not the server state)
             if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Dump server parameters to disk")
+                log(DEBUG, "Dump server parameters to disk")
                 dump_model_parameters_to_file(
                     Path.cwd() / "current_server_parameters.npz",
                     parameters_to_ndarrays(self.parameters),
                 )
-                log(INFO, "Push parameters to S3 Object Store")
+                log(DEBUG, "Push parameters to S3 Object Store")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/current_server_parameters.npz",
@@ -531,7 +531,7 @@ class PollenServer(Server):
 
             # Save the checkpoint to S3 Object Store (w/o the global parameters)
             if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Create server state (server_round, history, time_offset)")
+                log(DEBUG, "Create server state (server_round, history, time_offset)")
                 current_server_state = {
                     "server_round": current_round,
                     "history": history,
@@ -540,10 +540,10 @@ class PollenServer(Server):
                         {k: asdict(v) for k, v in self.client_state.items()}
                     ),
                 }
-                log(INFO, "Dump server state to disk")
+                log(DEBUG, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
-                log(INFO, "Push server state to S3")
+                log(DEBUG, "Push server state to S3")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/state.bin",
@@ -553,12 +553,12 @@ class PollenServer(Server):
                     isinstance(self.strategy, FedNesterov)
                     and self.strategy.momentum_vector is not None
                 ):
-                    log(INFO, "Dump momentum vector to disk")
+                    log(DEBUG, "Dump momentum vector to disk")
                     dump_model_parameters_to_file(
                         Path.cwd() / "current_momentum_vector.npz",
                         self.strategy.momentum_vector,
                     )
-                    log(INFO, "Push momentum vector to S3 Object Store")
+                    log(DEBUG, "Push momentum vector to S3 Object Store")
                     upload_file_to_s3(
                         self.remote_up_down,
                         f"{current_round}/current_momentum_vector.npz",
@@ -1236,13 +1236,13 @@ def replace_clients_updates_with_remote(
         local_file_name,
     )
     download_file_from_s3(remote_uploader_downloader, remote_file_name, local_file_name)
-    log(INFO, "Read server parameters from disk")
+    log(DEBUG, "Read server parameters from disk")
     fit_res.parameters = ndarrays_to_parameters(
         load_model_parameters_from_file(local_file_name)
     )
 
     log(
-        INFO,
+        DEBUG,
         "Node %s parameters have been read from disk and assigned to fit_res",
         endpoint_id,
     )
