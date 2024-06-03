@@ -873,20 +873,11 @@ def main(cfg: DictConfig) -> None:
         append=True,
     )
     start_time = time.time()
-    log(
-        DEBUG,
-        "NodeManager received the following config:\n%s",
-        OmegaConf.to_yaml(cfg, resolve=True),
-    )
+    # Resolve the config and set it to be editable in place
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
+    # Extract the LLM part of the config
     _llm_config = cfg.llm_config
-    log(
-        DEBUG,
-        "NodeManager received the llm_config:\n%s",
-        OmegaConf.to_yaml(_llm_config, resolve=True),
-    )
-
     assert isinstance(_llm_config, DictConfig)
     # Get the client generator function
     client_fn = gen_client_fn(
