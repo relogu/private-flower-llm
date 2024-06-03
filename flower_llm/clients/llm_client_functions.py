@@ -9,7 +9,7 @@ import re
 import time
 import warnings
 from collections import OrderedDict
-from logging import DEBUG, ERROR, INFO, WARN
+from logging import DEBUG, ERROR, WARN
 from typing import Any, cast
 
 import streaming
@@ -20,7 +20,7 @@ from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_s
 from composer.utils import dist, reproducibility, get_device
 from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
-from flwr.common.typing import Config, NDArrays, Scalar
+from flwr.common.typing import NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
 
 from llmfoundry.utils.builders import (
@@ -57,8 +57,13 @@ from flower_llm.clients.llm_config_functions import (
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
+    construct_parameters_dict,
+    get_list_of_parameters_names,
     get_trainable_params_dict,
+    parameters_checker,
+    set_trainer_trainable_params_dict,
     sum_of_squares,
+    get_parameters_from_state,
 )
 from dataclasses import asdict
 import ast
@@ -125,6 +130,7 @@ def copy_old_checkpoints_to_new_run(
             client_path
             for client_path in list_remote_objects(old_run_folder)
             if re.match(
+                # TODO: @Alex, make this regex un-interested on the number of epochs
                 f"{old_run_folder_no_prefix}/client_.*/ep0-ba{restore_run_step}",
                 client_path,
             )
@@ -144,7 +150,7 @@ def copy_old_checkpoints_to_new_run(
             paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
         else:
             log(
-                logging.INFO,
+                DEBUG,
                 f"Could not find momentum vector to copy from {momentum_vec}",
             )
 
@@ -153,7 +159,7 @@ def copy_old_checkpoints_to_new_run(
         for path in paths_to_copy:
             copy_source = {"Bucket": backend.bucket, "Key": path}
             target_key = path.replace(restore_run_uuid, run_uuid)
-            log(INFO, "Copying %s to %s", path, target_key)
+            log(DEBUG, "Copying %s to %s", path, target_key)
             backend.client.copy(copy_source, backend.bucket, target_key)
 
     else:
@@ -169,7 +175,7 @@ def copy_old_checkpoints_to_new_run(
 
 def set_trainer_timestamp(trainer: Trainer, timestamp: int) -> None:
     """Set the timestamp of the trainer."""
-    log(INFO, "Stepping the timestamp.")
+    log(DEBUG, "Stepping the timestamp.")
     while trainer.state.timestamp.batch.value < timestamp:
         trainer.state.timestamp = trainer.state.timestamp.to_next_batch()
 
@@ -183,7 +189,7 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         if param.requires_grad:
             trainable_params += param.numel()
     log(
-        INFO,
+        DEBUG,
         f"trainable params: {trainable_params} || all params: {all_param} || "
         f"trainable params (%): {100 * trainable_params / all_param}",
     )
@@ -227,7 +233,7 @@ def get_raw_model_parameters(
     model.cpu()
     # Get model summary
     if verbose:
-        log(INFO, model)
+        log(DEBUG, model)
     parameters_ndarrays = [
         val.detach().to("cpu").numpy()
         for _, val in get_trainable_params_dict(model).items()
@@ -241,7 +247,7 @@ def get_raw_model_parameters(
 def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str,
-) -> tuple[Trainer, bool, DictConfig]:
+) -> tuple[Trainer, bool, DictConfig, list[str]]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
@@ -347,7 +353,7 @@ def _get_trainer_object(
         )
         if eval_gauntlet_config is not None:
             log(
-                INFO,
+                DEBUG,
                 "Use of the key `model_gauntlet` is deprecated, please use the key"
                 "`eval_gauntlet`",
             )
@@ -467,7 +473,7 @@ def _get_trainer_object(
 
     if _cfg.get("autoresume") is None and autoresume_default:
         log(
-            INFO,
+            DEBUG,
             "As run_name, save_folder, and save_latest_filename are set,           "
             "      changing autoresume default to True...",
         )
@@ -505,7 +511,9 @@ def _get_trainer_object(
         fsdp_config = None
 
     # Set logging level
-    if python_log_level is not None:
+    # TODO: Make this through the Flower logger
+    # NOTE: Logging only Rank 0 by default
+    if python_log_level is not None and dist.get_global_rank() == 0:
         logging.basicConfig(
             # Example of format string
             # 2022-06-29 11:22:26,152: rank0[822018][MainThread]: INFO: Message here
@@ -624,7 +632,7 @@ def _get_trainer_object(
             eval_gauntlet_config,
             tokenizer,
             device_eval_batch_size,
-            icl_seq_len if icl_seq_len else max_seq_len,
+            icl_seq_len or max_seq_len,
             icl_subset_num_batches,
         )
         evaluators.extend(icl_evaluators)
@@ -640,6 +648,7 @@ def _get_trainer_object(
         init_context=init_context,
         master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
+    parameters_names = get_list_of_parameters_names(model)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
@@ -699,7 +708,7 @@ def _get_trainer_object(
         compile_config=compile_config,
         device=device,
     )
-    return trainer, eval_first, logged_cfg
+    return trainer, eval_first, logged_cfg, parameters_names
 
 
 def get_parameters(
@@ -721,20 +730,6 @@ def get_parameters(
         The local model parameters as a list of NumPy ndarrays.
     """
     return cast(NDArrays, get_raw_model_parameters(copy.deepcopy(cfg)))
-
-
-def get_parameters_from_state(
-    config: Config, trainer: Trainer, rank: int = 0
-) -> NDArrays:
-    """Implement how to get parameters."""
-    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
-    # Only rank 0 returns the model parameters to avoid overheads
-    if rank == 0:
-        return [
-            val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()
-        ]
-    else:
-        return []
 
 
 def set_parameters_to_state(
@@ -783,23 +778,46 @@ def llm_fit(
         cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
         # Ignoring the optimizer state when saving a checkpoint
         cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
+    # NOTE: The following, when re-loading from a checkpoint, returns a weird error
+    # if not skip_iteration:
+    #     # Ignoring loading the model as we need to set it from the server
+    #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
-    trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg, cid=cid)
-    # log(INFO, f"Trainer config: {logged_cfg}")
-    log(INFO, "Trainer object created.")
+    trainer, eval_first, _, parameters_names = _get_trainer_object(_cfg=cfg, cid=cid)
+
+    # Create the server parameters dictionary
+    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+
+    initial_trainer_parameters = get_parameters_from_state(
+        {},
+        trainer,
+    )
+    parameters_checker(initial_trainer_parameters, parameters, False)
+
+    # log(DEBUG, f"Trainer config: {logged_cfg}")
+    log(DEBUG, "Trainer object created.")
     train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the timestamp to the current time
         set_trainer_timestamp(trainer, config["server_steps_cumulative"])
+
         # Set the parameters
         if parameters is not None and not skip_iteration:
-            # log(INFO, "Initializing model...")
+            # log(DEBUG, "Initializing model...")
             start_time = time.time_ns()
-            set_parameters_to_state(parameters, trainer)
+            set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+
+            current_trainer_parameters = get_parameters_from_state({}, trainer)
+            parameters_checker(
+                current_trainer_parameters, initial_trainer_parameters, False
+            )
+            parameters_checker(current_trainer_parameters, parameters, True)
+
             train_metrics |= {
                 "client/fit_set_parameters_time": (time.time_ns() - start_time) * 1e-9
             }
+
         # Eval first if requested
         if eval_first:
             start_time = time.time_ns()
@@ -807,7 +825,7 @@ def llm_fit(
             train_metrics |= {
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
             }
-        # log(INFO, "Starting training...")
+        # log(DEBUG, "Starting training...")
         # Execute fit step for the appointed duration
         try:
             start_time = time.time_ns()
@@ -831,12 +849,14 @@ def llm_fit(
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
-    log(INFO, f"Train metrics: {train_metrics}")
+    log(DEBUG, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
     start_time = time.time_ns()
-    model_parameters = get_parameters_from_state(
-        {}, trainer, int(os.getenv("LOCAL_RANK", ""))
-    )
+    model_parameters = get_parameters_from_state({}, trainer)
+
+    parameters_checker(model_parameters, initial_trainer_parameters, False)
+    parameters_checker(model_parameters, parameters, False)
+
     train_metrics |= {
         "client/fit_get_parameters_time": (time.time_ns() - start_time) * 1e-9
     }
@@ -907,21 +927,35 @@ def llm_eval(
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, _, _ = _get_trainer_object(
+    trainer, _, _, parameters_names = _get_trainer_object(
         _cfg=cfg,
         cid=0,
     )
+
+    # Create the server parameters dictionary
+    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+
+    initial_trainer_parameters = get_parameters_from_state({}, trainer)
+    parameters_checker(initial_trainer_parameters, parameters, False)
+
     eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
+
     # Set the parameters
-    # log(INFO, "Initializing model...")
+    # log(DEBUG, "Initializing model...")
     start_time = time.time_ns()
-    set_parameters_to_state(parameters, trainer)
+    set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+
+    current_trainer_parameters = get_parameters_from_state({}, trainer)
+    parameters_checker(current_trainer_parameters, initial_trainer_parameters, False)
+    parameters_checker(current_trainer_parameters, parameters, True)
+
     gc.collect()
     torch.cuda.empty_cache()
     eval_metrics |= {
         "client/eval_set_parameters_time": (time.time_ns() - start_time) * 1e-9
     }
-    # log(INFO, "Starting evaluation...")
+
+    # log(DEBUG, "Starting evaluation...")
     start_time = time.time_ns()
     trainer.eval()
     eval_metrics |= {"client/eval_time": (time.time_ns() - start_time) * 1e-9}
@@ -931,7 +965,7 @@ def llm_eval(
         # Retrieve number of samples evaluated
         num_samples = trainer.state.eval_timestamp._sample.value
         # Retrieve evaluation metrics
-        eval_metrics = eval_metrics | {
+        eval_metrics |= {
             "Val" + k: v.detach().cpu().item()  # type: ignore[attr-defined]
             for k, v in trainer.state.eval_metric_values.items()
         }

@@ -8,13 +8,14 @@ import copy
 from dataclasses import dataclass
 import fcntl
 import gc
+import os
 import pickle
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
 from functools import reduce
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -24,8 +25,10 @@ import pyarrow as pa
 import ray
 import torch
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel
+from torch.distributed.fsdp.api import FullStateDictConfig, StateDictType
 from composer import Trainer
 from composer.loggers import RemoteUploaderDownloader
+from composer.utils import dist
 from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
@@ -59,22 +62,96 @@ class NoOpContextManager:
         """Do nothing."""
 
 
+def parameters_checker(
+    current_parameters: NDArrays, reference_parameters: NDArrays, is_equal: bool = False
+) -> None:
+    """Checker trainer's parameters (in)compatibility with the given parameters."""
+    list_of_conditions = []
+    for i, (current_param, param) in enumerate(
+        zip(current_parameters, reference_parameters, strict=True)
+    ):
+        # NOTE: Skip check if the size of the `current_param` is 0
+        if current_param.size == 0:
+            continue
+        # Skip ranks > 0 b/c they are not meant to be consistent
+        if int(os.getenv("LOCAL_RANK", "-1")) > 0:
+            continue
+        # Reshape the parameters if the shapes are not equal, which happens for
+        # flattened parameters in FSDP)
+        if current_param.shape != param.shape:
+            try:
+                current_param = current_param.reshape(param.shape)
+            except Exception as e:
+                log(
+                    ERROR,
+                    "Error in reshaping parameter, Rank %s, Component %s,"
+                    " Trainer shape %s, Param shape %s",
+                    int(os.getenv("LOCAL_RANK", "-1")),
+                    i,
+                    current_param.shape,
+                    param.shape,
+                    exc_info=e,
+                )
+                # If the reshaping fails, skip the check assuming split tensor by FSDP
+                continue
+        # Assert the shape of the parameters are equal
+        assert current_param.shape == param.shape
+        # Append the condition to the list of conditions
+        list_of_conditions.append(np.array_equal(current_param, param))
+    # Assert all the conditions are true if `is_equal` is True
+    local_rank = int(os.getenv("LOCAL_RANK", "-1"))
+    if is_equal:
+        list_of_conditions.append(True)
+        assert all(
+            list_of_conditions
+        ), f"Parameters on rank {local_rank} are not equal: {list_of_conditions}"
+    # Assert not all the conditions are true (at least one is False) if `is_equal` is
+    # False
+    else:
+        list_of_conditions.append(False)
+        assert not all(
+            list_of_conditions
+        ), f"Parameters on rank {local_rank} are not different: {list_of_conditions}"
+
+
+def get_parameters_from_state(config: Config, trainer: Trainer) -> NDArrays:
+    """Implement how to get parameters."""
+    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
+    return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
+
+
 def get_trainable_params_dict(
     model: torch.nn.Module, sort_dict: bool = True
 ) -> dict[str, torch.nn.Parameter] | dict[str, torch.Tensor]:
     """Get the trainable parameters of a model as a dictionary."""
     params_dict: dict[str, torch.nn.Parameter] | dict[str, torch.Tensor] = {}
-    log(INFO, "Model: %s", model)
-    # NOTE: This function is weird because the encapsulation done by FSDP or DDP is
-    # weird, so this will likely change when they decide to fix their code
+    # NOTE: This function is weird because the encapsulation done to support FSDP and
+    # DDP is weird. Since they are both likely to change, we MUST maintain this very
+    # well and implement as many checkers as we can.
     if hasattr(model, "model") and type(model.model) is FullyShardedDataParallel:
         assert model.model is not None
         inner_model = model.model
-        inner_model.eval()
         # NOTE: This doesn't work in the case in use_orig_params is True if the FSDP
         # configuration as the tensors returned are flattened breaking some assumptions
         # of the rest of the codebase
-        with FullyShardedDataParallel.summon_full_params(inner_model):
+        with FullyShardedDataParallel.summon_full_params(
+            inner_model,
+            recurse=True,
+            writeback=False,
+            rank0_only=True,
+            offload_to_cpu=True,
+            with_grads=False,
+        ):
+            # NOTE: This parameter dict using the above parameters, i.e., (recurse=True,
+            # writeback=False, rank0_only=True, offload_to_cpu=True, with_grads=False,),
+            # will be complete only on rank 0. The other ranks will have zero-shaped
+            # tensors for those layers that are not "living" in there.
+            # NOTE: If the FSDP configuration use the original parameters
+            # (use_orig_params=true), then the tensors in rank 0 have the correct
+            # original shape. In the other ranks they are flattened anyway.
+            # NOTE: On ranks > 0 the dictionary won't be empty. It will contain the
+            # parameters that are "living" in that rank and will have zero-shaped
+            # tensors for the others.
             params_dict = {
                 name: param.detach().clone()
                 for name, param in inner_model.named_parameters()
@@ -82,7 +159,7 @@ def get_trainable_params_dict(
             }
     else:
         params_dict = {
-            name: param
+            name: param.detach().clone()
             for name, param in model.named_parameters()
             if param.requires_grad
         }
@@ -95,7 +172,138 @@ def get_trainable_params_dict(
         )
     if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
         params_dict = dict(sorted(params_dict.items()))
+    dist.barrier()
     return params_dict
+
+
+def set_trainer_trainable_params_dict(
+    trainer: Trainer,
+    parameters_dict: OrderedDict[str, torch.Tensor],
+) -> None:
+    """Set the trainable parameters of a model."""
+    # NOTE: This function is weird because the encapsulation done to support FSDP and
+    # DDP is weird. Since they are both likely to change, we MUST maintain this very
+    # well and implement as many checkers as we can.
+    if (
+        hasattr(trainer.state.model, "model")
+        and type(trainer.state.model.model) is FullyShardedDataParallel
+    ):
+        # Get the state dict of the model on rank 0 offloading to CPU
+        # NOTE: This assumes there's enough RAM on rank 0 to hold the model state dict
+        save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        with FullyShardedDataParallel.state_dict_type(
+            trainer.state.model.model, StateDictType.FULL_STATE_DICT, save_policy
+        ):
+            cpu_state = trainer.state.model.model.state_dict()
+            # If the state dict exists (only on rank 0), modify ion place the parameters
+            # to those passed as argument
+            if cpu_state:
+                # Set the parameters only if they require gradients
+                for name, param in cpu_state.items():
+                    # NOTE: We need to add the prefix "model." to the name of the
+                    # parameter to match the state dict
+                    cpu_state[name] = parameters_dict["model." + name].to(param.device)
+            # Broadcast the state dict across all ranks
+            # NOTE: This step is necessary as all the ranks must load the same state
+            # dict concurrently
+            list_of_objects = [cpu_state]
+            dist.broadcast_object_list(list_of_objects, src=0)
+            # Load the state dict back to the model
+            trainer.state.model.model.load_state_dict(list_of_objects[0])
+    else:
+        for name, param in trainer.state.model.named_parameters():
+            # Set the parameters only if they require gradients
+            if param.requires_grad:
+                # DDP
+                if name.startswith("module."):
+                    param.data = parameters_dict[name.replace("module.", "")].to(
+                        param.device
+                    )
+                # Single GPU
+                else:
+                    param.data = parameters_dict[name].to(param.device)
+    dist.barrier()
+
+
+# NOTE: This is unused but it is kept for reference
+def set_trainable_params_dict(
+    model: torch.nn.Module,
+    parameters_dict: OrderedDict[str, torch.Tensor],
+) -> None:
+    """Set the trainable parameters of a model."""
+    # NOTE: This function is weird because the encapsulation done to support FSDP and
+    # DDP is weird. Since they are both likely to change, we MUST maintain this very
+    # well and implement as many checkers as we can.
+    if hasattr(model, "model") and type(model.model) is FullyShardedDataParallel:
+        assert model.model is not None
+        inner_model = model.model
+        # NOTE: This doesn't work in the case in use_orig_params is True if the FSDP
+        # configuration as the tensors returned are flattened breaking some assumptions
+        # of the rest of the codebase
+        with FullyShardedDataParallel.summon_full_params(
+            inner_model,
+            recurse=True,
+            # Writing back is not compatible with rank 0 only
+            writeback=True,
+            rank0_only=False,
+            # Prevent moving to CPU device
+            offload_to_cpu=False,
+            with_grads=False,
+        ):
+            # NOTE: !!! THIS REQUIRES INVESTIGATION AS IT DOESN'T WORK AS EXPECTED !!!
+            # NOTE: This parameter dict using the above parameters, i.e.,
+            # (recurse=True, writeback=True, rank0_only=False, offload_to_cpu=False,
+            # with_grads=False,), won't be complete in any rank if the model i sharded.
+            # Each rank will have zero-size tensors for those layers that are not
+            # "living" in there and the flattened/unflatten complete tensors for those
+            # blocks living there.
+            # NOTE: If the FSDP configuration use the original parameters
+            # (use_orig_params=true), then the tensors in rank 0 have the correct
+            # original shape. In the other ranks they are flattened anyway.
+            for name, param in inner_model.named_parameters():
+                # Set the parameters only if they require gradients & have non-zero size
+                if param.requires_grad and param.size != 0:
+                    param.data = parameters_dict[name].to(param.device)
+    else:
+        for name, param in model.named_parameters():
+            # Set the parameters only if they require gradients
+            if param.requires_grad:
+                # NOTE: DDP pre-pends "module." to the name of the parameter
+                if name.startswith("module."):
+                    param.data = parameters_dict[name.replace("module.", "")].to(
+                        param.device
+                    )
+                # Single GPU
+                else:
+                    param.data = parameters_dict[name].to(param.device)
+    dist.barrier()
+
+
+def get_list_of_parameters_names(
+    model: torch.nn.Module, sort_dict: bool = True
+) -> list[str]:
+    """Return the list of parameters names."""
+    params_dict = {
+        name: param for name, param in model.named_parameters() if param.requires_grad
+    }
+    # TODO: Fix this when back compatibility issues are gone
+    if len(params_dict) >= 290:  # noqa: PLR2004
+        log(
+            DEBUG,
+            "Model parameters length is %s and the dict won't be sorted",
+            len(params_dict),
+        )
+    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+        params_dict = dict(sorted(params_dict.items()))
+    return list(params_dict.keys())
+
+
+def construct_parameters_dict(
+    parameters_names: list[str], parameters: NDArrays
+) -> OrderedDict[str, torch.Tensor]:
+    """Construct a dictionary of parameters."""
+    zipped_lists = zip(parameters_names, parameters, strict=True)
+    return OrderedDict({k: torch.as_tensor(v) for k, v in zipped_lists})
 
 
 def download_file_from_s3(
@@ -167,9 +375,7 @@ def weighted_average(
         The weighted average over pre-defined metrics.
     """
     client_state_accumulator: dict[int | str, dict[str, Any]] = {}
-    total_num_examples = sum(
-        [num_examples for num_examples, _ in metrics],
-    )
+    total_num_examples = sum(num_examples for num_examples, _ in metrics)
     weighted_metrics: dict = defaultdict(float)
 
     for num_examples, metric in metrics:
@@ -294,7 +500,7 @@ class RayContextManager:
             directory_size = shutil.disk_usage(temp_dir).used
             shutil.rmtree(temp_dir)
             log(
-                INFO,
+                DEBUG,
                 f"Cleaned up ray temp session: {temp_dir} with size:{directory_size}",
             )
 
@@ -360,7 +566,7 @@ def l2_norm(arrays: NDArrays) -> float:
 def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
     """Compute in-place weighted average."""
     # Count total examples
-    num_examples_total = sum([fit_res.num_examples for _, fit_res in results])
+    num_examples_total = sum(fit_res.num_examples for _, fit_res in results)
 
     # Compute scaling factors for each result
     scaling_factors = [
@@ -499,7 +705,7 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         gpu_size_mb = gpu_size / 1e6
         # More verbose logging
         log(
-            INFO,
+            DEBUG,
             "get_referenced_tensors_summary :: there are %s "
             "referenced tensors for a total size of %s MiB "
             "(%s MiB on GPU, %s MiB on CPU).",
@@ -512,7 +718,7 @@ def get_referenced_tensors_summary(cuda_only: bool = True, verbose: bool = True)
         )
         # # Less verbose logging
         # log(
-        #     INFO,
+        #     DEBUG,
         #     "get_referenced_tensors_summary :: there are %s"
         #     "referenced tensors for a size of %s",
         #     counter,
@@ -576,7 +782,7 @@ def get_selected_objects_types(
             pass
     if verbose:
         log(
-            INFO,
+            DEBUG,
             "get_objects_types :: %s",
             summary,
         )
