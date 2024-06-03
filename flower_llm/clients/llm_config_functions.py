@@ -164,6 +164,7 @@ def set_client_load_path(
             # TODO: Replace the relevant lines of code to substitute regex to the epoch
             # enumeration
             # Is there the next checkpoint?
+            # TODO: @Alex, make this regex un-interested on the number of epochs
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
             path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
             skip_iteration = validate_given_remote_path(path_to_check)
@@ -181,6 +182,7 @@ def set_client_load_path(
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
             )
+            # TODO: @Alex, make this regex un-interested on the number of epochs
             sorted_pairs = sorted(
                 [
                     (
