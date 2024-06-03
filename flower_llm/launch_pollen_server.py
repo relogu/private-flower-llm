@@ -16,9 +16,11 @@ import flwr as fl
 import hydra
 import transformers
 from flwr.common import ndarrays_to_parameters, log, NDArrays
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
 import wandb
+from flower_llm.conf import base_schema
+from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.empty_virtual_client import gen_client_fn
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.pollen_client_manager import PollenClientManager
@@ -33,10 +35,12 @@ from flower_llm.wandb_history import WandbHistory
 
 transformers.logging.set_verbosity_error()
 
+base_schema.register_config(name="base_schema")
+
 
 # Define strategy
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(cfg: DictConfig) -> None:
+def main(cfg: BaseConfig) -> None:
     """Implement main function to launch a Pollen's Server."""
     # Filter user warning from configuration of MPT
     warnings.filterwarnings(
@@ -45,6 +49,7 @@ def main(cfg: DictConfig) -> None:
         message=("If not using a Prefix Language Model*"),
         append=True,
     )
+
     # Get a fake list of cids
     cid_samples_dict: dict[str | int, int] = dict.fromkeys(
         range(cfg.fl.n_total_clients), 1
@@ -131,9 +136,9 @@ def main(cfg: DictConfig) -> None:
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
-    with wandb_init(  # type: ignore[union-attr]
+    with wandb_init(  # type: ignore[union-attr,misc]
         cfg.use_wandb,
-        **cfg.wandb.setup,
+        **cfg.wandb.setup,  # type: ignore[reportCallIssue]
         settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
         config=wandb_config,  # type: ignore[arg-type]
     ) as _:

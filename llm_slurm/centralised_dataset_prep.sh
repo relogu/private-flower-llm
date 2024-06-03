@@ -1,10 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "centralised_dataset_prep.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -29,14 +29,14 @@ done
 
 echo "centralised_dataset_prep.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd /nfs-share/ls985/projects/llm-foundry
+cd /nfs-share/ls985/projects/llm-foundry || exit
 #! Activate Poetry environment
 poetry shell
 
-DATA_ROOT=/home/ls985/c4
-DATA_ROOT_MDS=/home/ls985/mds-c4
+# DATA_ROOT=/home/ls985/c4
+# DATA_ROOT_MDS=/home/ls985/mds-c4
 DATA_ROOT_SMALL=/home/ls985/my-copy-c4
-DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
+# DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
 
 #! Download and pre-processing
 # #! Full dataset
@@ -51,7 +51,7 @@ DATA_ROOT_SMALL_MDS=/home/ls985/my-mds-copy-c4
 # poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT --split val
 # poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_MDS --split val # Compressed
 #! Small dataset
-poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL --split val_small
+poetry run python llmfoundry/data/text_data.py --local_path "$DATA_ROOT_SMALL" --split val_small
 # poetry run python llmfoundry/data/text_data.py --local_path $DATA_ROOT_SMALL_MDS --split val_small # Compressed
 
 #! Remove the positional arguments

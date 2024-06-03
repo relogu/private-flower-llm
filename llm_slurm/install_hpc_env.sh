@@ -1,10 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "install_hpc_env.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -29,6 +29,7 @@ done
 echo "install_hpc_env.sh: Install env in PROJECT_PATH=$PROJECT_PATH"
 #! Add modules from scratch to be sure everything works
 #! Enable the module command
+# shellcheck disable=SC1091
 . /etc/profile.d/modules.sh
 #! Remove all modules still loaded
 module purge
@@ -55,15 +56,19 @@ fi
 if [[ $PYENV_ROOT == *"pyenv"* ]]; then
 	echo "install_hpc_env.sh: PYENV_ROOT variable is already set."
 else
-	#! Setting up `pyenv` to execute automatically in the shell
-	echo '# Load `pyenv` automatically' >>~/.bashrc
+	#! Setting up 'pyenv' to execute automatically in the shell
+	echo "# Load 'pyenv' automatically" >>~/.bashrc
+	# shellcheck disable=SC2016
 	echo 'export PYENV_ROOT="$HOME/.pyenv"' >>~/.bashrc
 	export PYENV_ROOT="$HOME/.pyenv"
+	# shellcheck disable=SC2016
 	echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >>~/.bashrc
 	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	# shellcheck disable=SC2016
 	echo 'eval "$(pyenv init -)"' >>~/.bashrc
 	eval "$(pyenv init -)"
 	echo '# # Load pyenv-virtualenv automatically' >>~/.bashrc
+	# shellcheck disable=SC2016
 	echo '# eval "$(pyenv virtualenv-init -)"' >>~/.bashrc
 fi
 #! Installing python 3.10.13
@@ -80,7 +85,7 @@ pip install poetry
 #! Install cmake
 pip install cmake
 #! Entering the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Install the poetry env no matter what
 poetry install -q
 #! Activate Poetry environment
@@ -97,7 +102,8 @@ else
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
 fi
-. $POETRY_ENV_PATH/bin/activate
+# shellcheck disable=SC1091
+. "$POETRY_ENV_PATH"/bin/activate
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
@@ -107,18 +113,11 @@ else
 	exit 1
 fi
 #! Install `flash-attn`
-if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
+if ! poetry run pip list | grep -q flash-attn; then
 	echo "install_hpc_env.sh: Installing flash-attn..."
 	poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
 else
 	echo "install_hpc_env.sh: flash-attn is already installed."
-fi
-#! Install `xentropy-cuda-lib`
-if ! [[ $(poetry run pip list | grep xentropy) ]]; then
-	echo "install_hpc_env.sh: Installing xentropy-cuda-lib..."
-	poetry run pip install -q xentropy-cuda-lib@git+https://github.com/HazyResearch/flash-attention.git@v2.3.2#subdirectory=csrc/xentropy
-else
-	echo "install_hpc_env.sh: xentropy-cuda-lib is already installed."
 fi
 #! Downgrade python warnings (default in CSD3 is 'debug')
 #! From here: https://docs.python.org/3/using/cmdline.html#envvar-PYTHONWARNINGS

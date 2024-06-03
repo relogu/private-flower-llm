@@ -1,9 +1,9 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "launch_tensorboard_s3.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -34,7 +34,7 @@ if [[ $# -lt 1 ]]; then
 fi
 echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
@@ -49,10 +49,11 @@ else
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
 fi
-. $POETRY_ENV_PATH/bin/activate
+# shellcheck disable=SC1091
+. "$POETRY_ENV_PATH"/bin/activate
 
 #! Launch tensorboard
-poetry run tensorboard --load_fast true --logdir $PROJECT_PATH/tensorboard_logs_copy
+poetry run tensorboard --load_fast true --logdir "$PROJECT_PATH"/tensorboard_logs_copy
 
 #! ssh -L <local_port>:<forward_to_host>:<port_on_forward_to_host> -N <username>@<node_name>.cl.cam.ac.uk
 #! ssh -L 6006:localhost:6006 -N mauao

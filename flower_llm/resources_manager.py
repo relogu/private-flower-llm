@@ -101,8 +101,8 @@ def merge_devices(devices: list[Device]) -> Device:
             device_id=0,
             name="gpu-merged",
             device_type="gpu-merged",
-            total_memory=sum([d.total_memory for d in devices]),
-            allocated_memory=sum([d.allocated_memory for d in devices]),
+            total_memory=sum(d.total_memory for d in devices),
+            allocated_memory=sum(d.allocated_memory for d in devices),
             concurrency=1,
         )
 

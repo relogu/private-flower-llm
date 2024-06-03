@@ -1,30 +1,4 @@
 #!/bin/bash
-# Default project path
-PROJECT_PATH="$HOME/projects/flower_llm"
-
-# Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
-	exit 1
-fi
-
-eval set -- "$OPTIONS"
-
-while true; do
-	case "$1" in
-	-p | --project_path)
-		PROJECT_PATH="$2"
-		shift 2
-		;;
-	--)
-		shift
-		break
-		;;
-	*)
-		break
-		;;
-	esac
-done
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 
 sintr -A LANE-SL3-GPU -p ampere -N1 --gres=gpu:1 --time=01:00:00 --qos=INTR

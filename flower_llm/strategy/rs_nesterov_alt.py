@@ -292,10 +292,12 @@ class FedNesterov(FedAvgReproducibleSampling):
             )
 
         if self.track_inplace_aggregation:
-            normal_result = aggregate([
-                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                for _, fit_res in results_cached
-            ])
+            normal_result = aggregate(
+                [
+                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                    for _, fit_res in results_cached
+                ]
+            )
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
                 layer_by_layer_diff += sum_of_squares([x - y])

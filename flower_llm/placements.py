@@ -31,6 +31,7 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
 from flower_llm.resources_manager import Node
+import operator
 
 INVALID_ARGUMENTS_GET_PLACEMENT_FN = """
 The `policy` passed to `get_placement_fn` is unknown.
@@ -279,7 +280,7 @@ def learning_based_placement(
         # This is a list of tuples (cid, list of samples)
         sampled_virtual_cids = sorted(
             sampled_virtual_cids,
-            key=lambda x: x[1],  # // batch_size,
+            key=operator.itemgetter(1),  # // batch_size,
             reverse=False,
         )
         # Getting nodes a simpler node dict
@@ -438,11 +439,13 @@ def round_robin_placement(
     # Creates equal clients splits amongst workers
     # in an ordered fashion by index, [1,2,3] split by two -> [1],[2,3].
     # (the remainder is assigned to the last worker)
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-        if node.device_info is not None
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+            if node.device_info is not None
+        ]
+    )
     log(DEBUG, f"Round Robin (RR) placement :: n_total_workers {n_total_workers}")
     splits = np.array_split(cids, n_total_workers)
     # Init the device assignment and the return value
@@ -503,18 +506,20 @@ def sorted_round_robin_placement(
     # Sorting by size (decreasing order)
     sorted_sampled_virtual_cids = sorted(
         sampled_virtual_cids,
-        key=lambda x: x[1],
+        key=operator.itemgetter(1),
         reverse=True,
     )
     # Extract cids
     cids: NDArray[np.int16] = np.array([x[0] for x in sorted_sampled_virtual_cids])
     # Creates equal clients splits amongst workers by index
     # (the remainder is assigned to the first workers)
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-        if node.device_info is not None
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+            if node.device_info is not None
+        ]
+    )
     splits = [
         cids[np.arange(i, len(cids), n_total_workers)] for i in range(n_total_workers)
     ]
@@ -577,20 +582,22 @@ def samples_placement(
     # Sorting by size (decreasing order)
     sorted_sampled_virtual_cids = sorted(
         sampled_virtual_cids,
-        key=lambda x: x[1],
+        key=operator.itemgetter(1),
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-        if node.device_info is not None
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+            if node.device_info is not None
+        ]
+    )
     # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     # Assign the remaining clients iteratively to the least loaded worker
     for virtual_cid, num_samples in sorted_sampled_virtual_cids[n_total_workers:]:
-        sums = [sum([x[1] for x in list_cids]) for list_cids in tmp_splits]
+        sums = [sum(x[1] for x in list_cids) for list_cids in tmp_splits]
         min_worker = np.argmin(sums)
         tmp_splits[min_worker].append((virtual_cid, num_samples))
     splits = [np.array([x[0] for x in list_cids]) for list_cids in tmp_splits]
@@ -653,21 +660,22 @@ def batches_placement(
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
-        key=lambda x: x[1],
+        key=operator.itemgetter(1),
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-        if node.device_info is not None
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+            if node.device_info is not None
+        ]
+    )
     # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
-            sum([floor(x[1] / batch_size) for x in list_cids])
-            for list_cids in tmp_splits
+            sum(floor(x[1] / batch_size) for x in list_cids) for list_cids in tmp_splits
         ]
         min_worker = np.argmin(sums)
         tmp_splits[min_worker].append((virtual_cid, num_samples))
@@ -731,20 +739,22 @@ def log_batches_placement(
     # Sorting by size (decreasing order)
     sampled_virtual_cids = sorted(
         sampled_virtual_cids,
-        key=lambda x: x[1],
+        key=operator.itemgetter(1),
         reverse=True,
     )
     # Get the total number of workers
-    n_total_workers = np.sum([
-        np.sum([device.concurrency for _, device in node.device_info.items()])
-        for _, (_, node) in nodes_dict.items()
-        if node.device_info is not None
-    ])
+    n_total_workers = np.sum(
+        [
+            np.sum([device.concurrency for _, device in node.device_info.items()])
+            for _, (_, node) in nodes_dict.items()
+            if node.device_info is not None
+        ]
+    )
     # Assign the first `n_total_workers` clients to the workers
     tmp_splits = [[c] for c in sampled_virtual_cids[:n_total_workers]]
     for virtual_cid, num_samples in sampled_virtual_cids[n_total_workers:]:
         sums = [
-            sum([log10(floor(x[1] / batch_size)) for x in list_cids])
+            sum(log10(floor(x[1] / batch_size)) for x in list_cids)
             for list_cids in tmp_splits
         ]
         min_worker = np.argmin(sums)

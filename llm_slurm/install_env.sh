@@ -1,10 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "install_env.sh: Error parsing options" >&2
 	exit 1
 fi
@@ -28,10 +28,10 @@ while true; do
 		;;
 	esac
 done
-echo "install_env.sh: current arguments=$@, first argument=$1"
+printf "install_env.sh: arguments=%s, first argument=%s\n" "$@" "$1"
 echo "install_env.sh: Install env in PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 if [[ -e $POETRY_ENV_PATH ]]; then
@@ -46,7 +46,8 @@ else
 	poetry install -q
 	POETRY_ENV_PATH=$(poetry env info --path)
 fi
-. $POETRY_ENV_PATH/bin/activate
+# shellcheck disable=SC1091
+. "$POETRY_ENV_PATH"/bin/activate
 # Adding CUDA paths to environment variables
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
@@ -68,7 +69,7 @@ else
 
 	fi
 	#! Install `flash-attn`
-	if ! [[ $(poetry run pip list | grep flash-attn) ]]; then
+	if ! poetry run pip list | grep "flash-attn"; then
 		echo "install_env.sh: Installing flash-attn..."
 		poetry run pip install -q flash-attn==2.5.8 --no-build-isolation
 	else

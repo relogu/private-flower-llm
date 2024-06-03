@@ -11,9 +11,10 @@ from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 from typing import Any, Literal, cast
+from flower_llm.conf.base_schema import S3CommConfig
 
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 import pyarrow as pa
 from flwr.client import Client
 from flwr.client.numpy_client import NumPyClient
@@ -119,7 +120,7 @@ class PollenServer(Server):
         print_failures: bool = True,
         print_intentional_failures: bool = True,
         use_s3_comm: bool = False,
-        s3_comm_config: DictConfig | None = None,
+        s3_comm_config: S3CommConfig | None = None,
         checkpoint: bool = False,
         resume_round: int | None = None,
         restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
@@ -633,20 +634,24 @@ class PollenServer(Server):
 
                 # Append instruction
                 if self.use_s3_comm:
-                    node_instructions.append((
-                        client_proxy,
-                        EvaluateIns(
-                            # NOTE: We must pass a real NDArrays object,
-                            # Flower crashes otherwise
-                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                            node_evaluate_config,
-                        ),
-                    ))
+                    node_instructions.append(
+                        (
+                            client_proxy,
+                            EvaluateIns(
+                                # NOTE: We must pass a real NDArrays object,
+                                # Flower crashes otherwise
+                                ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                                node_evaluate_config,
+                            ),
+                        )
+                    )
                 else:
-                    node_instructions.append((
-                        client_proxy,
-                        EvaluateIns(self.parameters, node_evaluate_config),
-                    ))
+                    node_instructions.append(
+                        (
+                            client_proxy,
+                            EvaluateIns(self.parameters, node_evaluate_config),
+                        )
+                    )
 
         log(
             DEBUG,
@@ -776,20 +781,24 @@ class PollenServer(Server):
 
             # Append instruction
             if self.use_s3_comm:
-                node_instructions.append((
-                    client_proxy,
-                    FitIns(
-                        # NOTE: We must pass a real NDArrays object,
-                        # Flower crashes otherwise
-                        ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-                        node_fit_config,
-                    ),
-                ))
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        FitIns(
+                            # NOTE: We must pass a real NDArrays object,
+                            # Flower crashes otherwise
+                            ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+                            node_fit_config,
+                        ),
+                    )
+                )
             else:
-                node_instructions.append((
-                    client_proxy,
-                    FitIns(self.parameters, node_fit_config),
-                ))
+                node_instructions.append(
+                    (
+                        client_proxy,
+                        FitIns(self.parameters, node_fit_config),
+                    )
+                )
 
         log(
             DEBUG,
@@ -917,9 +926,8 @@ class PollenServer(Server):
                 for client_state in self.client_state.values():
                     client_state.steps_done = 0
 
-                metrics_aggregated = (
-                    metrics_aggregated
-                    | self.strategy.fit_metrics_aggregation_fn(fit_metrics)
+                metrics_aggregated |= self.strategy.fit_metrics_aggregation_fn(
+                    fit_metrics
                 )
 
             elif server_round == 1:  # Only log this warning once
@@ -1308,12 +1316,14 @@ def get_handle_success_and_failure(
             case (True, res):
                 cast_res = cast(tuple[ClientProxy, FitRes], res)
                 client_proxy, fit_res = cast_res
-                metrics_accumulator.append((
-                    client_proxy,
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        client_proxy,
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, cast_res)
             case (False, res) if isinstance(res, IntentionalClientDropoutError):
                 intentional_failures.append(res)

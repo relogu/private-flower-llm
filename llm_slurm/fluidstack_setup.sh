@@ -1,32 +1,5 @@
 #!/bin/bash
-# Default project path
-PROJECT_PATH="$HOME/projects/flower_llm"
-
-# Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
-	echo "Error parsing options" >&2
-	exit 1
-fi
-
-eval set -- "$OPTIONS"
-
-while true; do
-	case "$1" in
-	-p | --project_path)
-		PROJECT_PATH="$2"
-		shift 2
-		;;
-	--)
-		shift
-		break
-		;;
-	*)
-		break
-		;;
-	esac
-done
-
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 ## This script aims to setup the OS for a fluidstack machine
 ## starting from the "Plain Ubuntu 20.04" image
 #! Update and upgrade package manager
@@ -50,6 +23,7 @@ if [[ $PATH == *"cuda-12.1"* ]]; then
 else
 	#! Set the PATH env variables for the new CUDA version
 	echo '# Adding CUDA 12.1 to the PATH environmental variables' >>~/.bashrc
+	# shellcheck disable=SC2016
 	echo 'export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}' >>~/.bashrc
 	export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 fi
@@ -57,18 +31,20 @@ if [[ $LD_LIBRARY_PATH == *"cuda-12.1"* ]]; then
 	echo "LD_LIBRARY_PATH variable is already set."
 else
 	#! Set the LD_LIBRARY_PATH env variables for the new CUDA version
+	# shellcheck disable=SC2016
 	echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >>~/.bashrc
 	export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 fi
 #! Set GPU persistence mode
 sudo nvidia-smi -pm 1
 #! Move the $HOME to the 'ephemeral storage' folder
-sudo mkdir -p /ephemeral/$USER
-sudo rsync -a $HOME/ /ephemeral/$USER
+sudo mkdir -p /ephemeral/"$USER"
+sudo rsync -a "$HOME"/ /ephemeral/"$USER"
 export HOME="/ephemeral/$USER"
-echo '# Move $HOME to `ephemeral storage`' >>~/.bashrc
+echo "# Move $HOME to ephemeral storage" >>~/.bashrc
+# shellcheck disable=SC2016
 echo 'export HOME="/ephemeral/$USER"' >>~/.bashrc
-cd
+cd || exit
 #! Install `pyenv`
 PYENV_VER_OUTPUT=$(pyenv --version)
 if [[ $PYENV_VER_OUTPUT == *"pyenv "* ]]; then
@@ -81,14 +57,18 @@ if [[ $PYENV_ROOT == *"pyenv"* ]]; then
 	echo "PYENV_ROOT variable is already set."
 else
 	#! Setting up `pyenv` to execute automatically in the shell
-	echo '# Load `pyenv` automatically' >>~/.bashrc
+	echo "# Load 'pyenv' automatically" >>~/.bashrc
+	# shellcheck disable=SC2016
 	echo 'export PYENV_ROOT="$HOME/.pyenv"' >>~/.bashrc
 	export PYENV_ROOT="$HOME/.pyenv"
-	echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >>~/.bashrc
-	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	# shellcheck disable=SC2016
+	echo '[[ -d "$PYENV_ROOT"/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >>~/.bashrc
+	[[ -d "$PYENV_ROOT"/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	# shellcheck disable=SC2016
 	echo 'eval "$(pyenv init -)"' >>~/.bashrc
 	eval "$(pyenv init -)"
 	echo '# # Load pyenv-virtualenv automatically' >>~/.bashrc
+	# shellcheck disable=SC2016
 	echo '# eval "$(pyenv virtualenv-init -)"' >>~/.bashrc
 fi
 #! Installing python 3.10.13
@@ -121,17 +101,17 @@ echo '    password 7cc6fc5aec5d4c63f203cd1853a71eb7b9131774' >>~/.netrc
 #! Changing permissions to the 'ephemeral storage' folder
 sudo chmod -R a+wr /ephemeral
 #! Create the tmp folder in the 'ephemeral storage' folder
-sudo mkdir -p /ephemeral/$USER/tmp
+sudo mkdir -p /ephemeral/"$USER"/tmp
 #! Clone the repo and move to the 'llm' branch
-mkdir -p $HOME/projects
-cd $HOME/projects
+mkdir -p "$HOME"/projects
+cd "$HOME"/projects || exit
 git clone git@github.com:relogu/flower_llm.git
-cd flower_llm
+cd flower_llm || exit
 git fetch origin
 git checkout --track origin/llm
 #! Changing permissions to the 'ephemeral storage' folder again
 sudo chmod -R a+wr /ephemeral
 #! Sync back conf file
-sudo rsync -a $HOME/.bashrc /home/$USER/.bashrc
-sudo rsync -a $HOME/.aws /home/$USER/.aws
-sudo rsync -a $HOME/.netrc /home/$USER/.netrc
+sudo rsync -a "$HOME"/.bashrc /home/"$USER"/.bashrc
+sudo rsync -a "$HOME"/.aws /home/"$USER"/.aws
+sudo rsync -a "$HOME"/.netrc /home/"$USER"/.netrc

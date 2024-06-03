@@ -1,10 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
-OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@")
-if [ $? -ne 0 ]; then
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
 	echo "Error parsing options" >&2
 	exit 1
 fi
@@ -29,21 +29,21 @@ done
 
 echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
-cd $PROJECT_PATH
+cd "$PROJECT_PATH" || exit
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
 	echo "Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. $PROJECT_PATH/llm_slurm/install_hpc_env.sh
+	. "$PROJECT_PATH"/llm_slurm/install_hpc_env.sh
 else
 	echo "Assuming the script is executing NOT in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. $PROJECT_PATH/llm_slurm/install_env.sh "no_cuda"
+	. "$PROJECT_PATH"/llm_slurm/install_env.sh "no_cuda"
 fi
 #! Set `LLM_CONFIG` environment variable
-. $PROJECT_PATH/llm_slurm/set_llm_config.sh "small"
+. "$PROJECT_PATH"/llm_slurm/set_llm_config.sh "small"
 #! Export the endpoint of the S3 object store
 # export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Using directly the IP to avoid name resolution issues
@@ -59,7 +59,7 @@ fi
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 fi
-mkdir -p $POLLEN_SAVE_PATH
+mkdir -p "$POLLEN_SAVE_PATH"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
 CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
@@ -76,10 +76,10 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_co
 TESTING_OPTIONS=""
 #! Test VirtualLLMClient
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.clients.virtual_llm_client $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/virtual_llm_client.log
+RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.clients.virtual_llm_client "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" "$TESTING_OPTIONS" is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/virtual_llm_client.log
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 # Enable CTRL+C to stop all background processes
-trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
+trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
 #! Wait for the NodeManager to finish
 wait $BACK_PID
