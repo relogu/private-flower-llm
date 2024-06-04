@@ -14,7 +14,7 @@ common: &dataset_defaults
   shuffle_algo: py1e
   shuffle_seed: 9176
   shuffle_block_size: null
-  sampling_method: stratified  # Harshest form of sampling for experiments in the paper
+  sampling_method: balanced  # Harshest form of sampling for experiments in the paper
   sampling_granularity: 1
   batching_method: random
 
