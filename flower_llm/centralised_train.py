@@ -16,17 +16,22 @@ from flwr.common.logger import log
 from llmfoundry.utils.config_utils import (
     log_config,
 )
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
+from flower_llm.conf import base_schema
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters_from_state,
 )
 from flower_llm.clients.llm_config_functions import validate_config
+from flower_llm.conf.base_schema import BaseConfig
 
 
-@hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(_cfg: DictConfig) -> Trainer:
+base_schema.register_config(name="base_schema")
+
+
+@hydra.main(config_path="./conf/", config_name="base", version_base=None)
+def main(_cfg: BaseConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
     log(
         INFO,
@@ -43,7 +48,9 @@ def main(_cfg: DictConfig) -> Trainer:
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
 
-    trainer, eval_first, logged_cfg = _get_trainer_object(_cfg=cfg, cid=0)
+    trainer, eval_first, logged_cfg, _ = _get_trainer_object(
+        _cfg=cfg, cid=0, log_name="_centralised"
+    )
 
     log(INFO, "Logging config")
     log_config(logged_cfg)
