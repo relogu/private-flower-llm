@@ -72,7 +72,7 @@ mkdir -p "$POLLEN_SAVE_PATH"
 # export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=100ba llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-5 "
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-5 "  # Comment this out to use the default hyperparameters for the selceted model size
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
@@ -82,7 +82,7 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size "$N_GPUS" --node_rank 0 --master_addr 127.0.0.1 "$PROJECT_PATH"/flower_llm/centralised_train.py "$EXTERNAL_CONFIGS" "$LLM_CONFIG" "$LLM_OPTIONS" "$DATA_CONFIG" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/centralised_train.log &
+APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID
