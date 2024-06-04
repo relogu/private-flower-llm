@@ -161,6 +161,9 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                 return skip_iteration
             # NOTE: We always need to check all of the checkpoints
             # Given the epoch change
+            # NOTE: (?:\d+) means a do-not-capture group
+            # As such we allow any number of epochs without extracting
+            # The number of epochs
             sorted_pairs = sorted(
                 [
                     (

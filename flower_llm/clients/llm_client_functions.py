@@ -131,6 +131,9 @@ def copy_old_checkpoints_to_new_run(
         remote_objects = list_remote_objects(old_run_folder)
 
         # Extract the client and the batches
+        # NOTE: (?:\d+) means a do-not-capture group
+        # As such we allow any number of epochs without extracting
+        # The number of epochs
         client_path_batches = sorted(
             [
                 (
