@@ -168,11 +168,13 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                         int(reg.group(1)),
                     )
                     for path in remote_objects
-                    if re.search(r"client_.*/ep(?:\d+)-ba(\d+)", path)
-                    and (reg := re.search(r"ep(?:\d+)-ba(\d+)", path)) is not None
+                    if (reg := re.search(r"client_.*/ep(?:\d+)-ba(\d+)", path))
+                    is not None
                 ],
                 key=operator.itemgetter(1),
             )
+
+            log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
 
             # Is there the next checkpoint?
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
@@ -196,7 +198,6 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
             )
-            log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
             cfg.load_path = sorted_pairs[-1][0]
             log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
