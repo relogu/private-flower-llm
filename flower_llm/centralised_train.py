@@ -19,18 +19,18 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import OmegaConf
 
 from flower_llm.conf import base_schema
+from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters_from_state,
 )
 from flower_llm.clients.llm_config_functions import validate_config
-from flower_llm.conf.base_schema import BaseConfig
 
 
 base_schema.register_config(name="base_schema")
 
 
-@hydra.main(config_path="./conf/", config_name="base", version_base=None)
+@hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(_cfg: BaseConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
     log(
