@@ -126,15 +126,18 @@ def copy_old_checkpoints_to_new_run(
             else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
         )
         old_run_folder_no_prefix = old_run_folder.replace(bucket_uri + "/", "")
+        # NOTE: cumbersome way of dealing with character escaping
         client_paths = [
             client_path
             for client_path in list_remote_objects(old_run_folder)
             if re.match(
-                # TODO: @Alex, make this regex un-interested on the number of epochs
-                f"{old_run_folder_no_prefix}/client_.*/ep0-ba{restore_run_step}",
+                f"{old_run_folder_no_prefix}/"
+                r"client_.*/ep(?:\d+)"
+                f"-ba{restore_run_step}",
                 client_path,
             )
         ]
+
         if (
             n_total_clients is not None
             and (found_clients := len(client_paths)) != n_total_clients
@@ -769,7 +772,6 @@ def llm_fit(
     skip_iteration = set_client_load_path(
         cfg,
         cid,
-        config["server_steps_cumulative"],
         config["server_steps_cumulative"] + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]

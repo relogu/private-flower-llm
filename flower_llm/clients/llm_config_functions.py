@@ -6,7 +6,7 @@ from logging import DEBUG, INFO, WARN, WARNING
 import re
 
 import torch
-from composer.utils.file_helpers import validate_given_remote_path, list_remote_objects
+from composer.utils.file_helpers import list_remote_objects
 from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
@@ -140,9 +140,7 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
         log(DEBUG, "Set save folder: %s", cfg.save_folder)
 
 
-def set_client_load_path(
-    cfg: DictConfig, cid: int | str, n_steps_done: int, n_steps: int
-) -> bool:
+def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
     """Set the save and load path given the server round and client id."""
     # Set client load path
     set_client_save_and_load_path(cfg, cid)
@@ -161,15 +159,31 @@ def set_client_load_path(
                 )
                 assert cfg.load_path is None
                 return skip_iteration
-            # TODO: Replace the relevant lines of code to substitute regex to the epoch
-            # enumeration
+            # NOTE: We always need to check all of the checkpoints
+            # Given the epoch change
+            sorted_pairs = sorted(
+                [
+                    (
+                        path,
+                        int(reg.group(1)),
+                    )
+                    for path in remote_objects
+                    if re.search(r"client_.*/ep(?:\d+)-ba(\d+)", path)
+                    and (reg := re.search(r"ep(?:\d+)-ba(\d+)", path)) is not None
+                ],
+                key=operator.itemgetter(1),
+            )
+
             # Is there the next checkpoint?
-            # TODO: @Alex, make this regex un-interested on the number of epochs
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
-            path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
-            skip_iteration = validate_given_remote_path(path_to_check)
-            if skip_iteration:
-                cfg.load_path = cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank{rank}.pt"
+            # See if we have a checkpoint with a matching number of steps
+            path_to_check = next(
+                (pair for pair in sorted_pairs if pair[1] == n_steps), None
+            )
+            # NOTE: ruff is not bright and cannot see through the condition
+            skip_iteration = path_to_check is not None
+            if skip_iteration and path_to_check is not None:
+                cfg.load_path = path_to_check[0]
                 log(
                     INFO,
                     "Skipping training iteration as checkpoint %s already exists.",
@@ -181,19 +195,6 @@ def set_client_load_path(
             # Load the latest checkpoint
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
-            )
-            # TODO: @Alex, make this regex un-interested on the number of epochs
-            sorted_pairs = sorted(
-                [
-                    (
-                        path,
-                        int(reg.group(1)),
-                    )
-                    for path in remote_objects
-                    if re.search(r"client_.*/ep0-ba(\d+)", path)
-                    and (reg := re.search(r"ep0-ba(\d+)", path)) is not None
-                ],
-                key=operator.itemgetter(1),
             )
             log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
             cfg.load_path = sorted_pairs[-1][0]
