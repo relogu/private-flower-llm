@@ -40,8 +40,12 @@ def main(_cfg: BaseConfig) -> Trainer:
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
 
+    # NOTE: The cid passed her is use to appoint the position for the stream used for
+    # creating the streaming dataset object
+    stream_id = 0
+    log(INFO, "Creating trainer object using stream_id: %s...", stream_id)
     trainer, eval_first, _, _ = _get_trainer_object(
-        _cfg=cfg, cid=0, log_name="_centralised"
+        _cfg=cfg, cid=stream_id, log_name="_centralised"
     )
     torch.cuda.empty_cache()
     gc.collect()
