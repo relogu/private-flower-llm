@@ -204,26 +204,26 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
     return skip_iteration
 
 
-def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> None:
+def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the wandb logger for the client."""
     # Set the wandb run name
     if cfg.loggers is not None and cfg.loggers.wandb is not None:
         # Get the server run name
         run_name = cfg.loggers.wandb.init_kwargs.name
         # Add the client id to the run name
-        new_run_name = run_name + f"_client_{cid}"
+        new_run_name = run_name + f"{log_name}"
         server_id = cfg.loggers.wandb.init_kwargs.id
-        cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
+        cfg.loggers.wandb.init_kwargs.id = server_id + f"{log_name}"
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
 
 
-def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> None:
+def set_client_tensorboard_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the tensorboard logger for the client."""
     # Set the tensorboard run name
     if cfg.loggers is not None and cfg.loggers.tensorboard is not None:
         # Add the client id to the parameters
-        cfg.loggers.tensorboard.client_id = cid
+        cfg.loggers.tensorboard.log_name = log_name
 
 
 def validate_config(cfg: DictConfig) -> None:

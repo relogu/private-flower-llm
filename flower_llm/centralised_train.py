@@ -13,11 +13,10 @@ import numpy as np
 import torch
 from composer import Trainer
 from flwr.common.logger import log
-from llmfoundry.utils.config_utils import (
-    log_config,
-)
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
+from flower_llm.conf import base_schema
+from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters_from_state,
@@ -25,14 +24,12 @@ from flower_llm.clients.llm_client_functions import (
 from flower_llm.clients.llm_config_functions import validate_config
 
 
+base_schema.register_config(name="base_schema")
+
+
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(_cfg: DictConfig) -> Trainer:
+def main(_cfg: BaseConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
-    log(
-        INFO,
-        "The centralized training script received the following config:\n%s",
-        OmegaConf.to_yaml(_cfg, resolve=True),
-    )
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(_cfg)
     OmegaConf.set_struct(_cfg, False)
@@ -43,10 +40,9 @@ def main(_cfg: DictConfig) -> Trainer:
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
 
-    trainer, eval_first, logged_cfg = _get_trainer_object(_cfg=cfg, cid=0)
-
-    log(INFO, "Logging config")
-    log_config(logged_cfg)
+    trainer, eval_first, _, _ = _get_trainer_object(
+        _cfg=cfg, cid=0, log_name="_centralised"
+    )
     torch.cuda.empty_cache()
     gc.collect()
 

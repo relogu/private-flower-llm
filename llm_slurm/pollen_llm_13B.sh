@@ -43,7 +43,7 @@ else
 	. "$PROJECT_PATH"/llm_slurm/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. "$PROJECT_PATH"/llm_slurm/set_llm_config.sh "7B"
+. "$PROJECT_PATH"/llm_slurm/set_llm_config.sh "13B"
 #! Export the endpoint of the S3 object store
 # export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Using directly the IP to avoid name resolution issues
@@ -53,7 +53,7 @@ DATETIME=$(date '+%Y%m%d_%H%M%S')
 export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
-	export RUN_UUID="fed-7B-$DATETIME"
+	export RUN_UUID="fed-13B-$DATETIME"
 fi
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
@@ -68,16 +68,14 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=500
-POLLEN_CONFIG="pollen.server_address='[::]:50760' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
+POLLEN_CONFIG="pollen.server_address='[::]:50761' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
 # NOTE: set dataset
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=true"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
 POLLEN_CONFIG="$POLLEN_CONFIG fl.rescale_global_model=false fl.rescale_momentum_vector=false fl.server_learning_rate=0.1 fl.server_momentum=0.9"
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=63900ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=1.2e-4"
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=63900ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=1.2e-4" # Using defaults
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Use DDP only
-# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
