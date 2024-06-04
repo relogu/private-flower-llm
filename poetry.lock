@@ -3833,17 +3833,17 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "fl-update"
-resolved_reference = "b25736c089da6db0dd3d9e5ce9e414957d3e745d"
+resolved_reference = "1f888b1f8f02b46380a0da3e4e5900f2fc15be1f"
 
 [[package]]
 name = "mosaicml-cli"
-version = "0.6.28"
+version = "0.6.29"
 description = "Interact with Databricks Mosaic AI training from python or a command line interface"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "mosaicml_cli-0.6.28-py3-none-any.whl", hash = "sha256:66c818821b79619981f44d0b279ff03ceeb6294c21ac2e7242f0b76caa575c2d"},
-    {file = "mosaicml_cli-0.6.28.tar.gz", hash = "sha256:ac7d998e0254265621ccc45dec285894311372f9603e7e682d369e2bab780798"},
+    {file = "mosaicml_cli-0.6.29-py3-none-any.whl", hash = "sha256:2b45516686216052a0d26ca5adf922d80e755b0259b3362612d2e10dab002970"},
+    {file = "mosaicml_cli-0.6.29.tar.gz", hash = "sha256:429ec37766ffe058a3f73c40cf0a85d5fcb0e1100fafe3a7a1fde1772986f325"},
 ]
 
 [package.dependencies]
@@ -6738,13 +6738,13 @@ files = [
 
 [[package]]
 name = "sentry-sdk"
-version = "2.3.1"
+version = "2.4.0"
 description = "Python client for Sentry (https://sentry.io)"
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "sentry_sdk-2.3.1-py2.py3-none-any.whl", hash = "sha256:c5aeb095ba226391d337dd42a6f9470d86c9fc236ecc71cfc7cd1942b45010c6"},
-    {file = "sentry_sdk-2.3.1.tar.gz", hash = "sha256:139a71a19f5e9eb5d3623942491ce03cf8ebc14ea2e39ba3e6fe79560d8a5b1f"},
+    {file = "sentry_sdk-2.4.0-py2.py3-none-any.whl", hash = "sha256:a42b70981cd4ed7da3c85d0360502d2ac932a15a4a420b360e1ebded2fc19a92"},
+    {file = "sentry_sdk-2.4.0.tar.gz", hash = "sha256:62b9bb0489e731ecbce008f9647899b51d220067a75c3adfd46f8187660c0029"},
 ]
 
 [package.dependencies]

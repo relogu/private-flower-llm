@@ -265,6 +265,7 @@ def get_raw_model_parameters(
 def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str,
+    log_name: str | None = None,
 ) -> tuple[Trainer, bool, DictConfig, list[str]]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -382,8 +383,9 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    set_client_wandb_logger(_cfg, cid)
-    set_client_tensorboard_logger(_cfg, cid)
+    log_name = f"client_{cid}" if log_name is None else log_name
+    set_client_wandb_logger(_cfg, log_name)
+    set_client_tensorboard_logger(_cfg, log_name)
     logger_configs: DictConfig | None = pop_config(
         _cfg, "loggers", must_exist=False, default_value=None
     )
