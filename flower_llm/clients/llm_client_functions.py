@@ -3,7 +3,9 @@
 import atexit
 import copy
 import gc
+from itertools import groupby
 import logging
+import operator
 import os
 import re
 import time
@@ -125,16 +127,35 @@ def copy_old_checkpoints_to_new_run(
             if validate_given_remote_path(parameters_no_ext + ".bin")
             else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
         )
-        old_run_folder_no_prefix = old_run_folder.replace(bucket_uri + "/", "")
+
+        remote_objects = list_remote_objects(old_run_folder)
+
+        # Extract the client and the batches
+        # NOTE: (?:\d+) means a do-not-capture group
+        # As such we allow any number of epochs without extracting
+        # The number of epochs
+        client_path_batches = sorted(
+            [
+                (
+                    path,
+                    int(reg.group(1)),
+                    int(reg.group(2)),
+                )
+                for path in remote_objects
+                if (reg := re.search(r"client_(\d+)/ep(?:\d+)-ba(\d+)", path))
+                is not None
+            ],
+            key=operator.itemgetter(1, 2),
+        )
+
+        # For each client, choose the latest checkpoint
+        # That is consistent with the step of the resume round
+        # groupby acts like an sql groupby
         client_paths = [
-            client_path
-            for client_path in list_remote_objects(old_run_folder)
-            if re.match(
-                # TODO: @Alex, make this regex un-interested on the number of epochs
-                f"{old_run_folder_no_prefix}/client_.*/ep0-ba{restore_run_step}",
-                client_path,
-            )
+            list(filter(lambda x: x[2] <= restore_run_step, group))[-1][0]
+            for _, group in groupby(client_path_batches, key=operator.itemgetter(1))
         ]
+
         if (
             n_total_clients is not None
             and (found_clients := len(client_paths)) != n_total_clients
@@ -771,7 +792,6 @@ def llm_fit(
     skip_iteration = set_client_load_path(
         cfg,
         cid,
-        config["server_steps_cumulative"],
         config["server_steps_cumulative"] + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
