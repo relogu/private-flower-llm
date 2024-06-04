@@ -107,10 +107,7 @@ loggers:
 save_interval: 500ba
 save_num_checkpoints_to_keep: 1  # Important, this cleans up checkpoints saved to DISK
 save_folder: ./{run_name}/checkpoints
-# save_folder: s3://my-bucket/my-folder/{run_name}/checkpoints
 save_overwrite: false
 
 # Load from local filesystem or remote object store
-# load_path: ./gpt-7b/checkpoints/latest-rank{rank}.pt
-# load_path: s3://my-bucket/my-folder/gpt-7b/checkpoints/latest-rank{rank}.pt
 load_path: null

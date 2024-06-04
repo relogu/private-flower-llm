@@ -51,10 +51,12 @@ if [[ $GPU_TYPE == *'A40'* ]]; then
 	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=32"  # FSDP goes OOM
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"   # FSDP goes OOM
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # FSDP goes OOM]
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: A40"
 elif [[ $GPU_TYPE == *'A100'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A100-equipped machines."
@@ -70,10 +72,12 @@ elif [[ $GPU_TYPE == *'A100'* ]]; then
 	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=8 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=4"
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1"
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1"
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: A100"
 elif [[ $GPU_TYPE == *'H100'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on H100-equipped machines."
@@ -89,10 +93,12 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
 	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=8 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=8 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1"
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: H100"
 elif [[ $GPU_TYPE == *'L40'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on L40-equipped machines."
@@ -105,10 +111,12 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
 	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=16"  # FSDP goes OOM
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1"   # FSDP goes OOM
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=1 llm_config.device_eval_batch_size=1" # FSDP goes OOM
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: L40"
 elif [[ $GPU_TYPE == *'failed'* ]]; then
 	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
@@ -141,11 +149,15 @@ elif [[ $1 == "3B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_3B"
 elif [[ $1 == "7B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_7B"
+elif [[ $1 == "13B" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_13B"
+elif [[ $1 == "30B" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_30B"
 elif [[ $1 == "70B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_70B"
 else
 	echo "set_llm_config.sh: Invalid input argument: $1"
-	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 70B"
+	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 13B, 30B, 70B"
 	exit 1
 fi
 
