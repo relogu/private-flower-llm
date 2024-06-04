@@ -13,9 +13,6 @@ import numpy as np
 import torch
 from composer import Trainer
 from flwr.common.logger import log
-from llmfoundry.utils.config_utils import (
-    log_config,
-)
 from omegaconf import OmegaConf
 
 from flower_llm.conf import base_schema
@@ -33,11 +30,6 @@ base_schema.register_config(name="base_schema")
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(_cfg: BaseConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
-    log(
-        INFO,
-        "The centralized training script received the following config:\n%s",
-        OmegaConf.to_yaml(_cfg, resolve=True),
-    )
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(_cfg)
     OmegaConf.set_struct(_cfg, False)
@@ -48,12 +40,9 @@ def main(_cfg: BaseConfig) -> Trainer:
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
 
-    trainer, eval_first, logged_cfg, _ = _get_trainer_object(
+    trainer, eval_first, _, _ = _get_trainer_object(
         _cfg=cfg, cid=0, log_name="_centralised"
     )
-
-    log(INFO, "Logging config")
-    log_config(logged_cfg)
     torch.cuda.empty_cache()
     gc.collect()
 
