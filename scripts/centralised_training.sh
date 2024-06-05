@@ -43,15 +43,15 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 	echo "centralised_training.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. "$PROJECT_PATH"/llm_slurm/install_hpc_env.sh
+	. "$PROJECT_PATH"/scripts/install_hpc_env.sh
 else
 	echo "centralised_training.sh: Assuming the script is executing NOT in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. "$PROJECT_PATH"/llm_slurm/install_env.sh
+	. "$PROJECT_PATH"/scripts/install_env.sh
 fi
 #! Set `LLM_CONFIG` environment variable
-. "$PROJECT_PATH"/llm_slurm/set_llm_config.sh "$MODEL_SIZE"
+. "$PROJECT_PATH"/scripts/set_llm_config.sh "$MODEL_SIZE"
 #! Export the endpoint of the S3 object store
 # export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
 #! Using directly the IP to avoid name resolution issues

@@ -31,14 +31,14 @@ echo "PROJECT_PATH=$PROJECT_PATH"
 unset RUN_UUID
 export RUN_UUID="fed-1B-20240322_221900-fix-nesto"
 unset SAVE_PATH
-. "$PROJECT_PATH"/llm_slurm/pollen_llm_1B.sh
+. "$PROJECT_PATH"/scripts/pollen_llm_1B.sh
 
 # unset RUN_UUID
 # export RUN_UUID="fed-75M-reset-20240323_183000-fix-nesto"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/llm_slurm/pollen_llm_75M.sh
+# . "$PROJECT_PATH"/scripts/pollen_llm_75M.sh
 
 # unset RUN_UUID
 # export RUN_UUID="fed-125M-reset-20240323_213000-fix-nesto"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/llm_slurm/pollen_llm_125M.sh
+# . "$PROJECT_PATH"/scripts/pollen_llm_125M.sh

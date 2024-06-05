@@ -40,39 +40,66 @@ if [[ $1 == "--help" ]] || [[ $1 == "-h" ]]; then
 	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 32 c4 en"
 	exit 1
 fi
+
+PRESET="mc4"
+
 #! Set/get the variables
 SPLIT="full"
-N_CLIENTS=8
-DATASET="c4"
-DATASET_SUBSET="en"
-MOSAICML_DATA_ROOT="/local/scratch"
+TOKENIZER="google/mt5-base"
+EOS_TOKEN=""
+DATASET="allenai/c4"
+DATASET_SUBSET="es bg da de el fi fr hi it no ru sr sv  th uk vi zh en"
+
+DATA_ROOT="/local/scratch/aai30"
+
+if [[ $PRESET == "mc4" ]]; then
+	TOKENIZER="google/mt5-base"
+	EOS_TOKEN=""
+	DATASET="allenai/c4"
+	DATASET_SUBSET="es bg da de el fi fr hi it no ru sr sv  th uk vi zh en"
+	DATA_ROOT="$DATA_ROOT/fed_mc4"
+elif [[ $PRESET == "the_pile" ]]; then
+	TOKENIZER="EleutherAI/gpt-neox-20b"
+	EOS_TOKEN="<|endoftext|>"
+	DATASET="monology/pile-uncopyrighted"
+	DATASET_SUBSET="default"
+	DATA_ROOT="$DATA_ROOT/fed_the_pile_c8"
+fi
+
 if [[ $# -eq 0 ]]; then
 	echo "convert_hf_dataset_to_mds.sh: Using default values for all input arguments."
 elif [[ $# -eq 1 ]]; then
 	SPLIT="$1"
 elif [[ $# -eq 2 ]]; then
 	SPLIT="$1"
-	N_CLIENTS="$2"
+	TOKENIZER="$2"
 elif [[ $# -eq 3 ]]; then
 	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
 elif [[ $# -eq 4 ]]; then
 	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
-	DATASET_SUBSET="$4"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
 elif [[ $# -eq 5 ]]; then
 	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
-	DATASET_SUBSET="$4"
-	MOSAICML_DATA_ROOT="$5"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
+	DATASET_SUBSET="$5"
+elif [[ $# -eq 6 ]]; then
+	SPLIT="$1"
+	TOKENIZER="$2"
+	EOS_TOKEN="$3"
+	DATASET="$4"
+	DATASET_SUBSET="$5"
+	DATA_ROOT="$6"
 else
 	echo "convert_hf_dataset_to_mds.sh: Invalid number of input arguments. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
 	exit 1
 fi
-mkdir -p "$MOSAICML_DATA_ROOT"
+mkdir -p "$DATA_ROOT"
 if [[ $SPLIT == "full" ]]; then
 	SPLIT_NAME="val train"
 	echo "convert_hf_dataset_to_mds.sh: Default splits selected: $SPLIT_NAME."
@@ -80,6 +107,9 @@ else
 	SPLIT_NAME="$SPLIT"
 	echo "convert_hf_dataset_to_mds.sh: The selected splits are $SPLIT_NAME."
 fi
+
+IFS=' ' read -r -a DATASET_SUBSET_ARRAY <<<"$DATASET_SUBSET"
+
 echo "convert_hf_dataset_to_mds.sh: PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd "$PROJECT_PATH" || exit
@@ -88,14 +118,12 @@ if [[ $(hostname) == *'gpu-q'* ]]; then
 	echo "convert_hf_dataset_to_mds.sh: Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
-	. "$PROJECT_PATH"/llm_slurm/install_hpc_env.sh
+	. "$PROJECT_PATH"/scripts/install_hpc_env.sh
 fi
 #! Activate Poetry environment
 POETRY_ENV_PATH=$(poetry env info --path)
 # shellcheck disable=SC1091
 . "$POETRY_ENV_PATH"/bin/activate
-#! Set the data root
-DATA_ROOT="$MOSAICML_DATA_ROOT/fed_$DATASET/c$N_CLIENTS"
 echo "convert_hf_dataset_to_mds.sh: Creating the partition data root directory: $DATA_ROOT"
 mkdir -p "$DATA_ROOT"
 #! Get info about CPU resources available
@@ -112,17 +140,35 @@ echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
 #! Using directly the IP to avoid name resolution issues
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Execute the command
-poetry run python -m flower_llm.dataset.convert_dataset_hf \
-	--dataset "$DATASET" \
-	--data_subset "$DATASET_SUBSET" \
-	--splits "$SPLIT_NAME" \
-	--out_root "$DATA_ROOT" \
-	--compression zstd \
-	--concat_tokens 2048 \
-	--tokenizer EleutherAI/gpt-neox-20b \
-	--eos_text '<|endoftext|>' \
-	--num_workers "$NUM_CPUS" \
-	--num_clients "$N_CLIENTS"
+for SUBSET in "${DATASET_SUBSET_ARRAY[@]}"; do
+	LOCAL_DATA_ROOT="$DATA_ROOT/$SUBSET"
+	if [ -n "$EOS_TOKEN" ]; then
+		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
+			--dataset "$DATASET" \
+			--data_subset "$SUBSET" \
+			--num_clients 8 \
+			--splits "$SPLIT_NAME" \
+			--out_root "$LOCAL_DATA_ROOT" \
+			--compression zstd \
+			--concat_tokens 2048 \
+			--tokenizer "$TOKENIZER" \
+			--eos_text "$EOS_TOKEN" \
+			--num_workers "$NUM_CPUS"
+
+	else
+		poetry run python -m flower_llm.dataset.convert_and_partition_dataset \
+			--dataset "$DATASET" \
+			--data_subset "$SUBSET" \
+			--num_clients 8 \
+			--splits "$SPLIT_NAME" \
+			--out_root "$LOCAL_DATA_ROOT" \
+			--compression zstd \
+			--concat_tokens 2048 \
+			--tokenizer "$TOKENIZER" \
+			--num_workers "$NUM_CPUS"
+
+	fi
+done
 # --tokenizer_kwargs # add these if you want to pass additional kwargs to the tokenizer
 # --no_wrap # set this if you want to wrap long sequences
 # --bos_text # default
