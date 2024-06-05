@@ -4,6 +4,7 @@ import ast
 import os
 from logging import DEBUG, INFO, WARN, WARNING
 import re
+from typing import Any
 
 import torch
 from composer.utils.file_helpers import list_remote_objects
@@ -38,12 +39,12 @@ class StreamDict:
     keep_zip: bool | None = None
 
 
-def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
+def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
     """Set the client data configuration for the client.
 
     Parameters
     ----------
-    cid : int | str
+    cid : int | str | None
         The client id.
     cfg : DictConfig
         The configuration object.
@@ -73,9 +74,18 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
         # Extract the current client train stream -- it contains a dict of buckets
         # NOTE: Here, we circumvent the possible limited size of the number of client
         # streams since it should have been handled elsewhere
-        current_client_stream = clients_streams[int(cid) % len(clients_streams)][
-            "client_streams"
-        ]
+        current_client_stream: dict[str, Any] = {}
+        if cid is not None:
+            current_client_stream |= clients_streams[int(cid) % len(clients_streams)][
+                "client_streams"
+            ]
+        else:
+            # Concatenate all the streams
+            counter = 0
+            for client_stream in clients_streams:
+                for stream in client_stream["client_streams"]:
+                    current_client_stream |= {f"stream_{counter}": stream}
+                    counter += 1
         # Set streams dictionary for the train loader
         actual_streams = {
             key: StreamDict(**value) for key, value in current_client_stream.items()

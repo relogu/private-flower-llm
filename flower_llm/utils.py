@@ -480,7 +480,11 @@ def wandb_init(
 ) -> NoOpContextManager | Any | None:
     """Initialize wandb if enabled."""
     if wandb_enabled:
-        return wandb.init(*args, **kwargs)  # type: ignore[arg-type]
+        # Add server suffix to the name of the run
+        name = kwargs.pop("name", "")
+        assert type(name) is str
+        name += "_server"
+        return wandb.init(*args, **kwargs, name=name)  # type: ignore[arg-type,misc]
 
     return NoOpContextManager()
 

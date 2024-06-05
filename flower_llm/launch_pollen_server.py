@@ -6,7 +6,6 @@ using wandb for logging and hydra for experiment configuration.
 
 import copy
 from logging import DEBUG
-import pickle
 import sys
 from pathlib import Path
 from typing import cast
@@ -28,6 +27,7 @@ from flower_llm.pollen_server import PollenServer
 from flower_llm.strategy.rs_nesterov import FedNesterov
 from flower_llm.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
+    load_model_parameters_from_file,
     wandb_init,
     weighted_average,
 )
@@ -79,8 +79,9 @@ def main(cfg: BaseConfig) -> None:
             "FL server is loading pretrained model from %s",
             cfg.pretrained_model_path,
         )
-        with open(Path(cfg.pretrained_model_path), "rb") as f:
-            initial_parameters = ndarrays_to_parameters(pickle.load(f))
+        initial_parameters = ndarrays_to_parameters(
+            load_model_parameters_from_file(Path(cfg.pretrained_model_path))
+        )
     else:
         log(
             DEBUG,
