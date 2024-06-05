@@ -53,8 +53,9 @@ class Pollen(DictConfig):
         Whether to checkpoint the model
     restore_run_uuid: str = MISSING
         Run UUID to restore the model
-    resume_round: int = MISSING
-        Round to resume from
+    resume_round: int | None = MISSING
+        Round to resume from, None implies start anew
+        negative indices are counted from the last round
     """
 
     placement_policy: str = MISSING
@@ -68,7 +69,7 @@ class Pollen(DictConfig):
     cpu_concurrency: int = MISSING
     checkpoint: bool = MISSING
     restore_run_uuid: str | None = MISSING
-    resume_round: int = MISSING
+    resume_round: int | None = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
