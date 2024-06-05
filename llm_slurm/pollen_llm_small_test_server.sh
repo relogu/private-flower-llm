@@ -49,15 +49,15 @@ fi
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
-	export RUN_UUID="fed-small-$DATETIME"
+	export RUN_UUID="fed-small-test-server-$DATETIME"
 fi
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 fi
+export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)
@@ -73,6 +73,9 @@ POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.st
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 pollen.fit_collaborative=false pollen.restore_run_uuid=null "
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+#! Set `TMPDIR` that is used for storing the cache of the datasets
+export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+mkdir -p "$TMPDIR"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.

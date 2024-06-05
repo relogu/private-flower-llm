@@ -58,7 +58,6 @@ fi
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
 #! Saving path
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export POLLEN_SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 #! If RUN_UUID hasn't been set, set it to the default value
 if [ -z "$RUN_UUID" ]; then
 	export RUN_UUID="centralised-$MODEL_SIZE-$DATETIME"
@@ -67,6 +66,7 @@ fi
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
 fi
+export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Set `LLM_OPTIONS` environment variable
 # export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
@@ -80,6 +80,9 @@ CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
 echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
+#! Set `TMPDIR` that is used for storing the cache of the datasets
+export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+mkdir -p "$TMPDIR"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
