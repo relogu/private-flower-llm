@@ -80,7 +80,7 @@ CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
 echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
-#! Set `TMPDIR` that is used for storing the cache of the datasets
+#! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Launch centralised training script

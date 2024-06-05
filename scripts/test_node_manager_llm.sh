@@ -76,7 +76,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_co
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
 
-#! Set `TMPDIR` that is used for storing the cache of the datasets
+#! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Test NodeManager
