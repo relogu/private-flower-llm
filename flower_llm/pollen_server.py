@@ -4,6 +4,7 @@ import ast
 import concurrent.futures
 from dataclasses import asdict, dataclass
 import pickle
+import re
 import sys
 import time
 import timeit
@@ -40,7 +41,7 @@ from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: P
 from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path
+from composer.utils.file_helpers import validate_given_remote_path, list_remote_objects
 
 from flower_llm.clients.empty_virtual_client import EmptyVirtualClient
 from flower_llm.clients.llm_client_functions import (
@@ -166,6 +167,7 @@ class PollenServer(Server):
         self.run_uuid = run_uuid
 
         self.client_state: dict[str | int, ClientState] = {}
+        self.server_steps_cumulative = 0
 
         if self.checkpoint or self.use_s3_comm:
             bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
@@ -230,162 +232,10 @@ class PollenServer(Server):
                 restore_run_step=restore_run_step,
                 n_total_clients=len(self.cids),
             )
-
-        # Resume experiment if asked to
-        start_round = 0
-        time_offset = 0.0
-
-        if self.checkpoint and self.resume_round and self.resume_round >= 0:
-            try:
-                log(INFO, "Resuming from checkpoint")
-                # Check whether the server parameters exist
-                file_found = False
-                remote_file_name_no_ext = (
-                    f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr]
-                    f"{self.run_uuid}/server/"
-                    f"{self.resume_round}/current_server_parameters"
-                )
-                while not file_found:
-                    file_found = validate_given_remote_path(
-                        remote_file_name_no_ext + ".bin"
-                    ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
-                    time.sleep(0.5)
-                # Set the file names depending on the extension found
-                remote_file_name = (
-                    f"{self.resume_round}/current_server_parameters.bin"
-                    if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-                    else f"{self.resume_round}/current_server_parameters.npz"
-                )
-                local_file_name = (
-                    Path.cwd() / "current_server_parameters.bin"
-                    if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-                    else Path.cwd() / "current_server_parameters.npz"
-                )
-                log(INFO, "Pull server parameters from S3 Object Store")
-                # Download the parameters
-                download_file_from_s3(
-                    self.remote_up_down, remote_file_name, local_file_name
-                )
-                log(INFO, "Read server parameters from disk")
-                checkpoint_parameters = load_model_parameters_from_file(local_file_name)
-                self.parameters = ndarrays_to_parameters(checkpoint_parameters)
-                if isinstance(self.strategy, FedNesterov):
-                    self.strategy.ndarray_parameters = checkpoint_parameters
-                log(INFO, "Pull server state from S3 Object Store")
-                # Download the server state from S3 Object Store
-                download_file_from_s3(
-                    self.remote_up_down,
-                    f"{self.resume_round}/state.bin",
-                    str(Path.cwd() / "current_server_state.bin"),
-                )
-                log(INFO, "Read server state from disk")
-                with open(Path.cwd() / "current_server_state.bin", "rb") as f:
-                    server_state = pickle.load(f)
-                start_round = server_state["server_round"]
-                assert (
-                    start_round == self.resume_round
-                ), "Server round mismatch with checkpoint"
-                history: History = server_state["history"]
-                if "client_state" in server_state:
-                    saved_client_state: dict[str | int, dict[str, Any]] = (
-                        ast.literal_eval(server_state["client_state"])
-                    )
-                else:
-                    saved_client_state = {
-                        cid: {"local_steps_cumulative": int(500 * self.resume_round)}
-                        for cid in self.cids
-                    }
-                self.client_state = {
-                    k: ClientState(**v) for k, v in saved_client_state.items()
-                }
-                if "time_offset" in server_state:
-                    time_offset = server_state["time_offset"]
-                if isinstance(self.strategy, FedNesterov):
-                    if "momentum" in server_state:
-                        log(INFO, "Get momentum vector from server state")
-                        self.strategy.momentum_vector = server_state["momentum"]
-                    else:
-                        log(INFO, "Pull momentum from S3 Object Store")
-                        # Set the file names depending on the extension found
-                        remote_file_name = (
-                            f"{self.resume_round}/current_momentum_vector.npz"
-                        )
-                        local_file_name = Path.cwd() / "current_momentum_vector.npz"
-                        # Download the parameters
-                        download_file_from_s3(
-                            self.remote_up_down, remote_file_name, local_file_name
-                        )
-                        self.strategy.momentum_vector = load_model_parameters_from_file(
-                            local_file_name
-                        )
-                log(INFO, "Server state has been read from disk")
-            except Exception as e:
-                log(ERROR, "Failed to resume from checkpoint: %s", e)
-                sys.exit(1)
+        if self.checkpoint and self.resume_round is not None:
+            history, start_round, time_offset = self.resume_from_round(timeout)
         else:
-            history = self.history if self.history is not None else History()
-            self.client_state = {cid: ClientState(0) for cid in self.cids}
-            # Initialize parameters
-            log(INFO, "Initializing global parameters")
-            self.parameters = self._get_initial_parameters(timeout=timeout)
-            log(INFO, "Evaluating initial parameters")
-            res = self.strategy.evaluate(0, parameters=self.parameters)
-            if res is not None:
-                log(
-                    INFO,
-                    "initial parameters (loss, other metrics): %s, %s",
-                    res[0],
-                    res[1],
-                )
-                history.add_loss_centralized(server_round=0, loss=res[0])
-                history.add_metrics_centralized(server_round=0, metrics=res[1])
-            # Initialize client_state_dict
-            # Save the checkpoint to S3 Object Store (w/ model parameters)
-            if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Create server state (server_round, history, time_offset)")
-                current_server_state = {
-                    "server_round": start_round,
-                    "history": history,
-                    "time_offset": time_offset,
-                    "client_state": str(
-                        {k: asdict(v) for k, v in self.client_state.items()}
-                    ),
-                }
-                log(INFO, "Dump server state to disk")
-                with open(Path.cwd() / "current_server_state.bin", "wb") as f:
-                    pickle.dump(current_server_state, f)
-                log(INFO, "Push server state to S3")
-                upload_file_to_s3(
-                    self.remote_up_down,
-                    f"{start_round}/state.bin",
-                    Path.cwd() / "current_server_state.bin",
-                )
-                if (
-                    isinstance(self.strategy, FedNesterov)
-                    and self.strategy.momentum_vector is not None
-                ):
-                    log(INFO, "Dump momentum vector to disk")
-                    dump_model_parameters_to_file(
-                        Path.cwd() / "current_momentum_vector.npz",
-                        self.strategy.momentum_vector,
-                    )
-                    log(INFO, "Push momentum vector to S3 Object Store")
-                    upload_file_to_s3(
-                        self.remote_up_down,
-                        f"{start_round}/current_momentum_vector.npz",
-                        Path.cwd() / "current_momentum_vector.npz",
-                    )
-                log(INFO, "Dump server parameters to disk")
-                dump_model_parameters_to_file(
-                    Path.cwd() / "current_server_parameters.npz",
-                    parameters_to_ndarrays(self.parameters),
-                )
-                log(INFO, "Push parameters to S3 Object Store")
-                upload_file_to_s3(
-                    self.remote_up_down,
-                    f"{start_round}/current_server_parameters.npz",
-                    Path.cwd() / "current_server_parameters.npz",
-                )
+            history, start_round, time_offset = self.initialize_round(timeout)
 
         # NOTE: Register VirtualClients to the PollenClientManager
         self._client_manager.clients = {
@@ -440,12 +290,12 @@ class PollenServer(Server):
 
             # Push the global model to S3 Object Store (but not the server state)
             if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Dump server parameters to disk")
+                log(DEBUG, "Dump server parameters to disk")
                 dump_model_parameters_to_file(
                     Path.cwd() / "current_server_parameters.npz",
                     parameters_to_ndarrays(self.parameters),
                 )
-                log(INFO, "Push parameters to S3 Object Store")
+                log(DEBUG, "Push parameters to S3 Object Store")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/current_server_parameters.npz",
@@ -517,7 +367,7 @@ class PollenServer(Server):
 
             # Save the checkpoint to S3 Object Store (w/o the global parameters)
             if self.checkpoint or self.use_s3_comm:
-                log(INFO, "Create server state (server_round, history, time_offset)")
+                log(DEBUG, "Create server state (server_round, history, time_offset)")
                 current_server_state = {
                     "server_round": current_round,
                     "history": history,
@@ -526,10 +376,10 @@ class PollenServer(Server):
                         {k: asdict(v) for k, v in self.client_state.items()}
                     ),
                 }
-                log(INFO, "Dump server state to disk")
+                log(DEBUG, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
                     pickle.dump(current_server_state, f)
-                log(INFO, "Push server state to S3")
+                log(DEBUG, "Push server state to S3")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/state.bin",
@@ -539,12 +389,12 @@ class PollenServer(Server):
                     isinstance(self.strategy, FedNesterov)
                     and self.strategy.momentum_vector is not None
                 ):
-                    log(INFO, "Dump momentum vector to disk")
+                    log(DEBUG, "Dump momentum vector to disk")
                     dump_model_parameters_to_file(
                         Path.cwd() / "current_momentum_vector.npz",
                         self.strategy.momentum_vector,
                     )
-                    log(INFO, "Push momentum vector to S3 Object Store")
+                    log(DEBUG, "Push momentum vector to S3 Object Store")
                     upload_file_to_s3(
                         self.remote_up_down,
                         f"{current_round}/current_momentum_vector.npz",
@@ -756,6 +606,10 @@ class PollenServer(Server):
                 node_fit_config["server_round"] = server_round
             if "n_workers" not in node_fit_config:
                 node_fit_config["n_workers"] = 1
+            if "server_steps_cumulative" not in node_fit_config:
+                node_fit_config["server_steps_cumulative"] = (
+                    self.server_steps_cumulative
+                )
 
             # Assign `cids` to NodeManagers' devices
             node_fit_config.update(device_assignment)
@@ -890,6 +744,22 @@ class PollenServer(Server):
                 self.client_state |= {
                     k: ClientState(**v) for k, v in client_state_accumulator.items()
                 }
+                # NOTE: Update the server steps cumulative by adding to the previous
+                # value the maximum number of local steps done across the clients sample
+                # in this round
+                max_steps = max(
+                    *[
+                        _client_state.steps_done
+                        for _client_state in self.client_state.values()
+                    ],
+                    0,
+                )
+                self.server_steps_cumulative += max_steps
+                # NOTE: Reset the steps_done for all clients to zero as it is just meant
+                # to be an ephemeral record of the local steps done during one federated
+                # round
+                for client_state in self.client_state.values():
+                    client_state.steps_done = 0
 
                 metrics_aggregated |= self.strategy.fit_metrics_aggregation_fn(
                     fit_metrics
@@ -1014,6 +884,228 @@ class PollenServer(Server):
             client_proxy.cid: (client_proxy, node) for client_proxy, node in results
         }
         # TODO: Clean-up stats?
+
+    def initialize_round(self, timeout: float | None) -> tuple[History, int, float]:
+        """Initialize the server for a new round.
+
+        Parameters
+        ----------
+            timeout (float | None): The timeout for the communication with the clients.
+
+        Returns
+        -------
+            tuple[History, int, float]: History object, the start round, time offset.
+        """
+        start_round: int = 0
+        time_offset: float = 0.0
+        history = self.history if self.history is not None else History()
+        self.client_state = {cid: ClientState(0) for cid in self.cids}
+        # Initialize parameters
+        log(INFO, "Initializing global parameters")
+        self.parameters = self._get_initial_parameters(timeout=timeout)
+        log(INFO, "Evaluating initial parameters")
+        res = self.strategy.evaluate(0, parameters=self.parameters)
+        if res is not None:
+            log(
+                INFO,
+                "initial parameters (loss, other metrics): %s, %s",
+                res[0],
+                res[1],
+            )
+            history.add_loss_centralized(server_round=0, loss=res[0])
+            history.add_metrics_centralized(server_round=0, metrics=res[1])
+        # Initialize client_state_dict
+        # Save the checkpoint to S3 Object Store (w/ model parameters)
+        if self.checkpoint or self.use_s3_comm:
+            log(DEBUG, "Create server state (server_round, history, time_offset)")
+            current_server_state = {
+                "server_round": start_round,
+                "history": history,
+                "time_offset": time_offset,
+                "client_state": str(
+                    {k: asdict(v) for k, v in self.client_state.items()}
+                ),
+                "server_steps_cumulative": self.server_steps_cumulative,
+            }
+            log(DEBUG, "Dump server state to disk")
+            with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+                pickle.dump(current_server_state, f)
+            log(DEBUG, "Push server state to S3")
+            upload_file_to_s3(
+                self.remote_up_down,
+                f"{start_round}/state.bin",
+                Path.cwd() / "current_server_state.bin",
+            )
+            if (
+                isinstance(self.strategy, FedNesterov)
+                and self.strategy.momentum_vector is not None
+            ):
+                log(DEBUG, "Dump momentum vector to disk")
+                dump_model_parameters_to_file(
+                    Path.cwd() / "current_momentum_vector.npz",
+                    self.strategy.momentum_vector,
+                )
+                log(DEBUG, "Push momentum vector to S3 Object Store")
+                upload_file_to_s3(
+                    self.remote_up_down,
+                    f"{start_round}/current_momentum_vector.npz",
+                    Path.cwd() / "current_momentum_vector.npz",
+                )
+            log(DEBUG, "Dump server parameters to disk")
+            dump_model_parameters_to_file(
+                Path.cwd() / "current_server_parameters.npz",
+                parameters_to_ndarrays(self.parameters),
+            )
+            log(DEBUG, "Push parameters to S3 Object Store")
+            upload_file_to_s3(
+                self.remote_up_down,
+                f"{start_round}/current_server_parameters.npz",
+                Path.cwd() / "current_server_parameters.npz",
+            )
+        return history, start_round, time_offset
+
+    def resume_from_round(self, timeout: float | None) -> tuple[History, int, float]:
+        """Resume the server from a given round.
+
+        Returns
+        -------
+            tuple[History, float]: The history object and the time offset.
+        """
+        time_offset: float = 0.0
+        start_round: int = 0
+        assert self.resume_round is not None
+        try:
+            server_path = (
+                f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr,reportOptionalMemberAccess]
+                f"{self.run_uuid}/server/"
+            )
+            if self.resume_round < 0:
+                log(INFO, "Negative round number %s", self.resume_round)
+                remote_objects = list_remote_objects(server_path)
+                if not remote_objects:
+                    log(
+                        INFO,
+                        "No checkpoints found in %s. Starting training from scratch.",
+                        server_path,
+                    )
+                log(INFO, "Found files %s", remote_objects)
+                # Take only the unique indices
+                server_round_indices = sorted(
+                    {
+                        int(reg.group(1))
+                        for path in remote_objects
+                        if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
+                    }
+                )
+
+                log(INFO, "Found server round indices %s", server_round_indices)
+                if not server_round_indices:
+                    log(
+                        INFO,
+                        "No checkpoints found in %s. Starting training from scratch.",
+                        server_path,
+                    )
+                    return self.initialize_round(timeout)
+
+                self.resume_round += server_round_indices[-1] + 1
+                log(INFO, "Resuming from round %s", self.resume_round)
+
+            log(INFO, "Resuming from checkpoint")
+            # Check whether the server parameters exist
+            file_found = False
+            remote_file_name_no_ext = (
+                server_path + f"{self.resume_round}/current_server_parameters"
+            )
+            while not file_found:
+                file_found = validate_given_remote_path(
+                    remote_file_name_no_ext + ".bin"
+                ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+                time.sleep(0.5)
+            # Set the file names depending on the extension found
+            remote_file_name = (
+                f"{self.resume_round}/current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else f"{self.resume_round}/current_server_parameters.npz"
+            )
+            local_file_name = (
+                Path.cwd() / "current_server_parameters.bin"
+                if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+                else Path.cwd() / "current_server_parameters.npz"
+            )
+            log(DEBUG, "Pull server parameters from S3 Object Store")
+            # Download the parameters
+            download_file_from_s3(
+                self.remote_up_down, remote_file_name, local_file_name
+            )
+            log(DEBUG, "Read server parameters from disk")
+            checkpoint_parameters = load_model_parameters_from_file(local_file_name)
+            self.parameters = ndarrays_to_parameters(checkpoint_parameters)
+            if isinstance(self.strategy, FedNesterov):
+                self.strategy.ndarray_parameters = checkpoint_parameters
+            log(DEBUG, "Pull server state from S3 Object Store")
+            # Download the server state from S3 Object Store
+            download_file_from_s3(
+                self.remote_up_down,
+                f"{self.resume_round}/state.bin",
+                str(Path.cwd() / "current_server_state.bin"),
+            )
+            log(DEBUG, "Read server state from disk")
+            with open(Path.cwd() / "current_server_state.bin", "rb") as f:
+                server_state = pickle.load(f)
+            start_round = server_state["server_round"]
+            assert (
+                start_round == self.resume_round
+            ), "Server round mismatch with checkpoint"
+            history: History = server_state["history"]
+            if "client_state" in server_state:
+                saved_client_state: dict[str | int, dict[str, Any]] = ast.literal_eval(
+                    server_state["client_state"]
+                )
+            else:
+                saved_client_state = {
+                    cid: {"local_steps_cumulative": int(500 * self.resume_round)}
+                    for cid in self.cids
+                }
+            self.client_state = {
+                k: ClientState(**v) for k, v in saved_client_state.items()
+            }
+
+            if "time_offset" in server_state:
+                time_offset = server_state["time_offset"]
+            if "server_steps_cumulative" in server_state:
+                self.server_steps_cumulative = server_state["server_steps_cumulative"]
+            else:
+                # Make it back compatible with the previous versions
+                self.server_steps_cumulative = max(
+                    *[
+                        _client_state.local_steps_cumulative
+                        for _client_state in self.client_state.values()
+                    ],
+                    0,
+                )
+            if isinstance(self.strategy, FedNesterov):
+                if "momentum" in server_state:
+                    log(DEBUG, "Get momentum vector from server state")
+                    self.strategy.momentum_vector = server_state["momentum"]
+                else:
+                    log(DEBUG, "Pull momentum from S3 Object Store")
+                    # Set the file names depending on the extension found
+                    remote_file_name = (
+                        f"{self.resume_round}/current_momentum_vector.npz"
+                    )
+                    local_file_name = Path.cwd() / "current_momentum_vector.npz"
+                    # Download the parameters
+                    download_file_from_s3(
+                        self.remote_up_down, remote_file_name, local_file_name
+                    )
+                    self.strategy.momentum_vector = load_model_parameters_from_file(
+                        local_file_name
+                    )
+            log(DEBUG, "Server state has been read from disk")
+        except Exception as e:
+            log(ERROR, "Failed to resume from checkpoint: %s", e)
+            sys.exit(1)
+        return history, start_round, time_offset
 
 
 # NEW FUNCTIONS #######################
@@ -1209,13 +1301,13 @@ def replace_clients_updates_with_remote(
         local_file_name,
     )
     download_file_from_s3(remote_uploader_downloader, remote_file_name, local_file_name)
-    log(INFO, "Read server parameters from disk")
+    log(DEBUG, "Read server parameters from disk")
     fit_res.parameters = ndarrays_to_parameters(
         load_model_parameters_from_file(local_file_name)
     )
 
     log(
-        INFO,
+        DEBUG,
         "Node %s parameters have been read from disk and assigned to fit_res",
         endpoint_id,
     )

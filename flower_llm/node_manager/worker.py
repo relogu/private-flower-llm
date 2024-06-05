@@ -381,7 +381,7 @@ def get_env_patcher(
             # Shared
             "MASTER_ADDR": "127.0.0.1",
             "PYTHONUNBUFFERED": "1",
-            "NCCL_ASYNC_ERROR_HANDLING": "1",
+            "TORCH_NCCL_ASYNC_ERROR_HANDLING": "1",
             "NODE_RANK": "0",
             "RUN_UUID": run_uuid,
             # Collaboration dependent
@@ -399,7 +399,7 @@ def get_env_patcher(
                 " %s.\n\t\tRANK=%s, WORLD_SIZE=%s, LOCAL_RANK=%s,"
                 " LOCAL_WORLD_SIZE=%s, NODE_RANK=%s, MASTER_ADDR=%s,"
                 " MASTER_PORT=%s, PYTHONUNBUFFERED=%s,"
-                " NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
+                " TORCH_NCCL_ASYNC_ERROR_HANDLING=%s, RUN_UUID=%s,"
                 " APPOINTED_CUDA_DEVICE=%s",
                 rank,
                 os.getenv("RANK"),
@@ -410,7 +410,7 @@ def get_env_patcher(
                 os.getenv("MASTER_ADDR"),
                 os.getenv("MASTER_PORT"),
                 os.getenv("PYTHONUNBUFFERED"),
-                os.getenv("NCCL_ASYNC_ERROR_HANDLING"),
+                os.getenv("TORCH_NCCL_ASYNC_ERROR_HANDLING"),
                 os.getenv("RUN_UUID"),
                 os.getenv("APPOINTED_CUDA_DEVICE"),
             )

@@ -5,8 +5,7 @@ using wandb for logging and hydra for experiment configuration.
 """
 
 import copy
-from logging import INFO
-import pickle
+from logging import DEBUG
 import sys
 from pathlib import Path
 from typing import cast
@@ -28,6 +27,7 @@ from flower_llm.pollen_server import PollenServer
 from flower_llm.strategy.rs_nesterov import FedNesterov
 from flower_llm.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
+    load_model_parameters_from_file,
     wandb_init,
     weighted_average,
 )
@@ -75,15 +75,16 @@ def main(cfg: BaseConfig) -> None:
     OmegaConf.set_struct(_llm_config, False)
     if cfg.pretrained_model_path:
         log(
-            INFO,
+            DEBUG,
             "FL server is loading pretrained model from %s",
             cfg.pretrained_model_path,
         )
-        with open(Path(cfg.pretrained_model_path), "rb") as f:
-            initial_parameters = ndarrays_to_parameters(pickle.load(f))
+        initial_parameters = ndarrays_to_parameters(
+            load_model_parameters_from_file(Path(cfg.pretrained_model_path))
+        )
     else:
         log(
-            INFO,
+            DEBUG,
             "FL server initializes model with random parameters.",
         )
         initial_parameters_ndarrays: NDArrays
@@ -96,7 +97,7 @@ def main(cfg: BaseConfig) -> None:
             zip(initial_parameters_ndarrays, names, strict=True)
         ):
             log(
-                INFO,
+                DEBUG,
                 "Initial parameter, component %s, name %s, shape %s",
                 i,
                 name,

@@ -38,4 +38,4 @@ export CPU_CONCURRENCY=8
 unset RUN_UUID
 export RUN_UUID="fed-pollen_smalll_benchmark_${CPU_CONCURRENCY}_worker"
 unset SAVE_PATH
-. "$PROJECT_PATH"/llm_slurm/pollen_llm_small.sh
+. "$PROJECT_PATH"/scripts/pollen_llm_small.sh

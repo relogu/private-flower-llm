@@ -129,4 +129,4 @@ while true; do
 done
 echo "PROJECT_PATH=$PROJECT_PATH"
 
-. "$PROJECT_PATH"/llm_slurm/series_of_centralised_trainings.sh
+. "$PROJECT_PATH"/scripts/series_of_centralised_trainings.sh

@@ -3,36 +3,28 @@
 import atexit
 import copy
 import gc
+from itertools import groupby
 import logging
+import operator
 import os
 import re
 import time
 import warnings
 from collections import OrderedDict
-from contextlib import _GeneratorContextManager
-from logging import DEBUG, ERROR, INFO, WARN
+from logging import DEBUG, ERROR, WARN
 from typing import Any, cast
 
 import streaming
 import torch
-from composer import Callback, ComposerModel, Evaluator, Trainer
+from composer import Callback, Evaluator, Trainer
 from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
-from composer.utils import dist, reproducibility
+from composer.utils import dist, reproducibility, get_device
 from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
-from flwr.common.typing import Config, NDArrays, Scalar
+from flwr.common.typing import NDArrays, Scalar
 from llmfoundry.data.dataloader import build_dataloader
-from llmfoundry.models.hf.hf_causal_lm import ComposerHFCausalLM
-from llmfoundry.models.hf.hf_prefix_lm import ComposerHFPrefixLM
-from llmfoundry.models.hf.hf_t5 import ComposerHFT5
-from llmfoundry.models.inference_api_wrapper.openai_causal_lm import (
-    OpenAICausalLMEvalWrapper,
-    OpenAIChatAPIEvalWrapper,
-)
 
-
-from llmfoundry.models.mpt.modeling_mpt import ComposerMPTCausalLM, MPTForCausalLM
 from llmfoundry.utils.builders import (
     build_algorithm,
     build_callback,
@@ -41,6 +33,7 @@ from llmfoundry.utils.builders import (
     build_optimizer,
     build_scheduler,
     build_tokenizer,
+    build_composer_model,
 )
 from llmfoundry.utils.config_utils import (
     pop_config,
@@ -49,7 +42,6 @@ from llmfoundry.utils.config_utils import (
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
-from transformers import PreTrainedTokenizerBase
 
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils import S3ObjectStore
@@ -62,26 +54,22 @@ from flower_llm.clients.llm_config_functions import (
     set_client_load_path,
     set_client_tensorboard_logger,
     set_client_wandb_logger,
+    set_dataset_default_params,
     validate_config,
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
+    construct_parameters_dict,
+    get_list_of_parameters_names,
     get_trainable_params_dict,
+    parameters_checker,
+    set_trainer_trainable_params_dict,
     sum_of_squares,
+    get_parameters_from_state,
 )
 from dataclasses import asdict
 import ast
 from flower_llm.utils import ClientState
-
-
-COMPOSER_MODEL_REGISTRY = {
-    "mpt_causal_lm": ComposerMPTCausalLM,
-    "hf_causal_lm": ComposerHFCausalLM,
-    "hf_prefix_lm": ComposerHFPrefixLM,
-    "hf_t5": ComposerHFT5,
-    "openai_causal_lm": OpenAICausalLMEvalWrapper,
-    "openai_chat": OpenAIChatAPIEvalWrapper,
-}
 
 
 def copy_old_checkpoints_to_new_run(
@@ -139,15 +127,35 @@ def copy_old_checkpoints_to_new_run(
             if validate_given_remote_path(parameters_no_ext + ".bin")
             else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
         )
-        old_run_folder_no_prefix = old_run_folder.replace(bucket_uri + "/", "")
+
+        remote_objects = list_remote_objects(old_run_folder)
+
+        # Extract the client and the batches
+        # NOTE: (?:\d+) means a do-not-capture group
+        # As such we allow any number of epochs without extracting
+        # The number of epochs
+        client_path_batches = sorted(
+            [
+                (
+                    path,
+                    int(reg.group(1)),
+                    int(reg.group(2)),
+                )
+                for path in remote_objects
+                if (reg := re.search(r"client_(\d+)/ep(?:\d+)-ba(\d+)", path))
+                is not None
+            ],
+            key=operator.itemgetter(1, 2),
+        )
+
+        # For each client, choose the latest checkpoint
+        # That is consistent with the step of the resume round
+        # groupby acts like an sql groupby
         client_paths = [
-            client_path
-            for client_path in list_remote_objects(old_run_folder)
-            if re.match(
-                f"{old_run_folder_no_prefix}/client_.*/ep0-ba{restore_run_step}",
-                client_path,
-            )
+            list(filter(lambda x: x[2] <= restore_run_step, group))[-1][0]
+            for _, group in groupby(client_path_batches, key=operator.itemgetter(1))
         ]
+
         if (
             n_total_clients is not None
             and (found_clients := len(client_paths)) != n_total_clients
@@ -163,7 +171,7 @@ def copy_old_checkpoints_to_new_run(
             paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
         else:
             log(
-                logging.INFO,
+                DEBUG,
                 f"Could not find momentum vector to copy from {momentum_vec}",
             )
 
@@ -172,7 +180,7 @@ def copy_old_checkpoints_to_new_run(
         for path in paths_to_copy:
             copy_source = {"Bucket": backend.bucket, "Key": path}
             target_key = path.replace(restore_run_uuid, run_uuid)
-            log(INFO, "Copying %s to %s", path, target_key)
+            log(DEBUG, "Copying %s to %s", path, target_key)
             backend.client.copy(copy_source, backend.bucket, target_key)
 
     else:
@@ -186,51 +194,11 @@ def copy_old_checkpoints_to_new_run(
         )
 
 
-def build_composer_model(
-    model_cfg: DictConfig, tokenizer: PreTrainedTokenizerBase
-) -> Any:
-    """Build the Composer model given the config and tokenizer."""
-    warnings.filterwarnings(
-        action="ignore",
-        message="Torchmetrics v0.9 introduced a new argument class property",
-    )
-    if model_cfg.name not in COMPOSER_MODEL_REGISTRY:
-        raise ValueError(f"Not sure how to build model with name={model_cfg.name}")
-    return COMPOSER_MODEL_REGISTRY[model_cfg.name](model_cfg, tokenizer)
-
-
-def build_composer_peft_model(
-    pretrained_model_name_or_path: str,
-    lora_args: dict[str, Any],
-    tokenizer: PreTrainedTokenizerBase,
-) -> ComposerHFCausalLM:
-    """Build the Composer model with Lora modules (if asked for)."""
-    try:
-        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
-    except ImportError as e:
-        raise ImportError(
-            "Error importing from peft. Please verify that peft and peft utils "
-            "are installed by running `pip install -e .[peft]` from `llm-foundry/`. "
-            f"Error encountered: {e}"
-        ) from e
-
-    # 1) loads a hf model, 2) adds peft modules, 3) wraps it in a ComposerHFCausalLM.
-    # log(INFO, "Building Lora config...")
-    lora_cfg = LoraConfig(**lora_args)
-
-    # log(INFO, "Building model from HuggingFace checkpoint...")
-    model = MPTForCausalLM.from_pretrained(
-        pretrained_model_name_or_path, trust_remote_code=True
-    )
-    # log(INFO, "Model built!")
-
-    # log(INFO, "Adding Lora modules...")
-    model = get_peft_model(model, lora_cfg)  # type: ignore[reportArgumentType]
-    # log(INFO, "Lora modules added!")
-
-    model = ComposerHFCausalLM(model, tokenizer)  # type: ignore[reportArgumentType]
-
-    return model
+def set_trainer_timestamp(trainer: Trainer, timestamp: int) -> None:
+    """Set the timestamp of the trainer."""
+    log(DEBUG, "Stepping the timestamp.")
+    while trainer.state.timestamp.batch.value < timestamp:
+        trainer.state.timestamp = trainer.state.timestamp.to_next_batch()
 
 
 def print_trainable_parameters(model: torch.nn.Module) -> None:
@@ -242,37 +210,10 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         if param.requires_grad:
             trainable_params += param.numel()
     log(
-        INFO,
+        DEBUG,
         f"trainable params: {trainable_params} || all params: {all_param} || "
         f"trainable params (%): {100 * trainable_params / all_param}",
     )
-
-
-def _get_model_for_trainer(
-    init_context: _GeneratorContextManager,
-    tokenizer: PreTrainedTokenizerBase,
-    model_config: DictConfig,
-    lora_config: dict[str, Any] | None,
-) -> ComposerModel:
-    # Build Model
-    # log(INFO, "Initializing model...")
-    with init_context:
-        if lora_config is not None:  # frozen model + trainable lora modules
-            model: ComposerHFCausalLM = build_composer_peft_model(
-                model_config.pretrained_model_name_or_path,
-                lora_config["args"],
-                tokenizer,
-            )
-            print_trainable_parameters(model)  # should not be 100%
-        else:  # standard model
-            model = build_composer_model(model_config, tokenizer)
-
-        if model_config.get("master_weights_dtype") in {"bf16", "bfloat16"}:
-            model = model.to(dtype=torch.bfloat16)
-        elif model_config.get("master_weights_dtype") in {"f16", "float16"}:
-            model = model.to(dtype=torch.float16)
-        print_trainable_parameters(model)  # should not be 100%
-    return model
 
 
 def get_raw_model_parameters(
@@ -301,22 +242,19 @@ def get_raw_model_parameters(
     )
     tokenizer_name = tokenizer_config["name"]
     tokenizer_kwargs = tokenizer_config.get("kwargs", {})
-    # Get LoRa config
-    lora_config: dict[str, Any] | None = pop_config(
-        _cfg, "lora", must_exist=False, default_value=None, convert=True
-    )
     # Get model while forcing cpu to prevent any GPU allocation
     model_config.init_device = "cpu"
-    model = _get_model_for_trainer(
-        init_context=process_init_device(model_config, None),  # type: ignore[reportArgumentType]
+    model = build_composer_model(
+        name=model_config.name,
+        cfg=model_config,
         tokenizer=build_tokenizer(tokenizer_name, tokenizer_kwargs),
-        model_config=model_config,
-        lora_config=lora_config,
+        init_context=process_init_device(model_config, None),
+        master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
     model.cpu()
     # Get model summary
     if verbose:
-        log(INFO, model)
+        log(DEBUG, model)
     parameters_ndarrays = [
         val.detach().to("cpu").numpy()
         for _, val in get_trainable_params_dict(model).items()
@@ -329,8 +267,9 @@ def get_raw_model_parameters(
 
 def _get_trainer_object(
     _cfg: DictConfig,
-    cid: int | str,
-) -> tuple[Trainer, bool, DictConfig]:
+    cid: int | str | None,
+    log_name: str | None = None,
+) -> tuple[Trainer, bool, DictConfig, list[str]]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
@@ -387,6 +326,11 @@ def _get_trainer_object(
         assert visible_devices is None
         device = DeviceCPU()
         log(DEBUG, f"Selecting device CPU, {device}")
+    log(DEBUG, "Initializing dist with device...")
+    dist.initialize_dist(get_device(device), timeout=dist_timeout)
+    log(DEBUG, "Testing barrier with device...")
+    dist.barrier()
+    log(DEBUG, "Barrier test passed with device.")
 
     # Get global and device batch size information from distributed/single node setting
     adapt_train_batch_size_to_num_devices(_cfg)
@@ -396,6 +340,8 @@ def _get_trainer_object(
     # Mandatory model training configs
     set_n_workers_dataloaders(cfg=_cfg, device=device)
     client_set_data_config(cfg=_cfg, cid=cid)
+    # Apply dataset defaults
+    set_dataset_default_params(_cfg)
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
     tokenizer_config: dict[str, Any] = pop_config(
         _cfg, "tokenizer", must_exist=True, convert=True
@@ -414,9 +360,6 @@ def _get_trainer_object(
     fsdp_config: dict[str, Any] | None = pop_config(
         _cfg, "fsdp_config", must_exist=False, default_value=None, convert=True
     )
-    lora_config: dict[str, Any] | None = pop_config(
-        _cfg, "lora", must_exist=False, default_value=None, convert=True
-    )
     eval_loader_config: DictConfig | ListConfig | None = pop_config(
         _cfg, "eval_loader", must_exist=False, default_value=None
     )
@@ -432,7 +375,7 @@ def _get_trainer_object(
         )
         if eval_gauntlet_config is not None:
             log(
-                INFO,
+                DEBUG,
                 "Use of the key `model_gauntlet` is deprecated, please use the key"
                 "`eval_gauntlet`",
             )
@@ -443,8 +386,9 @@ def _get_trainer_object(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
     # Optional logging, evaluation and callback configs
-    set_client_wandb_logger(_cfg, cid)
-    set_client_tensorboard_logger(_cfg, cid)
+    log_name = f"_client_{cid}" if log_name is None else log_name
+    set_client_wandb_logger(_cfg, log_name)
+    set_client_tensorboard_logger(_cfg, log_name)
     logger_configs: DictConfig | None = pop_config(
         _cfg, "loggers", must_exist=False, default_value=None
     )
@@ -500,6 +444,7 @@ def _get_trainer_object(
     save_num_checkpoints_to_keep: int = pop_config(
         _cfg, "save_num_checkpoints_to_keep", must_exist=False, default_value=-1
     )
+
     save_ignore_keys: list[str] | None = pop_config(
         _cfg, "save_ignore_keys", must_exist=False, default_value=None
     )
@@ -551,7 +496,7 @@ def _get_trainer_object(
 
     if _cfg.get("autoresume") is None and autoresume_default:
         log(
-            INFO,
+            DEBUG,
             "As run_name, save_folder, and save_latest_filename are set,           "
             "      changing autoresume default to True...",
         )
@@ -589,7 +534,9 @@ def _get_trainer_object(
         fsdp_config = None
 
     # Set logging level
-    if python_log_level is not None:
+    # TODO: Make this through the Flower logger
+    # NOTE: Logging only Rank 0 by default
+    if python_log_level is not None and dist.get_global_rank() == 0:
         logging.basicConfig(
             # Example of format string
             # 2022-06-29 11:22:26,152: rank0[822018][MainThread]: INFO: Message here
@@ -717,12 +664,14 @@ def _get_trainer_object(
         callbacks.append(eval_gauntlet_callback)
 
     # Model
-    model = _get_model_for_trainer(
-        init_context,  # type: ignore[reportArgumentType]
-        tokenizer,
-        model_config,
-        lora_config,
+    model = build_composer_model(
+        name=model_config.name,
+        cfg=model_config,
+        tokenizer=tokenizer,
+        init_context=init_context,
+        master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
+    parameters_names = get_list_of_parameters_names(model)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
@@ -782,7 +731,7 @@ def _get_trainer_object(
         compile_config=compile_config,
         device=device,
     )
-    return trainer, eval_first, logged_cfg
+    return trainer, eval_first, logged_cfg, parameters_names
 
 
 def get_parameters(
@@ -806,20 +755,6 @@ def get_parameters(
     return cast(NDArrays, get_raw_model_parameters(copy.deepcopy(cfg)))
 
 
-def get_parameters_from_state(
-    config: Config, trainer: Trainer, rank: int = 0
-) -> NDArrays:
-    """Implement how to get parameters."""
-    model_parameters_dict = get_trainable_params_dict(trainer.state.model)
-    # Only rank 0 returns the model parameters to avoid overheads
-    if rank == 0:
-        return [
-            val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()
-        ]
-    else:
-        return []
-
-
 def set_parameters_to_state(
     parameters: NDArrays,
     trainer: Trainer,
@@ -839,14 +774,15 @@ def llm_fit(
     cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
+    # Retrieve the clients' states
     client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
         config["client_state"]
     )
-
+    # Extract current client's state
     client_state_struct = ClientState(**client_state[cid])
-
+    # Get the number of local steps done by the current client
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
-
+    # Initialize training hyperparameters
     global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
     model_parameters = []
@@ -856,8 +792,7 @@ def llm_fit(
     skip_iteration = set_client_load_path(
         cfg,
         cid,
-        client_state_struct.local_steps_cumulative,
-        client_state_struct.local_steps_cumulative + num_batches_trained,
+        config["server_steps_cumulative"] + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
@@ -865,30 +800,54 @@ def llm_fit(
         cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
         # Ignoring the optimizer state when saving a checkpoint
         cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
+    # NOTE: The following, when re-loading from a checkpoint, returns a weird error
+    # if not skip_iteration:
+    #     # Ignoring loading the model as we need to set it from the server
+    #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
-    trainer, eval_first, _logged_cfg = _get_trainer_object(_cfg=cfg, cid=cid)
-    # log(INFO, f"Trainer config: {logged_cfg}")
+    trainer, eval_first, _, parameters_names = _get_trainer_object(_cfg=cfg, cid=cid)
+
+    # Create the server parameters dictionary
+    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+
+    initial_trainer_parameters = get_parameters_from_state(
+        {},
+        trainer,
+    )
+    parameters_checker(initial_trainer_parameters, parameters, False)
+
+    # log(DEBUG, f"Trainer config: {logged_cfg}")
+    log(DEBUG, "Trainer object created.")
     train_metrics |= {"client/fit_init_time": (time.time_ns() - start_time) * 1e-9}
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
+        # Set the timestamp to the current time
+        set_trainer_timestamp(trainer, config["server_steps_cumulative"])
+
         # Set the parameters
         if parameters is not None and not skip_iteration:
-            # log(INFO, "Initializing model...")
+            # log(DEBUG, "Initializing model...")
             start_time = time.time_ns()
-            set_parameters_to_state(parameters, trainer)
+            set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+
+            current_trainer_parameters = get_parameters_from_state({}, trainer)
+            parameters_checker(
+                current_trainer_parameters, initial_trainer_parameters, False
+            )
+            parameters_checker(current_trainer_parameters, parameters, True)
+
             train_metrics |= {
                 "client/fit_set_parameters_time": (time.time_ns() - start_time) * 1e-9
             }
+
         # Eval first if requested
-        if eval_first and trainer.state.timestamp.batch.value == 0:
+        if eval_first:
             start_time = time.time_ns()
             trainer.eval()
             train_metrics |= {
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
             }
-        # log(INFO, "Starting training...")
-        # Prevent to run any evaluator -- by default it runs an evaluation at the end
-        trainer.state.evaluators = None  # type: ignore[reportAttributeAccessIssue]
+        # log(DEBUG, "Starting training...")
         # Execute fit step for the appointed duration
         try:
             start_time = time.time_ns()
@@ -896,6 +855,7 @@ def llm_fit(
             train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
+    client_state_struct.steps_done += num_batches_trained
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
@@ -911,12 +871,14 @@ def llm_fit(
         k: v.detach().cpu().item()  # type: ignore[attr-defined]
         for k, v in trainer.state.train_metric_values.items()
     }
-    log(INFO, f"Train metrics: {train_metrics}")
+    log(DEBUG, f"Train metrics: {train_metrics}")
     # Retrieve model parameters
     start_time = time.time_ns()
-    model_parameters = get_parameters_from_state(
-        {}, trainer, int(os.getenv("LOCAL_RANK", ""))
-    )
+    model_parameters = get_parameters_from_state({}, trainer)
+
+    parameters_checker(model_parameters, initial_trainer_parameters, False)
+    parameters_checker(model_parameters, parameters, False)
+
     train_metrics |= {
         "client/fit_get_parameters_time": (time.time_ns() - start_time) * 1e-9
     }
@@ -964,11 +926,10 @@ def llm_fit(
     streaming.base.util.clean_stale_shared_memory()  # type: ignore[reportAttributeAccessIssue]
     # Only rank 0 collects metrics
     if int(os.getenv("LOCAL_RANK", "")) == 0:
-        train_metrics |= {"client_state": str(asdict(client_state_struct))}
-        train_metrics |= {"cid": cid}
         train_metrics |= {
             "client/fit_trainer_closing_time": (time.time_ns() - start_time) * 1e-9
         }
+        train_metrics |= {"client_state_acc": str({cid: asdict(client_state_struct)})}
 
     return model_parameters, n_samples_trained, train_metrics
 
@@ -988,21 +949,35 @@ def llm_eval(
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, _, _ = _get_trainer_object(
+    trainer, _, _, parameters_names = _get_trainer_object(
         _cfg=cfg,
         cid=0,
     )
+
+    # Create the server parameters dictionary
+    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+
+    initial_trainer_parameters = get_parameters_from_state({}, trainer)
+    parameters_checker(initial_trainer_parameters, parameters, False)
+
     eval_metrics |= {"client/eval_init_time": (time.time_ns() - start_time) * 1e-9}
+
     # Set the parameters
-    # log(INFO, "Initializing model...")
+    # log(DEBUG, "Initializing model...")
     start_time = time.time_ns()
-    set_parameters_to_state(parameters, trainer)
+    set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+
+    current_trainer_parameters = get_parameters_from_state({}, trainer)
+    parameters_checker(current_trainer_parameters, initial_trainer_parameters, False)
+    parameters_checker(current_trainer_parameters, parameters, True)
+
     gc.collect()
     torch.cuda.empty_cache()
     eval_metrics |= {
         "client/eval_set_parameters_time": (time.time_ns() - start_time) * 1e-9
     }
-    # log(INFO, "Starting evaluation...")
+
+    # log(DEBUG, "Starting evaluation...")
     start_time = time.time_ns()
     trainer.eval()
     eval_metrics |= {"client/eval_time": (time.time_ns() - start_time) * 1e-9}

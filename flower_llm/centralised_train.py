@@ -6,16 +6,14 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import gc
-from logging import INFO
+from logging import DEBUG, INFO
+from pathlib import Path
 
 import hydra
 import numpy as np
 import torch
 from composer import Trainer
-from flwr.common.logger import log
-from llmfoundry.utils.config_utils import (
-    log_config,
-)
+from flwr.common import log
 from omegaconf import OmegaConf
 
 from flower_llm.conf import base_schema
@@ -25,6 +23,11 @@ from flower_llm.clients.llm_client_functions import (
     get_parameters_from_state,
 )
 from flower_llm.clients.llm_config_functions import validate_config
+from flower_llm.utils import (
+    construct_parameters_dict,
+    load_model_parameters_from_file,
+    set_trainer_trainable_params_dict,
+)
 
 
 base_schema.register_config(name="base_schema")
@@ -33,11 +36,6 @@ base_schema.register_config(name="base_schema")
 @hydra.main(config_path="conf/", config_name="base", version_base=None)
 def main(_cfg: BaseConfig) -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
-    log(
-        INFO,
-        "The centralized training script received the following config:\n%s",
-        OmegaConf.to_yaml(_cfg, resolve=True),
-    )
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(_cfg)
     OmegaConf.set_struct(_cfg, False)
@@ -48,19 +46,39 @@ def main(_cfg: BaseConfig) -> Trainer:
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
 
-    trainer, eval_first, logged_cfg = _get_trainer_object(_cfg=cfg, cid=0)
-
-    log(INFO, "Logging config")
-    log_config(logged_cfg)
+    # NOTE: The cid passed her is use to appoint the position for the stream used for
+    # creating the streaming dataset object
+    log(
+        INFO,
+        "Creating trainer object using stream_id: %s...",
+        _cfg.centralized.stream_id,
+    )
+    trainer, eval_first, _, parameters_names = _get_trainer_object(
+        _cfg=cfg, cid=_cfg.centralized.stream_id, log_name="_centralised"
+    )
     torch.cuda.empty_cache()
     gc.collect()
+
+    if _cfg.pretrained_model_path:
+        log(
+            DEBUG,
+            "Loading pretrained model from %s",
+            _cfg.pretrained_model_path,
+        )
+        initial_parameters = load_model_parameters_from_file(
+            Path(_cfg.pretrained_model_path)
+        )
+        initial_parameters_dict = construct_parameters_dict(
+            parameters_names, initial_parameters
+        )
+        set_trainer_trainable_params_dict(trainer, initial_parameters_dict)
 
     # Eval first if requested
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
 
     # Dump model parameters to file
-    if _cfg.store_init_model:
+    if _cfg.centralized.store_init_model:
         # Get model parameters from trainer object
         model_parameters = get_parameters_from_state({}, trainer)
         # Get number of steps executed
@@ -73,7 +91,7 @@ def main(_cfg: BaseConfig) -> Trainer:
     trainer.fit()
 
     # Dump model parameters to file
-    if _cfg.store_final_model:
+    if _cfg.centralized.store_final_model:
         # Get model parameters from trainer object
         model_parameters = get_parameters_from_state({}, trainer)
         # Get number of steps executed

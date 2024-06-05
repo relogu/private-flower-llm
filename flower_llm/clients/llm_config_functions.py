@@ -3,9 +3,11 @@
 import ast
 import os
 from logging import DEBUG, INFO, WARN, WARNING
+import re
+from typing import Any
 
 import torch
-from composer.utils.file_helpers import validate_given_remote_path
+from composer.utils.file_helpers import list_remote_objects
 from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
@@ -18,6 +20,7 @@ from flower_llm.utils import (
     get_n_cuda_devices,
 )
 from dataclasses import dataclass, asdict
+import operator
 
 
 @dataclass
@@ -36,12 +39,12 @@ class StreamDict:
     keep_zip: bool | None = None
 
 
-def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
+def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
     """Set the client data configuration for the client.
 
     Parameters
     ----------
-    cid : int | str
+    cid : int | str | None
         The client id.
     cfg : DictConfig
         The configuration object.
@@ -71,9 +74,21 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
         # Extract the current client train stream -- it contains a dict of buckets
         # NOTE: Here, we circumvent the possible limited size of the number of client
         # streams since it should have been handled elsewhere
-        current_client_stream = clients_streams[int(cid) % len(clients_streams)][
-            "client_streams"
-        ]
+        current_client_stream: dict[str, Any] = {}
+        if cid is not None:
+            current_client_stream |= clients_streams[int(cid) % len(clients_streams)][
+                "client_streams"
+            ]
+        else:
+            # Concatenate all the streams
+            counter = 0
+            for client_stream in clients_streams:
+                assert "client_streams" in client_stream
+                client_streams = client_stream["client_streams"]
+                assert isinstance(client_streams, DictConfig)
+                for stream in client_streams.values():
+                    current_client_stream |= {f"stream_{counter}": stream}
+                    counter += 1
         # Set streams dictionary for the train loader
         actual_streams = {
             key: StreamDict(**value) for key, value in current_client_stream.items()
@@ -102,6 +117,30 @@ def client_set_data_config(cid: int | str, cfg: DictConfig) -> None:
             cfg.eval_loader.dataset.streams = streams_dict
 
 
+def set_dataset_default_params(cfg: DictConfig) -> None:
+    """Set the default parameters for the dataset."""
+    # Set the `pre-download` value as 8*batch_size
+    if cfg.train_loader.dataset.get("predownload", None) is None:
+        cfg.train_loader.dataset.predownload = 8 * cfg.global_train_batch_size
+    if cfg.eval_loader.dataset.get("pre_download", None) is None:
+        cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
+    # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
+    # that we will always have just 1 real node (server)
+    if cfg.train_loader.dataset.get("num_canonical_nodes", None) is None:
+        cfg.train_loader.dataset.num_canonical_nodes = 64 * 1
+    if cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
+        cfg.eval_loader.dataset.num_canonical_nodes = 64 * 1
+    # Set the `shuffle_block_size` value as 8*batch_size
+    if cfg.train_loader.dataset.get("shuffle_block_size", None) is None:
+        cfg.train_loader.dataset.shuffle_block_size = max(
+            4_000_000 // cfg.train_loader.dataset.num_canonical_nodes, 1 << 18
+        )
+    if cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
+        cfg.eval_loader.dataset.shuffle_block_size = max(
+            4_000_000 // cfg.eval_loader.dataset.num_canonical_nodes, 1 << 18
+        )
+
+
 def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
     """Set the save and load path given the server round and client id."""
     # Set the save folder specifically for this client and this run
@@ -114,9 +153,7 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
         log(DEBUG, "Set save folder: %s", cfg.save_folder)
 
 
-def set_client_load_path(
-    cfg: DictConfig, cid: int | str, n_steps_done: int, n_steps: int
-) -> bool:
+def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
     """Set the save and load path given the server round and client id."""
     # Set client load path
     set_client_save_and_load_path(cfg, cid)
@@ -125,17 +162,46 @@ def set_client_load_path(
     # Set the save folder specifically for this client and this run
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         try:
-            log(INFO, "Looking for a checkpoint to load in %s", cfg.save_folder)
-            if validate_given_remote_path(cfg.save_folder):
-                cfg.load_path = (
-                    cfg.save_folder + f"/ep0-ba{n_steps_done}-" + "rank{rank}.pt"
+            # Are there any checkpoints?
+            remote_objects = list_remote_objects(cfg.save_folder)
+            if not remote_objects:
+                log(
+                    INFO,
+                    "No checkpoints found in %s. Starting training from scratch.",
+                    cfg.save_folder,
                 )
-                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+                assert cfg.load_path is None
+                return skip_iteration
+            # NOTE: We always need to check all of the checkpoints
+            # Given the epoch change
+            # NOTE: (?:\d+) means a do-not-capture group
+            # As such we allow any number of epochs without extracting
+            # The number of epochs
+            sorted_pairs = sorted(
+                [
+                    (
+                        path,
+                        int(reg.group(1)),
+                    )
+                    for path in remote_objects
+                    if (reg := re.search(r"client_.*/ep(?:\d+)-ba(\d+)", path))
+                    is not None
+                ],
+                key=operator.itemgetter(1),
+            )
+
+            log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
+
+            # Is there the next checkpoint?
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
-            path_to_check = str(cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank0.pt")
-            skip_iteration = validate_given_remote_path(path_to_check)
-            if skip_iteration:
-                cfg.load_path = cfg.save_folder + f"/ep0-ba{n_steps}-" + "rank{rank}.pt"
+            # See if we have a checkpoint with a matching number of steps
+            path_to_check = next(
+                (pair for pair in sorted_pairs if pair[1] == n_steps), None
+            )
+            # NOTE: ruff is not bright and cannot see through the condition
+            skip_iteration = path_to_check is not None
+            if skip_iteration and path_to_check is not None:
+                cfg.load_path = path_to_check[0]
                 log(
                     INFO,
                     "Skipping training iteration as checkpoint %s already exists.",
@@ -143,31 +209,38 @@ def set_client_load_path(
                 )
                 # NOTE: Don't re-save the checkpoint when resuming mid-round
                 cfg.save_folder = None
+                return skip_iteration
+            # Load the latest checkpoint
+            log(
+                INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
+            )
+            cfg.load_path = sorted_pairs[-1][0]
+            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
     return skip_iteration
 
 
-def set_client_wandb_logger(cfg: DictConfig, cid: int | str) -> None:
+def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the wandb logger for the client."""
     # Set the wandb run name
     if cfg.loggers is not None and cfg.loggers.wandb is not None:
         # Get the server run name
         run_name = cfg.loggers.wandb.init_kwargs.name
         # Add the client id to the run name
-        new_run_name = run_name + f"_client_{cid}"
+        new_run_name = run_name + f"{log_name}"
         server_id = cfg.loggers.wandb.init_kwargs.id
-        cfg.loggers.wandb.init_kwargs.id = server_id + f"_client_{cid}"
+        cfg.loggers.wandb.init_kwargs.id = server_id + f"{log_name}"
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
 
 
-def set_client_tensorboard_logger(cfg: DictConfig, cid: int | str) -> None:
+def set_client_tensorboard_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the tensorboard logger for the client."""
     # Set the tensorboard run name
     if cfg.loggers is not None and cfg.loggers.tensorboard is not None:
         # Add the client id to the parameters
-        cfg.loggers.tensorboard.client_id = cid
+        cfg.loggers.tensorboard.log_name = log_name
 
 
 def validate_config(cfg: DictConfig) -> None:

@@ -71,7 +71,7 @@ else
 	#! Install `flash-attn`
 	if ! poetry run pip list | grep "flash-attn"; then
 		echo "install_env.sh: Installing flash-attn..."
-		poetry run pip install -q flash-attn==2.3.2 --no-build-isolation
+		poetry run pip install -q flash-attn==2.5.8 --no-build-isolation
 	else
 		echo "install_env.sh: flash-attn is already installed."
 	fi

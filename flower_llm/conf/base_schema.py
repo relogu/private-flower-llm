@@ -7,6 +7,25 @@ from hydra.core.config_store import ConfigStore
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
+class Centralized(DictConfig):
+    """Centralized configuration.
+
+    Attributes
+    ----------
+    store_init_model: bool = MISSING
+        Whether to store the initial model
+    store_final_model: bool = MISSING
+        Whether to store the final model
+    stream_id: str | None = MISSING
+        Stream id to pass to the data configuration
+    """
+
+    store_init_model: bool = MISSING
+    store_final_model: bool = MISSING
+    stream_id: str | None = MISSING
+
+
+@dataclass(config={"arbitrary_types_allowed": True})
 class Pollen(DictConfig):
     """Pollen configuration.
 
@@ -34,8 +53,9 @@ class Pollen(DictConfig):
         Whether to checkpoint the model
     restore_run_uuid: str = MISSING
         Run UUID to restore the model
-    resume_round: int = MISSING
-        Round to resume from
+    resume_round: int | None = MISSING
+        Round to resume from, None implies start anew
+        negative indices are counted from the last round
     """
 
     placement_policy: str = MISSING
@@ -49,7 +69,7 @@ class Pollen(DictConfig):
     cpu_concurrency: int = MISSING
     checkpoint: bool = MISSING
     restore_run_uuid: str | None = MISSING
-    resume_round: int = MISSING
+    resume_round: int | None = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -204,10 +224,8 @@ class BaseConfig(DictConfig):
         Whether to run in test mode
     pretrained_model_path: str = MISSING
         Path to the pretrained model
-    store_init_model: bool = MISSING
-        Whether to store the initial model
-    store_final_model: bool = MISSING
-        Whether to store the final model
+    centralized: Centralized = MISSING
+        Centralized configuration
     pollen: Pollen
         Pollen configuration
     fl: FL
@@ -226,8 +244,7 @@ class BaseConfig(DictConfig):
     seed: int = MISSING
     is_test: bool = MISSING
     pretrained_model_path: str | None = MISSING
-    store_init_model: bool = MISSING
-    store_final_model: bool = MISSING
+    centralized: Centralized = MISSING
     pollen: Pollen = MISSING
     fl: FL = MISSING
     use_s3_comm: bool = MISSING
