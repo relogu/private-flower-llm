@@ -83,7 +83,10 @@ def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
             # Concatenate all the streams
             counter = 0
             for client_stream in clients_streams:
-                for stream in client_stream["client_streams"]:
+                assert "client_streams" in client_stream
+                client_streams = client_stream["client_streams"]
+                assert isinstance(client_streams, DictConfig)
+                for stream in client_streams.values():
                     current_client_stream |= {f"stream_{counter}": stream}
                     counter += 1
         # Set streams dictionary for the train loader
