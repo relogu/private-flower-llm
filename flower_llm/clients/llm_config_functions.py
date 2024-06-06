@@ -174,34 +174,45 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                 return skip_iteration
             # NOTE: We always need to check all of the checkpoints
             # Given the epoch change
-            # NOTE: (?:\d+) means a do-not-capture group
-            # As such we allow any number of epochs without extracting
+            # As such we extract the epoch number and number of batches
             # The number of epochs
             sorted_pairs = sorted(
                 [
                     (
-                        path,
-                        int(reg.group(1)),
+                        int(reg.group(1)),  # epoch number
+                        int(reg.group(2)),  # number of batches
                     )
                     for path in remote_objects
-                    if (reg := re.search(r"client_.*/ep(?:\d+)-ba(\d+)", path))
+                    if (reg := re.search(r"client_.*/ep(\d+)-ba(\d+)", path))
                     is not None
                 ],
                 key=operator.itemgetter(1),
             )
 
-            log(INFO, "Found the following sorted checkpoints: %s", sorted_pairs)
+            log(
+                INFO,
+                "Found the following sorted checkpoint epochs and batches: %s",
+                sorted_pairs,
+            )
 
             # Is there the next checkpoint?
             log(INFO, "Looking for the next checkpoint in %s", cfg.save_folder)
             # See if we have a checkpoint with a matching number of steps
             path_to_check = next(
-                (pair for pair in sorted_pairs if pair[1] == n_steps), None
+                (
+                    (epoch, batches)
+                    for epoch, batches in sorted_pairs
+                    if batches == n_steps
+                ),
+                None,
             )
             # NOTE: ruff is not bright and cannot see through the condition
             skip_iteration = path_to_check is not None
             if skip_iteration and path_to_check is not None:
-                cfg.load_path = path_to_check[0]
+                epoch, batches = path_to_check
+                cfg.load_path = (
+                    cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+                )
                 log(
                     INFO,
                     "Skipping training iteration as checkpoint %s already exists.",
@@ -214,7 +225,10 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
             )
-            cfg.load_path = sorted_pairs[-1][0]
+            epoch, batches = sorted_pairs[-1]
+            cfg.load_path = (
+                cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+            )
             log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)

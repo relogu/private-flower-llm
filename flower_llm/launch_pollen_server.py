@@ -144,20 +144,14 @@ def main(cfg: BaseConfig) -> None:
         config=wandb_config,  # type: ignore[arg-type]
     ) as _:
         wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
-        restore_run_uuid_round_and_step: tuple[str, int, int] | None = None
+        restore_run_uuid_and_steps_per_round: tuple[str, int] | None = None
         # Restore from a previous run
         if (
-            (cfg.use_s3_comm or cfg.pollen.checkpoint)
-            and cfg.pollen.restore_run_uuid is not None
-            and cfg.pollen.resume_round >= 0
-        ):
-            restore_run_uuid_round_and_step = (
+            cfg.use_s3_comm or cfg.pollen.checkpoint
+        ) and cfg.pollen.restore_run_uuid is not None:
+            restore_run_uuid_and_steps_per_round = (
                 cfg.pollen.restore_run_uuid,
-                int(cfg.pollen.resume_round),
-                int(
-                    int(cfg.llm_config.local_steps.replace("ba", ""))
-                    * cfg.pollen.resume_round
-                ),
+                int(cfg.llm_config.local_steps.replace("ba", "")),
             )
 
         # Start Flower server
@@ -177,7 +171,7 @@ def main(cfg: BaseConfig) -> None:
                 s3_comm_config=cfg.s3_comm_config,
                 checkpoint=cfg.pollen.checkpoint,
                 resume_round=cfg.pollen.resume_round,
-                restore_run_uuid_round_and_step=restore_run_uuid_round_and_step,
+                restore_run_uuid_and_steps_per_round=restore_run_uuid_and_steps_per_round,
             ),
             config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
             grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
