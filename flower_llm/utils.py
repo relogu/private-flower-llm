@@ -10,12 +10,13 @@ import fcntl
 import gc
 import os
 import pickle
+import re
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
 from functools import reduce
-from logging import DEBUG, ERROR
+from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -34,6 +35,7 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
 from torch import device as device_type
 from typing_extensions import Self
+from composer.utils.file_helpers import list_remote_objects
 
 import wandb
 
@@ -1191,3 +1193,28 @@ class Capture:
 
 class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""
+
+
+def obtain_sorted_runs(server_path: str) -> list[int]:
+    """Obtain the sorted runs from the server path.
+
+    Parameters
+    ----------
+    server_path : str
+        The path to the server.
+
+    Returns
+    -------
+    List[int]
+        The sorted runs.
+    """
+    remote_objects = list_remote_objects(server_path)
+    log(INFO, "Found files %s", remote_objects)
+    # Take only the unique indices
+    return sorted(
+        {
+            int(reg.group(1))
+            for path in remote_objects
+            if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
+        }
+    )
