@@ -124,7 +124,7 @@ class PollenServer(Server):
         s3_comm_config: S3CommConfig | None = None,
         checkpoint: bool = False,
         resume_round: int | None = None,
-        restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
+        restore_run_uuid_and_steps_per_round: tuple[str, int] | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager  # type: ignore[reportIncompatibleVariableOverride]
@@ -163,7 +163,7 @@ class PollenServer(Server):
         self.s3_comm_config = s3_comm_config
         self.checkpoint = checkpoint
         self.resume_round = resume_round
-        self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
+        self.restore_run_uuid_and_step = restore_run_uuid_and_steps_per_round
         self.run_uuid = run_uuid
 
         self.client_state: dict[str | int, ClientState] = {}
@@ -216,22 +216,6 @@ class PollenServer(Server):
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
-        # Import previous checkpoints if asked to
-        if (
-            self.checkpoint or self.use_s3_comm
-        ) and self.restore_run_uuid_and_step is not None:
-            restore_run_uuid, restore_run_round, restore_run_step = (
-                self.restore_run_uuid_and_step
-            )
-            copy_old_checkpoints_to_new_run(
-                remote_up_down=self.remote_up_down,
-                bucket_uri=f"s3://{self.s3_comm_config.bucket_name}",  # type: ignore[union-attr]
-                run_uuid=self.run_uuid,
-                restore_run_uuid=restore_run_uuid,
-                restore_run_round=restore_run_round,
-                restore_run_step=restore_run_step,
-                n_total_clients=len(self.cids),
-            )
         if self.checkpoint and self.resume_round is not None:
             history, start_round, time_offset = self.resume_from_round(timeout)
         else:
@@ -1009,6 +993,21 @@ class PollenServer(Server):
 
                 self.resume_round += server_round_indices[-1] + 1
                 log(INFO, "Resuming from round %s", self.resume_round)
+
+            # Import previous checkpoints if asked to
+            if (
+                self.checkpoint or self.use_s3_comm
+            ) and self.restore_run_uuid_and_step is not None:
+                restore_run_uuid, steps_per_round = self.restore_run_uuid_and_step
+                copy_old_checkpoints_to_new_run(
+                    remote_up_down=self.remote_up_down,
+                    bucket_uri=f"s3://{self.s3_comm_config.bucket_name}",  # type: ignore[union-attr]
+                    run_uuid=self.run_uuid,
+                    restore_run_uuid=restore_run_uuid,
+                    restore_run_round=self.resume_round,
+                    restore_run_step=self.resume_round * steps_per_round,
+                    n_total_clients=len(self.cids),
+                )
 
             log(INFO, "Resuming from checkpoint")
             # Check whether the server parameters exist
