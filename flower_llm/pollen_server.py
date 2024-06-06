@@ -4,7 +4,6 @@ import ast
 import concurrent.futures
 from dataclasses import asdict, dataclass
 import pickle
-import re
 import sys
 import time
 import timeit
@@ -41,7 +40,7 @@ from flwr.server.server import _handle_finished_future_after_evaluate  # noqa: P
 from flwr.server.server import evaluate_client, fit_client
 from flwr.server.strategy import FedAvg
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path, list_remote_objects
+from composer.utils.file_helpers import validate_given_remote_path
 
 from flower_llm.clients.empty_virtual_client import EmptyVirtualClient
 from flower_llm.clients.llm_client_functions import (
@@ -61,6 +60,7 @@ from flower_llm.utils import (
     dump_model_parameters_to_file,
     get_table_from_pyarrow_buffer,
     load_model_parameters_from_file,
+    obtain_sorted_runs,
     upload_file_to_s3,
     ClientState,
 )
@@ -124,7 +124,7 @@ class PollenServer(Server):
         s3_comm_config: S3CommConfig | None = None,
         checkpoint: bool = False,
         resume_round: int | None = None,
-        restore_run_uuid_round_and_step: tuple[str, int, int] | None = None,
+        restore_run_uuid_and_steps_per_round: tuple[str, int] | None = None,
     ) -> None:
         self.start_up_time = timeit.default_timer()
         self._client_manager: PollenClientManager = client_manager  # type: ignore[reportIncompatibleVariableOverride]
@@ -163,7 +163,7 @@ class PollenServer(Server):
         self.s3_comm_config = s3_comm_config
         self.checkpoint = checkpoint
         self.resume_round = resume_round
-        self.restore_run_uuid_and_step = restore_run_uuid_round_and_step
+        self.restore_run_uuid_and_step = restore_run_uuid_and_steps_per_round
         self.run_uuid = run_uuid
 
         self.client_state: dict[str | int, ClientState] = {}
@@ -216,22 +216,13 @@ class PollenServer(Server):
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
-        # Import previous checkpoints if asked to
         if (
-            self.checkpoint or self.use_s3_comm
-        ) and self.restore_run_uuid_and_step is not None:
-            restore_run_uuid, restore_run_round, restore_run_step = (
-                self.restore_run_uuid_and_step
-            )
-            copy_old_checkpoints_to_new_run(
-                remote_up_down=self.remote_up_down,
-                bucket_uri=f"s3://{self.s3_comm_config.bucket_name}",  # type: ignore[union-attr]
-                run_uuid=self.run_uuid,
-                restore_run_uuid=restore_run_uuid,
-                restore_run_round=restore_run_round,
-                restore_run_step=restore_run_step,
-                n_total_clients=len(self.cids),
-            )
+            (self.checkpoint or self.use_s3_comm)
+            and self.restore_run_uuid_and_step is not None
+            and self.resume_round is not None
+        ):
+            self.import_checkpoints()
+
         if self.checkpoint and self.resume_round is not None:
             history, start_round, time_offset = self.resume_from_round(timeout)
         else:
@@ -981,25 +972,13 @@ class PollenServer(Server):
             )
             if self.resume_round < 0:
                 log(INFO, "Negative round number %s", self.resume_round)
-                remote_objects = list_remote_objects(server_path)
-                if not remote_objects:
-                    log(
-                        INFO,
-                        "No checkpoints found in %s. Starting training from scratch.",
-                        server_path,
-                    )
-                log(INFO, "Found files %s", remote_objects)
-                # Take only the unique indices
-                server_round_indices = sorted(
-                    {
-                        int(reg.group(1))
-                        for path in remote_objects
-                        if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
-                    }
-                )
+                server_round_indices = obtain_sorted_runs(server_path)
 
                 log(INFO, "Found server round indices %s", server_round_indices)
-                if not server_round_indices:
+                if (
+                    not server_round_indices
+                    or (self.resume_round + server_round_indices[-1] + 1) < 0
+                ):
                     log(
                         INFO,
                         "No checkpoints found in %s. Starting training from scratch.",
@@ -1106,6 +1085,50 @@ class PollenServer(Server):
             log(ERROR, "Failed to resume from checkpoint: %s", e)
             sys.exit(1)
         return history, start_round, time_offset
+
+    def import_checkpoints(self) -> None:
+        """Import checkpoints from a previous run."""
+        # Import previous checkpoints if asked to
+
+        assert (
+            self.restore_run_uuid_and_step is not None and self.resume_round is not None
+        )
+
+        restore_run_uuid, steps_per_round = self.restore_run_uuid_and_step
+        if self.resume_round < 0:
+            server_path = (
+                f"s3://{self.s3_comm_config.bucket_name}/"  # type: ignore[union-attr,reportOptionalMemberAccess]
+                f"{restore_run_uuid}/server/"
+            )
+
+            log(INFO, "Negative round number %s", self.resume_round)
+            server_round_indices = obtain_sorted_runs(server_path)
+
+            log(INFO, "Found server round indices %s", server_round_indices)
+            if (
+                not server_round_indices
+                or (self.resume_round + server_round_indices[-1] + 1) < 0
+            ):
+                log(
+                    INFO,
+                    "No checkpoints found in %s. Starting training from scratch.",
+                    server_path,
+                )
+                self.resume_round = None
+                return
+
+            self.resume_round += server_round_indices[-1] + 1
+            log(INFO, "Resuming from round %s", self.resume_round)
+
+        copy_old_checkpoints_to_new_run(
+            remote_up_down=self.remote_up_down,
+            bucket_uri=f"s3://{self.s3_comm_config.bucket_name}",  # type: ignore[union-attr]
+            run_uuid=self.run_uuid,
+            restore_run_uuid=restore_run_uuid,
+            restore_run_round=self.resume_round,
+            restore_run_step=self.resume_round * steps_per_round,
+            n_total_clients=len(self.cids),
+        )
 
 
 # NEW FUNCTIONS #######################
