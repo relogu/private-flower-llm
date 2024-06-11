@@ -855,7 +855,7 @@ def llm_fit(
             train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
-    client_state_struct.steps_done += num_batches_trained
+    client_state_struct.steps_done = num_batches_trained
     # Retrieve number of samples trained
     # NOTE: We assume all the clients train with the same batch size,
     # so we just consider the number of local steps
