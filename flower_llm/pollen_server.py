@@ -366,6 +366,7 @@ class PollenServer(Server):
                     "client_state": str(
                         {k: asdict(v) for k, v in self.client_state.items()}
                     ),
+                    "server_steps_cumulative": self.server_steps_cumulative,
                 }
                 log(DEBUG, "Dump server state to disk")
                 with open(Path.cwd() / "current_server_state.bin", "wb") as f:
