@@ -55,4 +55,4 @@ export SAVE_PATH="$PROJECT_PATH/checkpoints/$DATETIME"
 mkdir -p "$SAVE_PATH"
 
 #! Test `text_data.py`
-HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.dataset.text_data "$LLM_CONFIG" is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$SAVE_PATH"/text_data.log
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.dataset.text_data $LLM_CONFIG is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$SAVE_PATH"/text_data.log

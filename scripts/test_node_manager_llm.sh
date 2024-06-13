@@ -68,7 +68,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=10
-POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 pollen.fit_collaborative=false pollen.restore_run_uuid=null "
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
@@ -79,9 +79,13 @@ TESTING_OPTIONS=""
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
+
+#! Run Hydra resolver
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS $TESTING_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+
 #! Test NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS "$TESTING_OPTIONS" is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 # Enable CTRL+C to stop all background processes

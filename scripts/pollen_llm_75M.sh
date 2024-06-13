@@ -67,7 +67,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=500
-POLLEN_CONFIG="pollen.server_address='[::]:50751' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
 # NOTE: set dataset
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"
@@ -80,16 +80,26 @@ POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
-#! Launch ServerWithPollen
-GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/server.log &
-#! Wait for 30 seconds. This is needed because of how the client connection behaves.
-sleep 30
-#! Launch NodeManager
+
+#! Run Hydra resolver
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+
+#! Start a Superlink
+# GRPC_VERBOSITY=debug
+poetry run flower-superlink --insecure --driver-api-address '[::]:50751' --fleet-api-address '[::]:51751' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+
+#! Launch NodeManager as a SuperNode - ClientApp
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
-GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/node_manager.log &
+# GRPC_VERBOSITY=debug
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:51751' 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
+
+#! Launch ServerWithPollen as a ServerApp
+# GRPC_VERBOSITY=debug
+poetry run flower-server-app flower_llm.launch_pollen_server:server_app --insecure --superlink '[::]:50751' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+
 # Enable CTRL+C to stop all background processes
 trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
 #! Wait for the NodeManager to finish

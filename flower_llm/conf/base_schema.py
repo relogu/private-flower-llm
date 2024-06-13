@@ -35,8 +35,6 @@ class Pollen(DictConfig):
         Placement policy for the clients: "rr", "srr", "bu", "su", "lbu", "lb", "llb"
     n_nodes: int = MISSING
         Number of nodes in the cluster
-    server_address: str = MISSING
-        Address of the server
     saving_path: str = MISSING
         Path to save the models
     refresh_period: int = MISSING
@@ -60,7 +58,6 @@ class Pollen(DictConfig):
 
     placement_policy: str = MISSING
     n_nodes: int = MISSING
-    server_address: str = MISSING
     saving_path: str = MISSING
     refresh_period: int = MISSING
     fit_collaborative: bool = MISSING
@@ -176,6 +173,7 @@ class WandbSetup(DictConfig):
     id: str = MISSING
         ID of the run, {Config.run_uuid}
     allow_val_change: bool = MISSING
+        Allows changing the value of the config when resuming
     """
 
     project: str = MISSING

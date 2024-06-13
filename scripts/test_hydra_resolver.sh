@@ -68,7 +68,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=100
-POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
 # NOTE: set dataset
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"

@@ -13,7 +13,6 @@ centralized:
 pollen:
   placement_policy: rr # "rr", "srr", "bu", "su", "lbu", "lb", "llb"
   n_nodes: 1
-  server_address: localhost:50734
   saving_path: /tmp/pollen
   refresh_period: 50
   fit_collaborative: false
