@@ -484,7 +484,7 @@ def wandb_init(
     if wandb_enabled:
         # Add server suffix to the name of the run
         name = kwargs.pop("name", "")
-        assert type(name) is str
+        assert type(name) is str, f"Name must be a string, not {type(name)}"
         name += "_server"
         return wandb.init(*args, **kwargs, name=name)  # type: ignore[arg-type,misc]
 

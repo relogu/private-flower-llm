@@ -17,7 +17,6 @@ import transformers
 from flwr.common import ndarrays_to_parameters, log, NDArrays
 from omegaconf import OmegaConf
 
-import wandb
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.empty_virtual_client import gen_client_fn
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
@@ -26,123 +25,121 @@ from flower_llm.pollen_server import PollenServer
 from flower_llm.strategy.rs_nesterov import FedNesterov
 from flower_llm.utils import (
     load_model_parameters_from_file,
-    wandb_init,
     weighted_average,
 )
 from flower_llm.wandb_history import WandbHistory
+from flower_llm.wandb_server_app import WandbServerApp
 
 transformers.logging.set_verbosity_error()
 
 
 # Define strategy
-# def main() -> tuple[ServerApp, Any]:
-# """Implement main function to launch a Pollen's Server."""
-# Filter user warning from configuration of MPT
-warnings.filterwarnings(
-    action="ignore",
-    category=UserWarning,
-    message=("If not using a Prefix Language Model*"),
-    append=True,
-)
-# Get the environmental variable for the dump folder
-save_path = os.environ.get("POLLEN_SAVE_PATH", "")
-# Raise an error if the environmental variable is not set
-if not save_path:
-    raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
-# Load the configuration from the config file
-cfg = cast(BaseConfig, OmegaConf.load(save_path + "/config.yaml"))
+def main() -> WandbServerApp:
+    """Implement main function to launch a Pollen's Server."""
+    # Filter user warning from configuration of MPT
+    warnings.filterwarnings(
+        action="ignore",
+        category=UserWarning,
+        message=("If not using a Prefix Language Model*"),
+        append=True,
+    )
+    # Get the environmental variable for the dump folder
+    save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+    # Raise an error if the environmental variable is not set
+    if not save_path:
+        raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+    # Load the configuration from the config file
+    cfg = cast(BaseConfig, OmegaConf.load(save_path + "/config.yaml"))
 
-# Get a fake list of cids
-cid_samples_dict: dict[str | int, int] = dict.fromkeys(range(cfg.fl.n_total_clients), 1)
-num_train_client_streams = len(cfg.dataset.train.streams)
-num_eval_client_streams = len(cfg.dataset.val.streams)
+    # Get a fake list of cids
+    cid_samples_dict: dict[str | int, int] = dict.fromkeys(
+        range(cfg.fl.n_total_clients), 1
+    )
+    num_train_client_streams = len(cfg.dataset.train.streams)
+    num_eval_client_streams = len(cfg.dataset.val.streams)
 
-if num_train_client_streams < cfg.fl.n_total_clients:
-    raise ValueError(
-        """When statically specifying client streams for training, the number of
-        entries must be greater or equal to the total number of clients."""
-    )
+    if num_train_client_streams < cfg.fl.n_total_clients:
+        raise ValueError(
+            """When statically specifying client streams for training, the number of
+            entries must be greater or equal to the total number of clients."""
+        )
 
-if num_eval_client_streams < 1:
-    raise ValueError(
-        """When statically specifying client streams for eval, the number of entries
-        must be equal to 1."""
-    )
+    if num_eval_client_streams < 1:
+        raise ValueError(
+            """When statically specifying client streams for eval, the number of entries
+            must be equal to 1."""
+        )
 
-# Get initial model parameters
-_llm_config = cfg.llm_config
-OmegaConf.resolve(_llm_config)
-OmegaConf.set_struct(_llm_config, False)
-if cfg.pretrained_model_path:
-    log(
-        DEBUG,
-        "FL server is loading pretrained model from %s",
-        cfg.pretrained_model_path,
-    )
-    initial_parameters = ndarrays_to_parameters(
-        load_model_parameters_from_file(Path(cfg.pretrained_model_path))
-    )
-else:
-    log(
-        DEBUG,
-        "FL server initializes model with random parameters.",
-    )
-    initial_parameters_ndarrays: NDArrays
-    names: list[str]
-    (initial_parameters_ndarrays, names) = cast(
-        tuple[NDArrays, list[str]],
-        get_raw_model_parameters(copy.deepcopy(_llm_config), True, True),
-    )
-    for i, (param, name) in enumerate(
-        zip(initial_parameters_ndarrays, names, strict=True)
-    ):
+    # Get initial model parameters
+    _llm_config = cfg.llm_config
+    OmegaConf.resolve(_llm_config)
+    OmegaConf.set_struct(_llm_config, False)
+    if cfg.pretrained_model_path:
         log(
             DEBUG,
-            "Initial parameter, component %s, name %s, shape %s",
-            i,
-            name,
-            param.shape,
+            "FL server is loading pretrained model from %s",
+            cfg.pretrained_model_path,
         )
-    initial_parameters = ndarrays_to_parameters(initial_parameters_ndarrays)
-# Instantiate the strategy
-strategy = FedNesterov(
-    server_learning_rate=cfg.fl.server_learning_rate,
-    server_momentum=cfg.fl.server_momentum,
-    fraction_fit=sys.float_info.min,
-    fraction_evaluate=sys.float_info.min,
-    min_fit_clients=cfg.fl.n_clients_per_round,
-    min_available_clients=cfg.fl.n_clients_per_round,
-    min_evaluate_clients=1,
-    evaluate_fn=None,
-    on_fit_config_fn=lambda x: {
-        "server_round": x,
-        "batch_size": cfg.llm_config.global_train_batch_size,
-        "n_local_steps": cfg.fl.n_local_steps,
-        "n_local_epochs": cfg.fl.n_local_epochs,
-        "collaborative": cfg.pollen.fit_collaborative,
-        "reset_optimizer": cfg.fl.reset_optimizer,
-    },
-    on_evaluate_config_fn=lambda x: {
-        "server_round": x,
-        "batch_size": cfg.llm_config.device_eval_batch_size,
-        "collaborative": cfg.pollen.eval_collaborative,
-    },
-    accept_failures=False,
-    initial_parameters=initial_parameters,
-    evaluate_metrics_aggregation_fn=weighted_average,
-    fit_metrics_aggregation_fn=weighted_average,
-    seed=cfg.seed,
-    rescale_global_model=cfg.fl.rescale_global_model,
-    rescale_momentum_vector=cfg.fl.rescale_momentum_vector,
-)
-wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-# Wrap with wandb context manager
-with wandb_init(  # type: ignore[union-attr,misc]
-    cfg.use_wandb,
-    **cfg.wandb.setup,  # type: ignore[reportCallIssue]
-    settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
-    config=wandb_config,  # type: ignore[arg-type]
-) as wandb_run:
+        initial_parameters = ndarrays_to_parameters(
+            load_model_parameters_from_file(Path(cfg.pretrained_model_path))
+        )
+    else:
+        log(
+            DEBUG,
+            "FL server initializes model with random parameters.",
+        )
+        initial_parameters_ndarrays: NDArrays
+        names: list[str]
+        (initial_parameters_ndarrays, names) = cast(
+            tuple[NDArrays, list[str]],
+            get_raw_model_parameters(copy.deepcopy(_llm_config), True, True),
+        )
+        for i, (param, name) in enumerate(
+            zip(initial_parameters_ndarrays, names, strict=True)
+        ):
+            log(
+                DEBUG,
+                "Initial parameter, component %s, name %s, shape %s",
+                i,
+                name,
+                param.shape,
+            )
+        initial_parameters = ndarrays_to_parameters(initial_parameters_ndarrays)
+    # Instantiate the strategy
+    strategy = FedNesterov(
+        server_learning_rate=cfg.fl.server_learning_rate,
+        server_momentum=cfg.fl.server_momentum,
+        fraction_fit=sys.float_info.min,
+        fraction_evaluate=sys.float_info.min,
+        min_fit_clients=cfg.fl.n_clients_per_round,
+        min_available_clients=cfg.fl.n_clients_per_round,
+        min_evaluate_clients=1,
+        evaluate_fn=None,
+        on_fit_config_fn=lambda x: {
+            "server_round": x,
+            "batch_size": cfg.llm_config.global_train_batch_size,
+            "n_local_steps": cfg.fl.n_local_steps,
+            "n_local_epochs": cfg.fl.n_local_epochs,
+            "collaborative": cfg.pollen.fit_collaborative,
+            "reset_optimizer": cfg.fl.reset_optimizer,
+        },
+        on_evaluate_config_fn=lambda x: {
+            "server_round": x,
+            "batch_size": cfg.llm_config.device_eval_batch_size,
+            "collaborative": cfg.pollen.eval_collaborative,
+        },
+        accept_failures=False,
+        initial_parameters=initial_parameters,
+        evaluate_metrics_aggregation_fn=weighted_average,
+        fit_metrics_aggregation_fn=weighted_average,
+        seed=cfg.seed,
+        rescale_global_model=cfg.fl.rescale_global_model,
+        rescale_momentum_vector=cfg.fl.rescale_momentum_vector,
+    )
+    wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+    assert (
+        type(wandb_config) is dict
+    ), f"wandb_config must be a dictionary, not a {type(wandb_config)}."
     wandb_history = WandbHistory(use_wandb=cfg.use_wandb)
     restore_run_uuid_and_steps_per_round: tuple[str, int] | None = None
     # Restore from a previous run
@@ -155,8 +152,7 @@ with wandb_init(  # type: ignore[union-attr,misc]
         )
 
     # Start Flower Next ServerApp
-    # return fl.server.ServerApp(
-    server_app = fl.server.ServerApp(
+    return WandbServerApp(
         config=fl.server.ServerConfig(num_rounds=cfg.fl.n_rounds),
         server=PollenServer(
             run_uuid=cfg.run_uuid,
@@ -174,14 +170,12 @@ with wandb_init(  # type: ignore[union-attr,misc]
             resume_round=cfg.pollen.resume_round,
             restore_run_uuid_and_steps_per_round=restore_run_uuid_and_steps_per_round,
         ),
+        wandb_kwargs=cfg.wandb.setup if cfg.use_wandb else None,
+        wandb_config=wandb_config,
     )
-    # ), wandb_run
 
 
-# res = main()
-# wandb_run = res[1]
-# with wandb_run:
-#     server_app = res[0]
+server_app = main()
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
