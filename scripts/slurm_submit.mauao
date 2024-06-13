@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 40
+#SBATCH -c 10
 #SBATCH -w mauao
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:1
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
@@ -50,7 +50,7 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "420M"
 
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="test-7B-$DATETIME"
+export RUN_UUID="test-$DATETIME"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "small"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "16M"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "75M"
@@ -61,7 +61,7 @@ export RUN_UUID="test-7B-$DATETIME"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
-bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 
 # unset RUN_UUID
 # bash "$PROJECT_PATH"/scripts/test_pollen_llm.sh "small"
@@ -78,7 +78,7 @@ bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="test-fed-small-$DATETIME"
-# bash $PROJECT_PATH/scripts/pollen_llm_small.sh
+bash $PROJECT_PATH/scripts/pollen_llm_small.sh
 # bash $PROJECT_PATH/scripts/pollen_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
 # DATETIME=$(date '+%Y%m%d_%H%M%S')

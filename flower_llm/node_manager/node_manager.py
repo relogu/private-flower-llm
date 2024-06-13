@@ -24,6 +24,7 @@ import ast
 from collections import defaultdict
 import copy
 import gc
+import os
 from pathlib import Path
 import pickle
 import time
@@ -35,11 +36,12 @@ from socket import getfqdn
 from typing import Any, cast
 import warnings
 
+from flwr.client.client import Client
+
 from flower_llm.conf.base_schema import BaseConfig
 
 import cloudpickle
 import flwr as fl
-import hydra
 import numpy as np
 import psutil
 import pyarrow as pa
@@ -53,13 +55,13 @@ from flwr.common import (
 )
 from flwr.common.logger import log
 from flwr.server.strategy.aggregate import weighted_loss_avg
+from flwr.client import ClientApp
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
 from omegaconf import DictConfig, OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 from flower_llm.conf.base_schema import S3CommConfig
 
-from flower_llm.conf import base_schema
 from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient, gen_client_fn
 from flower_llm.node_manager.utils import (
@@ -91,7 +93,6 @@ from flower_llm.node_manager.worker import (
 from flower_llm.placements import add_constant_column_to_clients_stats_table
 from flower_llm.resources_manager import Device, Node, get_gpu_prop
 from flower_llm.utils import (
-    POLLEN_LLM_MAX_MESSAGE_LENGTH,
     download_file_from_s3,
     dump_model_parameters_to_file,
     get_n_cuda_devices,
@@ -870,11 +871,7 @@ class NodeManager(fl.client.NumPyClient):
         log(DEBUG, "Shared memories closed")
 
 
-base_schema.register_config(name="base_schema")
-
-
-@hydra.main(config_path="../conf/", config_name="base", version_base=None)
-def main(cfg: BaseConfig) -> None:
+def main() -> ClientApp | None:
     """Start a node manager directly with hydra."""
     # Filter user warning from configuration of MPT
     warnings.filterwarnings(
@@ -883,7 +880,13 @@ def main(cfg: BaseConfig) -> None:
         message=("If not using a Prefix Language Model*"),
         append=True,
     )
-    start_time = time.time()
+    # Get the environmental variable for the dump folder
+    save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+    # Raise an error if the environmental variable is not set
+    if not save_path:
+        raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+    # Load the configuration from the config file
+    cfg = cast(BaseConfig, OmegaConf.load(save_path + "/config.yaml"))
     # Resolve the config and set it to be editable in place
     OmegaConf.resolve(cfg)
     OmegaConf.set_struct(cfg, False)
@@ -959,18 +962,19 @@ def main(cfg: BaseConfig) -> None:
             "NodeManager::test::get_parameters : len(parameters)=%s",
             len(parameters),
         )
+        return None
     else:
-        # Start NodeManager as a Flower client
-        fl.client.start_client(
-            server_address=cfg.pollen.server_address,
-            client=node_manager.to_client(),
-            grpc_max_message_length=POLLEN_LLM_MAX_MESSAGE_LENGTH,
+        # Flower Next -- Define the client function
+        def _client_fn(cid: str) -> Client:
+            return node_manager.to_client()
+
+        # Start Flower Next ClientApp
+        return fl.client.ClientApp(
+            client_fn=_client_fn,
         )
-    log(
-        DEBUG,
-        "NodeManager::Total time spent is %s seconds.",
-        time.time() - start_time,
-    )
+
+
+client_app = main()
 
 
 if __name__ == "__main__":

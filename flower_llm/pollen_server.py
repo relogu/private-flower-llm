@@ -212,7 +212,7 @@ class PollenServer(Server):
         return self._client_manager
 
     # pylint: disable=too-many-locals
-    def fit(self, num_rounds: int, timeout: float | None) -> History:
+    def fit(self, num_rounds: int, timeout: float | None) -> tuple[History, float]:
         """Run federated averaging for a number of rounds."""
         log(INFO, "Initializing Pollen simulation")
 
@@ -250,7 +250,7 @@ class PollenServer(Server):
             start_round_time = time.time_ns()
             # Check for changes in connected NodeManagers
             first_check_nm_time = time.time_ns()
-            self.check_node_managers()
+            self.check_node_managers(server_round=current_round)
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
@@ -319,7 +319,7 @@ class PollenServer(Server):
 
             # Check for changes in connected NodeManagers
             second_check_nm_time = time.time_ns()
-            self.check_node_managers()
+            self.check_node_managers(server_round=current_round)
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
@@ -397,7 +397,7 @@ class PollenServer(Server):
         end_time = timeit.default_timer()
         elapsed = end_time - start_time + time_offset
         log(INFO, "FL finished in %s", elapsed)
-        return history
+        return history, elapsed
 
     def evaluate_round(
         self,
@@ -499,6 +499,7 @@ class PollenServer(Server):
             node_instructions=node_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
+            server_round=server_round,
         )
         if len(failures) > 0:
             log(
@@ -820,6 +821,7 @@ class PollenServer(Server):
 
     def check_node_managers(
         self,
+        server_round: int,
     ) -> None:
         """Quick check on the availability of the NodeManagers."""
         while self._client_manager.num_available_node_managers() < self.num_nodes:
@@ -846,6 +848,7 @@ class PollenServer(Server):
                         k: self._client_manager.node_managers[k] for k in new
                     },
                     max_workers=self.max_workers,
+                    server_round=server_round,
                 )
                 log(
                     INFO,
@@ -861,6 +864,7 @@ class PollenServer(Server):
         results, failures = get_nodes_properties(
             node_managers=self._client_manager.node_managers,
             max_workers=self.max_workers,
+            server_round=server_round,
         )
         log(
             INFO,
@@ -894,7 +898,7 @@ class PollenServer(Server):
         self.client_state = {cid: ClientState(0) for cid in self.cids}
         # Initialize parameters
         log(INFO, "Initializing global parameters")
-        self.parameters = self._get_initial_parameters(timeout=timeout)
+        self.parameters = self._get_initial_parameters(timeout=timeout, server_round=0)
         log(INFO, "Evaluating initial parameters")
         res = self.strategy.evaluate(0, parameters=self.parameters)
         if res is not None:
@@ -1139,11 +1143,12 @@ def pollen_evaluate_clients(
     node_instructions: list[tuple[ClientProxy, EvaluateIns]],
     max_workers: int | None,
     timeout: float | None,
+    server_round: int,
 ) -> EvaluateResultsAndFailures:
     """Evaluate parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(evaluate_client, client_proxy, ins, timeout)
+            executor.submit(evaluate_client, client_proxy, ins, timeout, server_round)
             for client_proxy, ins in node_instructions
         }
         # TODO: Implement Pollen's model for the eval assignment
@@ -1175,7 +1180,7 @@ def pollen_fit_clients(
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(fit_client, client_proxy, ins, timeout)
+            executor.submit(fit_client, client_proxy, ins, timeout, 0)
             for client_proxy, ins in node_instructions
         }
         # Fit the Pollen models and collect their parameters and correction tables in
@@ -1208,12 +1213,13 @@ def pollen_fit_clients(
 def get_nodes_properties(
     node_managers: dict[str, ClientProxy],
     max_workers: int | None,
+    server_round: int,
     timeout: float | None = None,
 ) -> GetPropResultsAndFailures:
     """Get the properties of all nodes in the cluster."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(get_properties_client, client_proxy, timeout)
+            executor.submit(get_properties_client, client_proxy, timeout, server_round)
             for node_id, client_proxy in node_managers.items()
         }
         finished_fs, _ = concurrent.futures.wait(
@@ -1232,11 +1238,13 @@ def get_nodes_properties(
 
 
 def get_properties_client(
-    client: ClientProxy, timeout: float | None
+    client: ClientProxy, timeout: float | None, server_round: int
 ) -> tuple[ClientProxy, Node]:
     """Get properties from a Node."""
     ins = GetPropertiesIns(config={})
-    node_properties_res = client.get_properties(ins=ins, timeout=timeout)
+    node_properties_res = client.get_properties(
+        ins=ins, timeout=timeout, group_id=server_round
+    )
     node_properties: Properties = node_properties_res.properties
     # log(
     #     DEBUG,

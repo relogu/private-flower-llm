@@ -213,3 +213,6 @@ events.out.tfevents.*
 # Dataset shards and metadata
 *.mds*
 *.json
+
+# Runs output folder
+runs/*

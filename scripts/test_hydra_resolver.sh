@@ -74,30 +74,12 @@ POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.st
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null "
 POLLEN_CONFIG="$POLLEN_CONFIG fl.rescale_global_model=false fl.rescale_momentum_vector=false fl.server_learning_rate=0.1 fl.server_momentum=0.9"
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=6000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
-# POLLEN_CONFIG="$POLLEN_CONFIG use_wandb=false"
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Run Hydra resolver
 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
-#! Start a Superlink
-# GRPC_VERBOSITY=debug
-poetry run flower-superlink --insecure --driver-api-address '[::]:51749' --fleet-api-address '[::]:50749' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
-#! Launch NodeManager as a SuperNode - ClientApp
-#! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-# NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
-# GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:50749' 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
-#! Keep the pid of the NodeManager
-BACK_PID=$!
-#! Launch ServerWithPollen as a ServerApp
-# GRPC_VERBOSITY=debug
-poetry run flower-server-app flower_llm.launch_pollen_server:server_app --insecure --superlink '[::]:51749' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
-# Enable CTRL+C to stop all background processes
-trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
-#! Wait for the NodeManager to finish
-wait $BACK_PID

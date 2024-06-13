@@ -96,7 +96,7 @@ def fit_clients(
         )
         for start_idx, end_idx in indices:
             submitted_fs = {
-                executor.submit(fit_client, client_proxy, ins, timeout)
+                executor.submit(fit_client, client_proxy, ins, timeout, server_round)
                 for client_proxy, ins in client_instructions[start_idx:end_idx]
             }
             # Partial aggregation

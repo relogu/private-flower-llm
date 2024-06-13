@@ -31,13 +31,13 @@ class WandbServer(LargeScaleServer):
         self.history: History | None = history
 
     # pylint: disable=too-many-locals
-    def fit(self, num_rounds: int, timeout: float | None) -> History:
+    def fit(self, num_rounds: int, timeout: float | None) -> tuple[History, float]:
         """Run federated averaging for a number of rounds."""
         history = self.history if self.history is not None else History()
 
         # Initialize parameters
         log(INFO, "Initializing global parameters")
-        self.parameters = self._get_initial_parameters(timeout=timeout)
+        self.parameters = self._get_initial_parameters(timeout=timeout, server_round=0)
         log(INFO, "Evaluating initial parameters")
         res = self.strategy.evaluate(0, parameters=self.parameters)
         if res is not None:
@@ -101,4 +101,4 @@ class WandbServer(LargeScaleServer):
         end_time = timeit.default_timer()
         elapsed = end_time - start_time
         log(INFO, "FL finished in %s", elapsed)
-        return history
+        return history, elapsed

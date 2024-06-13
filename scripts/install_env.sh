@@ -52,11 +52,8 @@ fi
 export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
-if ! command -v nvcc &>/dev/null; then
-	if [[ $1 != "no_cuda" ]]; then
-		echo "nvcc could not be found"
-		exit 1
-	fi
+if [[ $1 == "no_cuda" ]]; then
+	echo "install_env.sh: skipping any GPU-related setting."
 else
 	#! Check the output of `nvcc -V`
 	NVCC_OUTPUT=$(nvcc -V)
