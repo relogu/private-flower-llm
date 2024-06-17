@@ -102,7 +102,7 @@ black = { version = ">=24.4.2", extras = ["jupyter"] }
 docformatter = "==1.7.5"
 mypy = ">=1.8.0"
 pylint = "==3.2.3"
-flake8 = "==7.0.0"
+flake8 = "==7.1.0"
 pytest-watch = "==4.2.0"
 ruff = ">=0.4.6"
 types-requests = "==2.31.0.6"
