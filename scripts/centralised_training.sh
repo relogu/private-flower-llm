@@ -73,6 +73,7 @@ mkdir -p "$POLLEN_SAVE_PATH"
 export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=100ba llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-5 "  # Comment this out to use the default hyperparameters for the selceted model size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=16"
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
 N_GPUS=$(nvidia-smi -L | wc -l)

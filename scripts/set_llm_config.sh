@@ -93,7 +93,7 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
 	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
