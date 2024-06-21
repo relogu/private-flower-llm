@@ -79,7 +79,8 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_co
 POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Use DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &

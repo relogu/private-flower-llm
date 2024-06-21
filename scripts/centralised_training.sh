@@ -82,7 +82,8 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
