@@ -951,7 +951,7 @@ def llm_eval(
     # Extract configs to build the trainer
     trainer, _, _, parameters_names = _get_trainer_object(
         _cfg=cfg,
-        cid=0,
+        cid=None,  # For doing "centralized" evaluation
     )
 
     # Create the server parameters dictionary
