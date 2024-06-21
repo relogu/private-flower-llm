@@ -165,14 +165,7 @@ def get_trainable_params_dict(
             for name, param in model.named_parameters()
             if param.requires_grad
         }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     dist.barrier()
     return params_dict
@@ -288,14 +281,7 @@ def get_list_of_parameters_names(
     params_dict = {
         name: param for name, param in model.named_parameters() if param.requires_grad
     }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     return list(params_dict.keys())
 
