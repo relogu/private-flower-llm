@@ -10,7 +10,7 @@ common: &dataset_defaults
   cache_limit: null
   partition_algo: relaxed
   num_canonical_nodes: null
-  shuffle: true  # Shuffling necessary with multiple non-iid streams
+  shuffle: true  # Shuffling necessary when merging multiple non-iid streams
   shuffle_algo: py1e
   shuffle_seed: 9176
   shuffle_block_size: null
