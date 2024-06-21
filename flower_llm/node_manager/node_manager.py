@@ -53,7 +53,7 @@ from flwr.common import (
     NDArrays,
     Scalar,
 )
-from flwr.common.logger import log
+from flwr.common.logger import log, update_console_handler
 from flwr.server.strategy.aggregate import weighted_loss_avg
 from flwr.client import ClientApp
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
@@ -873,13 +873,6 @@ class NodeManager(fl.client.NumPyClient):
 
 def main() -> ClientApp | None:
     """Start a node manager directly with hydra."""
-    # Filter user warning from configuration of MPT
-    warnings.filterwarnings(
-        action="ignore",
-        category=UserWarning,
-        message=("If not using a Prefix Language Model*"),
-        append=True,
-    )
     # Get the environmental variable for the dump folder
     save_path = os.environ.get("POLLEN_SAVE_PATH", "")
     # Raise an error if the environmental variable is not set
@@ -974,6 +967,29 @@ def main() -> ClientApp | None:
         )
 
 
+# Fix the logger
+update_console_handler(level=DEBUG, colored=False, timestamps=True)
+# Filter user warning from configuration of MPT
+warnings.filterwarnings(
+    action="ignore",
+    category=UserWarning,
+    message=("If not using a Prefix Language Model*"),
+    append=True,
+)
+# TODO: These don't work -- not sure why
+# Filter deprecation warning from pkg_resources
+warnings.filterwarnings(
+    action="ignore",
+    category=DeprecationWarning,
+    message=("Deprecated call to *"),
+    append=True,
+)
+warnings.filterwarnings(
+    action="ignore",
+    category=DeprecationWarning,
+    message=("pkg_resources is deprecated*"),
+    append=True,
+)
 client_app = main()
 
 

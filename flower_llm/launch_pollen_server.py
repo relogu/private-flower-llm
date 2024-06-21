@@ -15,6 +15,7 @@ import warnings
 import flwr as fl
 import transformers
 from flwr.common import ndarrays_to_parameters, log, NDArrays
+from flwr.common.logger import update_console_handler
 from omegaconf import OmegaConf
 
 from flower_llm.conf.base_schema import BaseConfig
@@ -36,13 +37,6 @@ transformers.logging.set_verbosity_error()
 # Define strategy
 def main() -> WandbServerApp:
     """Implement main function to launch a Pollen's Server."""
-    # Filter user warning from configuration of MPT
-    warnings.filterwarnings(
-        action="ignore",
-        category=UserWarning,
-        message=("If not using a Prefix Language Model*"),
-        append=True,
-    )
     # Get the environmental variable for the dump folder
     save_path = os.environ.get("POLLEN_SAVE_PATH", "")
     # Raise an error if the environmental variable is not set
@@ -61,13 +55,17 @@ def main() -> WandbServerApp:
     if num_train_client_streams < cfg.fl.n_total_clients:
         raise ValueError(
             """When statically specifying client streams for training, the number of
-            entries must be greater or equal to the total number of clients."""
+            entries must be greater or equal to the total number of clients.
+            Number of train streams: %d, total number of clients: %d""",
+            num_train_client_streams,
+            cfg.fl.n_total_clients,
         )
 
     if num_eval_client_streams < 1:
         raise ValueError(
             """When statically specifying client streams for eval, the number of entries
-            must be equal to 1."""
+            must be equal or greater than 1. Number of eval streams: %d""",
+            num_eval_client_streams,
         )
 
     # Get initial model parameters
@@ -113,7 +111,7 @@ def main() -> WandbServerApp:
         fraction_evaluate=sys.float_info.min,
         min_fit_clients=cfg.fl.n_clients_per_round,
         min_available_clients=cfg.fl.n_clients_per_round,
-        min_evaluate_clients=1,
+        min_evaluate_clients=1,  # We are using this for "centralized" evaluation
         evaluate_fn=None,
         on_fit_config_fn=lambda x: {
             "server_round": x,
@@ -161,7 +159,6 @@ def main() -> WandbServerApp:
             strategy=strategy,
             client_manager=PollenClientManager(),
             placement_policy=cfg.pollen.placement_policy,
-            saving_path=Path(cfg.pollen.saving_path),
             history=wandb_history,
             num_nodes=cfg.pollen.n_nodes,
             use_s3_comm=cfg.use_s3_comm,
@@ -175,6 +172,29 @@ def main() -> WandbServerApp:
     )
 
 
+# Fix the logger
+update_console_handler(level=DEBUG, colored=False, timestamps=True)
+# Filter user warning from configuration of MPT
+warnings.filterwarnings(
+    action="ignore",
+    category=UserWarning,
+    message=("If not using a Prefix Language Model*"),
+    append=True,
+)
+# TODO: These don't work -- not sure why
+# Filter deprecation warning from pkg_resources
+warnings.filterwarnings(
+    action="ignore",
+    category=DeprecationWarning,
+    message=("Deprecated call to *"),
+    append=True,
+)
+warnings.filterwarnings(
+    action="ignore",
+    category=DeprecationWarning,
+    message=("pkg_resources is deprecated*"),
+    append=True,
+)
 server_app = main()
 
 if __name__ == "__main__":
