@@ -35,8 +35,8 @@ class WandbHistory(History):
         """Add metrics entries (from distributed fit)."""
         super().add_metrics_distributed_fit(server_round, metrics)
         if self.use_wandb:
-            for key in metrics:
-                wandb.log({key: metrics[key]}, step=server_round)
+            for key, metric in metrics.items():
+                wandb.log({key: metric}, step=server_round)
 
     def add_metrics_distributed(
         self, server_round: int, metrics: dict[str, Scalar]
@@ -44,8 +44,8 @@ class WandbHistory(History):
         """Add metrics entries (from distributed evaluation)."""
         super().add_metrics_distributed(server_round, metrics)
         if self.use_wandb:
-            for key in metrics:
-                wandb.log({key: metrics[key]}, step=server_round)
+            for key, metric in metrics.items():
+                wandb.log({key: metric}, step=server_round)
 
     def add_metrics_centralized(
         self, server_round: int, metrics: dict[str, Scalar]
@@ -53,5 +53,5 @@ class WandbHistory(History):
         """Add metrics entries (from centralized evaluation)."""
         super().add_metrics_centralized(server_round, metrics)
         if self.use_wandb:
-            for key in metrics:
-                wandb.log({key: metrics[key]}, step=server_round)
+            for key, metric in metrics.items():
+                wandb.log({key: metric}, step=server_round)
