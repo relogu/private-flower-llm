@@ -1,7 +1,11 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 192
+#!SBATCH -c 192
+#!SBATCH -c 96
+#SBATCH -c 48
 #SBATCH -w ruapehu
+#!SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=pollen_llm_75M
 #!SBATCH --job-name=centralised_llm_125M
@@ -44,6 +48,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "160M"
 # bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "420M"
 
+
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="test-torch-compile-$DATETIME"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "small"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "16M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "75M" "10ba"
@@ -52,7 +59,7 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
-# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 
 # unset RUN_UUID
 # bash "$PROJECT_PATH"/scripts/test_pollen_llm.sh "small"
@@ -67,9 +74,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="test-fed-small-$DATETIME"
-bash "$PROJECT_PATH"/scripts/pollen_llm_small.sh
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-fed-small-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/pollen_llm_small.sh
 # bash "$PROJECT_PATH"/scripts/pollen_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
