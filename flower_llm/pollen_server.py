@@ -5,6 +5,7 @@ import concurrent.futures
 from dataclasses import asdict, dataclass
 import pickle
 import sys
+from tempfile import TemporaryDirectory
 import time
 import timeit
 from collections.abc import Callable, Generator
@@ -111,7 +112,6 @@ class PollenServer(Server):
         client_fn: Callable[[int], ClientLike],
         strategy: FedAvg | None = None,
         placement_policy: str = "rr",
-        saving_path: Path | None = None,
         history: History | None = None,
         num_nodes: int = 1,
         accept_failures_cnt: (
@@ -149,7 +149,6 @@ class PollenServer(Server):
         )
         self.max_workers: int | None = None
         self.nodes_dict: dict[str, tuple[ClientProxy, Node]] = {}
-        self.saving_path = saving_path
         self.clients_training_stats: pa.Table | None = None
         self.history = history
         self.num_nodes = num_nodes
@@ -168,6 +167,8 @@ class PollenServer(Server):
 
         self.client_state: dict[str | int, ClientState] = {}
         self.server_steps_cumulative = 0
+
+        self.pollen_temp_dir = TemporaryDirectory()
 
         if self.checkpoint or self.use_s3_comm:
             bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
@@ -283,14 +284,14 @@ class PollenServer(Server):
             if self.checkpoint or self.use_s3_comm:
                 log(DEBUG, "Dump server parameters to disk")
                 dump_model_parameters_to_file(
-                    Path.cwd() / "current_server_parameters.npz",
+                    Path(self.pollen_temp_dir.name) / "current_server_parameters.npz",
                     parameters_to_ndarrays(self.parameters),
                 )
                 log(DEBUG, "Push parameters to S3 Object Store")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/current_server_parameters.npz",
-                    Path.cwd() / "current_server_parameters.npz",
+                    Path(self.pollen_temp_dir.name) / "current_server_parameters.npz",
                 )
 
             # Evaluate model using strategy implementation
@@ -369,13 +370,15 @@ class PollenServer(Server):
                     "server_steps_cumulative": self.server_steps_cumulative,
                 }
                 log(DEBUG, "Dump server state to disk")
-                with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+                with open(
+                    Path(self.pollen_temp_dir.name) / "current_server_state.bin", "wb"
+                ) as f:
                     pickle.dump(current_server_state, f)
                 log(DEBUG, "Push server state to S3")
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{current_round}/state.bin",
-                    Path.cwd() / "current_server_state.bin",
+                    Path(self.pollen_temp_dir.name) / "current_server_state.bin",
                 )
                 if (
                     isinstance(self.strategy, FedNesterov)
@@ -383,19 +386,20 @@ class PollenServer(Server):
                 ):
                     log(DEBUG, "Dump momentum vector to disk")
                     dump_model_parameters_to_file(
-                        Path.cwd() / "current_momentum_vector.npz",
+                        Path(self.pollen_temp_dir.name) / "current_momentum_vector.npz",
                         self.strategy.momentum_vector,
                     )
                     log(DEBUG, "Push momentum vector to S3 Object Store")
                     upload_file_to_s3(
                         self.remote_up_down,
                         f"{current_round}/current_momentum_vector.npz",
-                        Path.cwd() / "current_momentum_vector.npz",
+                        Path(self.pollen_temp_dir.name) / "current_momentum_vector.npz",
                     )
 
         # Bookkeeping
         end_time = timeit.default_timer()
         elapsed = end_time - start_time + time_offset
+        self.pollen_temp_dir.cleanup()
         log(INFO, "FL finished in %s", elapsed)
         return history, elapsed
 
@@ -694,7 +698,7 @@ class PollenServer(Server):
             self.remote_up_down._check_workers()
             complete_results = (
                 replace_clients_updates_with_remote(
-                    self.remote_up_down, server_round, result
+                    self.remote_up_down, server_round, result, self.pollen_temp_dir
                 )
                 for result in complete_results
             )
@@ -924,39 +928,52 @@ class PollenServer(Server):
                 "server_steps_cumulative": self.server_steps_cumulative,
             }
             log(DEBUG, "Dump server state to disk")
-            with open(Path.cwd() / "current_server_state.bin", "wb") as f:
+            with open(
+                Path(self.pollen_temp_dir.name) / "current_server_state.bin", "wb"
+            ) as f:
                 pickle.dump(current_server_state, f)
             log(DEBUG, "Push server state to S3")
             upload_file_to_s3(
                 self.remote_up_down,
                 f"{start_round}/state.bin",
-                Path.cwd() / "current_server_state.bin",
+                Path(self.pollen_temp_dir.name) / "current_server_state.bin",
             )
             if (
                 isinstance(self.strategy, FedNesterov)
                 and self.strategy.momentum_vector is not None
             ):
                 log(DEBUG, "Dump momentum vector to disk")
+                dump_mom_vec_time = time.time()
                 dump_model_parameters_to_file(
-                    Path.cwd() / "current_momentum_vector.npz",
+                    Path(self.pollen_temp_dir.name) / "current_momentum_vector.npz",
                     self.strategy.momentum_vector,
                 )
-                log(DEBUG, "Push momentum vector to S3 Object Store")
+                log(
+                    DEBUG,
+                    "Push momentum vector to S3 Object Store. "
+                    "Time to dump to disk: %s",
+                    time.time() - dump_mom_vec_time,
+                )
                 upload_file_to_s3(
                     self.remote_up_down,
                     f"{start_round}/current_momentum_vector.npz",
-                    Path.cwd() / "current_momentum_vector.npz",
+                    Path(self.pollen_temp_dir.name) / "current_momentum_vector.npz",
                 )
             log(DEBUG, "Dump server parameters to disk")
+            dump_model_time = time.time()
             dump_model_parameters_to_file(
-                Path.cwd() / "current_server_parameters.npz",
+                Path(self.pollen_temp_dir.name) / "current_server_parameters.npz",
                 parameters_to_ndarrays(self.parameters),
             )
-            log(DEBUG, "Push parameters to S3 Object Store")
+            log(
+                DEBUG,
+                "Push parameters to S3 Object Store. Time to dump to disk: %s",
+                time.time() - dump_model_time,
+            )
             upload_file_to_s3(
                 self.remote_up_down,
                 f"{start_round}/current_server_parameters.npz",
-                Path.cwd() / "current_server_parameters.npz",
+                Path(self.pollen_temp_dir.name) / "current_server_parameters.npz",
             )
         return history, start_round, time_offset
 
@@ -1012,9 +1029,9 @@ class PollenServer(Server):
                 else f"{self.resume_round}/current_server_parameters.npz"
             )
             local_file_name = (
-                Path.cwd() / "current_server_parameters.bin"
+                Path(self.pollen_temp_dir.name) / "current_server_parameters.bin"
                 if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-                else Path.cwd() / "current_server_parameters.npz"
+                else Path(self.pollen_temp_dir.name) / "current_server_parameters.npz"
             )
             log(DEBUG, "Pull server parameters from S3 Object Store")
             # Download the parameters
@@ -1031,10 +1048,12 @@ class PollenServer(Server):
             download_file_from_s3(
                 self.remote_up_down,
                 f"{self.resume_round}/state.bin",
-                str(Path.cwd() / "current_server_state.bin"),
+                str(Path(self.pollen_temp_dir.name) / "current_server_state.bin"),
             )
             log(DEBUG, "Read server state from disk")
-            with open(Path.cwd() / "current_server_state.bin", "rb") as f:
+            with open(
+                Path(self.pollen_temp_dir.name) / "current_server_state.bin", "rb"
+            ) as f:
                 server_state = pickle.load(f)
             start_round = server_state["server_round"]
             assert (
@@ -1077,7 +1096,9 @@ class PollenServer(Server):
                     remote_file_name = (
                         f"{self.resume_round}/current_momentum_vector.npz"
                     )
-                    local_file_name = Path.cwd() / "current_momentum_vector.npz"
+                    local_file_name = (
+                        Path(self.pollen_temp_dir.name) / "current_momentum_vector.npz"
+                    )
                     # Download the parameters
                     download_file_from_s3(
                         self.remote_up_down, remote_file_name, local_file_name
@@ -1282,6 +1303,7 @@ def replace_clients_updates_with_remote(
     remote_uploader_downloader: RemoteUploaderDownloader,
     current_round: int,
     client_result: tuple[ClientProxy, FitRes],
+    pollen_temp_dir: TemporaryDirectory,
 ) -> tuple[ClientProxy, FitRes]:
     """Replace the parameters in the FitRes with the ones from S3 Object Store."""
     proxy, fit_res = client_result
@@ -1321,9 +1343,9 @@ def replace_clients_updates_with_remote(
         else f"{current_round}/{endpoint_id}/parameters.npz"
     )
     local_file_name = (
-        Path.cwd() / f"{endpoint_id}_current_server_parameters.bin"
+        Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.bin"
         if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-        else Path.cwd() / f"{endpoint_id}_current_server_parameters.npz"
+        else Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.npz"
     )
     log(
         DEBUG,
