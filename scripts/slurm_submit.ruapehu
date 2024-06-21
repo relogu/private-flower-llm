@@ -15,7 +15,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --time=01:00:00
-#SBATCH --dependency=afterany:3040
+#!SBATCH --dependency=afterany:3040
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"

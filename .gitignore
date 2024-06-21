@@ -200,6 +200,7 @@ history.json
 # Results from Pollen's rebuttal
 gpu_results
 notebooks/*.txt
+notebooks/*.pkl
 
 checkpoints
 
@@ -214,5 +215,5 @@ events.out.tfevents.*
 *.mds*
 *.json
 
-# Runs output folder
-runs/*
+# Runs
+runs/
