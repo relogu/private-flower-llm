@@ -165,14 +165,7 @@ def get_trainable_params_dict(
             for name, param in model.named_parameters()
             if param.requires_grad
         }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     dist.barrier()
     return params_dict
@@ -288,14 +281,7 @@ def get_list_of_parameters_names(
     params_dict = {
         name: param for name, param in model.named_parameters() if param.requires_grad
     }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     return list(params_dict.keys())
 
@@ -339,7 +325,7 @@ def upload_file_to_s3(
 
 def load_model_parameters_from_file(file_path: Path) -> NDArrays:
     """Load model parameters from a file."""
-    if file_path.suffix == ".npz":
+    if file_path.suffix in {".npz", ".np"}:
         with np.load(file_path) as data:
             return [data[key] for key in data.files]
     elif file_path.suffix == ".bin":
@@ -351,12 +337,16 @@ def load_model_parameters_from_file(file_path: Path) -> NDArrays:
 
 def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -> None:
     """Load model parameters from a file."""
+    # NOTE: Very slow for big models b/c compression. Good benchmark available here: https://stackoverflow.com/questions/30329726/fastest-save-and-load-options-for-a-numpy-array
     if file_path.suffix == ".npz":
         with open(file_path, "wb") as file:
             np.savez_compressed(file, *model_parameters)
     elif file_path.suffix == ".bin":
         with open(file_path, "wb") as file:
             pickle.dump(model_parameters, file)
+    elif file_path.suffix == ".np":
+        with open(file_path, "wb") as file:
+            np.savez(file, *model_parameters)
     else:
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
