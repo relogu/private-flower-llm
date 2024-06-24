@@ -15,8 +15,8 @@ def aggregate_parameters(
 ) -> tuple[NDArrays | None, int]:
     """Aggregate parameters in-place.
 
-    Having this as a function avoids leaking variables.
-    Since python for-loops are unscoped
+    Having this as a function avoids leaking variables
+    Since python for-loops are unscoped.
 
     Parameters
     ----------
@@ -53,6 +53,10 @@ def aggregate_parameters(
             x *= acc_scaling_factor
             y *= scaling_factor
             x += y
+            # Lack of scoping requires this
+            del y
+
+    del fit_res.parameters
 
     log(
         DEBUG,
@@ -61,7 +65,6 @@ def aggregate_parameters(
                     total samples used: {new_total_samples}
                     time: {time.time() - start_time} """,
     )
-    del fit_res.parameters
 
     return params, new_total_samples
 
