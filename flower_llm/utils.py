@@ -325,7 +325,7 @@ def upload_file_to_s3(
 
 def load_model_parameters_from_file(file_path: Path) -> NDArrays:
     """Load model parameters from a file."""
-    if file_path.suffix in {".npz", ".np"}:
+    if file_path.suffix in {".npz", ".npzc"}:
         with np.load(file_path) as data:
             return [data[key] for key in data.files]
     elif file_path.suffix == ".bin":
@@ -338,13 +338,13 @@ def load_model_parameters_from_file(file_path: Path) -> NDArrays:
 def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -> None:
     """Load model parameters from a file."""
     # NOTE: Very slow for big models b/c compression. Good benchmark available here: https://stackoverflow.com/questions/30329726/fastest-save-and-load-options-for-a-numpy-array
-    if file_path.suffix == ".npz":
+    if file_path.suffix == ".npzc":
         with open(file_path, "wb") as file:
             np.savez_compressed(file, *model_parameters)
     elif file_path.suffix == ".bin":
         with open(file_path, "wb") as file:
             pickle.dump(model_parameters, file)
-    elif file_path.suffix == ".np":
+    elif file_path.suffix == ".npz":
         with open(file_path, "wb") as file:
             np.savez(file, *model_parameters)
     else:
