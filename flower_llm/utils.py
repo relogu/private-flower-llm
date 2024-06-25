@@ -39,6 +39,8 @@ from composer.utils.file_helpers import list_remote_objects
 
 import wandb
 
+from flwr.common import Parameters, bytes_to_ndarray
+
 
 # NOTE: Setting the maximum value according to the documentation
 # https://github.com/grpc/grpc/blob/eeae8e635a896bfa420d21e476221af652fd9986/include/grpc/impl/codegen/grpc_types.h#L150
@@ -1208,3 +1210,10 @@ def obtain_sorted_runs(server_path: str) -> list[int]:
             if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
         }
     )
+
+
+def parameters_to_ndarrays_gen(
+    parameters: Parameters,
+) -> Generator[np.ndarray, None, None]:
+    """Convert parameters object to NumPy ndarrays."""
+    return (bytes_to_ndarray(tensor) for tensor in parameters.tensors)
