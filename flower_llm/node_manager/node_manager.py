@@ -27,6 +27,7 @@ import gc
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
 import pickle
+from tempfile import TemporaryDirectory
 import time
 import uuid
 from collections.abc import Callable
@@ -137,6 +138,7 @@ class NodeManager(fl.client.NumPyClient):
 
         self.client_fn = client_fn
         self.refresh_period = refresh_period
+        self.node_manager_temp_dir = TemporaryDirectory()
 
         self._create_remote_up_down()
 
@@ -556,9 +558,10 @@ class NodeManager(fl.client.NumPyClient):
                 else f"{int(server_round) - 1}/current_server_parameters.npz"
             )
             local_file_name = (
-                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                Path(self.node_manager_temp_dir.name)
+                / f"{self.node_manager_uuid}_current_server_parameters.bin"
                 if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-                else Path.cwd()
+                else Path(self.node_manager_temp_dir.name)
                 / f"{self.node_manager_uuid}_current_server_parameters.npz"
             )
             # Download the parameters
@@ -656,7 +659,10 @@ class NodeManager(fl.client.NumPyClient):
         if self.use_s3_comm:
             # Set the file names
             remote_file_name = f"{server_round}/{self.node_manager_uuid}/parameters.npz"
-            local_file_name = Path.cwd() / f"{self.node_manager_uuid}_parameters.npz"
+            local_file_name = (
+                Path(self.node_manager_temp_dir.name)
+                / f"{self.node_manager_uuid}_parameters.npz"
+            )
             log(DEBUG, "Dump node parameters to disk")
             dump_model_parameters_to_file(local_file_name, aggregated_params)
             log(
@@ -733,9 +739,10 @@ class NodeManager(fl.client.NumPyClient):
                 else f"{int(server_round)}/current_server_parameters.npz"
             )
             local_file_name = (
-                Path.cwd() / f"{self.node_manager_uuid}_current_server_parameters.bin"
+                Path(self.node_manager_temp_dir.name)
+                / f"{self.node_manager_uuid}_current_server_parameters.bin"
                 if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-                else Path.cwd()
+                else Path(self.node_manager_temp_dir.name)
                 / f"{self.node_manager_uuid}_current_server_parameters.npz"
             )
             # Download the parameters
