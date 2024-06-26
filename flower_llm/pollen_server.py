@@ -2,6 +2,7 @@
 
 import ast
 import concurrent.futures
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 import pickle
 import sys
@@ -133,10 +134,8 @@ class PollenServer(Server):
         self.client_fn = client_fn
         self.placement_policy = placement_policy
         self.placement_fn = get_placement_fn(self.placement_policy)
-        self.parameters: Parameters = Parameters(
-            tensors=[], tensor_type="numpy.ndarray"
-        )
         self.strategy: FedAvg = strategy if strategy is not None else FedAvg()
+        self.parameters: Parameters
         _check_strategy_for_pollen(self.strategy)
         self.on_fit_config: Callable[[int], dict[str, Scalar]] = (
             conf_fn
@@ -900,6 +899,13 @@ class PollenServer(Server):
         # Initialize parameters
         log(INFO, "Initializing global parameters")
         self.parameters = self._get_initial_parameters(timeout=timeout)
+        # NOTE: Sync parameters back to the strategy
+        if hasattr(self.strategy, "parameters"):
+            self.strategy.parameters = self.parameters  # type: ignore[ReportAttributeAccessIssue]
+        if type(self.strategy) is FedNesterov:
+            self.strategy.momentum_vector = deepcopy(
+                parameters_to_ndarrays(self.parameters)
+            )
         log(INFO, "Evaluating initial parameters")
         res = self.strategy.evaluate(0, parameters=self.parameters)
         if res is not None:
@@ -996,6 +1002,9 @@ class PollenServer(Server):
 
                 self.resume_round += server_round_indices[-1] + 1
                 log(INFO, "Resuming from round %s", self.resume_round)
+            # NOTE: Calling the `_get_initial_parameters` method to for consistently
+            # freeing up the memory allocated for the initial parameters in strategy.
+            self.parameters = self._get_initial_parameters(timeout=timeout)
 
             log(INFO, "Resuming from checkpoint")
             # Check whether the server parameters exist
@@ -1028,7 +1037,7 @@ class PollenServer(Server):
             checkpoint_parameters = load_model_parameters_from_file(local_file_name)
             self.parameters = ndarrays_to_parameters(checkpoint_parameters)
             if isinstance(self.strategy, FedNesterov):
-                self.strategy.ndarray_parameters = checkpoint_parameters
+                self.strategy.parameters = self.parameters
             log(DEBUG, "Pull server state from S3 Object Store")
             # Download the server state from S3 Object Store
             download_file_from_s3(

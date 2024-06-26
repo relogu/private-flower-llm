@@ -75,7 +75,7 @@ POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refr
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null "
-POLLEN_CONFIG="$POLLEN_CONFIG fl.rescale_global_model=false fl.rescale_momentum_vector=false fl.server_learning_rate=0.1 fl.server_momentum=0.9"
+POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.1 fl.server_momentum=0.9"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=5120ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only

@@ -67,16 +67,20 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
-N_LOCAL_STEPS=500
+N_LOCAL_STEPS=4
 POLLEN_CONFIG="pollen.server_address='[::]:50758' run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
 # NOTE: set dataset
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=true"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=11 pollen.restore_run_uuid=fed-1B-20240322_221900-fix-nesto"
-POLLEN_CONFIG="$POLLEN_CONFIG fl.rescale_global_model=false fl.rescale_momentum_vector=false fl.server_learning_rate=0.1 fl.server_momentum=0.9"
+# POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=11 pollen.restore_run_uuid=fed-1B-20240322_221900-fix-nesto"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
+POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.1 fl.server_momentum=0.9"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=24800ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=2.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Use DDP only
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=1ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=2ba llm_config.eval_subset_num_batches=1"
+# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Use DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 # export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"

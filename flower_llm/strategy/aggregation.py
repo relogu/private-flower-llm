@@ -1,22 +1,27 @@
 """Handle aggregation in-place and potentially async."""
 
+import ast
+from collections import defaultdict
+import copy
 from functools import reduce
 import time
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from logging import DEBUG
-from flwr.common import FitRes, NDArrays
+from typing import Any
+from flwr.common import FitRes, NDArrays, Parameters, bytes_to_ndarray, Config
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
-from flower_llm.utils import parameters_to_ndarrays_gen
+import numpy as np
 
 
 def aggregate_parameters(
-    accumulator: tuple[NDArrays | None, int], current: tuple[ClientProxy, FitRes]
+    accumulator: tuple[NDArrays | None, int], current: tuple[NDArrays, int]
 ) -> tuple[NDArrays | None, int]:
     """Aggregate parameters in-place.
 
     Having this as a function avoids leaking variables
     Since python for-loops are unscoped.
+    The function will use the memory of the the passed `current` parameter.
 
     Parameters
     ----------
@@ -27,23 +32,20 @@ def aggregate_parameters(
     -------
         Tuple containing the updated parameters and the new total number of samples
     """
-    client_proxy, fit_res = current
+    current_params, num_examples = current
     start_time = time.time()
-    log(DEBUG, f"Started aggregating cid: {client_proxy.cid}")
+    log(DEBUG, f"Started aggregating client with samples: {num_examples}")
 
     params, prev_total_examples = accumulator
 
     # Compute the new total number of samples
-    new_total_samples = prev_total_examples + fit_res.num_examples
+    new_total_samples = prev_total_examples + num_examples
 
     # Compute scaling factor for the accumulator
     acc_scaling_factor = float(prev_total_examples) / new_total_samples
 
     # Compute scaling factor for the update
-    scaling_factor = float(fit_res.num_examples) / new_total_samples
-
-    # Only one ndarray exists at a time
-    current_params = parameters_to_ndarrays_gen(fit_res.parameters)
+    scaling_factor = float(num_examples) / new_total_samples
 
     if params is None:
         params = list(current_params)
@@ -56,26 +58,124 @@ def aggregate_parameters(
             # Lack of scoping requires this
             del y
 
-    del fit_res.parameters
+    # NOTE: Maybe be useless but let's help the Python GC figure out what to do
+    del current_params
 
     log(
         DEBUG,
-        f"""Aggregated cid: {client_proxy.cid}
-                    with samples: {fit_res.num_examples}
-                    total samples used: {new_total_samples}
-                    time: {time.time() - start_time} """,
+        f"""Aggregated client with samples: {num_examples}
+                total samples used: {new_total_samples}
+                time: {time.time() - start_time} """,
     )
 
     return params, new_total_samples
+
+
+def aggregate_inplace(
+    results: Iterable[tuple[NDArrays, int]],
+) -> NDArrays | None:
+    """Compute in-place weighted average, lazily and async."""
+    # Holds the parameters and the total number of samples
+    accumulator: tuple[NDArrays | None, int] = (None, 0)
+
+    # Aggregate the parameters
+    params, _ = reduce(aggregate_parameters, results, accumulator)
+
+    return params
 
 
 def aggregate_cumulative_average(
     results: Iterable[tuple[ClientProxy, FitRes]],
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
-    # Holds the parameters and the total number of samples
-    accumulator: tuple[NDArrays | None, int] = (None, 0)
+    # NOTE: Only one ndarray exists at a time
+    return aggregate_inplace(
+        (
+            (
+                parameters_to_ndarrays_gen(fit_res.parameters),  # type: ignore[reportArgumentType, misc]
+                fit_res.num_examples,
+            )
+            for _, fit_res in results
+        )
+    )
 
-    params, _num_total_examples = reduce(aggregate_parameters, results, accumulator)
 
-    return params
+def parameters_to_ndarrays_gen(
+    parameters: Parameters,
+) -> Generator[np.ndarray, None, None]:
+    """Convert parameters object to NumPy ndarrays."""
+    return (bytes_to_ndarray(tensor) for tensor in parameters.tensors)
+
+
+def partially_aggregate(
+    current_agg: tuple[NDArrays, int], new_results: tuple[NDArrays, int]
+) -> tuple[NDArrays, int]:
+    """Aggregate partially parameters."""
+    updated_agg = None
+    # Assuming that the partially aggregate is empty when n_samples is 0
+    if current_agg[1] == 0:
+        updated_agg = copy.deepcopy(new_results[0])
+        total_num_examples = copy.deepcopy(new_results[1])
+    else:
+        updated_agg = aggregate_inplace([current_agg, new_results])
+        assert updated_agg is not None
+        total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
+            new_results[1]
+        )
+    return updated_agg, total_num_examples
+
+
+def partially_aggregate_metrics(
+    current_agg: tuple[int, Config], new_results: tuple[int, Config]
+) -> tuple[int, Config]:
+    """Aggregate partially parameters."""
+    updated_agg = None
+    # Assuming that the partially aggregate is empty when n_samples is 0
+    if current_agg[0] == 0:
+        total_num_examples = copy.deepcopy(new_results[0])
+        updated_agg = copy.deepcopy(new_results[1])
+    else:
+        total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
+        updated_agg = weighted_average([current_agg, new_results])
+    return total_num_examples, updated_agg
+
+
+def weighted_average(
+    metrics: list[tuple[int, dict]],
+) -> dict:
+    """Compute a weighted average over pre-defined metrics.
+
+    Parameters
+    ----------
+    metrics : List[Tuple[int, Dict]]
+        The metrics to aggregate.
+
+    Returns
+    -------
+    Dict
+        The weighted average over pre-defined metrics.
+    """
+    client_state_accumulator: dict[int | str, dict[str, Any]] = {}
+    total_num_examples = sum(num_examples for num_examples, _ in metrics)
+    weighted_metrics: dict = defaultdict(float)
+
+    for num_examples, metric in metrics:
+        if metric is not None:
+            cid = metric.pop("cid", None)
+            client_state = metric.pop("client_state", None)
+            client_state_acc = metric.pop("client_state_acc", None)
+            for key, value in metric.items():
+                if not isinstance(value, str):
+                    weighted_metrics[key] += num_examples * value
+            if cid is not None and client_state is not None:
+                client_state_accumulator[cid] = ast.literal_eval(client_state)
+            if client_state_acc is not None:
+                client_state_accumulator |= ast.literal_eval(client_state_acc)
+
+    ret_dict = {
+        key: value / total_num_examples for key, value in weighted_metrics.items()
+    }
+    if client_state_accumulator:
+        ret_dict |= {"client_state_acc": str(client_state_accumulator)}
+
+    return ret_dict
