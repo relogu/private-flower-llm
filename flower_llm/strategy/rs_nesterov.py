@@ -66,7 +66,7 @@ class FedNesterov(FedAvgReproducibleSampling):
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
         track_norms: bool = True,
-        track_inplace_aggregation: bool = True,
+        track_inplace_aggregation: bool = False,
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy.
 
