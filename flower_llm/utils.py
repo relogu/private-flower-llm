@@ -3,8 +3,6 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
-import ast
-import copy
 from dataclasses import dataclass
 import fcntl
 import gc
@@ -15,7 +13,6 @@ import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
-from functools import reduce
 from logging import DEBUG, ERROR, INFO
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -30,9 +27,7 @@ from torch.distributed.fsdp.api import FullStateDictConfig, StateDictType
 from composer import Trainer
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils import dist
-from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
-from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate
+from flwr.common import Config, NDArrays, log, parameters_to_ndarrays
 from torch import device as device_type
 from typing_extensions import Self
 from composer.utils.file_helpers import list_remote_objects
@@ -165,14 +160,7 @@ def get_trainable_params_dict(
             for name, param in model.named_parameters()
             if param.requires_grad
         }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     dist.barrier()
     return params_dict
@@ -288,14 +276,7 @@ def get_list_of_parameters_names(
     params_dict = {
         name: param for name, param in model.named_parameters() if param.requires_grad
     }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     return list(params_dict.keys())
 
@@ -339,7 +320,7 @@ def upload_file_to_s3(
 
 def load_model_parameters_from_file(file_path: Path) -> NDArrays:
     """Load model parameters from a file."""
-    if file_path.suffix == ".npz":
+    if file_path.suffix in {".npz", ".npzc"}:
         with np.load(file_path) as data:
             return [data[key] for key in data.files]
     elif file_path.suffix == ".bin":
@@ -351,87 +332,18 @@ def load_model_parameters_from_file(file_path: Path) -> NDArrays:
 
 def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -> None:
     """Load model parameters from a file."""
-    if file_path.suffix == ".npz":
+    # NOTE: Very slow for big models b/c compression. Good benchmark available here: https://stackoverflow.com/questions/30329726/fastest-save-and-load-options-for-a-numpy-array
+    if file_path.suffix == ".npzc":
         with open(file_path, "wb") as file:
             np.savez_compressed(file, *model_parameters)
     elif file_path.suffix == ".bin":
         with open(file_path, "wb") as file:
             pickle.dump(model_parameters, file)
+    elif file_path.suffix == ".npz":
+        with open(file_path, "wb") as file:
+            np.savez(file, *model_parameters)
     else:
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
-
-
-def weighted_average(
-    metrics: list[tuple[int, dict]],
-) -> dict:
-    """Compute a weighted average over pre-defined metrics.
-
-    Parameters
-    ----------
-    metrics : List[Tuple[int, Dict]]
-        The metrics to aggregate.
-
-    Returns
-    -------
-    Dict
-        The weighted average over pre-defined metrics.
-    """
-    client_state_accumulator: dict[int | str, dict[str, Any]] = {}
-    total_num_examples = sum(num_examples for num_examples, _ in metrics)
-    weighted_metrics: dict = defaultdict(float)
-
-    for num_examples, metric in metrics:
-        if metric is not None:
-            cid = metric.pop("cid", None)
-            client_state = metric.pop("client_state", None)
-            client_state_acc = metric.pop("client_state_acc", None)
-            for key, value in metric.items():
-                if not isinstance(value, str):
-                    weighted_metrics[key] += num_examples * value
-            if cid is not None and client_state is not None:
-                client_state_accumulator[cid] = ast.literal_eval(client_state)
-            if client_state_acc is not None:
-                client_state_accumulator |= ast.literal_eval(client_state_acc)
-
-    ret_dict = {
-        key: value / total_num_examples for key, value in weighted_metrics.items()
-    }
-    if client_state_accumulator:
-        ret_dict |= {"client_state_acc": str(client_state_accumulator)}
-
-    return ret_dict
-
-
-def partially_aggregate(
-    current_agg: tuple[NDArrays, int], new_results: tuple[NDArrays, int]
-) -> tuple[NDArrays, int]:
-    """Aggregate partially parameters."""
-    updated_agg = None
-    # Assuming that the partially aggregate is empty when n_samples is 0
-    if current_agg[1] == 0:
-        updated_agg = copy.deepcopy(new_results[0])
-        total_num_examples = copy.deepcopy(new_results[1])
-    else:
-        updated_agg = aggregate([current_agg, new_results])
-        total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
-            new_results[1]
-        )
-    return updated_agg, total_num_examples
-
-
-def partially_aggregate_metrics(
-    current_agg: tuple[int, Config], new_results: tuple[int, Config]
-) -> tuple[int, Config]:
-    """Aggregate partially parameters."""
-    updated_agg = None
-    # Assuming that the partially aggregate is empty when n_samples is 0
-    if current_agg[0] == 0:
-        total_num_examples = copy.deepcopy(new_results[0])
-        updated_agg = copy.deepcopy(new_results[1])
-    else:
-        total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
-        updated_agg = weighted_average([current_agg, new_results])
-    return total_num_examples, updated_agg
 
 
 # Client ####
@@ -567,34 +479,6 @@ def l2_norm(arrays: NDArrays) -> float:
         The L2 norm of the list of arrays.
     """
     return float(np.sqrt(sum_of_squares(arrays)))
-
-
-def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
-    """Compute in-place weighted average."""
-    # Count total examples
-    num_examples_total = sum(fit_res.num_examples for _, fit_res in results)
-
-    # Compute scaling factors for each result
-    scaling_factors = [
-        fit_res.num_examples / num_examples_total for _, fit_res in results
-    ]
-
-    # Let's do in-place aggregation
-    # get first result, then add up each other
-    params = [
-        scaling_factors[0] * x for x in parameters_to_ndarrays(results[0][1].parameters)
-    ]
-    for i, (_, fit_res) in enumerate(results[1:]):
-        res = (
-            scaling_factors[i + 1] * x
-            for x in parameters_to_ndarrays(fit_res.parameters)
-        )
-        params = [
-            reduce(np.add, layer_updates)
-            for layer_updates in zip(params, res, strict=False)
-        ]
-
-    return params
 
 
 def get_device() -> device_type:

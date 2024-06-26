@@ -85,7 +85,7 @@ def main(_cfg: BaseConfig) -> Trainer:
         n_steps = trainer.state.timestamp.batch.value
         # Dump the compressed model parameters to file
         with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
-            np.savez_compressed(f, *model_parameters)
+            np.savez(f, *model_parameters)
 
     log(INFO, "Starting training...")
     trainer.fit()
@@ -98,7 +98,7 @@ def main(_cfg: BaseConfig) -> Trainer:
         n_steps = trainer.state.timestamp.batch.value
         # Dump the compressed model parameters to file
         with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
-            np.savez_compressed(f, *model_parameters)
+            np.savez(f, *model_parameters)
 
     log(INFO, "Done.")
     return trainer

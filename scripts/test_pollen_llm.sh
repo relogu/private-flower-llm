@@ -77,7 +77,8 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.sched
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 TESTING_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=test"
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
 mkdir -p "$TMPDIR"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server "$TESTING_OPTIONS" "$LLM_CONFIG" $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &

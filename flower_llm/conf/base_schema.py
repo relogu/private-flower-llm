@@ -90,11 +90,6 @@ class FL(DictConfig):
         Number of local epochs
     n_local_steps: int = MISSING
         Number of local steps
-    rescale_global_model: bool = MISSING
-        Whether to rescale the norm of the global model
-        to match that of the average local model
-    rescale_momentum_vector: bool = MISSING
-        Whether to rescale the momentum vector
     server_learning_rate: float = MISSING
         Learning rate of the server
     server_momentum: float = MISSING
@@ -107,8 +102,6 @@ class FL(DictConfig):
     reset_optimizer: bool = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
-    rescale_global_model: bool = MISSING
-    rescale_momentum_vector: bool = MISSING
     server_learning_rate: float = MISSING
     server_momentum: float = MISSING
 

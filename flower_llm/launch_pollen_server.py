@@ -25,11 +25,11 @@ from flower_llm.clients.llm_client_functions import get_raw_model_parameters
 from flower_llm.pollen_client_manager import PollenClientManager
 from flower_llm.pollen_server import PollenServer
 from flower_llm.strategy.rs_nesterov import FedNesterov
+from flower_llm.strategy.aggregation import weighted_average
 from flower_llm.utils import (
     POLLEN_LLM_MAX_MESSAGE_LENGTH,
     load_model_parameters_from_file,
     wandb_init,
-    weighted_average,
 )
 from flower_llm.wandb_history import WandbHistory
 
@@ -132,8 +132,6 @@ def main(cfg: BaseConfig) -> None:
         evaluate_metrics_aggregation_fn=weighted_average,
         fit_metrics_aggregation_fn=weighted_average,
         seed=cfg.seed,
-        rescale_global_model=cfg.fl.rescale_global_model,
-        rescale_momentum_vector=cfg.fl.rescale_momentum_vector,
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     # Wrap with wandb context manager
