@@ -24,6 +24,7 @@ import ast
 from collections import defaultdict
 import copy
 import gc
+from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
 import pickle
 import time
@@ -68,6 +69,7 @@ from flower_llm.node_manager.utils import (
     POLLEN_METRICS_SHM,
     POLLEN_N_SAMPLES_SHM,
     POLLEN_PARAMETERS_SHM,
+    ModelParametersMetadata,
     WorkerResult,
     aggregate_training_results,
     close_all_shms,
@@ -99,8 +101,8 @@ from flower_llm.utils import (
     load_model_parameters_from_file,
     sum_of_squares,
     upload_file_to_s3,
-    weighted_average,
 )
+from flower_llm.strategy.aggregation import weighted_average
 
 transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)
@@ -114,7 +116,7 @@ class NodeManager(fl.client.NumPyClient):
         self,
         client_fn: Callable[[int], VirtualLLMClient],
         run_uuid: str,
-        parameters: NDArrays,
+        parameters_metadata: ModelParametersMetadata,
         refresh_period: int,
         cpu_only: bool,
         cpu_concurrency: int,
@@ -152,12 +154,11 @@ class NodeManager(fl.client.NumPyClient):
         # Set up round parameters SharedMemory
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
+        # Parameter metadata
+        self.parameters_metadata = parameters_metadata
         # Shared memory for round parameters
-        self.round_parameters, self.round_parameters_sh = get_parameters_shm(
-            parameters=parameters,
-            create=True,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
-        )
+        self.round_parameters: NDArrays | None = None
+        self.round_parameters_sh: SharedMemory | None = None
         # Create workers
         self.workers_dict: dict[int, Worker] = {}
         self._create_and_start_workers()
@@ -210,7 +211,7 @@ class NodeManager(fl.client.NumPyClient):
 
     def get_parameters(self, config: Config) -> NDArrays:
         """Implement how to get parameters."""
-        return self.round_parameters
+        raise NotImplementedError
 
     def _create_remote_up_down(self) -> None:
         """Create the remote uploader/downloader."""
@@ -256,7 +257,7 @@ class NodeManager(fl.client.NumPyClient):
                     result_queue=self.result_queue,
                     node_manager_uuid=self.node_manager_uuid,
                     run_uuid=self.run_uuid,
-                    parameters=self.round_parameters,
+                    parameters_metadata=self.parameters_metadata,
                     worker_rank=rank,
                     cpu_only=self.cpu_only,
                     cpu_concurrency=self.cpu_concurrency,
@@ -274,7 +275,7 @@ class NodeManager(fl.client.NumPyClient):
                 result_queue=self.result_queue,
                 node_manager_uuid=self.node_manager_uuid,
                 run_uuid=self.run_uuid,
-                parameters=self.round_parameters,
+                parameters_metadata=self.parameters_metadata,
                 worker_rank=i,
                 cpu_only=self.cpu_only,
                 cpu_concurrency=self.cpu_concurrency,
@@ -314,7 +315,7 @@ class NodeManager(fl.client.NumPyClient):
         torch.cuda.empty_cache()
 
     def _independent_fit(
-        self, config: Config, list_of_cids_to_train: list[str], parameters: NDArrays
+        self, config: Config, list_of_cids_to_train: list[str]
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
         # Append NodeManager's config
         config["MASTER_PORT"] = ""
@@ -326,7 +327,6 @@ class NodeManager(fl.client.NumPyClient):
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
         set_config_shm(config, fl_instructions_config_sh)
-        set_parameters_shm(self.round_parameters, parameters)
         # Here, workers are forced to train independently
         # Send the independent tasks to the workers
         for cid in list_of_cids_to_train:
@@ -345,6 +345,10 @@ class NodeManager(fl.client.NumPyClient):
                 stats["n_samples"].append(worker_result.n_samples)  # type: ignore[arg-type]
                 stats["delta"].append(worker_result.delta)  # type: ignore[arg-type]
                 successes += 1
+        # Unlink the parameters shared memory
+        assert self.round_parameters_sh is not None
+        self.round_parameters_sh.close()
+        self.round_parameters_sh.unlink()
         # Get stuff from shared memories of the workers
         # NOTE: Keep a reference to the `*_shm` variables to prevent Seg Fault
         w_p_s, w_s_m, w_s, _w_shms = get_training_results_from_workers_dict(
@@ -360,6 +364,12 @@ class NodeManager(fl.client.NumPyClient):
             [s[0] for s in w_s],
             w_s_m,
         )
+        assert aggregated_params is not None
+        # Close the parameters shared memories of the workers
+        for shared_memories in _w_shms:
+            parameters_shared_memory = shared_memories[0]
+            parameters_shared_memory.close()
+            parameters_shared_memory.unlink()
         # Zero out the n_samples shared memories
         for ww_ss in w_s:
             set_num_samples_shm(ww_ss, 0)
@@ -389,10 +399,10 @@ class NodeManager(fl.client.NumPyClient):
         )
 
     def _collaborative_fit(
-        self, config: Config, list_of_cids_to_train: list[str], parameters: NDArrays
+        self,
+        config: Config,
+        list_of_cids_to_train: list[str],
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
-        # Update parameters shared memory
-        set_parameters_shm(self.round_parameters, parameters)
         # Initialise partial aggregation variables
         aggregated_params: NDArrays = []
         sum_of_samples: int = 0
@@ -468,6 +478,10 @@ class NodeManager(fl.client.NumPyClient):
                                 np.sqrt(node_clients_pairwise_delta)
                             )
                         }
+                    # Close the parameters shared memories of the workers
+                    parameters_shared_memory = _w_shms[0]
+                    parameters_shared_memory.close()
+                    parameters_shared_memory.unlink()
                     # Zero out the n_samples shared memories
                     set_num_samples_shm(w_s, 0)
                 else:
@@ -484,6 +498,10 @@ class NodeManager(fl.client.NumPyClient):
             # Empty the tasks list
             while not self.task_queue.empty():
                 self.task_queue.get()
+        # Unlink the parameters shared memory
+        assert self.round_parameters_sh is not None
+        self.round_parameters_sh.close()
+        self.round_parameters_sh.unlink()
         # Collect statistics to pyarrow.Table
         clients_training_stats = pa.Table.from_pydict(stats)
         # Add info to `clients_training_stats`
@@ -568,6 +586,14 @@ class NodeManager(fl.client.NumPyClient):
             parameters = load_model_parameters_from_file(local_file_name)
             log(DEBUG, "Server parameters have been read from disk")
 
+        # Create the parameters shared memory
+        self.round_parameters, self.round_parameters_sh = get_parameters_shm(
+            parameters_metadata=self.parameters_metadata,
+            create=True,
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+        )
+        set_parameters_shm(self.round_parameters, parameters)
+        del parameters
         # log(DEBUG, "NodeManager %s: fit with config %s", self.name, config)
         start_time = time.time()
         # Restart all the worker every `self.refresh_period` rounds
@@ -590,19 +616,18 @@ class NodeManager(fl.client.NumPyClient):
         sum_of_samples: int = 0
         try:
             # Choose the type of execution
-
             if config["collaborative"]:
                 (
                     aggregated_params,
                     sum_of_samples,
                     node_train_metrics,
-                ) = self._collaborative_fit(config, list_of_cids_to_train, parameters)
+                ) = self._collaborative_fit(config, list_of_cids_to_train)
             else:
                 (
                     aggregated_params,
                     sum_of_samples,
                     node_train_metrics,
-                ) = self._independent_fit(config, list_of_cids_to_train, parameters)
+                ) = self._independent_fit(config, list_of_cids_to_train)
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
@@ -738,6 +763,14 @@ class NodeManager(fl.client.NumPyClient):
             parameters = load_model_parameters_from_file(local_file_name)
             log(DEBUG, "Server parameters have been read from disk")
 
+        # Create the parameters shared memory
+        self.round_parameters, self.round_parameters_sh = get_parameters_shm(
+            parameters_metadata=self.parameters_metadata,
+            create=True,
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+        )
+        set_parameters_shm(self.round_parameters, parameters)
+        del parameters
         start_time = time.time()
         # Extract assignments from config
         assignments: str | None = None
@@ -751,7 +784,6 @@ class NodeManager(fl.client.NumPyClient):
         config["run_uuid"] = (
             self.run_uuid if config["collaborative"] else self.node_manager_uuid
         )
-        set_parameters_shm(self.round_parameters, parameters)
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
         clients_eval_losses: list[tuple[int, float]] = []
@@ -853,6 +885,9 @@ class NodeManager(fl.client.NumPyClient):
         #     int(node_eval_samples),
         #     node_eval_metrics,
         # )
+        # Unlink the parameters shared memory
+        self.round_parameters_sh.close()
+        self.round_parameters_sh.unlink()
         # Return results
         return (
             node_eval_loss,
@@ -896,11 +931,13 @@ def main(cfg: BaseConfig) -> None:
     )
     # Get initial model parameters
     parameters = cast(NDArrays, get_raw_model_parameters(copy.deepcopy(_llm_config)))
+    parameters_metadata = ModelParametersMetadata.from_ndarrays(parameters)
+    del parameters
     # Create the NodeManager object
     node_manager = NodeManager(
         client_fn=client_fn,
         run_uuid=cfg.run_uuid,
-        parameters=parameters,
+        parameters_metadata=parameters_metadata,
         refresh_period=int(cfg.pollen.refresh_period),
         cpu_only=cfg.pollen.cpu_only,
         cpu_concurrency=cfg.pollen.cpu_concurrency,
@@ -910,6 +947,9 @@ def main(cfg: BaseConfig) -> None:
     # Choose the type of execution
     if cfg.is_test:
         log(DEBUG, "NodeManager::test")
+        parameters = cast(
+            NDArrays, get_raw_model_parameters(copy.deepcopy(_llm_config))
+        )
         fl_instructions_config: Config = {"server_round": 1, "gpu-merged": "0,1,2"}
         loss, n_samples, train_metrics = node_manager.evaluate(
             parameters, fl_instructions_config

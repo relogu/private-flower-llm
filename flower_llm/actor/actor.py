@@ -19,13 +19,11 @@ from flwr.simulation.ray_transport.utils import check_clientfn_returns_client
 
 from collections.abc import Callable
 
-from flwr.common import (
-    NDArrays,
-)
 from flower_llm.conf.base_schema import S3CommConfig
 
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient
 from flower_llm.node_manager.node_manager import NodeManager
+from flower_llm.node_manager.utils import ModelParametersMetadata
 
 
 @ray.remote
@@ -36,7 +34,7 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
         self,
         client_fn: Callable[[int], VirtualLLMClient],
         run_uuid: str,
-        parameters: NDArrays,
+        parameters_metadata: ModelParametersMetadata,
         refresh_period: int,
         cpu_only: bool,
         cpu_concurrency: int,
@@ -47,7 +45,7 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
         self.node_manager = NodeManager(
             client_fn=client_fn,
             run_uuid=run_uuid,
-            parameters=parameters,
+            parameters_metadata=parameters_metadata,
             refresh_period=refresh_period,
             cpu_only=cpu_only,
             cpu_concurrency=cpu_concurrency,
