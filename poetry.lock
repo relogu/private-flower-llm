@@ -152,13 +152,13 @@ frozenlist = ">=1.1.0"
 
 [[package]]
 name = "alembic"
-version = "1.13.1"
+version = "1.13.2"
 description = "A database migration tool for SQLAlchemy."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "alembic-1.13.1-py3-none-any.whl", hash = "sha256:2edcc97bed0bd3272611ce3a98d98279e9c209e7186e43e75bbb1b2bdfdbcc43"},
-    {file = "alembic-1.13.1.tar.gz", hash = "sha256:4932c8558bf68f2ee92b9bbcb8218671c627064d5b08939437af6d77dc05e595"},
+    {file = "alembic-1.13.2-py3-none-any.whl", hash = "sha256:6b8733129a6224a9a711e17c99b08462dbf7cc9670ba8f2e2ae9af860ceb1953"},
+    {file = "alembic-1.13.2.tar.gz", hash = "sha256:1ff0ae32975f4fd96028c39ed9bb3c867fe3af956bd7bb37343b54c9fe7445ef"},
 ]
 
 [package.dependencies]
@@ -643,17 +643,17 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.34.133"
+version = "1.34.135"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "boto3-1.34.133-py3-none-any.whl", hash = "sha256:da7e78c03270be872ad78301892396ffea56647efcb2c3a8621ef46a905541ab"},
-    {file = "boto3-1.34.133.tar.gz", hash = "sha256:7071f8ce1f09113ca5630860fd590464e6325a4df55faae83c956225941016fc"},
+    {file = "boto3-1.34.135-py3-none-any.whl", hash = "sha256:6f5d7a20afbe45e3f7c6b5e96071752d36c3942535b1f7924964f1fdf25376a7"},
+    {file = "boto3-1.34.135.tar.gz", hash = "sha256:344f635233c85dbb509b87638232ff9132739f90bb5e6bf01fa0e0a521a9107e"},
 ]
 
 [package.dependencies]
-botocore = ">=1.34.133,<1.35.0"
+botocore = ">=1.34.135,<1.35.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.10.0,<0.11.0"
 
@@ -662,13 +662,13 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.34.133"
+version = "1.34.135"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "botocore-1.34.133-py3-none-any.whl", hash = "sha256:f269dad8e17432d2527b97ed9f1fd30ec8dc705f8b818957170d1af484680ef2"},
-    {file = "botocore-1.34.133.tar.gz", hash = "sha256:5ea609aa4831a6589e32eef052a359ad8d7311733b4d86a9d35dab4bd3ec80ff"},
+    {file = "botocore-1.34.135-py3-none-any.whl", hash = "sha256:3aa9e85e7c479babefb5a590e844435449df418085f3c74d604277bc52dc3109"},
+    {file = "botocore-1.34.135.tar.gz", hash = "sha256:2e72f37072f75cb1391fca9d7a4c32cecb52a3557d62431d0f59d5311dc7d0cf"},
 ]
 
 [package.dependencies]
@@ -3770,8 +3770,8 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 [package.source]
 type = "git"
 url = "https://github.com/relogu/composer.git"
-reference = "dodo_v0.2.0"
-resolved_reference = "1f888b1f8f02b46380a0da3e4e5900f2fc15be1f"
+reference = "dodo_v0.2.1"
+resolved_reference = "046f85c4a32d8b928deff08d238d9e992dc2d8fd"
 
 [[package]]
 name = "mosaicml-cli"
@@ -3835,9 +3835,9 @@ zstd = ">=1.5.2.5,<2"
 
 [package.extras]
 alipan = ["AliPCS-Py (>=0.8,<1)"]
-all = ["AliPCS-Py (>=0.8,<1)", "GitPython (==3.1.42)", "PyYAML (>=6.0,<7)", "altair (>=5.1.1,<6)", "databricks-sdk (==0.27.0)", "datasets (>=2.4.0,<3)", "docformatter (>=1.4)", "docutils (==0.17.1)", "fastapi (==0.110.2)", "furo (==2022.9.29)", "humanize (>=4.7.0,<5)", "jupyter (==1.0.0)", "mosaicml-cli (>=0.5.25,<0.7)", "moto (>=4.0,<6)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "omegaconf (>=2.3.0,<3)", "pandas (>=2.0.3,<3)", "pandoc (==2.3)", "pre-commit (>=2.18.1,<4)", "pyarrow (>14.0.0)", "pydantic (==2.7.1)", "pypandoc (==1.13)", "pyspark (>=3,<4)", "pytest (==8.2.0)", "pytest-cov (>=4,<6)", "pytest-split (==0.8.2)", "pytest_codeblocks (==0.17.0)", "sortedcollections (>=2.1.0,<3)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx-tabs (==3.4.5)", "sphinxcontrib-applehelp (==1.0.0)", "sphinxcontrib-devhelp (==1.0.0)", "sphinxcontrib-htmlhelp (==2.0.0)", "sphinxcontrib-qthelp (==1.0.0)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib.katex (==0.9.6)", "streamlit (>=1.26.0,<2)", "toml (==0.10.2)", "uvicorn (==0.29.0)", "wandb (>=0.15.5,<1)", "yamllint (==1.35.1)"]
+all = ["AliPCS-Py (>=0.8,<1)", "GitPython (==3.1.42)", "PyYAML (>=6.0,<7)", "altair (>=5.1.1,<6)", "databricks-sdk (==0.27.0)", "datasets (>=2.4.0,<3)", "docformatter (>=1.4)", "docutils (==0.17.1)", "fastapi (==0.110.2)", "furo (==2022.9.29)", "humanize (>=4.7.0,<5)", "jupyter (==1.0.0)", "mosaicml-cli (>=0.5.25,<0.7)", "moto (>=4.0,<6)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "omegaconf (>=2.3.0,<3)", "pandas (>=2.0.3,<3)", "pandoc (==2.3)", "pre-commit (>=2.18.1,<4)", "pyarrow (>14.0.0)", "pydantic (==2.7.1)", "pypandoc (==1.13)", "pyspark (>=3,<4)", "pytest (==8.2.0)", "pytest-codeblocks (==0.17.0)", "pytest-cov (>=4,<6)", "pytest-split (==0.8.2)", "sortedcollections (>=2.1.0,<3)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx-tabs (==3.4.5)", "sphinxcontrib-applehelp (==1.0.0)", "sphinxcontrib-devhelp (==1.0.0)", "sphinxcontrib-htmlhelp (==2.0.0)", "sphinxcontrib-qthelp (==1.0.0)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib.katex (==0.9.6)", "streamlit (>=1.26.0,<2)", "toml (==0.10.2)", "uvicorn (==0.29.0)", "wandb (>=0.15.5,<1)", "yamllint (==1.35.1)"]
 databricks = ["databricks-sdk (==0.27.0)"]
-dev = ["datasets (>=2.4.0,<3)", "docformatter (>=1.4)", "fastapi (==0.110.2)", "jupyter (==1.0.0)", "moto (>=4.0,<6)", "pre-commit (>=2.18.1,<4)", "pyarrow (>14.0.0)", "pydantic (==2.7.1)", "pytest (==8.2.0)", "pytest-cov (>=4,<6)", "pytest-split (==0.8.2)", "pytest_codeblocks (==0.17.0)", "toml (==0.10.2)", "uvicorn (==0.29.0)", "yamllint (==1.35.1)"]
+dev = ["datasets (>=2.4.0,<3)", "docformatter (>=1.4)", "fastapi (==0.110.2)", "jupyter (==1.0.0)", "moto (>=4.0,<6)", "pre-commit (>=2.18.1,<4)", "pyarrow (>14.0.0)", "pydantic (==2.7.1)", "pytest (==8.2.0)", "pytest-codeblocks (==0.17.0)", "pytest-cov (>=4,<6)", "pytest-split (==0.8.2)", "toml (==0.10.2)", "uvicorn (==0.29.0)", "yamllint (==1.35.1)"]
 docs = ["GitPython (==3.1.42)", "docutils (==0.17.1)", "furo (==2022.9.29)", "myst-parser (==0.16.1)", "nbsphinx (==0.9.1)", "pandoc (==2.3)", "pypandoc (==1.13)", "sphinx (==4.4.0)", "sphinx-argparse (==0.4.0)", "sphinx-copybutton (==0.5.2)", "sphinx-tabs (==3.4.5)", "sphinxcontrib-applehelp (==1.0.0)", "sphinxcontrib-devhelp (==1.0.0)", "sphinxcontrib-htmlhelp (==2.0.0)", "sphinxcontrib-qthelp (==1.0.0)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib.katex (==0.9.6)"]
 simulator = ["PyYAML (>=6.0,<7)", "altair (>=5.1.1,<6)", "humanize (>=4.7.0,<5)", "omegaconf (>=2.3.0,<3)", "pandas (>=2.0.3,<3)", "sortedcollections (>=2.1.0,<3)", "streamlit (>=1.26.0,<2)", "wandb (>=0.15.5,<1)"]
 spark = ["pyspark (>=3,<4)"]
@@ -4923,13 +4923,13 @@ xmp = ["defusedxml"]
 
 [[package]]
 name = "pip"
-version = "24.0"
+version = "24.1"
 description = "The PyPA recommended tool for installing Python packages."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "pip-24.0-py3-none-any.whl", hash = "sha256:ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc"},
-    {file = "pip-24.0.tar.gz", hash = "sha256:ea9bd1a847e8c5774a5777bb398c19e80bcd4e2aa16a4b301b718fe6f593aba2"},
+    {file = "pip-24.1-py3-none-any.whl", hash = "sha256:a775837439bf5da2c1a0c2fa43d5744854497c689ddbd9344cf3ea6d00598540"},
+    {file = "pip-24.1.tar.gz", hash = "sha256:bdae551038c0ce6a83030b4aedef27fc95f0daa683593fea22fa05e55ed8e317"},
 ]
 
 [[package]]
@@ -6664,13 +6664,13 @@ files = [
 
 [[package]]
 name = "sentry-sdk"
-version = "2.7.0"
+version = "2.7.1"
 description = "Python client for Sentry (https://sentry.io)"
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "sentry_sdk-2.7.0-py2.py3-none-any.whl", hash = "sha256:db9594c27a4d21c1ebad09908b1f0dc808ef65c2b89c1c8e7e455143262e37c1"},
-    {file = "sentry_sdk-2.7.0.tar.gz", hash = "sha256:d846a211d4a0378b289ced3c434480945f110d0ede00450ba631fc2852e7a0d4"},
+    {file = "sentry_sdk-2.7.1-py2.py3-none-any.whl", hash = "sha256:ef1b3d54eb715825657cd4bb3cb42bb4dc85087bac14c56b0fd8c21abd968c9a"},
+    {file = "sentry_sdk-2.7.1.tar.gz", hash = "sha256:25006c7e68b75aaa5e6b9c6a420ece22e8d7daec4b7a906ffd3a8607b67c037b"},
 ]
 
 [package.dependencies]
@@ -6710,7 +6710,7 @@ sanic = ["sanic (>=0.8)"]
 sqlalchemy = ["sqlalchemy (>=1.2)"]
 starlette = ["starlette (>=0.19.1)"]
 starlite = ["starlite (>=1.48)"]
-tornado = ["tornado (>=5)"]
+tornado = ["tornado (>=6)"]
 
 [[package]]
 name = "setproctitle"
@@ -8532,4 +8532,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11, <3.12"
-content-hash = "bdb37279742b43f3abdb98bec8a2bbc25f5d787df34076ad664290bf881e60e5"
+content-hash = "91ebd418139caa08dbdbfe16ace6d8b1d637140380a1c2e8389f2c0c845f7f2f"
