@@ -613,6 +613,15 @@ class NodeManager(fl.client.NumPyClient):
         if not assignments:
             raise ValueError("No assignments found in the config.")
         list_of_cids_to_train: list[str] = ast.literal_eval(assignments)[0]
+        # Force collaborative if number of clients < number of workers
+        if len(list_of_cids_to_train) < len(self.workers_dict):
+            log(
+                DEBUG,
+                "Forcing collaborative training since %s clients for %s workers.",
+                len(list_of_cids_to_train),
+                len(self.workers_dict),
+            )
+            config["collaborative"] = True
 
         node_train_metrics: dict[str, Scalar] = {}
         aggregated_params: NDArrays = []
@@ -692,20 +701,13 @@ class NodeManager(fl.client.NumPyClient):
                     "endpoint_id": self.node_manager_uuid,
                 }
             )
-
-            # Return results
-            return (
-                [np.array([[0.0], [0.0]])],
-                int(sum_of_samples),
-                node_train_metrics,
-            )
-        else:
-            # Return results
-            return (
-                aggregated_params,
-                int(sum_of_samples),
-                node_train_metrics,
-            )
+            aggregated_params = [np.array([[0.0], [0.0]])]
+        # Return results
+        return (
+            aggregated_params,
+            int(sum_of_samples),
+            node_train_metrics,
+        )
 
     def evaluate(
         self, parameters: NDArrays, config: dict
