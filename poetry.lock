@@ -3771,7 +3771,7 @@ wandb = ["wandb (>=0.13.2,<0.17)"]
 type = "git"
 url = "https://github.com/relogu/composer.git"
 reference = "dodo_v0.2.2"
-resolved_reference = "e8ca4b553950da47e7a04d50a84137ab559f33f5"
+resolved_reference = "1ebbf41a2c84a1b3be94fe5ab9429f71dd04e830"
 
 [[package]]
 name = "mosaicml-cli"
