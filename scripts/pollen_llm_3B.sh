@@ -89,8 +89,8 @@ mkdir -p "$TMPDIR"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 
-#! Wait for 30 seconds. This is needed because of how the client connection behaves.
-sleep 30
+#! Wait for 120 seconds. This is needed because of how the client connection behaves.
+sleep 120
 
 #! Launch NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.

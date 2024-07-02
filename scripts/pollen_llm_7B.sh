@@ -70,12 +70,12 @@ MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoint
 #! Set Pollen and FL config
 N_LOCAL_STEPS=500
 POLLEN_CONFIG="pollen.server_address='[::]:50760' run_uuid=$RUN_UUID pollen.refresh_period=20"
-POLLEN_CONFIG="pollen.server_address='192.222.52.253:50760' run_uuid=$RUN_UUID pollen.refresh_period=20"
+# POLLEN_CONFIG="pollen.server_address='192.222.52.253:50760' run_uuid=$RUN_UUID pollen.refresh_period=20"
 # NOTE: set dataset
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-the_pile dataset/streams@dataset.train.streams=the_pile_64_clients dataset/streams@dataset.val.streams=the_pile_64_clients"  # The Pile - 8 split 8 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=2 pollen.fit_collaborative=true"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null pollen.restore_run_uuid=null"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=true"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=200" # FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.7 fl.server_momentum=0.9"             # Server-side optimizer
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=63900ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=1.2e-4"
@@ -94,7 +94,7 @@ mkdir -p "$TMPDIR"
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 
-#! Wait for 30 seconds. This is needed because of how the client connection behaves.
+#! Wait for 120 seconds. This is needed because of how the client connection behaves.
 sleep 120
 
 #! Launch NodeManager
