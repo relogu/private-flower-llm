@@ -73,7 +73,7 @@ POLLEN_CONFIG="pollen.server_address='192.222.52.250:50760' run_uuid=$RUN_UUID p
 # NOTE: set dataset
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-the_pile dataset/streams@dataset.train.streams=the_pile_64_clients dataset/streams@dataset.val.streams=the_pile_64_clients"  # The Pile - 8 split 8 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=true"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=2 pollen.fit_collaborative=true"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null pollen.restore_run_uuid=null"
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=200" # FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.7 fl.server_momentum=0.9"             # Server-side optimizer
