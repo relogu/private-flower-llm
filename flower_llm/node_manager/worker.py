@@ -28,6 +28,7 @@ from flower_llm.node_manager.utils import (
     POLLEN_METRICS_SHM,
     POLLEN_N_SAMPLES_SHM,
     POLLEN_PARAMETERS_SHM,
+    ModelParametersMetadata,
     WorkerResult,
     close_all_shms,
     get_config_shm,
@@ -40,7 +41,10 @@ from flower_llm.node_manager.utils import (
     set_num_samples_shm,
     set_parameters_shm,
 )
-from flower_llm.utils import partially_aggregate, partially_aggregate_metrics
+from flower_llm.strategy.aggregation import (
+    partially_aggregate,
+    partially_aggregate_metrics,
+)
 
 
 class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
@@ -54,7 +58,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         result_queue: QueueType,
         node_manager_uuid: str,
         run_uuid: str,
-        parameters: NDArrays,
+        parameters_metadata: ModelParametersMetadata,
         worker_rank: int,
         cpu_only: bool,
         cpu_concurrency: int,
@@ -66,7 +70,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.result_queue = result_queue
         self.node_manager_uuid = node_manager_uuid
         self.run_uuid = run_uuid
-        self.parameters = parameters
+        self.parameters_metadata = parameters_metadata
         self.worker_rank = worker_rank
         self.worker_metrics_sh: SharedMemory | None = None
         self.worker_metrics: Config = {}
@@ -74,14 +78,21 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.n_samples = 0
         self.cpu_only = cpu_only
         self.cpu_concurrency = cpu_concurrency
+        self.worker_parameters: NDArrays | None = None
+        self.worker_parameters_sh: SharedMemory | None = None
 
     def _fit_action(
         self, client: VirtualLLMClient, fl_instructions_config: Config
     ) -> None:
         """Fit action."""
+        # Shared memory for round parameters
+        round_parameters, _round_parameters_sh = get_parameters_shm(
+            parameters_metadata=self.parameters_metadata,
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+        )
         # Call fit on shared parameters
         fit_trained_weights, fit_num_samples, train_metrics = client.fit(
-            self.round_parameters, fl_instructions_config
+            round_parameters, fl_instructions_config
         )
         self.n_samples = fit_num_samples
         # log(
@@ -97,11 +108,15 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         # )
         if int(os.getenv("LOCAL_RANK", "")) == 0:
             start_time = time.time_ns()
+            # Creating the parameters shared memory
+            self._create_parameters_shm()
+            assert self.worker_parameters is not None
             # Worker's partial aggregation for parameters and n_samples
             (p_agg_params, p_agg_samples) = partially_aggregate(
                 (self.worker_parameters, self.worker_num_samples[0]),
                 (fit_trained_weights, fit_num_samples),
             )
+            del fit_trained_weights
             partial_aggregation_time = time.time_ns() - start_time
             train_metrics |= {
                 "worker/partial_aggregation_time": partial_aggregation_time * 1e-9
@@ -114,6 +129,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             # Update shared memories
             set_num_samples_shm(self.worker_num_samples, p_agg_samples)
             set_parameters_shm(self.worker_parameters, p_agg_params)
+            del p_agg_params
             # Destroy the shared memory for the metrics
             if self.worker_metrics_sh is not None:
                 self.worker_metrics_sh.close()
@@ -142,9 +158,14 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self, client: VirtualLLMClient, fl_instructions_config: Config
     ) -> None:
         """Evaluate action."""
+        # Shared memory for round parameters
+        round_parameters, _round_parameters_sh = get_parameters_shm(
+            parameters_metadata=self.parameters_metadata,
+            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+        )
         # Call evaluate on shared parameters
         eval_loss, eval_num_samples, eval_metrics = client.evaluate(
-            self.round_parameters, fl_instructions_config
+            round_parameters, fl_instructions_config
         )
         # log(
         #     DEBUG,
@@ -281,21 +302,6 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self,
     ) -> None:
         """Create the Worker's shared memories."""
-        # NOTE: This is the NodeManager's shared memories. Workers should only
-        # read this. NodeManager should only write this.
-        # Shared memory for round parameters
-        self.round_parameters, self.round_parameters_sh = get_parameters_shm(
-            parameters=self.parameters,
-            name=self.node_manager_uuid + POLLEN_PARAMETERS_SHM,
-        )
-        # NOTE: This is the Worker's shared memory for the fit results.
-        # NodeManager should only read this. Worker should only write this.
-        # Shared memory for worker's parameters
-        self.worker_parameters, self.worker_parameters_sh = get_parameters_shm(
-            create=True,
-            parameters=self.parameters,
-            name=self.worker_uuid + POLLEN_PARAMETERS_SHM,
-        )
         # Number of samples shared memory
         self.worker_num_samples, self.worker_num_samples_sh = get_num_samples_shm(
             create=True,
@@ -307,6 +313,31 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             create=True,
             name=self.worker_uuid + POLLEN_EVAL_LOSS_SHM,
         )
+
+    def _create_parameters_shm(self) -> None:
+        """Create the Worker's parameters shared memories."""
+        # NOTE: This is the Worker's shared memory for the fit results.
+        # NodeManager should only read this. Worker should only write this.
+        # Shared memory for worker's parameters
+        try:
+            self.worker_parameters, self.worker_parameters_sh = get_parameters_shm(
+                parameters_metadata=self.parameters_metadata,
+                name=self.worker_uuid + POLLEN_PARAMETERS_SHM,
+            )
+        except FileNotFoundError:
+            log(DEBUG, "Shared memory for parameters doesn't exists. Creating it.")
+            self.worker_parameters, self.worker_parameters_sh = get_parameters_shm(
+                create=True,
+                parameters_metadata=self.parameters_metadata,
+                name=self.worker_uuid + POLLEN_PARAMETERS_SHM,
+            )
+        except Exception as e:
+            log(
+                ERROR,
+                "Error while creating the shared memory for the worker's parameters.",
+                exc_info=e,
+                stack_info=True,
+            )
 
     def run(self) -> None:
         """Start the process."""
@@ -445,7 +476,7 @@ def get_training_results_from_workers_dict(
     for worker in workers_dict.values():
         if worker.is_alive():
             w_parameters, w_parameters_shm = get_parameters_shm(
-                parameters=worker.parameters,
+                parameters_metadata=worker.parameters_metadata,
                 name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
             )
             w_num_samples, w_num_samples_shm = get_num_samples_shm(
@@ -486,7 +517,7 @@ def get_training_results_from_worker(
         return None
     if worker.is_alive():
         w_parameters, w_parameters_shm = get_parameters_shm(
-            parameters=worker.parameters,
+            parameters_metadata=worker.parameters_metadata,
             name=worker.worker_uuid + POLLEN_PARAMETERS_SHM,
         )
         w_num_samples, w_num_samples_shm = get_num_samples_shm(
@@ -516,7 +547,7 @@ def create_new_worker(
     result_queue: QueueType,
     node_manager_uuid: str,
     run_uuid: str,
-    parameters: NDArrays,
+    parameters_metadata: ModelParametersMetadata,
     worker_rank: int,
     cpu_only: bool,
     cpu_concurrency: int,
@@ -532,7 +563,7 @@ def create_new_worker(
         result_queue=result_queue,
         node_manager_uuid=node_manager_uuid,
         run_uuid=run_uuid,
-        parameters=parameters,
+        parameters_metadata=parameters_metadata,
         worker_rank=worker_rank,
         cpu_only=cpu_only,
         cpu_concurrency=cpu_concurrency,

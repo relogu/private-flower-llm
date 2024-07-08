@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "flower_llm"
-version = "0.1.0"
+version = "0.2.3"
 description = "FlowerLLM: federated generative pre-training of large language models using Flower and Pollen."
 license = "Apache-2.0"
 authors = ["Lorenzo Sani <ls985@cam.ac.uk>", "Alexandru-Andrei Iacob <aai30@cam.ac.uk>"]
@@ -52,7 +52,7 @@ psutil = "^5.9.5"
 pandas = "^2.1.1"
 scipy = ">=1.10.0,<=1.11.0"
 librosa = "^0.10.1"
-flwr = {extras = ["simulation"], version = "1.9.0"}
+flwr = { git = "https://github.com/adap/flower.git", branch = "persisting-client-objs" }
 nvidia-ml-py = "11.495.46"
 sentencepiece = "0.1.97"
 ipykernel = "^6.25.2"
@@ -64,7 +64,7 @@ ipython = "^8.17.2"
 torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.3.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=5df7e3cb3961018a891e4edef1e0bc1f3304a8d943f81b24a8c6bf687ca49a67"}
 torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.3.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=8dd66913e7b08c63c76b21b0706130c24aee4ed4adc0bc12f8d62df98b5c6ea0"}
 torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.18.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=1e516779520fc92157d6cb245ac0fd3f79872fe81c84b8593a8f2e998106f5b1"}
-mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.2.0", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
+mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.2.2", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
 accelerate = ">=0.25,<0.26"
 mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", tag = "dodo_v0.2.0" }
 datasets = ">=2.19,<2.20"
@@ -86,7 +86,7 @@ wheel = "^0.42.0"
 loralib = "0.1.1"
 bitsandbytes = "0.39.1"
 peft = "0.4.0"
-pip = "24.0"
+pip = "24.1"
 py3nvml = "^0.2.7"
 memray = "^1.11.0"
 objgraph = "^3.6.0"
@@ -101,17 +101,16 @@ isort = "^5.13.2"
 black = { version = "^24.4.2", extras = ["jupyter"] }
 docformatter = "^1.7.5"
 mypy = "^1.8.0"
-pylint = "^3.2.3"
+pylint = "^3.2.5"
 flake8 = "==7.1.0"
 pytest-watch = "==4.2.0"
-ruff = "^0.4.10"
-types-requests = "==2.31.0.6"
-yamlfix = "^1.15.0"
-pre-commit = "^2.18.1"
+ruff = "^0.5.0"
+yamlfix = "^1.16.0"
+pre-commit = "^3.7.1"
 pytest = ">=7.2.1,<9"
 pytest_codeblocks = ">=0.16.1,<0.18"
 pytest-cov = ">=4,<6"
-pyright = "1.1.368"
+pyright = "1.1.369"
 toml = ">=0.10.2,<0.11"
 packaging = ">=21,<25"
 hf_transfer = "0.1.6"

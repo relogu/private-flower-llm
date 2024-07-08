@@ -6,13 +6,15 @@ import pickle
 from logging import ERROR
 from multiprocessing import resource_tracker as res_track
 from multiprocessing.shared_memory import SharedMemory
+from collections.abc import Sequence
+from typing import SupportsIndex
 
 import numpy as np
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
-from flwr.server.strategy.aggregate import aggregate
 
-from flower_llm.utils import (
+from flower_llm.strategy.aggregation import (
+    aggregate_inplace,
     partially_aggregate,
     partially_aggregate_metrics,
     weighted_average,
@@ -24,6 +26,8 @@ POLLEN_N_SAMPLES_SHM = "_pollen_n_samples_shm"
 POLLEN_EVAL_LOSS_SHM = "_pollen_eval_loss_shm"
 POLLEN_METRICS_SHM = "_pollen_metrics_shm"
 
+ShapeLike = SupportsIndex | Sequence[SupportsIndex]
+
 
 @dataclass
 class WorkerResult:
@@ -34,14 +38,37 @@ class WorkerResult:
     device: str
 
 
+@dataclass
+class ModelParametersMetadata:
+    """Data type to store the metadata of the model parameters."""
+
+    total_num_bytes: int
+    array_bounds: list[tuple[int, int]]
+    shapes: list[ShapeLike]
+    dtypes: list[np.dtype]
+
+    @staticmethod
+    def from_ndarrays(parameters: NDArrays) -> "ModelParametersMetadata":
+        """Create a ModelParametersMetadata object from the NDArrays."""
+        total_num_bytes, array_bounds = get_ndarrays_size_and_bounds(parameters)
+        shapes = [x.shape for x in parameters]
+        dtypes = [x.dtype for x in parameters]
+        return ModelParametersMetadata(
+            total_num_bytes=total_num_bytes,
+            array_bounds=array_bounds,
+            shapes=shapes,  # type: ignore[arg-type]
+            dtypes=dtypes,
+        )
+
+
 def aggregate_training_results(
     parameters: list[tuple[NDArrays, int]],
     samples: list[int],
     metrics: list[tuple[int, dict]],
-) -> tuple[NDArrays, int, dict]:
+) -> tuple[NDArrays | None, int, dict]:
     """Aggregate the training results."""
     return (
-        aggregate(parameters),
+        copy.deepcopy(aggregate_inplace(parameters)),
         sum(samples),
         weighted_average(metrics),
     )
@@ -113,6 +140,31 @@ def set_config_shm(
 
 
 def get_parameters_shm(
+    parameters_metadata: ModelParametersMetadata,
+    create: bool = False,
+    name: str = POLLEN_PARAMETERS_SHM,
+) -> tuple[NDArrays, SharedMemory]:
+    """Allocate a Shared Memory object and backed arrays."""
+    if create:
+        shm = SharedMemory(
+            create=True, size=parameters_metadata.total_num_bytes, name=name
+        )
+        shm.buf[:] = b"\0" * shm.size
+    else:
+        shm = SharedMemory(name=name)
+    params_sh: NDArrays = [
+        np.ndarray(shape=shape, dtype=dtype, buffer=shm.buf[bounds[0] : bounds[1]])
+        for shape, dtype, bounds in zip(
+            parameters_metadata.shapes,
+            parameters_metadata.dtypes,
+            parameters_metadata.array_bounds,
+            strict=False,
+        )
+    ]
+    return params_sh, shm
+
+
+def old_get_parameters_shm(
     parameters: NDArrays,
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,

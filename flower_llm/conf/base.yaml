@@ -30,8 +30,6 @@ fl:
   reset_optimizer: true
   n_local_epochs: 1
   n_local_steps: 0
-  rescale_global_model: false
-  rescale_momentum_vector: false
   server_learning_rate: 0.7
   server_momentum: 0.7
 
