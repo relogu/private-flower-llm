@@ -61,8 +61,18 @@ fi
 export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Getting visible GPUs
-N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
+	echo "No NVIDIA devices found."
+	N_GPUS=0
+else
+	N_GPUS=$(nvidia-smi -L | wc -l)
+fi
+if [ "$N_GPUS" -eq 0 ]; then
+	echo "No GPUs found. Exiting."
+	CUDA_VISIBLE_DEVICES=""
+else
+	CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 
 #! S3 communication stack settings

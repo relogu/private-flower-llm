@@ -77,8 +77,18 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=16 llm_confi
 export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 #! Getting visible GPUs
-N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
+	echo "No NVIDIA devices found."
+	N_GPUS=0
+else
+	N_GPUS=$(nvidia-smi -L | wc -l)
+fi
+if [ "$N_GPUS" -eq 0 ]; then
+	echo "No GPUs found. Exiting."
+	CUDA_VISIBLE_DEVICES=""
+else
+	CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+fi
 echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
