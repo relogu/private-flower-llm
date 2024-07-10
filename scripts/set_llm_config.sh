@@ -35,7 +35,23 @@ fi
 #! Get info about GPU resources available
 GPU_TYPE=$(nvidia-smi -L)
 
-# NOTE: Add defaults
+#! Defaults
+LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
+LLM_CONFIG_MPT_16M="llm_config=mpt-16m"
+LLM_CONFIG_MPT_75M="llm_config=mpt-75m"
+LLM_CONFIG_MPT_160M="llm_config=mpt-160m"
+LLM_CONFIG_MPT_125M="llm_config=mpt-125m"
+LLM_CONFIG_MPT_350M="llm_config=mpt-350m"
+LLM_CONFIG_MPT_420M="llm_config=mpt-420m"
+LLM_CONFIG_MPT_540M="llm_config=mpt-540m"
+LLM_CONFIG_MPT_760M="llm_config=mpt-760m"
+LLM_CONFIG_MPT_1B="llm_config=mpt-1b"
+LLM_CONFIG_MPT_3B="llm_config=mpt-3b"
+LLM_CONFIG_MPT_7B="llm_config=mpt-7b"
+LLM_CONFIG_MPT_13B="llm_config=mpt-13b"
+LLM_CONFIG_MPT_30B="llm_config=mpt-30b"
+LLM_CONFIG_MPT_70B="llm_config=mpt-70b"
+
 #! Set `llm_config` names
 if [[ $GPU_TYPE == *'A40'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A40-equipped machines."
@@ -118,9 +134,6 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
 	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: L40"
-elif [[ $GPU_TYPE == *'failed'* ]]; then
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
-	echo "nvidia-smi failed"
 else
 	echo "set_llm_config.sh: Unknown GPU type: $GPU_TYPE. Using defaults..."
 fi
@@ -161,7 +174,7 @@ else
 	exit 1
 fi
 
-echo "set_llm_config.sh: Selected LLM config: $1"
+echo "set_llm_config.sh: Selected LLM config: $1 ($LLM_CONFIG)"
 printf "set_llm_config.sh: arguments=%s, first argument=%s\n" "$@" "$1"
 
 #! Remove the positional arguments
