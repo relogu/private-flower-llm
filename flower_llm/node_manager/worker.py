@@ -19,7 +19,7 @@ import torch.distributed as dist
 from composer.cli.launcher import _patch_env  # noqa: PLC2701
 from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays
-from flwr.common.logger import log
+from flwr.common.logger import log, update_console_handler
 
 from flower_llm.clients.virtual_llm_client import VirtualLLMClient
 from flower_llm.node_manager.utils import (
@@ -341,6 +341,8 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
 
     def run(self) -> None:
         """Start the process."""
+        # Fix the logger
+        update_console_handler(level=DEBUG, colored=False, timestamps=True)
         # Create shared memories
         # Call the monkey-patch for the resource-register
         remove_shm_from_resource_tracker()
@@ -368,7 +370,7 @@ def check_collaborative_and_cpu(collaborative: bool, cpu_only: bool) -> None:
     """Check if the collaborative and cpu_only settings are compatible."""
     if cpu_only and collaborative:
         raise ValueError(
-            "Collaborative mode is not supported with CPU only."
+            "Collaborative mode is not supported with CPU only. "
             "Changing to not collaborative, "
             "this may impact your resource utilization.",
         )
