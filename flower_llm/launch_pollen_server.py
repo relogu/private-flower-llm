@@ -27,7 +27,6 @@ from flower_llm.strategy.rs_nesterov import FedNesterov
 from flower_llm.strategy.aggregation import weighted_average
 from flower_llm.utils import (
     load_model_parameters_from_file,
-    wandb_init,
 )
 from flower_llm.wandb_history import WandbHistory
 from flower_llm.wandb_server_app import WandbServerApp
