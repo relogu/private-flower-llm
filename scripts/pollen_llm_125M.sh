@@ -99,7 +99,7 @@ poetry run flower-superlink --insecure --driver-api-address '[::]:50752' --fleet
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:51752' --persist_client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:51752' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 
