@@ -86,7 +86,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 
 #! Test NodeManager
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+GRPC_VERBOSITY=debug CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.node_manager.node_manager --persist_client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 # Enable CTRL+C to stop all background processes
