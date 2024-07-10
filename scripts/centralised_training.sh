@@ -80,6 +80,9 @@ echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
 	echo "No NVIDIA devices found."
 	N_GPUS=0
+elif [[ $(nvidia-smi -L) == *'not found'* ]]; then
+	echo "nvidia-smi not present."
+	N_GPUS=0
 else
 	N_GPUS=$(nvidia-smi -L | wc -l)
 fi
