@@ -95,6 +95,7 @@ watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 tensorboard = "^2.16.2"
 pydantic = "<2.0.0"
+ninja = "^1.11.1.1"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"
