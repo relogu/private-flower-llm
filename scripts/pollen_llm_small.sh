@@ -61,29 +61,48 @@ fi
 export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Getting visible GPUs
-N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
+	echo "No NVIDIA devices found."
+	N_GPUS=0
+elif [[ $(nvidia-smi -L) == *'not found'* ]]; then
+	echo "nvidia-smi not present."
+	N_GPUS=0
+else
+	N_GPUS=$(nvidia-smi -L | wc -l)
+fi
+if [ "$N_GPUS" -eq 0 ]; then
+	echo "No GPUs found. Exiting."
+	CUDA_VISIBLE_DEVICES=""
+else
+	CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
-N_LOCAL_STEPS=100
-POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+# N_LOCAL_STEPS=500
+N_LOCAL_STEPS=10
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50 pollen.cpu_only=true"
+# POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50"
 # NOTE: set dataset
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-the_pile dataset/streams@dataset.train.streams=the_pile_64_clients dataset/streams@dataset.val.streams=the_pile_64_clients"  # The Pile - 8 split 8 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=2 pollen.fit_collaborative=true"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=false"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null "
-POLLEN_CONFIG="$POLLEN_CONFIG fl.rescale_global_model=false fl.rescale_momentum_vector=false fl.server_learning_rate=0.1 fl.server_momentum=0.9"
+POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.1 fl.server_momentum=0.9 fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=176"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=6000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=1ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=5ba llm_config.eval_subset_num_batches=1"
 POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 POLLEN_CONFIG="$POLLEN_CONFIG use_wandb=false"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 # export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
 
 #! Run Hydra resolver
@@ -97,7 +116,7 @@ poetry run flower-superlink --insecure --driver-api-address '[::]:51749' --fleet
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:50749' 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.node_manager.node_manager:client_app --insecure --superlink '[::]:50749' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 
