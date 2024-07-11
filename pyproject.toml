@@ -126,7 +126,7 @@ use_parentheses = true
 [tool.black]
 line-length = 88
 preview = true
-target-version = ["py310"]
+target-version = ["py311"]
 
 [tool.pytest.ini_options]
 minversion = "6.2"
@@ -176,7 +176,7 @@ none_representation = "null"
 whitelines = 1
 section_whitelines = 1
 exclude = [
-    ".bzr",
+    ".bzr", 
     ".direnv",
     ".eggs",
     ".git",
@@ -204,7 +204,7 @@ exclude = [
 
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 preview = true
 lint.select = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN",
