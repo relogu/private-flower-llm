@@ -70,8 +70,10 @@ MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoin
 N_LOCAL_STEPS=500
 POLLEN_CONFIG="pollen.server_address='[::]:50752' run_uuid=$RUN_UUID pollen.refresh_period=100 fl.n_rounds=50"
 # NOTE: set dataset
-# POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
-POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
+export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
+mkdir -p $DATASET_CACHE_DIR
+# POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4-c4  dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4-c4"
+POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4  dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
 # POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=8 fl.n_rounds=176" # FL setting
@@ -83,10 +85,11 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_co
 # POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=2ba llm_config.eval_subset_num_batches=1"
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
+
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.

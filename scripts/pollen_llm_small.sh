@@ -68,13 +68,15 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=100
-# POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
-POLLEN_CONFIG="pollen.server_address='192.222.52.253:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 pollen.cpu_only=true"
+POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+# POLLEN_CONFIG="pollen.server_address='192.222.52.253:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 pollen.cpu_only=true"
 # NOTE: set dataset
-# POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
+export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
+mkdir -p $DATASET_CACHE_DIR
+# POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4-c4  dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4-c4"
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-the_pile dataset/streams@dataset.train.streams=the_pile_64_clients dataset/streams@dataset.val.streams=the_pile_64_clients"  # The Pile - 8 split 8 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients" # C4 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=2 pollen.fit_collaborative=true"
+POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4  dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=true"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null "
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=64 fl.n_rounds=200" # FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.server_learning_rate=0.1 fl.server_momentum=0.9"
@@ -82,11 +84,12 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=5120ba llm_config.sched
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
-export GRPC_TRACE=round_robin,connectivity_state,pick_first
+
+# export GRPC_TRACE=round_robin,connectivity_state,pick_first
 #! Launch ServerWithPollen
 GRPC_VERBOSITY=debug HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.launch_pollen_server $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 #! Wait for 30 seconds. This is needed because of how the client connection behaves.
