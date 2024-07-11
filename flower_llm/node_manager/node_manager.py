@@ -45,7 +45,6 @@ from flower_llm.conf.base_schema import BaseConfig
 import cloudpickle
 import flwr as fl
 import numpy as np
-import psutil
 import pyarrow as pa
 import torch
 import transformers
@@ -94,7 +93,7 @@ from flower_llm.node_manager.worker import (
     start_worker,
 )
 from flower_llm.placements import add_constant_column_to_clients_stats_table
-from flower_llm.resources_manager import Device, Node, get_gpu_prop
+from flower_llm.resources_manager import get_node_properties
 from flower_llm.utils import (
     download_file_from_s3,
     dump_model_parameters_to_file,
@@ -148,8 +147,8 @@ class NodeManager(fl.client.NumPyClient):
         # One result_queue for all GPUs
         self.result_queue: QueueType = Queue()
         # Get node properties about hardware accelerators
-        self.node: Node = Node()
-        self.properties = self._get_node_properties()
+        self.node = get_node_properties(self.cpu_only, self.cpu_concurrency)
+        self.properties = {"node": str(self.node)}
         assert self.node.device_info is not None
         # Set how many processes can be run on each GPU given the properties
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
@@ -165,48 +164,6 @@ class NodeManager(fl.client.NumPyClient):
         # Create workers
         self.workers_dict: dict[int, Worker] = {}
         self._create_and_start_workers()
-
-    def _get_node_properties(self) -> dict[str, Scalar]:
-        device_info: dict[str, Device] = {}
-        # Get hardware accelerator properties
-        if torch.cuda.is_available() and not self.cpu_only:
-            device_info = dict(
-                get_gpu_prop(merge=True),
-                **device_info,
-            )
-        elif self.cpu_only:
-            device_info["cpu-merged"] = Device(
-                device_id=0,
-                name="cpu:0",
-                device_type="cpu",
-                total_memory=psutil.virtual_memory().total,
-                allocated_memory=psutil.virtual_memory().total
-                - psutil.virtual_memory().used,
-                concurrency=1,
-            )
-        else:
-            raise ValueError("Running without cpu_only but GPU is not available.")
-        try:
-            cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
-        except AttributeError:
-            cpus = psutil.cpu_count()
-        # Get general node properties
-        if self.node is None:
-            self.node = Node(
-                name=getfqdn(),
-                cpu_num=cpus,
-                cpu_ram_total=psutil.virtual_memory().total,
-                cpu_ram_available=psutil.virtual_memory().total
-                - psutil.virtual_memory().used,
-                device_info=device_info,
-            )
-        elif self.node.device_info is None:
-            self.node.device_info = device_info
-        else:
-            for k, v in device_info.items():
-                if k not in self.node.device_info:
-                    self.node.device_info[k] = v
-        return {"node": str(self.node)}
 
     def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
