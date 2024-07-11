@@ -89,7 +89,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_co
 TESTING_OPTIONS=""
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 # export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
 #! Test VirtualLLMClient
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
