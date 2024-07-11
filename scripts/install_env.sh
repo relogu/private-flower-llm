@@ -76,5 +76,6 @@ else
 	echo "install_env.sh: Environment is ready."
 fi
 
-# TODO: Set 'TMPDIR' env var to depend on the run_uid and username
-# TODO: Set 'TRITON_CACHE_DIR' not to be in an NFS filesystem
+# Set TRITON_CACHE_DIR to be system dependent, as such must be under '/home/<username>'
+TRITON_CACHE_DIR="/home/$(whoami)/.triton_cache"
+export TRITON_CACHE_DIR
