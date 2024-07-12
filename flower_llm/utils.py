@@ -1093,7 +1093,7 @@ def obtain_sorted_runs(server_path: str) -> list[int]:
         The sorted runs.
     """
     remote_objects = list_remote_objects(server_path)
-    log(INFO, "Found files %s", remote_objects)
+    log(DEBUG, "Found files %s", remote_objects)
     # Take only the unique indices
     return sorted(
         {
