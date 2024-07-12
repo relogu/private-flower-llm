@@ -2,13 +2,21 @@
 
 from logging import DEBUG
 import warnings
-from flwr.common import Message, Context, RecordSet, ConfigsRecord
+from flwr.common import (
+    Message,
+    Context,
+    RecordSet,
+    ConfigsRecord,
+    parameters_to_ndarrays,
+)
 from flwr.common.logger import log, update_console_handler
+from flwr.common.recordset_compat import parametersrecord_to_parameters
 
 from flower_llm.node_manager.node_manager_app import NodeManagerApp
 from flower_llm.node_manager.utils import (
     POLLEN_PARAMETERS_SHM,
     get_parameters_shm,
+    set_parameters_shm,
 )
 
 
@@ -53,7 +61,6 @@ app = NodeManagerApp(
 
 
 def set_parameters(msg: Message, ctx: Context) -> Message:
-    """"""
     # Get NodeManager UUID
     assert (
         "node_manager" in ctx.state.configs_records
@@ -68,20 +75,21 @@ def set_parameters(msg: Message, ctx: Context) -> Message:
         create=True,
         name=node_manager_uuid + POLLEN_PARAMETERS_SHM,
     )
-    # set_parameters_shm(round_parameters, msg.content.parameters_records)
-    # del msg.content.parameters_records
-    # app.
-    return msg.create_reply(content=msg.content)
+    parameters = parametersrecord_to_parameters(
+        msg.content.parameters_records["broadcastins.parameters"], keep_input=False
+    )
+    set_parameters_shm(round_parameters, parameters_to_ndarrays(parameters))
+    recordset = RecordSet()
+    recordset.configs_records["broadcast"] = ConfigsRecord({"status": "OK"})
+    return msg.create_reply(content=recordset)
 
 
 def get_properties(msg: Message, ctx: Context) -> Message:
-    """"""
     msg.content = RecordSet(configs_records={"": ConfigsRecord(app.properties)})
     return msg.create_reply(content=msg.content)
 
 
 def free_resources(msg: Message, ctx: Context) -> Message:
-    """"""
     return msg.create_reply(content=msg.content)
 
 
@@ -89,29 +97,24 @@ def free_resources(msg: Message, ctx: Context) -> Message:
 # app instance is called with the decorated function as an argument.
 @app.train()
 def train(msg: Message, ctx: Context) -> Message:
-    """"""
     log(DEBUG, "`train` is not implemented, echoing original message")
     return msg.create_reply(msg.content)
 
 
 @app.evaluate()
 def eval(msg: Message, ctx: Context) -> Message:
-    """"""
     log(DEBUG, "`evaluate` is not implemented, echoing original message")
     return msg.create_reply(msg.content)
 
 
 @app.query()
 def query(msg: Message, ctx: Context) -> Message:
-    """"""
     # This method serves as dispatcher to perform those tasks that are not train or
     # eval. It will dispatch to the appropriate method based on the contents of the message.
     # Extract the RecordSet for this type of message
     content = msg.content
-    assert (
-        "query_type" in content.configs_records
-    ), "Query message must contain 'query' key"
-    query_type = content.configs_records["query_type"]
+    assert "query" in content.configs_records, "Query message must contain 'query' key"
+    query_type = content.configs_records["query"]["type"]
     match query_type:
         case "ping":
             return msg.create_reply(content=msg.content)
