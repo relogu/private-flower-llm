@@ -168,8 +168,6 @@ class PollenServer(Server):
         self.server_steps_cumulative = 0
         self.pollen_temp_dir = TemporaryDirectory()
 
-        self.pollen_temp_dir = TemporaryDirectory()
-
         if self.checkpoint or self.use_s3_comm:
             bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
             self.remote_up_down = RemoteUploaderDownloader(
@@ -1019,7 +1017,9 @@ class PollenServer(Server):
                 log(INFO, "Resuming from round %s", self.resume_round)
             # NOTE: Calling the `_get_initial_parameters` method to for consistently
             # freeing up the memory allocated for the initial parameters in strategy.
-            self.parameters = self._get_initial_parameters(timeout=timeout)
+            self.parameters = self._get_initial_parameters(
+                timeout=timeout, server_round=0
+            )
 
             log(INFO, "Resuming from checkpoint")
             # Check whether the server parameters exist
