@@ -30,8 +30,14 @@ fl:
   reset_optimizer: true
   n_local_epochs: 1
   n_local_steps: 0
-  server_learning_rate: 0.7
-  server_momentum: 0.7
+
+  ignore_failed_rounds: false
+  accept_failures_cnt: 0
+
+  strategy_name: NESTEROV
+  strategy_config:
+    server_learning_rate: 0.7
+    server_momentum: 0.7
 
 # Defaults
 defaults:

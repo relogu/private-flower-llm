@@ -1,10 +1,11 @@
-"""TODO:"""
+"""Utility functions for running the main server loop in flwr next."""
 
 import ast
+from collections.abc import Callable, Generator
 from copy import deepcopy
 import copy
 from dataclasses import asdict
-from logging import DEBUG, INFO
+from logging import DEBUG, ERROR, INFO, WARNING
 from pathlib import Path
 import pickle
 from tempfile import TemporaryDirectory
@@ -15,6 +16,7 @@ from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
     get_raw_model_parameters,
 )
+from flower_llm.pollen_server import TooManyFailuresError
 from flower_llm.utils import (
     ClientState,
     download_file_from_s3,
@@ -34,12 +36,26 @@ from flwr.common import (
     DEFAULT_TTL,
     ConfigsRecord,
     RecordSet,
+    Scalar,
+    FitIns,
+    FitRes,
+    EvaluateRes,
+    Status,
+    Code,
 )
+
 from flwr.common.recordset_compat import parameters_to_parametersrecord
+from flwr.common.recordset_compat import (
+    fitins_to_recordset,
+    recordset_to_fitres,
+    recordset_to_evaluateres,
+)
 from flwr.server import Driver, History
+from flwr.server.strategy import FedAvg
 from omegaconf import OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
+
 
 from flower_llm.conf.base_schema import BaseConfig
 
@@ -63,7 +79,7 @@ def wait_for_nodes_to_connect(driver: Driver, n_nodes: int, timeout: float = 3) 
     driver : Driver
         The driver object used to interact with the client nodes.
     n_nodes : int
-        The minimum number of client nodes that must be connected before the function returns.
+        The minimum number of client nodes that must be connected.
     timeout : float, optional
         The time in seconds to wait between checks. Default is 3 seconds.
 
@@ -96,7 +112,7 @@ def broadcast_parameters_to_recordset(
     parameters : Parameters
         The parameters to be converted and broadcasted.
     keep_input : bool
-        A flag indicating whether to keep the original input parameters in the conversion.
+        A flag indicating whether to keep the original input parameters.
 
     Returns
     -------
@@ -157,7 +173,7 @@ def broadcast_parameters_to_nodes(
     message_ids = driver.push_messages(messages)
     log(DEBUG, f"Pushed {len(messages)} broadcast messages to {len(node_ids)} nodes")
     # Wait for results, ignore empty message_ids
-    message_ids = [message_id for message_id in message_ids if message_id != ""]
+    message_ids = [message_id for message_id in message_ids if message_id]
     all_replies: list[Message] = []
     while True:
         replies = driver.pull_messages(message_ids=message_ids)
@@ -172,11 +188,188 @@ def broadcast_parameters_to_nodes(
     all_broadcastres = [msg.content for msg in all_replies if msg.has_content()]
     log(DEBUG, f"Received {len(all_broadcastres)} results")
     # Elaborate results
-    for res in all_broadcastres:
-        assert "broadcast" in res.configs_records, "Broadcast key not found"
-        assert "status" in res.configs_records["broadcast"], "Status key not found"
-        if res.configs_records["broadcast"]["status"] != "OK":
+    for message_res in all_broadcastres:
+        assert "broadcast" in message_res.configs_records, "Broadcast key not found"
+        assert (
+            "status" in message_res.configs_records["broadcast"]
+        ), "Status key not found"
+        if message_res.configs_records["broadcast"]["status"] != "OK":
             raise ValueError("Broadcast failed")
+
+
+def message_collaborative(
+    driver: Driver,
+    message_type: str,
+    sampled_clients: list[int] | list[str],
+    gen_instructions: Callable[[int, int | str], dict[str, Scalar]],
+    all_node_ids: list[int],
+    current_round: int,
+) -> Generator[Message, None, None]:
+    """Fit collaboratively.
+
+    Parameters
+    ----------
+    driver : Driver
+        The driver object used for creating and pushing messages.
+    record_sets: list[RecordSet]
+        A list of record sets to be sent to the nodes for fitting.
+    all_node_ids : list[int]
+        A list of all node IDs to which the messages will be sent.
+    current_round : int
+        The current round of fitting, used for grouping messages.
+
+    Yields
+    ------
+    Generator[Message, None, None]
+        A generator that yields messages from the driver.
+    """
+    record_sets: list[RecordSet] = [
+        fitins_to_recordset(
+            FitIns(
+                parameters=Parameters(tensors=[], tensor_type="empty"),
+                config={cid: gen_instructions(current_round, cid)},  # type: ignore[reportArgumentType,dict-item]
+            ),
+            keep_input=True,
+        )
+        for cid in sampled_clients
+    ]
+
+    messages_to_nodes: dict[str, int] = {}
+    messages: list[Message] = []
+    for node_id in all_node_ids:
+        if not record_sets:
+            break
+        message = driver.create_message(
+            content=record_sets.pop(),
+            message_type=message_type,
+            dst_node_id=node_id,
+            group_id=str(current_round),
+            ttl=DEFAULT_TTL,
+        )
+        messages.append(message)
+    message_ids = driver.push_messages(messages)
+    received = 0
+    total = len(record_sets)
+    log(DEBUG, f"Pushed messages{messages_to_nodes}")
+
+    while received < total:
+        replies = list(driver.pull_messages(message_ids=message_ids))
+        messages = []
+        for res in replies:
+            log(DEBUG, f"Got 1 {'result' if res.has_content() else 'error'}")
+            received += 1
+            node_id = res.metadata.src_node_id
+            if record_sets:
+                message = driver.create_message(
+                    content=record_sets.pop(),
+                    message_type=message_type,
+                    dst_node_id=node_id,
+                    group_id=str(current_round),
+                    ttl=DEFAULT_TTL,
+                )
+        message_ids = driver.push_messages(messages)
+        log(DEBUG, f"Pushed messages{messages_to_nodes}")
+        for res in replies:
+            yield res
+
+
+def message_independent(
+    driver: Driver,
+    message_type: str,
+    gen_instructions: Callable[[int, int | str], dict[str, Scalar]],
+    all_node_ids: list[int],
+    current_round: int,
+    assignment_function: Callable[[int], list[int] | list[str]],
+) -> Generator[Message, None, None]:
+    """Fit collaboratively.
+
+    Parameters
+    ----------
+    driver : Driver
+        The driver object used for creating and pushing messages.
+    record_sets: list[RecordSet]
+        A list of record sets to be sent to the nodes for fitting.
+    all_node_ids : list[int]
+        A list of all node IDs to which the messages will be sent.
+    assignment_function : Callable[[int], list[int | str]]
+        A function that assigns record sets to nodes.
+    current_round : int
+        The current round of fitting, used for grouping messages.
+
+    Yields
+    ------
+    Generator[Message, None, None]
+        A generator that yields messages from the driver.
+    """
+    messages = []
+    for node_id in all_node_ids:
+        cids_to_train = assignment_function(node_id)
+        if cids_to_train:
+            message = driver.create_message(
+                content=create_merged_recordset(
+                    cids_to_train, current_round, gen_instructions
+                ),
+                message_type=message_type,
+                dst_node_id=node_id,
+                group_id=str(current_round),
+                ttl=DEFAULT_TTL,
+            )
+            messages.append(message)
+    message_ids = list(driver.push_messages(messages))
+    log(DEBUG, f"Pushed messages{messages}")
+    total_messages = len(message_ids)
+    received_messages = 0
+    while received_messages < total_messages:
+        for res in driver.pull_messages(message_ids=message_ids):
+            log(DEBUG, f"Got 1 {'result' if res.has_content() else 'error'}")
+            received_messages += 1
+            yield res
+
+
+def get_rr_assignment_function(
+    sampled_clients: list[int] | list[str],
+    all_node_ids: list[int],
+) -> Callable[[int], list[int] | list[str]]:
+    """Create a round-robin assignment function for the given clients and nodes."""
+
+    def assignment_function(node_id: int) -> list[int] | list[str]:
+        return [
+            client_id
+            for i, client_id in enumerate(sampled_clients)
+            if i % len(all_node_ids) == all_node_ids.index(node_id)
+        ]  # type: ignore[reportReturnType,return-value]
+
+    return assignment_function
+
+
+def create_merged_recordset(
+    sampled_clients: list[int] | list[str],
+    current_round: int,
+    fit_ins_function: Callable[[int, int | str], dict[str, Scalar]],
+) -> RecordSet:
+    """Create a merged record set for the given clients and fit_ins_function.
+
+    Parameters
+    ----------
+    sampled_clients : list[int | str]
+        A list of client identifiers to be used in the fit_ins_function.
+    fit_ins_function : Callable[[int, int | str], dict[str, Scalar]]
+        A function that generates the fit_ins configuration for a given client.
+
+    Returns
+    -------
+    RecordSet
+        The merged record set containing the fit_ins configurations for each client.
+    """
+    configs = {cid: fit_ins_function(current_round, cid) for cid in sampled_clients}
+    record_set = fitins_to_recordset(
+        FitIns(
+            parameters=Parameters(tensors=[], tensor_type="empty"),
+            config=configs,  # type: ignore[reportArgumentType,arg-type]
+        ),
+        keep_input=True,
+    )
+    return record_set
 
 
 def interpret_resume_round(
@@ -830,3 +1023,414 @@ def resume_from_round(
 
     log(INFO, "Resuming from checkpoint")
     return download_server_checkpoint(cfg, remote_up_down)
+
+
+def handle_fit_replies(
+    cfg: BaseConfig,
+    replies: Generator[Message, None, None],
+    strategy: FedAvg,
+    current_round: int,
+    remote_up_down: RemoteUploaderDownloader | None,
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
+) -> (
+    None
+    | tuple[
+        Parameters | None,
+        dict[str, Scalar],
+        tuple[list[tuple[dict[str, Scalar], Status, int]], list[FitRes | None]],
+    ]
+):
+    """Perform a single round of federated averaging."""
+    all_fitres = (
+        recordset_to_fitres(msg.content, keep_input=True) if msg.has_content() else None
+        for msg in replies
+    )
+
+    results_and_failures = (
+        (
+            (fit_res.status.code == Code.OK, fit_res)
+            if fit_res is not None
+            else (False, fit_res)
+        )
+        for fit_res in all_fitres
+    )
+
+    # Using a generator limits us in failure/metrics accumulation
+    # The output params are not used in the aggregation
+    # They are merely populated by the processing of the generator
+    failures: list[FitRes | None] = []
+
+    metrics_accumulator: list[tuple[dict[str, Scalar], Status, int]] = []
+
+    handle_success_and_failure = get_handle_success_and_failure_ft(
+        metrics_accumulator,
+        failures,
+        accept_failures_cnt=cfg.fl.accept_failures_cnt,
+    )
+    handled_results_and_failures = (
+        handle_success_and_failure(result)  # type: ignore[arg-type]
+        for result in results_and_failures
+    )
+
+    results = (result for success, result in handled_results_and_failures if success)
+
+    complete_results = results
+
+    if cfg.use_s3_comm and remote_up_down is not None:
+        remote_up_down._check_workers()
+        complete_results = (
+            replace_clients_updates_with_remote(
+                remote_up_down,
+                current_round,
+                result,
+            )
+            for result in results
+            if result is not None
+        )
+
+    parameters_aggregated = None
+    metrics_aggregated: dict = {}
+
+    try:
+        # Aggregate training results
+        parameters_aggregated, _ = strategy.aggregate_fit(
+            current_round,
+            ((None, fit_res) for fit_res in complete_results),  # type: ignore[reportArgumentType, arg-type]
+            failures,  # type: ignore[reportArgumentType, arg-type]
+        )
+
+        # Collect statistics that Pollen uses from the FitRes of the NodeManagers
+
+        fit_metrics = [
+            (num_examples, metrics) for metrics, _, num_examples in metrics_accumulator
+        ]
+        client_state_accumulator: dict[str | int, dict[str, Any]] = {}
+        for _, inner_metrics in fit_metrics:
+            acc: dict[str | int, dict[str, Any]] = ast.literal_eval(
+                cast(str, inner_metrics["client_state_acc"])
+            )
+            client_state_accumulator |= acc
+        # NOTE: When using partial participation
+        # We need to accumulate the keys of the old state
+        # and the new state
+        client_state |= {
+            k: ClientState(**v) for k, v in client_state_accumulator.items()
+        }
+        # NOTE: Update the server steps cumulative by adding to the previous
+        # value the maximum number of local steps done across the clients sample
+        # in this round
+        max_steps = max(
+            *[_client_state.steps_done for _client_state in client_state.values()],
+            0,
+        )
+        server_steps_cumulative += max_steps
+        # NOTE: Reset the steps_done for all clients to zero as it is just meant
+        # to be an ephemeral record of the local steps done during one federated
+        # round
+        for c_state in client_state.values():
+            c_state.steps_done = 0
+
+        # Aggregate the metrics
+        # NOTE: This bypasses any metrics aggregation in the aggregate_fit of the
+        # strategy because the metrics are empty there
+        if strategy.fit_metrics_aggregation_fn:
+            metrics_aggregated |= strategy.fit_metrics_aggregation_fn(fit_metrics)
+
+        elif current_round == 1:  # Only log this warning once
+            log(WARNING, "No fit_metrics_aggregation_fn provided")
+    except TooManyFailuresError as e:
+        if cfg.fl.ignore_failed_rounds:
+            log(
+                ERROR,
+                """Ignoring failed round %s: %s,
+                there are %s failures: %s""",
+                current_round,
+                e,
+                len(failures),
+                failures,
+            )
+        else:
+            raise
+    return parameters_aggregated, metrics_aggregated, (metrics_accumulator, failures)
+
+
+def handle_evaluate_replies(
+    cfg: BaseConfig,
+    replies: Generator[Message, None, None],
+    strategy: FedAvg,
+    current_round: int,
+) -> (
+    None
+    | tuple[
+        float | None,
+        dict[str, Scalar],
+        tuple[list[tuple[None, EvaluateRes | None]], list[EvaluateRes | None]],
+    ]
+):
+    """Perform a single round of federated averaging."""
+    all_eval_res = (
+        recordset_to_evaluateres(msg.content) if msg.has_content() else None
+        for msg in replies
+    )
+
+    results_and_failures = (
+        (
+            (eval_res.status.code == Code.OK, eval_res)
+            if eval_res is not None
+            else (False, eval_res)
+        )
+        for eval_res in all_eval_res
+    )
+
+    # Using a generator limits us in failure/metrics accumulation
+    # The output params are not used in the aggregation
+    # They are merely populated by the processing of the generator
+    failures: list[EvaluateRes | None] = []
+
+    metrics_accumulator: list[tuple[dict[str, Scalar], Status, int]] = []
+
+    handle_success_and_failure = get_handle_success_and_failure_evaluate(
+        metrics_accumulator,
+        failures,
+        accept_failures_cnt=cfg.fl.accept_failures_cnt,
+    )
+    results_and_failures = (
+        handle_success_and_failure(result)  # type: ignore[arg-type]
+        for result in results_and_failures
+    )
+
+    results = (result for success, result in results_and_failures if success)
+    completed_results = [(None, fit_res) for fit_res in results]
+
+    aggregated_result: tuple[
+        float | None,
+        dict[str, Scalar],
+    ] = strategy.aggregate_evaluate(
+        current_round,
+        completed_results,  # type: ignore[reportArgumentType,arg-type]
+        failures,  # type: ignore[reportArgumentType,arg-type]
+    )
+
+    if len(failures) > 0:
+        log(
+            ERROR,
+            "evaluate_round %s: there are %s failures: %s",
+            current_round,
+            len(failures),
+            failures,
+        )
+    log(
+        DEBUG,
+        "evaluate_round %s received %s results and %s failures",
+        current_round,
+        len(completed_results),
+        len(failures),
+    )
+
+    loss_aggregated, metrics_aggregated = aggregated_result
+    return loss_aggregated, metrics_aggregated, (completed_results, failures)
+
+
+def get_handle_success_and_failure_ft(
+    metrics_accumulator: list[tuple[dict[str, Scalar], Status, int]],
+    fit_failures: list[FitRes | None],
+    accept_failures_cnt: int | None,
+) -> Callable[
+    [tuple[bool, FitRes] | tuple[bool, None]],
+    tuple[bool, FitRes] | tuple[bool, None],
+]:
+    """Closure to generate a function which handles client success and failure.
+
+    The function distinguishes between intentional and unintentional failures.
+    It enforces constraints on the number of unintentional failures.
+    It stores results and failures in the respective lists.
+
+    Parameters
+    ----------
+    metrics_accumulator : List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]]
+        The list where the metrics are accumulated.
+    failures : List[Union[FitRes, BaseException]]
+        The list where the failures are accumulated.
+    accept_failures_cnt : int | None
+        The maximum number of unintentional failures to accept.
+
+    Returns
+    -------
+    handle_success_and_failure : Callable[
+        [
+            Tuple[bool, FitRes]
+            | Tuple[bool, FitRes | BaseException]
+        ],
+        Tuple[bool, FitRes]
+        | Tuple[bool, FitRes | BaseException],
+    ]
+        The function which handles client success and failure while saving the outputs.
+    """
+
+    def handle_success_and_failure_fit(
+        result: tuple[bool, FitRes] | tuple[bool, None],
+    ) -> tuple[bool, FitRes] | tuple[bool, None]:
+        cnt_failures = 0
+
+        match result:
+            case (True, res):
+                fit_res = cast(FitRes, res)
+                metrics_accumulator.append((
+                    fit_res.metrics,
+                    fit_res.status,
+                    fit_res.num_examples,
+                ))
+                return (True, fit_res)
+            case (False, res):
+                cnt_failures += 1
+                if (
+                    accept_failures_cnt is not None
+                    and cnt_failures > accept_failures_cnt
+                ):
+                    raise TooManyFailuresError(
+                        f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}"""
+                    )
+                fit_failures.append(res)  # type: ignore[arg-type]
+                return (False, res) if res is not None else (False, None)  # type: ignore[return-value]
+        return result
+
+    return handle_success_and_failure_fit
+
+
+def get_handle_success_and_failure_evaluate(
+    metrics_accumulator: list[tuple[dict[str, Scalar], Status, int]],
+    evaluate_failures: list[EvaluateRes | None],
+    accept_failures_cnt: int | None,
+) -> Callable[
+    [tuple[bool, EvaluateRes] | tuple[bool, None]],
+    tuple[bool, EvaluateRes] | tuple[bool, None],
+]:
+    """Closure to generate a function which handles client success and failure.
+
+    The function distinguishes between intentional and unintentional failures.
+    It enforces constraints on the number of unintentional failures.
+    It stores results and failures in the respective lists.
+
+    Parameters
+    ----------
+    metrics_accumulator : List[Tuple[ClientProxy, Dict[str, Scalar], Status, int]]
+        The list where the metrics are accumulated.
+    failures : List[Union[EvaluateRes, BaseException]]
+        The list where the failures are accumulated.
+    accept_failures_cnt : int | None
+        The maximum number of unintentional failures to accept.
+
+    Returns
+    -------
+    handle_success_and_failure : Callable[
+        [
+            Tuple[bool, EvaluateRes]
+            | Tuple[bool, EvaluateRes | BaseException]
+        ],
+        Tuple[bool, EvaluateRes]
+        | Tuple[bool, EvaluateRes | BaseException],
+    ]
+        The function which handles client success and failure while saving the outputs.
+    """
+
+    def handle_success_and_failure_fit(
+        result: tuple[bool, EvaluateRes] | tuple[bool, None],
+    ) -> tuple[bool, EvaluateRes] | tuple[bool, None]:
+        cnt_failures = 0
+
+        match result:
+            case (True, res):
+                fit_res = cast(EvaluateRes, res)
+                metrics_accumulator.append((
+                    fit_res.metrics,
+                    fit_res.status,
+                    fit_res.num_examples,
+                ))
+                return (True, fit_res)
+            case (False, res):
+                cnt_failures += 1
+                if (
+                    accept_failures_cnt is not None
+                    and cnt_failures > accept_failures_cnt
+                ):
+                    raise TooManyFailuresError(
+                        f"""Unintentional failures passed
+                        the maximum: {accept_failures_cnt}"""
+                    )
+                evaluate_failures.append(res)  # type: ignore[arg-type]
+                return (False, res) if res is not None else (False, None)  # type: ignore[return-value]
+        return result
+
+    return handle_success_and_failure_fit
+
+
+def replace_clients_updates_with_remote(
+    remote_uploader_downloader: RemoteUploaderDownloader,
+    current_round: int,
+    fit_res: FitRes,
+) -> FitRes:
+    """Replace the parameters in the FitRes with the ones from S3 Object Store."""
+    pollen_temp_dir: TemporaryDirectory = TemporaryDirectory()
+
+    endpoint_id: Any
+    if "endpoint_id" in fit_res.metrics:
+        endpoint_id = fit_res.metrics["endpoint_id"]
+        del fit_res.metrics["endpoint_id"]
+        if not isinstance(endpoint_id, str):
+            raise TypeError("endpoint_id is not a string")
+    else:
+        raise ValueError("endpoint_id is not present in fit_res")
+    # Check whether the server has uploaded the parameters
+    file_found = False
+    remote_file_name_no_ext = (
+        f"s3://{remote_uploader_downloader.remote_bucket_name}/"  # type: ignore[union-attr]
+        f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
+        f"{current_round}/{endpoint_id}/parameters"
+    )
+
+    log(
+        DEBUG,
+        "Wait for NodeManager %s parameters to be in S3 Object Store at %s",
+        endpoint_id,
+        remote_file_name_no_ext,
+    )
+
+    while not file_found:
+        file_found = validate_given_remote_path(
+            remote_file_name_no_ext + ".bin"
+        ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+        time.sleep(0.5)
+
+    # Set the file names depending on the extension found
+    remote_file_name = (
+        f"{current_round}/{endpoint_id}/parameters.bin"
+        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+        else f"{current_round}/{endpoint_id}/parameters.npz"
+    )
+    local_file_name = (
+        Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.bin"
+        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+        else Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.npz"
+    )
+    log(
+        DEBUG,
+        "Pull Node %s parameters from S3 Object Store: %s -> %s",
+        endpoint_id,
+        remote_file_name,
+        local_file_name,
+    )
+    download_file_from_s3(remote_uploader_downloader, remote_file_name, local_file_name)
+    log(DEBUG, "Read server parameters from disk")
+    fit_res.parameters = ndarrays_to_parameters(
+        load_model_parameters_from_file(local_file_name)
+    )
+
+    log(
+        DEBUG,
+        "Node %s parameters have been read from disk and assigned to fit_res",
+        endpoint_id,
+    )
+
+    return fit_res

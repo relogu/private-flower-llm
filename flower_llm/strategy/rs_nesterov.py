@@ -25,18 +25,21 @@ from flwr.common import (
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
+from flwr.server.strategy import FedAvg
 import numpy as np
 
 from flower_llm.strategy.aggregation import (
     aggregate_cumulative_average,
     parameters_to_ndarrays_gen,
 )
-from flower_llm.strategy.rs_fedavg import FedAvgReproducibleSampling
-from flower_llm.utils import l2_norm, sum_of_squares
+from flower_llm.utils import (
+    l2_norm,
+    sum_of_squares,
+)
 
 
 # flake8: noqa: E501
-class FedNesterov(FedAvgReproducibleSampling):
+class FedNesterov(FedAvg):
     """Configurable FedNesterov strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
@@ -62,7 +65,6 @@ class FedNesterov(FedAvgReproducibleSampling):
         accept_failures: bool = True,
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
-        seed: int = 1337,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
         track_norms: bool = True,
@@ -126,7 +128,6 @@ class FedNesterov(FedAvgReproducibleSampling):
             initial_parameters=initial_parameters,
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-            seed=seed,
         )
         if saving_path is None:
             saving_path = Path(Path.cwd())

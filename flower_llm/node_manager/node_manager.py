@@ -59,7 +59,6 @@ from flwr.server.strategy.aggregate import weighted_loss_avg
 from flwr.client import ClientApp
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
 from omegaconf import DictConfig, OmegaConf
-from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 from flower_llm.conf.base_schema import S3CommConfig
 
@@ -95,6 +94,7 @@ from flower_llm.node_manager.worker import (
 from flower_llm.placements import add_constant_column_to_clients_stats_table
 from flower_llm.resources_manager import get_node_properties
 from flower_llm.utils import (
+    create_remote_up_down,
     download_file_from_s3,
     dump_model_parameters_to_file,
     get_n_cuda_devices,
@@ -175,30 +175,16 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_remote_up_down(self) -> None:
         """Create the remote uploader/downloader."""
-        if self.use_s3_comm:
-            bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
-            self.remote_up_down = RemoteUploaderDownloader(
-                bucket_uri=bucket_uri,
-                backend_kwargs={
-                    "bucket": self.s3_comm_config.bucket_name,  # type: ignore[union-attr]
-                    "prefix": f"{self.run_uuid}/server",  # Don't touch
-                    "region_name": None,  # Not necessary
-                    "endpoint_url": None,  # Will be read from env var
-                    "aws_access_key_id": None,  # Will be read from config file
-                    "aws_secret_access_key": None,  # Will be read from config file
-                    "aws_session_token": None,  # Will be automatically generated
-                    "client_config": OmegaConf.to_container(
-                        self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
-                    ),  # And using defaults
-                    "transfer_config": None,  # Using defaults
-                },
-                file_path_format_string="{remote_file_name}",  # Don't touch
-                num_concurrent_uploads=1,
-                upload_staging_folder=None,  # Don't touch, it's /tmp by default
-                use_procs=True,  # Don't touch
-                num_attempts=self.s3_comm_config.num_attempts,  # type: ignore[union-attr]
+        if self.use_s3_comm and self.s3_comm_config is not None:
+            self.remote_up_down = create_remote_up_down(
+                bucket_name=self.s3_comm_config.bucket_name,
+                prefix=f"{self.run_uuid}/server",
+                num_attempts=self.s3_comm_config.num_attempts,
+                run_uuid=self.run_uuid,
+                client_config=OmegaConf.to_container(  # type: ignore[arg-type]
+                    self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
+                ),  # type: ignore[union-attr]
             )
-            self.remote_up_down.init(run_name=self.run_uuid)
 
     def _check_workers_health(self) -> None:
         """Check if workers are alive and restart them if not."""
