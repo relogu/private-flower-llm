@@ -22,6 +22,7 @@ pollen:
   # Set to null to only restore from the current run
   restore_run_uuid: null
   resume_round: -1
+  saving_path: null
 
 fl:
   n_total_clients: 8
@@ -34,14 +35,14 @@ fl:
   ignore_failed_rounds: false
   accept_failures_cnt: 0
 
-  strategy_name: NESTEROV
-  strategy_config:
+  strategy_name: NESTOROV
+  strategy_kwargs:
     server_learning_rate: 0.7
     server_momentum: 0.7
 
 # Defaults
 defaults:
-  - base_schema
+  # - base_schema
   - _self_
   - llm_config: mpt-125m
   - dataset: fed-c4-c4

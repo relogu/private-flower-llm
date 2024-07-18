@@ -73,20 +73,13 @@ class Pollen(DictConfig):
 class StrategyName(StrEnum):
     """Strategy type."""
 
-    nesterov = auto()
-    fedavg = auto()
-    nesterov_matrix = auto()
+    NESTOROV = auto()
+    FEDAVG = auto()
+    NESTOROV_MATRIX = auto()
 
 
-class FedAvgConfig(dict[str, Any], DictConfig):  # type: ignore[reportIncompatibleMethodOverride,misc]
-    """Strategy configuration."""
-
-
-class NesterovConfig(dict[str, Any], DictConfig):  # type: ignore[reportIncompatibleMethodOverride,misc]
-    """Strategy configuration."""
-
-    server_learning_rate: float = MISSING
-    server_momentum: float = MISSING
+class StrategyKWArgs(dict[str, Any], DictConfig):  # type: ignore[reportIncompatibleMethodOverride,misc]
+    """StrategyKWArgs configuration."""
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -120,7 +113,7 @@ class FL(DictConfig):
     accept_failures_cnt: int = MISSING
 
     strategy_name: StrategyName = MISSING
-    strategy_config: NesterovConfig | FedAvgConfig = MISSING
+    strategy_kwargs: StrategyKWArgs = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
