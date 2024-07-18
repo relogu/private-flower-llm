@@ -2,7 +2,6 @@
 
 from logging import DEBUG, INFO
 import os
-import sys
 import timeit
 from typing import cast
 import random
@@ -10,29 +9,25 @@ import time
 import warnings
 
 
-import numpy as np
 
 from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
 from flower_llm.server.evaluate_utils import handle_evaluate_replies
 from flower_llm.server.fit_utils import handle_fit_replies
 from flower_llm.server.init_utils import initialize_round, resume_from_round
-from flower_llm.server.s3_utils import import_checkpoints
+from flower_llm.server.s3_utils import import_checkpoints, upload_server_checkpoint
 from flower_llm.server.server_util import (
     message_collaborative,
     message_independent,
     get_rr_assignment_function,
-    upload_server_checkpoint,
     wait_for_nodes_to_connect,
 )
-from flower_llm.strategy.aggregation import weighted_average
 import wandb
 import flwr as fl
 from flwr.common import (
     Context,
-    ndarrays_to_parameters,
     MessageType,
-    Scalar,
 )
+from flwr.common.typing import ConfigsRecordValues
 from flwr.common.logger import log, update_console_handler
 from flwr.server import Driver
 from omegaconf import OmegaConf
@@ -98,7 +93,7 @@ def main(driver: Driver, context: Context) -> None:
     # TODO: Exclude Pollen assignments implementation for now
     # placement_policy = cfg.pollen.placement_policy
 
-    def pollen_fit_config(server_round: int, client_id: str | int) -> dict[str, Scalar]:
+    def pollen_fit_config(server_round: int, client_id: str | int) -> dict[str, ConfigsRecordValues]:
         return {
             "cid": client_id,
             "server_round": server_round,
@@ -111,7 +106,7 @@ def main(driver: Driver, context: Context) -> None:
 
     def pollen_evaluate_config(
         server_round: int, client_id: str | int
-    ) -> dict[str, Scalar]:
+    ) -> dict[str, ConfigsRecordValues]:
         return {
             "cid": client_id,
             "server_round": server_round,
@@ -121,20 +116,6 @@ def main(driver: Driver, context: Context) -> None:
 
     strategy = dispatch_strategy(
         cfg,
-        # NOTE: We put a fake array as it will be touched on again later
-        initial_parameters=ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
-        evaluate_fn=None,
-        on_fit_config_fn=None,
-        on_evaluate_config_fn=None,
-        # These are not really important anymore with this new server
-        fraction_fit=sys.float_info.min,
-        fraction_evaluate=sys.float_info.min,
-        min_fit_clients=n_clients_per_round,
-        min_available_clients=n_clients_per_round,
-        min_evaluate_clients=1,
-        accept_failures=False,
-        evaluate_metrics_aggregation_fn=weighted_average,
-        fit_metrics_aggregation_fn=weighted_average,
     )
     wandb_config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
     with wandb_init(  # type: ignore[union-attr,misc]
@@ -248,6 +229,8 @@ def main(driver: Driver, context: Context) -> None:
                 parameters=parameters,
                 node_ids=all_node_ids,
                 current_round=current_round,
+                remote_uploader_downloader=remote_up_down,
+                use_s3_comm=cfg.use_s3_comm,
             )
             history.add_metrics_centralized(
                 server_round=current_round,
@@ -271,18 +254,20 @@ def main(driver: Driver, context: Context) -> None:
                     driver=driver,
                     message_type=MessageType.TRAIN,
                     sampled_clients=sampled_clients,
-                    gen_instructions=pollen_fit_config,
+                    gen_ins_function=pollen_fit_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
+                    msg_str="fitins",
                 )
                 if cfg.pollen.fit_collaborative
                 else message_independent(
                     driver=driver,
                     message_type=MessageType.TRAIN,
-                    gen_instructions=pollen_fit_config,
+                    gen_ins_function=pollen_fit_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
                     assignment_function=rr_assignment,
+                    msg_str="fitins",
                 )
             )
 
@@ -364,18 +349,20 @@ def main(driver: Driver, context: Context) -> None:
                     driver=driver,
                     message_type=MessageType.EVALUATE,
                     sampled_clients=sampled_clients,
-                    gen_instructions=pollen_evaluate_config,
+                    gen_ins_function=pollen_evaluate_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
+                    msg_str="evalins",
                 )
                 if cfg.pollen.eval_collaborative
                 else message_independent(
                     driver=driver,
                     message_type=MessageType.EVALUATE,
-                    gen_instructions=pollen_evaluate_config,
+                    gen_ins_function=pollen_evaluate_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
                     assignment_function=rr_assignment,
+                    msg_str="evalins",
                 )
             )
 
