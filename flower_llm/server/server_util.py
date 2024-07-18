@@ -1,61 +1,22 @@
 """Utility functions for running the main server loop in flwr next."""
 
-import ast
 from collections.abc import Callable, Generator
-from copy import deepcopy
-import copy
-from logging import DEBUG, ERROR, INFO, WARNING
-from pathlib import Path
-from typing import Any, cast
+from logging import DEBUG
 import time
-
-from flower_llm.clients.llm_client_functions import (
-    copy_old_checkpoints_to_new_run,
-    get_raw_model_parameters,
-)
-from flower_llm.pollen_server import TooManyFailuresError
-from flower_llm.server.s3_utils import download_server_checkpoint, replace_clients_updates_with_remote, upload_server_checkpoint
-from flower_llm.utils import (
-    ClientState,
-    load_model_parameters_from_file,
-    obtain_sorted_runs,
-)
 from flwr.common import (
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-    NDArrays,
     Parameters,
     log,
     Message,
-    MessageType,
     DEFAULT_TTL,
-    ConfigsRecord,
     RecordSet,
-    Scalar,
     FitIns,
-    FitRes,
-    EvaluateRes,
-    Status,
-    Code,
+    ConfigsRecord,
 )
-
-from flwr.common.recordset_compat import parameters_to_parametersrecord
 from flwr.common.recordset_compat import (
     fitins_to_recordset,
-    recordset_to_fitres,
-    recordset_to_evaluateres,
 )
-from flwr.server import Driver, History
-from flwr.server.strategy import FedAvg
-from omegaconf import OmegaConf
-from composer.loggers import RemoteUploaderDownloader
-
-
-from flower_llm.conf.base_schema import BaseConfig
-
-
-class NoCheckpointsFoundError(Exception):
-    """Exception raised when there are no checkpoints in the path looked up."""
+from flwr.common.typing import ConfigsRecordValues
+from flwr.server import Driver
 
 
 def wait_for_nodes_to_connect(driver: Driver, n_nodes: int, timeout: float = 3) -> None:
@@ -95,40 +56,29 @@ def message_collaborative(
     driver: Driver,
     message_type: str,
     sampled_clients: list[int] | list[str],
-    gen_instructions: Callable[[int, int | str], dict[str, Scalar]],
+    gen_ins_function: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
     all_node_ids: list[int],
     current_round: int,
+    msg_str: str,
 ) -> Generator[Message, None, None]:
-    """Fit collaboratively.
-
-    Parameters
-    ----------
-    driver : Driver
-        The driver object used for creating and pushing messages.
-    record_sets: list[RecordSet]
-        A list of record sets to be sent to the nodes for fitting.
-    all_node_ids : list[int]
-        A list of all node IDs to which the messages will be sent.
-    current_round : int
-        The current round of fitting, used for grouping messages.
-
-    Yields
-    ------
-    Generator[Message, None, None]
-        A generator that yields messages from the driver.
-    """
-    record_sets: list[RecordSet] = [
-        fitins_to_recordset(
+    # Constructing separate record sets for each client
+    record_sets: list[RecordSet] = []
+    for cid in sampled_clients:
+        record_set = fitins_to_recordset(
             FitIns(
                 parameters=Parameters(tensors=[], tensor_type="empty"),
-                config={cid: gen_instructions(current_round, cid)},  # type: ignore[reportArgumentType,dict-item]
+                config={},
             ),
             keep_input=True,
         )
-        for cid in sampled_clients
-    ]
+        record_set.configs_records.update(
+            {str(cid): ConfigsRecord(gen_ins_function(current_round, cid))}
+        )
+        record_set.configs_records.update(
+            {f"{msg_str}.config": ConfigsRecord({"server_round": current_round})}
+        )
+        record_sets.append(record_set)
 
-    messages_to_nodes: dict[str, int] = {}
     messages: list[Message] = []
     for node_id in all_node_ids:
         if not record_sets:
@@ -144,7 +94,7 @@ def message_collaborative(
     message_ids = driver.push_messages(messages)
     received = 0
     total = len(record_sets)
-    log(DEBUG, f"Pushed messages{messages_to_nodes}")
+    log(DEBUG, "Pushed %s messages: %s", len(messages), message_ids)
 
     while received < total:
         replies = list(driver.pull_messages(message_ids=message_ids))
@@ -162,7 +112,7 @@ def message_collaborative(
                     ttl=DEFAULT_TTL,
                 )
         message_ids = driver.push_messages(messages)
-        log(DEBUG, f"Pushed messages{messages_to_nodes}")
+        log(DEBUG, "Pushed another %s messages: %s", len(messages), message_ids)
         for res in replies:
             yield res
 
@@ -170,30 +120,56 @@ def message_collaborative(
 def message_independent(
     driver: Driver,
     message_type: str,
-    gen_instructions: Callable[[int, int | str], dict[str, Scalar]],
+    gen_ins_function: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
     all_node_ids: list[int],
     current_round: int,
     assignment_function: Callable[[int], list[int] | list[str]],
+    msg_str: str,
 ) -> Generator[Message, None, None]:
-    """Fit collaboratively.
+    """Generate and send messages to nodes for independent processing and yield results.
+
+    This function is designed to operate in a federated learning context where messages
+    containing instructions or data are sent to various nodes (clients or servers) for
+    processing. It first assigns clients to nodes based on the `assignment_function`,
+    then generates messages for each node using the `gen_ins_function` to create the
+    content. These messages are sent out via the `driver`, and the function then waits
+    for and yields the results as they arrive.
 
     Parameters
     ----------
     driver : Driver
-        The driver object used for creating and pushing messages.
-    record_sets: list[RecordSet]
-        A list of record sets to be sent to the nodes for fitting.
+        The communication driver responsible for message creation, sending, and
+        receiving.
+    message_type : str
+        The type of the message to be sent, defining its purpose or action to be taken
+        by the receiver.
+    gen_ins_function : Callable[[int, int | str], dict[str, ConfigsRecordValues]]
+        A function that generates the instruction set for a message given the current
+        round and a client identifier. It returns a dictionary of configuration record
+        values.
     all_node_ids : list[int]
-        A list of all node IDs to which the messages will be sent.
-    assignment_function : Callable[[int], list[int | str]]
-        A function that assigns record sets to nodes.
+        A list of all node identifiers to which messages will be sent.
     current_round : int
-        The current round of fitting, used for grouping messages.
+        The current round of the federated learning process.
+    assignment_function : Callable[[int], list[int] | list[str]]
+        A function that assigns client identifiers to a node based on the node
+        identifier. It returns a list of client identifiers assigned to the node.
+    msg_str : str
+        A string prefix used in message creation to identify or categorize the message.
 
     Yields
     ------
     Generator[Message, None, None]
-        A generator that yields messages from the driver.
+        A generator that yields the results of the message processing as `Message`
+        objects. Each `Message` object represents either a result or an error from the
+        processing node.
+
+    Notes
+    -----
+    The function assumes the existence of a `log` function for logging and a
+    `DEFAULT_TTL` constant that defines the time-to-live for messages. It also relies
+    on the `Driver` interface for message handling and the `create_merged_recordset`
+    function for generating the content of each message.
     """
     messages = []
     for node_id in all_node_ids:
@@ -201,7 +177,10 @@ def message_independent(
         if cids_to_train:
             message = driver.create_message(
                 content=create_merged_recordset(
-                    cids_to_train, current_round, gen_instructions
+                    sampled_clients=cids_to_train,
+                    current_round=current_round,
+                    gen_ins_function=gen_ins_function,
+                    msg_str=msg_str,
                 ),
                 message_type=message_type,
                 dst_node_id=node_id,
@@ -210,7 +189,7 @@ def message_independent(
             )
             messages.append(message)
     message_ids = list(driver.push_messages(messages))
-    log(DEBUG, f"Pushed messages{messages}")
+    log(DEBUG, "Pushed %s messages: %s", len(messages), message_ids)
     total_messages = len(message_ids)
     received_messages = 0
     while received_messages < total_messages:
@@ -239,81 +218,62 @@ def get_rr_assignment_function(
 def create_merged_recordset(
     sampled_clients: list[int] | list[str],
     current_round: int,
-    fit_ins_function: Callable[[int, int | str], dict[str, Scalar]],
+    gen_ins_function: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
+    msg_str: str,
 ) -> RecordSet:
-    """Create a merged record set for the given clients and fit_ins_function.
+    """Create a merged record set for the sampled clients in a federated learning round.
+
+    This function generates a `RecordSet` object that contains configuration records for
+    each sampled client and a main configuration record that includes the server round
+    information. It uses a generator function to create individual client configuration
+    records based on the current round and client identifiers. These configurations are
+    then merged into a single `RecordSet` object, which also includes an empty `FitIns`
+    object with no parameters and an empty configuration, intended for initialization
+    purposes.
 
     Parameters
     ----------
-    sampled_clients : list[int | str]
-        A list of client identifiers to be used in the fit_ins_function.
-    fit_ins_function : Callable[[int, int | str], dict[str, Scalar]]
-        A function that generates the fit_ins configuration for a given client.
+    sampled_clients : list[int] | list[str]
+        A list of identifiers for the clients sampled in the current federated learning
+        round. These identifiers can be either integers or strings.
+    current_round : int
+        The current federated learning round number.
+    gen_ins_function : Callable[[int, int | str], dict[str, ConfigsRecordValues]]
+        A generator function that takes the current round and a client identifier as
+        inputs and returns a dictionary representing the client's configuration record
+        values.
+    msg_str : str
+        A string used to prefix the main configuration record key, typically indicating
+        the type of message or operation being performed.
 
     Returns
     -------
     RecordSet
-        The merged record set containing the fit_ins configurations for each client.
+        A `RecordSet` object containing the merged configuration records for all sampled
+        clients and the main configuration record with the server round information.
+
+    Notes
+    -----
+    The `RecordSet` object is a custom data structure used to aggregate and manage
+    different types of records,such as configurations and inputs for federated
+    learning operations. The `ConfigsRecord` and `FitIns` are also custom data
+    structures representing configuration records and federated learning instructions,
+    respectively.
     """
-    configs = {cid: fit_ins_function(current_round, cid) for cid in sampled_clients}
+    configs = {
+        str(cid): ConfigsRecord(gen_ins_function(current_round, cid))
+        for cid in sampled_clients
+    }
     record_set = fitins_to_recordset(
         FitIns(
             parameters=Parameters(tensors=[], tensor_type="empty"),
-            config=configs,  # type: ignore[reportArgumentType,arg-type]
+            config={},
         ),
         keep_input=True,
     )
-    return record_set
-
-
-def interpret_resume_round(
-    resume_round: int | None, server_path: str, raise_error: bool = True
-) -> int | None:
-    """Interpret the resume round parameter for server checkpoint resumption.
-
-    This function interprets the `resume_round` parameter, which specifies the round
-    to resume server operations from. If `resume_round` is negative, it is treated as
-    an index into the list of sorted rounds obtained from the server's path, allowing
-    for reverse indexing. If `resume_round` is None, the function returns None,
-    indicating no specific round to resume from. An error is raised if no checkpoints
-    are found when `raise_error` is True and `resume_round` is negative but no rounds
-    are available.
-
-    Parameters
-    ----------
-    resume_round : int | None
-        The round number to resume from. If negative, treated as a reverse index. If
-        None, indicates no resumption is required.
-    server_path : str
-        The path to the server's checkpoint directory.
-    raise_error : bool, optional
-        Whether to raise an error if no checkpoints are found and `resume_round` is
-        negative. Default is True.
-
-    Returns
-    -------
-    int | None
-        The interpreted round number to resume from, or None if no resumption.
-
-    Raises
-    ------
-    NoCheckpointsFoundError
-        If `raise_error` is True, no checkpoints are found, and `resume_round` < 0.
-    """
-    log(
-        DEBUG,
-        "The parameter `resume_round=%s` will be interpret as an index "
-        "for the list of rounds for the server_path=%s",
-        resume_round,
-        server_path,
+    record_set.configs_records.update(configs)
+    # NOTE: We always need to pass the server round to the main config record
+    record_set.configs_records.update(
+        {f"{msg_str}.config": ConfigsRecord({"server_round": current_round})}
     )
-    if resume_round is None:
-        return None
-    if resume_round < 0:
-        server_round_indices = obtain_sorted_runs(server_path)
-        log(DEBUG, "Found server round indices %s", server_round_indices)
-        if not server_round_indices and raise_error:
-            raise NoCheckpointsFoundError
-        if server_round_indices:
-            resume_round = server_round_indices[resume_round]
-    return resume_round
+    return record_set
