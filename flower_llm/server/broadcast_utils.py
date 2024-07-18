@@ -1,34 +1,10 @@
 """Utility functions for broadcasting to clients on main server loop in flwr next."""
 
-import ast
-from collections.abc import Callable, Generator
-from copy import deepcopy
-import copy
-from dataclasses import asdict
-from logging import DEBUG, ERROR, INFO, WARNING
-from pathlib import Path
-import pickle
-from tempfile import TemporaryDirectory
-from typing import Any, cast
+from logging import DEBUG
 import time
 
-from flower_llm.clients.llm_client_functions import (
-    copy_old_checkpoints_to_new_run,
-    get_raw_model_parameters,
-)
-from flower_llm.pollen_server import TooManyFailuresError
-from flower_llm.utils import (
-    ClientState,
-    download_file_from_s3,
-    dump_model_parameters_to_file,
-    load_model_parameters_from_file,
-    obtain_sorted_runs,
-    upload_file_to_s3,
-)
+from flower_llm.server.s3_utils import replace_remote_with_parameters_in_recordset
 from flwr.common import (
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-    NDArrays,
     Parameters,
     log,
     Message,
@@ -36,31 +12,14 @@ from flwr.common import (
     DEFAULT_TTL,
     ConfigsRecord,
     RecordSet,
-    Scalar,
-    FitIns,
-    FitRes,
-    EvaluateRes,
-    Status,
     Code,
 )
-
 from flwr.common.recordset_compat import parameters_to_parametersrecord
-from flwr.common.recordset_compat import (
-    fitins_to_recordset,
-    recordset_to_fitres,
-    recordset_to_evaluateres,
-)
-from flwr.server import Driver, History
-from flwr.server.strategy import FedAvg
-from omegaconf import OmegaConf
+from flwr.server import Driver
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path
 
 
-from flower_llm.conf.base_schema import BaseConfig
-
-
-def broadcast_parameters_to_recordset(
+def parameters_to_broadcast_recordset(
     parameters: Parameters, keep_input: bool
 ) -> RecordSet:
     """Convert Parameters into RecordSet for broadcasting, optionally keeping the input.
@@ -85,44 +44,95 @@ def broadcast_parameters_to_recordset(
     recordset = RecordSet()
     parametersrecord = parameters_to_parametersrecord(parameters, keep_input)
     recordset.parameters_records["broadcastins.parameters"] = parametersrecord
-    recordset.configs_records["query"] = ConfigsRecord({"type": "set_parameters"})
+    recordset.configs_records["query"] = ConfigsRecord({"type": "broadcast_parameters"})
     return recordset
 
 
 def broadcast_parameters_to_nodes(
-    driver: Driver, parameters: Parameters, node_ids: list[int], current_round: int
+    driver: Driver,
+    parameters: Parameters,
+    node_ids: list[int],
+    current_round: int,
+    remote_uploader_downloader: RemoteUploaderDownloader | None,
+    use_s3_comm: bool,
 ) -> None:
-    """Broadcast parameters to specified nodes for a given round.
+    """
+    Broadcasts parameters to specified nodes using either direct messaging or S3.
 
-    This function creates and sends a broadcast message with parameters to each node
-    specified in `node_ids` for the current round. It waits for all nodes to reply
-    and ensures that all broadcast operations were successful.
+    This function takes a set of parameters and broadcasts them to a list of node IDs.
+    It supports two modes of communication: direct messaging through the `driver` and
+    indirect messaging via S3 when `use_s3_comm` is True. The function first creates a
+    recordset from the parameters, adds status and S3 configuration information to the
+    recordset, and then either uploads the parameters to S3 (if `use_s3_comm` is True)
+    or prepares them for direct messaging. It then sends the messages to all specified
+    nodes and waits for their acknowledgments, ensuring all nodes have successfully
+    received the parameters.
 
     Parameters
     ----------
     driver : Driver
-        The driver object used for creating and pushing messages.
+        The communication driver responsible for sending and receiving messages.
     parameters : Parameters
-        The parameters to be broadcasted.
+        The parameters to be broadcasted to the nodes.
     node_ids : list[int]
         A list of node IDs to which the parameters will be broadcasted.
     current_round : int
-        The current round of broadcasting, used for grouping messages.
-
-    Returns
-    -------
-    None
+        The current round of the operation, used for tracking and logging.
+    remote_uploader_downloader : RemoteUploaderDownloader | None
+        The remote uploader/downloader instance for S3 communication. Required if
+        `use_s3_comm` is True.
+    use_s3_comm : bool
+        Flag indicating whether to use S3 for communication instead of direct messaging.
 
     Raises
     ------
     ValueError
-        If any of the broadcast operations are reported as failed by the nodes.
+        If any node reports a failure in receiving or processing the broadcasted
+        parameters.
+
+    Notes
+    -----
+    The function assumes the existence of `parameters_to_broadcast_recordset`,
+    `replace_remote_with_parameters_in_recordset`, `log`, and `time.sleep`
+    functions/utilities, as well as `MessageType`, `ConfigsRecord`, `Code`, and `DEBUG`
+    constants. It also relies on the `Driver` interface for message handling.
     """
+    # Message name
+    msg_str = "broadcastins"
     # Create one message per node from one single recordset
     messages = []
-    recordset = broadcast_parameters_to_recordset(
+    recordset = parameters_to_broadcast_recordset(
         parameters=parameters, keep_input=True
     )
+    # Add Status to the recordset
+    recordset.configs_records[f"{msg_str}.status"] = ConfigsRecord(
+        {"code": int(Code.OK.value), "message": "Broadcasting parameters"}
+    )
+    # Add S3 configuration to the recordset
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
+        {
+            "endpoint_id": "server",
+            "file_name": "parameters",
+            "current_round": str(current_round),
+        }
+    )
+    # Translating the message and uploading the parameters to S3 if asked to
+    fake_message = replace_remote_with_parameters_in_recordset(
+        remote_uploader_downloader=remote_uploader_downloader,
+        # Create a fake message to upload to S3
+        outgoing_message=driver.create_message(
+            content=recordset,
+            message_type=MessageType.QUERY,
+            dst_node_id=node_ids[0],
+            group_id=str(current_round),
+            ttl=DEFAULT_TTL,
+        ),
+        use_s3_comm=use_s3_comm,
+        msg_str=msg_str,
+    )
+    # Replacing recordset with the empty one
+    recordset = fake_message.content
+    # Send the message to all nodes
     for node_id in node_ids:
         message = driver.create_message(
             content=recordset,
@@ -140,16 +150,12 @@ def broadcast_parameters_to_nodes(
     all_replies: list[Message] = []
     while True:
         replies = driver.pull_messages(message_ids=message_ids)
-        for res in replies:
-            log(DEBUG, f"Got 1 {'result' if res.has_content() else 'error'}")
         all_replies += replies
         if len(all_replies) == len(message_ids):
             break
-        log(DEBUG, "Pulling messages...")
         time.sleep(3)
     # Filter correct results
     all_broadcastres = [msg.content for msg in all_replies if msg.has_content()]
-    log(DEBUG, f"Received {len(all_broadcastres)} results")
     # Elaborate results
     for message_res in all_broadcastres:
         assert "broadcast" in message_res.configs_records, "Broadcast key not found"
@@ -158,3 +164,4 @@ def broadcast_parameters_to_nodes(
         ), "Status key not found"
         if message_res.configs_records["broadcast"]["status"] != "OK":
             raise ValueError("Broadcast failed")
+    log(DEBUG, f"Received {len(all_broadcastres)} results")
