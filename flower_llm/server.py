@@ -12,16 +12,15 @@ import warnings
 
 import numpy as np
 
-from flower_llm.server_util import (
-    broadcast_parameters_to_nodes,
-    handle_evaluate_replies,
+from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
+from flower_llm.server.evaluate_utils import handle_evaluate_replies
+from flower_llm.server.fit_utils import handle_fit_replies
+from flower_llm.server.init_utils import initialize_round, resume_from_round
+from flower_llm.server.s3_utils import import_checkpoints
+from flower_llm.server.server_util import (
     message_collaborative,
     message_independent,
-    handle_fit_replies,
     get_rr_assignment_function,
-    import_checkpoints,
-    initialize_round,
-    resume_from_round,
     upload_server_checkpoint,
     wait_for_nodes_to_connect,
 )
@@ -194,13 +193,13 @@ def main(driver: Driver, context: Context) -> None:
                 momentum_vector,
             ) = initialize_round(cfg, remote_up_down)
 
-        # TODO: Lorenzo Reconcile initialization of parameters and momentum vector
+        # TODO: @Lorenzo, reconcile initialization of parameters and momentum vector
         # with what the Strategy does,
         # NOTE: Calling the `get_initial_parameters` method to for consistently
         # freeing up the memory allocated for the initial parameters in strategy.
         # parameters = get_initial_parameters(strategy)
 
-        # TODO: Fix this
+        # TODO: @Lorenzo, fix this
         if start_round == 0:
             log(INFO, "Evaluating initial parameters")
             res = strategy.evaluate(0, parameters=parameters)
