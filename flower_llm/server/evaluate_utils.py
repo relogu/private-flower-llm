@@ -1,61 +1,23 @@
 """Utility functions for evaluate tasks on main server loop in flwr next."""
 
-import ast
 from collections.abc import Callable, Generator
-from copy import deepcopy
-import copy
-from dataclasses import asdict
-from logging import DEBUG, ERROR, INFO, WARNING
-from pathlib import Path
-import pickle
-from tempfile import TemporaryDirectory
-from typing import Any, cast
-import time
+from logging import DEBUG, ERROR
+from typing import cast
 
-from flower_llm.clients.llm_client_functions import (
-    copy_old_checkpoints_to_new_run,
-    get_raw_model_parameters,
-)
 from flower_llm.pollen_server import TooManyFailuresError
-from flower_llm.server.s3_utils import replace_clients_updates_with_remote
-from flower_llm.utils import (
-    ClientState,
-    download_file_from_s3,
-    dump_model_parameters_to_file,
-    load_model_parameters_from_file,
-    obtain_sorted_runs,
-    upload_file_to_s3,
-)
 from flwr.common import (
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-    NDArrays,
-    Parameters,
     log,
     Message,
-    MessageType,
-    DEFAULT_TTL,
-    ConfigsRecord,
-    RecordSet,
     Scalar,
-    FitIns,
-    FitRes,
     EvaluateRes,
     Status,
     Code,
 )
 
-from flwr.common.recordset_compat import parameters_to_parametersrecord
 from flwr.common.recordset_compat import (
-    fitins_to_recordset,
-    recordset_to_fitres,
     recordset_to_evaluateres,
 )
-from flwr.server import Driver, History
 from flwr.server.strategy import FedAvg
-from omegaconf import OmegaConf
-from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path
 
 
 from flower_llm.conf.base_schema import BaseConfig
@@ -74,7 +36,6 @@ def handle_evaluate_replies(
         tuple[list[tuple[None, EvaluateRes | None]], list[EvaluateRes | None]],
     ]
 ):
-    """Perform a single round of federated averaging."""
     all_eval_res = (
         recordset_to_evaluateres(msg.content) if msg.has_content() else None
         for msg in replies
