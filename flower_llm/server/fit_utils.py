@@ -2,60 +2,31 @@
 
 import ast
 from collections.abc import Callable, Generator
-from copy import deepcopy
-import copy
-from dataclasses import asdict
-from logging import DEBUG, ERROR, INFO, WARNING
-from pathlib import Path
-import pickle
-from tempfile import TemporaryDirectory
+from logging import ERROR, WARNING
 from typing import Any, cast
-import time
 
-from flower_llm.clients.llm_client_functions import (
-    copy_old_checkpoints_to_new_run,
-    get_raw_model_parameters,
-)
 from flower_llm.pollen_server import TooManyFailuresError
-from flower_llm.server.s3_utils import replace_clients_updates_with_remote
+from flower_llm.server.s3_utils import (
+    replace_parameters_in_recordset_with_remote,
+)
 from flower_llm.utils import (
     ClientState,
-    download_file_from_s3,
-    dump_model_parameters_to_file,
-    load_model_parameters_from_file,
-    obtain_sorted_runs,
-    upload_file_to_s3,
 )
 from flwr.common import (
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-    NDArrays,
     Parameters,
     log,
     Message,
-    MessageType,
-    DEFAULT_TTL,
-    ConfigsRecord,
-    RecordSet,
     Scalar,
-    FitIns,
     FitRes,
-    EvaluateRes,
     Status,
     Code,
 )
 
-from flwr.common.recordset_compat import parameters_to_parametersrecord
 from flwr.common.recordset_compat import (
-    fitins_to_recordset,
     recordset_to_fitres,
-    recordset_to_evaluateres,
 )
-from flwr.server import Driver, History
 from flwr.server.strategy import FedAvg
-from omegaconf import OmegaConf
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path
 
 
 from flower_llm.conf.base_schema import BaseConfig
@@ -77,10 +48,37 @@ def handle_fit_replies(
         tuple[list[tuple[dict[str, Scalar], Status, int]], list[FitRes | None]],
     ]
 ):
-    """Perform a single round of federated averaging."""
-    all_fitres = (
-        recordset_to_fitres(msg.content, keep_input=True) if msg.has_content() else None
+    # Translate message with fake parameters with parameters downloaded from the S3
+    processed_msgs = (
+        (
+            replace_parameters_in_recordset_with_remote(
+                remote_uploader_downloader=remote_up_down,
+                incoming_message=msg,
+                use_s3_comm=cfg.use_s3_comm,
+                msg_str="fitres",
+            )
+            if msg.has_content()
+            else msg
+        )
         for msg in replies
+    )
+
+    # Translate Messages to FitRes
+    status = Status(code=Code.FIT_NOT_IMPLEMENTED, message="Unexpected empty content")
+    error_fitres = FitRes(
+        status=status,
+        # parameters=ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
+        parameters=Parameters(tensors=[], tensor_type="empty"),
+        metrics={},
+        num_examples=1,
+    )
+    all_fitres = (
+        (
+            recordset_to_fitres(msg.content, keep_input=True)
+            if msg.has_content()
+            else error_fitres
+        )
+        for msg in processed_msgs
     )
 
     results_and_failures = (
@@ -111,20 +109,6 @@ def handle_fit_replies(
 
     results = (result for success, result in handled_results_and_failures if success)
 
-    complete_results = results
-
-    if cfg.use_s3_comm and remote_up_down is not None:
-        remote_up_down._check_workers()
-        complete_results = (
-            replace_clients_updates_with_remote(
-                remote_up_down,
-                current_round,
-                result,
-            )
-            for result in results
-            if result is not None
-        )
-
     parameters_aggregated = None
     metrics_aggregated: dict = {}
 
@@ -132,7 +116,7 @@ def handle_fit_replies(
         # Aggregate training results
         parameters_aggregated, _ = strategy.aggregate_fit(
             current_round,
-            ((None, fit_res) for fit_res in complete_results),  # type: ignore[reportArgumentType, arg-type]
+            ((None, fit_res) for fit_res in results),  # type: ignore[reportArgumentType, arg-type]
             failures,  # type: ignore[reportArgumentType, arg-type]
         )
 
@@ -235,11 +219,13 @@ def get_handle_success_and_failure_fit(
         match result:
             case (True, res):
                 fit_res = cast(FitRes, res)
-                metrics_accumulator.append((
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, fit_res)
             case (False, res):
                 cnt_failures += 1
