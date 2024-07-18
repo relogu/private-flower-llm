@@ -1,23 +1,17 @@
 """Utility functions for running S3-related tasks on main server loop in flwr next."""
 
 import ast
-from collections.abc import Callable, Generator
-from copy import deepcopy
-import copy
 from dataclasses import asdict
-from logging import DEBUG, ERROR, INFO, WARNING
+from logging import DEBUG, INFO
 from pathlib import Path
 import pickle
 from tempfile import TemporaryDirectory
-from typing import Any, cast
+from typing import Any
 import time
 
 from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
-    get_raw_model_parameters,
 )
-from flower_llm.pollen_server import TooManyFailuresError
-from flower_llm.server.server_util import interpret_resume_round
 from flower_llm.utils import (
     ClientState,
     download_file_from_s3,
@@ -32,33 +26,131 @@ from flwr.common import (
     NDArrays,
     Parameters,
     log,
-    Message,
-    MessageType,
-    DEFAULT_TTL,
     ConfigsRecord,
-    RecordSet,
-    Scalar,
-    FitIns,
-    FitRes,
-    EvaluateRes,
-    Status,
+    Message,
     Code,
 )
-
-from flwr.common.recordset_compat import parameters_to_parametersrecord
 from flwr.common.recordset_compat import (
-    fitins_to_recordset,
-    recordset_to_fitres,
-    recordset_to_evaluateres,
+    _extract_status_from_recordset,
+    parameters_to_parametersrecord,
+    parametersrecord_to_parameters,
 )
-from flwr.server import Driver, History
-from flwr.server.strategy import FedAvg
-from omegaconf import OmegaConf
+from flwr.server import History
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
 
 from flower_llm.conf.base_schema import BaseConfig
+
+
+class NoCheckpointsFoundError(Exception):
+    """Exception raised when there are no checkpoints in the path looked up."""
+
+
+def extract_s3_comm_config_from_configrecord(
+    s3_comm_config: ConfigsRecord,
+) -> tuple[str, str, str]:
+    """Extract S3 communication configuration details from a ConfigsRecord object.
+
+    This function parses a ConfigsRecord object containing S3 communication
+    configuration and extracts essential information required for S3 operations.
+    Specifically, it retrieves the `endpoint_id`, `file_name`, and `current_round`
+    from the ConfigsRecord. These values are crucial for identifying the correct S3
+    bucket and path, and for versioning or round-specific operations.
+
+    Parameters
+    ----------
+    s3_comm_config : ConfigsRecord
+        A ConfigsRecord object containing the S3 communication configuration. Expected
+        to have keys for `endpoint_id`, `file_name`, and `current_round`.
+
+    Returns
+    -------
+    tuple[str, str, str]
+        A tuple containing `endpoint_id`, `file_name`, and `current_round` as strings.
+
+    Raises
+    ------
+    ValueError
+        If any of the required keys (`endpoint_id`, `file_name`, or `current_round`) are
+        missing from the ConfigsRecord.
+
+    Notes
+    -----
+    The function ensures that all returned values are strings, even if they are provided
+    as different types in the ConfigsRecord. This standardization facilitates their use
+    in S3 operations without further type checking or conversion.
+    """
+    # Extract endpoint id from the content of the message
+    endpoint_id: Any
+    if "endpoint_id" in s3_comm_config:
+        endpoint_id = str(s3_comm_config["endpoint_id"])
+    else:
+        raise ValueError("endpoint_id is not present in the message")
+    file_name: Any
+    if "file_name" in s3_comm_config:
+        file_name = str(s3_comm_config["file_name"])
+    else:
+        raise ValueError("file_name is not present in the message")
+    current_round: Any
+    if "current_round" in s3_comm_config:
+        current_round = str(s3_comm_config["current_round"])
+    else:
+        raise ValueError("current_round is not present in the message")
+    return endpoint_id, file_name, current_round
+
+
+def interpret_resume_round(
+    resume_round: int | None, server_path: str, raise_error: bool = True
+) -> int | None:
+    """Interpret the resume round parameter for server checkpoint resumption.
+
+    This function interprets the `resume_round` parameter, which specifies the round
+    to resume server operations from. If `resume_round` is negative, it is treated as
+    an index into the list of sorted rounds obtained from the server's path, allowing
+    for reverse indexing. If `resume_round` is None, the function returns None,
+    indicating no specific round to resume from. An error is raised if no checkpoints
+    are found when `raise_error` is True and `resume_round` is negative but no rounds
+    are available.
+
+    Parameters
+    ----------
+    resume_round : int | None
+        The round number to resume from. If negative, treated as a reverse index. If
+        None, indicates no resumption is required.
+    server_path : str
+        The path to the server's checkpoint directory.
+    raise_error : bool, optional
+        Whether to raise an error if no checkpoints are found and `resume_round` is
+        negative. Default is True.
+
+    Returns
+    -------
+    int | None
+        The interpreted round number to resume from, or None if no resumption.
+
+    Raises
+    ------
+    NoCheckpointsFoundError
+        If `raise_error` is True, no checkpoints are found, and `resume_round` < 0.
+    """
+    log(
+        DEBUG,
+        "The parameter `resume_round=%s` will be interpret as an index "
+        "for the list of rounds for the server_path=%s",
+        resume_round,
+        server_path,
+    )
+    if resume_round is None:
+        return None
+    if resume_round < 0:
+        server_round_indices = obtain_sorted_runs(server_path)
+        log(DEBUG, "Found server round indices %s", server_round_indices)
+        if not server_round_indices and raise_error:
+            raise NoCheckpointsFoundError
+        if server_round_indices:
+            resume_round = server_round_indices[resume_round]
+    return resume_round
 
 
 def import_checkpoints(
@@ -481,71 +573,224 @@ def download_server_checkpoint(
     )
 
 
-def replace_clients_updates_with_remote(
-    remote_uploader_downloader: RemoteUploaderDownloader,
-    current_round: int,
-    fit_res: FitRes,
-) -> FitRes:
-    """Replace the parameters in the FitRes with the ones from S3 Object Store."""
-    pollen_temp_dir: TemporaryDirectory = TemporaryDirectory()
+def replace_remote_with_parameters_in_recordset(
+    remote_uploader_downloader: RemoteUploaderDownloader | None,
+    outgoing_message: Message,
+    use_s3_comm: bool,
+    msg_str: str,
+) -> Message:
+    """Replace parameters in the recordset of a message with ref to S3 location.
 
-    endpoint_id: Any
-    if "endpoint_id" in fit_res.metrics:
-        endpoint_id = fit_res.metrics["endpoint_id"]
-        del fit_res.metrics["endpoint_id"]
-        if not isinstance(endpoint_id, str):
-            raise TypeError("endpoint_id is not a string")
+    This function modifies the `outgoing_message` by uploading its parameters to an S3
+    bucket and replacing the parameters in the message with references to their
+    locations in S3. This is only done if S3 communication is used (`use_s3_comm` is
+    True) and a `remote_uploader_downloader` is provided. It handles the creation of a
+    temporary directory for storing parameters locally before uploading, constructs the
+    S3 file name based on message content, uploads the file, and then updates the
+    message to reference the S3 location. If S3 communication is not used, the original
+    message is returned without modification.
+
+    Parameters
+    ----------
+    remote_uploader_downloader : RemoteUploaderDownloader | None
+        The uploader/downloader instance for interacting with S3. Required if
+        `use_s3_comm` is True.
+    outgoing_message : Message
+        The message whose parameters are to be uploaded to S3. The message is modified
+        in-place.
+    use_s3_comm : bool
+        Flag indicating whether to use S3 for communication. If False, the function
+        returns the message unchanged.
+    msg_str : str, optional
+        A string identifier used to prefix keys in the message's content, by default
+        "fitres".
+
+    Returns
+    -------
+    Message
+        The modified message with parameters replaced by S3 references, or the original
+        message if S3 communication is not used.
+
+    Raises
+    ------
+    ValueError
+        If required keys (`endpoint_id`, `file_name`, or `current_round`) are missing
+        from the message's content.
+    TypeError
+        If the `endpoint_id` in the message's content is not a string.
+
+    Notes
+    -----
+    The function assumes the existence of `dump_model_parameters_to_file`,
+    `parameters_to_ndarrays`, `parametersrecord_to_parameters`,
+    `parameters_to_parametersrecord`, `upload_file_to_s3`, `validate_given_remote_path`,
+    and `log` functions, as well as the `DEBUG` constant for logging purposes. It also
+    relies on the structure of the `Message` object and the `RemoteUploaderDownloader`
+    interface for S3 interactions.
+    """
+    # Extract the content of the incoming message
+    recordset = outgoing_message.content
+    # Check if it's necessary to download from S3
+    if use_s3_comm and remote_uploader_downloader is not None:
+        # Create a temporary directory for storing the downloaded parameters
+        temp_dir: TemporaryDirectory = TemporaryDirectory()
+        s3_comm_config = recordset.configs_records[f"{msg_str}.s3_comm_config"]
+        parameters = recordset.parameters_records[f"{msg_str}.parameters"]
+        # Extract endpoint id from the content of the message
+        endpoint_id, file_name, current_round = (
+            extract_s3_comm_config_from_configrecord(s3_comm_config)
+        )
+        # Set the file names
+        remote_file_name = f"{current_round}/{endpoint_id}/{file_name}.npz"
+        local_file_name = Path(temp_dir.name) / f"{endpoint_id}_{file_name}.npz"
+        dump_model_parameters_to_file(
+            local_file_name,
+            parameters_to_ndarrays(
+                parametersrecord_to_parameters(record=parameters, keep_input=False)
+            ),
+        )
+        # Upload the parameters to S3 Object Store
+        upload_file_to_s3(remote_uploader_downloader, remote_file_name, local_file_name)
+        # Empty the recordset parameters
+        recordset.parameters_records[f"{msg_str}.parameters"] = (
+            parameters_to_parametersrecord(
+                Parameters(tensors=[], tensor_type="empty"),
+                False,
+            )
+        )
+        # Update the content of the message
+        outgoing_message.content = recordset
+        # NOTE: See if this is still necessary!
+        # Check whether the server has uploaded the parameters
+        file_found = False
+        remote_file_name_no_ext = (
+            f"s3://{remote_uploader_downloader.remote_bucket_name}/"
+            f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
+            f"{current_round}/{endpoint_id}/{file_name}"
+        )
+        while not file_found:
+            file_found = validate_given_remote_path(
+                remote_file_name_no_ext + ".bin"
+            ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+            time.sleep(0.5)
+        log(
+            DEBUG,
+            "Node %s parameters have been pushed to the S3",
+            endpoint_id,
+        )
+        return outgoing_message
     else:
-        raise ValueError("endpoint_id is not present in fit_res")
-    # Check whether the server has uploaded the parameters
-    file_found = False
-    remote_file_name_no_ext = (
-        f"s3://{remote_uploader_downloader.remote_bucket_name}/"  # type: ignore[union-attr]
-        f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
-        f"{current_round}/{endpoint_id}/parameters"
-    )
+        # No translation performed as we assume the task failed
+        return outgoing_message
 
-    log(
-        DEBUG,
-        "Wait for NodeManager %s parameters to be in S3 Object Store at %s",
-        endpoint_id,
-        remote_file_name_no_ext,
-    )
 
-    while not file_found:
-        file_found = validate_given_remote_path(
-            remote_file_name_no_ext + ".bin"
-        ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
-        time.sleep(0.5)
+def replace_parameters_in_recordset_with_remote(
+    remote_uploader_downloader: RemoteUploaderDownloader | None,
+    incoming_message: Message,
+    use_s3_comm: bool,
+    msg_str: str,
+) -> Message:
+    """Replace parameters in the recordset of an incoming message with those from S3.
 
-    # Set the file names depending on the extension found
-    remote_file_name = (
-        f"{current_round}/{endpoint_id}/parameters.bin"
-        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-        else f"{current_round}/{endpoint_id}/parameters.npz"
-    )
-    local_file_name = (
-        Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.bin"
-        if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-        else Path(pollen_temp_dir.name) / f"{endpoint_id}_current_server_parameters.npz"
-    )
-    log(
-        DEBUG,
-        "Pull Node %s parameters from S3 Object Store: %s -> %s",
-        endpoint_id,
-        remote_file_name,
-        local_file_name,
-    )
-    download_file_from_s3(remote_uploader_downloader, remote_file_name, local_file_name)
-    log(DEBUG, "Read server parameters from disk")
-    fit_res.parameters = ndarrays_to_parameters(
-        load_model_parameters_from_file(local_file_name)
-    )
+    This function checks the status of the task associated with the incoming message.
+    If the task was successful and S3 communication is enabled, it downloads the
+    parameters from S3 and updates the incoming message's recordset with these
+    parameters. The function supports downloading parameters in either binary or NumPy
+    compressed formats. It ensures that the parameters are only downloaded if the task
+    was successful and S3 communication is being used. If the task failed or S3
+    communication is not enabled, the original message is returned without modification.
 
-    log(
-        DEBUG,
-        "Node %s parameters have been read from disk and assigned to fit_res",
-        endpoint_id,
-    )
+    Parameters
+    ----------
+    remote_uploader_downloader : RemoteUploaderDownloader | None
+        The uploader/downloader instance for interacting with S3. Required if
+        `use_s3_comm` is True.
+    incoming_message : Message
+        The message whose parameters are to be replaced with those downloaded from S3.
+    use_s3_comm : bool
+        Flag indicating whether to use S3 for communication. If False, the function
+        returns the message unchanged.
+    msg_str : str
+        A string identifier used to prefix keys in the message's content and to locate
+        the specific parameters
+        within the recordset.
 
-    return fit_res
+    Returns
+    -------
+    Message
+        The modified message with parameters replaced by those downloaded from S3, or
+        the original message if S3 communication is not used or the task associated with
+        the message failed.
+
+    Raises
+    ------
+    ValueError
+        If the required S3 communication configuration (`endpoint_id`, `file_name`, or
+        `current_round`) is missing from the message's content.
+
+    Notes
+    -----
+    The function assumes the existence of `extract_s3_comm_config_from_configrecord`,
+    `validate_given_remote_path`, `download_file_from_s3`, `ndarrays_to_parameters`,
+    `load_model_parameters_from_file`, `parameters_to_parametersrecord`, and `log`
+    functions, as well as the `DEBUG` constant for logging purposes. It also relies on
+    the structure of the `Message` object and the `RemoteUploaderDownloader` interface
+    for S3 interactions.
+    """
+    # Extract the content of the incoming message
+    recordset = incoming_message.content
+    status = _extract_status_from_recordset(msg_str, recordset)
+    if status.code != Code.OK:
+        # No translation performed as we assume the task failed
+        return incoming_message
+    # Check if it's necessary to download from S3
+    if use_s3_comm and remote_uploader_downloader is not None:
+        # Create a temporary directory for storing the downloaded parameters
+        temp_dir: TemporaryDirectory = TemporaryDirectory()
+        s3_comm_config = recordset.configs_records[f"{msg_str}.s3_comm_config"]
+        # Extract endpoint id from the content of the message
+        endpoint_id, file_name, current_round = (
+            extract_s3_comm_config_from_configrecord(s3_comm_config)
+        )
+        # Check whether the server has uploaded the parameters
+        file_found = False
+        remote_file_name_no_ext = (
+            f"s3://{remote_uploader_downloader.remote_bucket_name}/"
+            f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
+            f"{current_round}/{endpoint_id}/{file_name}"
+        )
+        while not file_found:
+            file_found = validate_given_remote_path(
+                remote_file_name_no_ext + ".bin"
+            ) or validate_given_remote_path(remote_file_name_no_ext + ".npz")
+            time.sleep(0.5)
+        # Set the file names depending on the extension found
+        remote_file_name = (
+            f"{current_round}/{endpoint_id}/{file_name}.bin"
+            if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+            else f"{current_round}/{endpoint_id}/{file_name}.npz"
+        )
+        local_file_name = (
+            Path(temp_dir.name) / f"tmp-{endpoint_id}.bin"
+            if validate_given_remote_path(remote_file_name_no_ext + ".bin")
+            else Path(temp_dir.name) / f"tmp-{endpoint_id}.npz"
+        )
+        download_file_from_s3(
+            remote_uploader_downloader, remote_file_name, local_file_name
+        )
+        parameters = ndarrays_to_parameters(
+            load_model_parameters_from_file(local_file_name)
+        )
+        recordset.parameters_records[f"{msg_str}.parameters"] = (
+            parameters_to_parametersrecord(parameters, False)
+        )
+        incoming_message.content = recordset
+        log(
+            DEBUG,
+            "Node %s parameters have been read from disk and assigned to the Message",
+            endpoint_id,
+        )
+        return incoming_message
+    else:
+        # No translation performed as we assume the task failed
+        return incoming_message
