@@ -250,9 +250,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         with get_env_patcher(
             collaborative=is_collaborative,
             run_uuid=(
-                str(client_config["run_uuid"])
-                if is_collaborative
-                else self.worker_uuid
+                str(client_config["run_uuid"]) if is_collaborative else self.worker_uuid
             ),
             rank=str(self.worker_rank),
             master_port=str(client_config["MASTER_PORT"]),

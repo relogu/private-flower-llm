@@ -56,6 +56,7 @@ from flwr.common import (
 )
 from flwr.common.logger import log, update_console_handler
 from flwr.server.strategy.aggregate import weighted_loss_avg
+from flower_llm.strategy.aggregation import weighted_average
 from flwr.client import ClientApp
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
 from omegaconf import DictConfig, OmegaConf
@@ -103,7 +104,6 @@ from flower_llm.utils import (
     sum_of_squares,
     upload_file_to_s3,
 )
-from flower_llm.strategy.aggregation import weighted_average
 
 transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)

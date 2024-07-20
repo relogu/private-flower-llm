@@ -31,7 +31,7 @@ from flwr.common import (
     Code,
 )
 from flwr.common.recordset_compat import (
-    _extract_status_from_recordset,
+    _extract_status_from_recordset,  # noqa: PLC2701
     parameters_to_parametersrecord,
     parametersrecord_to_parameters,
 )

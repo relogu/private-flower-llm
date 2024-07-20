@@ -16,7 +16,7 @@ import cloudpickle
 from multiprocessing.queues import Queue as QueueType
 from flwr.client import ClientApp
 from flwr.client.typing import ClientFnExt, Mod
-from flwr.common.typing import NDArrays, ConfigsRecordValues, Config, Scalar
+from flwr.common.typing import NDArrays, ConfigsRecordValues, Scalar
 from flwr.common.recordset_compat import ConfigsRecord
 from flwr.common.record.typeddict import TypedDict
 from flwr.common.logger import log
@@ -44,7 +44,6 @@ from flower_llm.node_manager.utils import (
     get_num_samples_shm,
     partially_aggregate_training_results,
     remove_shm_from_resource_tracker,
-    set_config_shm,
     set_dict_configsrecord_shm,
     set_num_samples_shm,
 )

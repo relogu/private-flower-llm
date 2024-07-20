@@ -36,6 +36,63 @@ def handle_evaluate_replies(
         tuple[list[tuple[None, EvaluateRes | None]], list[EvaluateRes | None]],
     ]
 ):
+    """Process evaluation replies from nodes, aggregates the results, and logs failures.
+
+    This function iterates over a generator of replies from clients, extracts evaluation
+    results, and handles successes and failures. It aggregates successful evaluation
+    results using a specified federated averaging strategy and logs any failures
+    encountered during the process. The function returns the aggregated loss, aggregated
+    metrics, and a tuple containing lists of completed results and failures.
+
+    Parameters
+    ----------
+    cfg : BaseConfig
+        Configuration settings for the federated learning process, including failure
+        tolerance.
+    replies : Generator[Message, None, None]
+        A generator of messages from clients, each potentially containing an evaluation
+        result.
+    strategy : FedAvg
+        The federated averaging strategy to use for aggregating evaluation results.
+    current_round : int
+        The current round of the federated learning process.
+
+    Returns
+    -------
+    (
+        None |
+        tuple[
+            float | None,
+            dict[str, Scalar],
+            tuple[list[tuple[None, EvaluateRes | None]], list[EvaluateRes | None]]
+        ]
+    )
+        A tuple containing the aggregated loss (or None if not applicable), a dictionary
+        of aggregated metrics, and a tuple of two lists: one for completed results (with
+        placeholders for successes) and one for failures. Returns None if the operation
+        cannot be completed.
+
+    Raises
+    ------
+    - This function does not explicitly raise exceptions but depends on the strategy's
+        `aggregate_evaluate` method and the handling of messages for potential
+        exceptions.
+
+    Notes
+    -----
+    - The function first transforms the replies into evaluation results, marking each as
+        a success or failure.
+    - It then separates successes from failures, aggregates the successful results using
+        the provided strategy, and logs any failures.
+    - The aggregation of results is based on the current round's data and the strategy's
+        aggregation method, which typically involves computing the mean loss and metrics
+        across all successful evaluations.
+    - Failures are logged with an error level, including the round number and details of
+        the failures.
+    - The function is designed to work within a federated learning framework, assuming
+        the existence of `BaseConfig`, `Message`, `FedAvg`, `EvaluateRes`, `Scalar`, and
+        logging utilities.
+    """
     all_eval_res = (
         recordset_to_evaluateres(msg.content) if msg.has_content() else None
         for msg in replies
@@ -143,11 +200,13 @@ def get_handle_success_and_failure_evaluate(
         match result:
             case (True, res):
                 fit_res = cast(EvaluateRes, res)
-                metrics_accumulator.append((
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, fit_res)
             case (False, res):
                 cnt_failures += 1

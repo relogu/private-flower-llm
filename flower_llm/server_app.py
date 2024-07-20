@@ -236,7 +236,8 @@ def main(driver: Driver, context: Context) -> None:
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
-                    "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
+                    "server/broadcast_pre_time": (time.time_ns() - broadcast_time)
+                    * 1e-9
                 },
             )
 
@@ -323,7 +324,8 @@ def main(driver: Driver, context: Context) -> None:
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
-                    "server/broadcast_post_time": (time.time_ns() - broadcast_time) * 1e-9
+                    "server/broadcast_post_time": (time.time_ns() - broadcast_time)
+                    * 1e-9
                 },
             )
 
