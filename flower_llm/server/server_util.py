@@ -11,10 +11,9 @@ from flwr.common import (
     RecordSet,
     FitIns,
     ConfigsRecord,
+    EvaluateIns,
 )
-from flwr.common.recordset_compat import (
-    fitins_to_recordset,
-)
+from flwr.common.recordset_compat import fitins_to_recordset, evaluateins_to_recordset
 from flwr.common.typing import ConfigsRecordValues
 from flwr.server import Driver
 
@@ -64,18 +63,10 @@ def message_collaborative(
     # Constructing separate record sets for each client
     record_sets: list[RecordSet] = []
     for cid in sampled_clients:
-        record_set = fitins_to_recordset(
-            FitIns(
-                parameters=Parameters(tensors=[], tensor_type="empty"),
-                config={},
-            ),
-            keep_input=True,
-        )
+        record_set = fit_or_evaluate_ins_recordset(msg_str, current_round, [cid])  # type: ignore[reportArgumentType]
+        # Create a config record for the client
         record_set.configs_records.update(
             {str(cid): ConfigsRecord(gen_ins_function(current_round, cid))}
-        )
-        record_set.configs_records.update(
-            {f"{msg_str}.config": ConfigsRecord({"server_round": current_round})}
         )
         record_sets.append(record_set)
 
@@ -260,20 +251,99 @@ def create_merged_recordset(
     structures representing configuration records and federated learning instructions,
     respectively.
     """
+    # Create shared recordset for all clients in this assignment
+    record_set = fit_or_evaluate_ins_recordset(msg_str, current_round, sampled_clients)
+    # Create a config record for each client
     configs = {
         str(cid): ConfigsRecord(gen_ins_function(current_round, cid))
         for cid in sampled_clients
     }
-    record_set = fitins_to_recordset(
-        FitIns(
-            parameters=Parameters(tensors=[], tensor_type="empty"),
-            config={},
-        ),
-        keep_input=True,
-    )
+    # Add the client config records to the main record set
     record_set.configs_records.update(configs)
-    # NOTE: We always need to pass the server round to the main config record
-    record_set.configs_records.update(
-        {f"{msg_str}.config": ConfigsRecord({"server_round": current_round})}
-    )
     return record_set
+
+
+def fit_or_evaluate_ins_recordset(
+    msg_str: str, current_round: int, sampled_clients: list[int] | list[str]
+) -> RecordSet:
+    """Create a RecordSet for fit or evaluation instructions based on the message type.
+
+    This function generates a RecordSet for either fitting or evaluation instructions,
+    depending on thecmessage string provided (`msg_str`). It supports creating
+    instructions for a list of sampled clients, incorporating the current server round
+    and client IDs into the configuration of the instructions. The function is designed
+    to work with federated learning scenarios where instructions need to be dynamically
+    generated and dispatched to clients based on the current round of training or
+    evaluation.
+
+    Parameters
+    ----------
+    msg_str : str
+        A string indicating the type of instructions to generate. Expected values are
+        "fitins" for fitting instructions or "evaluateins" for evaluation instructions.
+    current_round : int
+        The current round of the federated learning process. This is used to track the
+        progress of the learning or evaluation over time.
+    sampled_clients : list[int] | list[str]
+        A list of client identifiers (either integers or strings) that have been sampled
+        for participation in the current round. These identifiers are included in the
+        instructions to specify the target clients.
+
+    Returns
+    -------
+    RecordSet
+        A RecordSet object containing the generated instructions for fitting or
+        evaluation. The RecordSet includes parameters and configuration tailored to the
+        specified clients and the current round.
+
+    Raises
+    ------
+    AssertionError
+        If the function fails to create a RecordSet, indicating an issue with the input
+        parameters or the generation process.
+
+    Notes
+    -----
+    - The function uses `fitins_to_recordset` and `evaluateins_to_recordset` to convert
+        fitting or evaluation instructions into a RecordSet format suitable for
+        transmission to clients.
+    - The `parameters` field of the instructions is initialized with an empty tensor,
+        indicating that no initial parameters are provided to the clients.
+    - The configuration includes the `server_round` to inform clients of the current
+        round and `client_ids` to specify the target clients for these instructions.
+    - This function is part of a federated learning server utility and assumes the
+        existence of `FitIns`, `EvaluateIns`, `Parameters`, `RecordSet`,
+        `fitins_to_recordset`, and `evaluateins_to_recordset` classes or functions.
+    """
+    recordset: RecordSet | None = None
+    match msg_str:
+        case "fitins":
+            # Create shared recordset for all clients in this assignment
+            recordset = fitins_to_recordset(
+                FitIns(
+                    parameters=Parameters(tensors=[], tensor_type="empty"),
+                    # NOTE: We always need to pass the server round to the config record
+                    # TODO: With Pollen, client ids are assigned to specific GPUs
+                    config={
+                        "server_round": current_round,
+                        "client_ids": str(sampled_clients),
+                    },
+                ),
+                keep_input=True,
+            )
+        case "evaluateins":
+            # Create shared recordset for all clients in this assignment
+            recordset = evaluateins_to_recordset(
+                EvaluateIns(
+                    parameters=Parameters(tensors=[], tensor_type="empty"),
+                    # NOTE: We always need to pass the server round to the config record
+                    # TODO: With Pollen, client ids are assigned to specific GPUs
+                    config={
+                        "server_round": current_round,
+                        "client_ids": str(sampled_clients),
+                    },
+                ),
+                keep_input=True,
+            )
+    assert recordset is not None, "Recordset must be created"
+    return recordset
