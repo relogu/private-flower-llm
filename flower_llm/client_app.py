@@ -11,9 +11,10 @@ from flwr.common import (
     ndarrays_to_parameters,
     FitRes,
     Code,
-    Status
+    Status,
+    EvaluateRes
 )
-from flwr.common.recordset_compat import recordset_to_fitins, fitres_to_recordset
+from flwr.common.recordset_compat import recordset_to_fitins, fitres_to_recordset, evaluateres_to_recordset, recordset_to_evaluateins
 from flwr.common.logger import log, update_console_handler
 from flwr.common.recordset_compat import parametersrecord_to_parameters
 
@@ -23,7 +24,10 @@ from flower_llm.node_manager.utils import (
     get_parameters_shm,
     set_parameters_shm,
 )
-from flower_llm.server.s3_utils import replace_parameters_in_recordset_with_remote, replace_remote_with_parameters_in_recordset
+from flower_llm.server.s3_utils import (
+    replace_parameters_in_recordset_with_remote,
+    replace_remote_with_parameters_in_recordset,
+)
 
 
 def hello_world_mod(msg, ctx, call_next) -> Message:
@@ -74,6 +78,17 @@ def set_parameters(msg: Message, ctx: Context) -> Message:
         use_s3_comm=app.cfg.use_s3_comm,
         msg_str="broadcastins",
     )
+    # Close the shared memory, if exists
+    try:
+        parameters, parameters_sh = get_parameters_shm(
+            parameters_metadata=app.parameters_metadata,
+            create=False,
+            name=app.node_manager_uuid + POLLEN_PARAMETERS_SHM,
+        )
+        parameters_sh.close()
+        parameters_sh.unlink()
+    except FileNotFoundError:
+        pass
     # Create the parameters shared memory
     round_parameters, round_parameters_sh = get_parameters_shm(
         parameters_metadata=app.parameters_metadata,
@@ -108,21 +123,28 @@ def free_resources(msg: Message, ctx: Context) -> Message:
 @app.train()
 def train(msg: Message, ctx: Context) -> Message:
     msg_str = "fitres"
-    log(DEBUG, "`train` is not implemented, echoing original message")
-    log(DEBUG, f"msg: {msg}")
-    log(DEBUG, f"msg.content: {msg.content}")
-    log(DEBUG, f"msg.content.configs_records: {msg.content.configs_records}")
     fitins = recordset_to_fitins(msg.content, False)
-    parameters = parameters_to_ndarrays(fitins.parameters)
     config = fitins.config
     assert "server_round" in config, "Server round must be in the config"
+    # Restart all the worker every `app.refresh_period` rounds
+    if config["server_round"] % app.refresh_period == 0:
+        # Close and remove the workers
+        app._close_workers()
+        # Re-create and start the workers
+        app._create_and_start_workers()
+    # Launch the actual training
+    trained_parameters, num_examples, metrics = app.fit(
+        configs=msg.content.configs_records
+    )
+    # Compile FitRes
     status = Status(code=Code.OK, message="chiappe sode")
     fitres = FitRes(
         status=status,
-        parameters=ndarrays_to_parameters(parameters),
-        metrics={},
-        num_examples=1,
+        parameters=ndarrays_to_parameters(trained_parameters),
+        metrics=metrics,
+        num_examples=num_examples,
     )
+    # Translate FitRes to RecordSet
     recordset = fitres_to_recordset(fitres, keep_input=False)
     recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
         {
@@ -132,8 +154,6 @@ def train(msg: Message, ctx: Context) -> Message:
         }
     )
     msg_str = "fitres"
-    log(DEBUG, f"reply recordset: {recordset}")
-    log(DEBUG, f"reply recordset.configs_records: {recordset.configs_records}")
     return replace_remote_with_parameters_in_recordset(
         remote_uploader_downloader=app.remote_up_down,
         outgoing_message=msg.create_reply(recordset),
@@ -143,9 +163,39 @@ def train(msg: Message, ctx: Context) -> Message:
 
 
 @app.evaluate()
-def eval(msg: Message, ctx: Context) -> Message:
-    log(DEBUG, "`evaluate` is not implemented, echoing original message")
-    return msg.create_reply(msg.content)
+def evaluate(msg: Message, ctx: Context) -> Message:
+    msg_str = "evaluateres"
+    evaluateins = recordset_to_evaluateins(msg.content, False)
+    config = evaluateins.config
+    assert "server_round" in config, "Server round must be in the config"
+    # Restart all the worker every `app.refresh_period` rounds
+    if config["server_round"] % app.refresh_period == 0:
+        # Close and remove the workers
+        app._close_workers()
+        # Re-create and start the workers
+        app._create_and_start_workers()
+    # Launch the actual training
+    loss, num_examples, metrics = app.eval(
+        configs=msg.content.configs_records
+    )
+    # Compile EvaluateRes
+    status = Status(code=Code.OK, message="chiappe sode")
+    evaluateres = EvaluateRes(
+        status=status,
+        loss=loss,
+        metrics=metrics,
+        num_examples=num_examples,
+    )
+    # Translate EvaluateRes to RecordSet
+    recordset = evaluateres_to_recordset(evaluateres)
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
+        {
+            "endpoint_id": app.node_manager_uuid,
+            "file_name": "parameters",
+            "current_round": str(config["server_round"]),
+        }
+    )
+    return msg.create_reply(recordset)
 
 
 @app.query()

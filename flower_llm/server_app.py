@@ -9,7 +9,6 @@ import time
 import warnings
 
 
-
 from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
 from flower_llm.server.evaluate_utils import handle_evaluate_replies
 from flower_llm.server.fit_utils import handle_fit_replies
@@ -93,7 +92,9 @@ def main(driver: Driver, context: Context) -> None:
     # TODO: Exclude Pollen assignments implementation for now
     # placement_policy = cfg.pollen.placement_policy
 
-    def pollen_fit_config(server_round: int, client_id: str | int) -> dict[str, ConfigsRecordValues]:
+    def pollen_fit_config(
+        server_round: int, client_id: str | int
+    ) -> dict[str, ConfigsRecordValues]:
         return {
             "cid": client_id,
             "server_round": server_round,
@@ -235,7 +236,7 @@ def main(driver: Driver, context: Context) -> None:
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
-                    "server/broadcast_time": (time.time_ns() - broadcast_time) * 1e-9
+                    "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
                 },
             )
 
@@ -248,8 +249,10 @@ def main(driver: Driver, context: Context) -> None:
             # NOTE: extend to add other types
             rr_assignment = get_rr_assignment_function(sampled_clients, all_node_ids)
 
+            # TODO: Encapsulate this into a `fit_round` function
             fit_round_time = time.time_ns()
             fit_replies = (
+                # Send on client-message at a time
                 message_collaborative(
                     driver=driver,
                     message_type=MessageType.TRAIN,
@@ -258,8 +261,11 @@ def main(driver: Driver, context: Context) -> None:
                     all_node_ids=all_node_ids,
                     current_round=current_round,
                     msg_str="fitins",
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
                 )
                 if cfg.pollen.fit_collaborative
+                # Send one-shot assignment of multiple clients
                 else message_independent(
                     driver=driver,
                     message_type=MessageType.TRAIN,
@@ -268,6 +274,8 @@ def main(driver: Driver, context: Context) -> None:
                     current_round=current_round,
                     assignment_function=rr_assignment,
                     msg_str="fitins",
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
                 )
             )
 
@@ -302,8 +310,24 @@ def main(driver: Driver, context: Context) -> None:
                 },
             )
 
-            # TODO: Distributed evaluation
+            # Broadcast model parameters to all NodeManagers
+            broadcast_time = time.time_ns()
+            broadcast_parameters_to_nodes(
+                driver=driver,
+                parameters=parameters,
+                node_ids=all_node_ids,
+                current_round=current_round,
+                remote_uploader_downloader=remote_up_down,
+                use_s3_comm=cfg.use_s3_comm,
+            )
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/broadcast_post_time": (time.time_ns() - broadcast_time) * 1e-9
+                },
+            )
 
+            # Evaluate the model on the server
             evaluate_time = time.time_ns()
             res_cen = strategy.evaluate(current_round, parameters=parameters)
             if res_cen is not None:
@@ -341,10 +365,12 @@ def main(driver: Driver, context: Context) -> None:
                 },
             )
 
+            # TODO: Encapsulate this into a `evaluate_round` function
             # Evaluate model on a sample of available clients
             evaluate_round_time = time.time_ns()
 
             eval_replies = (
+                # Send on client-message at a time
                 message_collaborative(
                     driver=driver,
                     message_type=MessageType.EVALUATE,
@@ -352,9 +378,12 @@ def main(driver: Driver, context: Context) -> None:
                     gen_ins_function=pollen_evaluate_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
-                    msg_str="evalins",
+                    msg_str="evaluateins",
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
                 )
                 if cfg.pollen.eval_collaborative
+                # Send one-shot assignment of multiple clients
                 else message_independent(
                     driver=driver,
                     message_type=MessageType.EVALUATE,
@@ -362,7 +391,9 @@ def main(driver: Driver, context: Context) -> None:
                     all_node_ids=all_node_ids,
                     current_round=current_round,
                     assignment_function=rr_assignment,
-                    msg_str="evalins",
+                    msg_str="evaluateins",
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
                 )
             )
 
@@ -392,7 +423,7 @@ def main(driver: Driver, context: Context) -> None:
                 },
             )
 
-            # Save the checkpoint to S3 Object Store (w/ model parameters)
+            # Save the checkpoint to S3 Object Store
             if cfg.pollen.checkpoint or cfg.use_s3_comm:
                 assert (
                     remote_up_down is not None

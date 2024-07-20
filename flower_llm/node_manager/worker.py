@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from logging import DEBUG, ERROR
 from multiprocessing.queues import Queue as QueueType
 from multiprocessing.shared_memory import SharedMemory
-from typing import Any
+from typing import Any, cast
 
 import multiprocess as mp
 import numpy as np
@@ -22,6 +22,8 @@ from composer.cli.launcher import _patch_env  # noqa: PLC2701
 from composer.utils.misc import get_free_tcp_port
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log, update_console_handler
+from flwr.common.recordset_compat import ConfigsRecord
+from flwr.common.record.typeddict import TypedDict
 
 from flower_llm.clients.llm_client_functions import llm_eval, llm_fit
 from flower_llm.conf.base_schema import BaseConfig
@@ -35,6 +37,7 @@ from flower_llm.node_manager.utils import (
     WorkerResult,
     close_all_shms,
     get_config_shm,
+    get_dict_configsrecord_shm,
     get_eval_loss_shm,
     get_num_samples_shm,
     get_parameters_shm,
@@ -89,10 +92,9 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         self.worker_parameters_sh: SharedMemory | None = None
 
     def _fit_action(
-        # self, client: VirtualLLMClient, fl_instructions_config: Config
         self,
         cid: int,
-        fl_instructions_config: Config,
+        config: ConfigsRecord,
     ) -> None:
         """Fit action."""
         # Shared memory for round parameters
@@ -104,7 +106,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         # fit_trained_weights, fit_num_samples, train_metrics = client.fit(
         fit_trained_weights, fit_num_samples, train_metrics = llm_fit(
             round_parameters,
-            fl_instructions_config,
+            config,
             copy.deepcopy(self._llm_config),
             cid,
         )
@@ -169,10 +171,9 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         # )
 
     def _evaluate_action(
-        # self, client: VirtualLLMClient, fl_instructions_config: Config
         self,
         cid: int,
-        fl_instructions_config: Config,
+        config: ConfigsRecord,
     ) -> None:
         """Evaluate action."""
         # Shared memory for round parameters
@@ -183,7 +184,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         # Call evaluate on shared parameters
         # eval_loss, eval_num_samples, eval_metrics = client.evaluate(
         eval_loss, eval_num_samples, eval_metrics = llm_eval(
-            round_parameters, fl_instructions_config, copy.deepcopy(self._llm_config)
+            round_parameters, config, copy.deepcopy(self._llm_config)
         )
         # log(
         #     DEBUG,
@@ -237,26 +238,24 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
         # Loads a dict from the shared memory buffer
         # FL config shared memory
         # NOTE: We MUST keep the sh variable even if we don't use it
-        fl_instructions_config, _fl_instructions_config_sh = get_config_shm(
-            config={},
+        # fl_instructions_config, _fl_instructions_config_sh = get_config_shm(
+        fl_instructions_config, _fl_instructions_config_sh = get_dict_configsrecord_shm(
+            config=cast(TypedDict[str, Any], {}),
             name=self.node_manager_uuid + POLLEN_CONFIG_SHM,
         )
+        client_config: ConfigsRecord = fl_instructions_config[str(client_id)]
         # Load client
-        # tmp_client = self.client_fn(client_id)
-        is_collaborative = bool(fl_instructions_config["collaborative"])
-        # Prevent slave workers to log to the console
-        # if is_collaborative and self.worker_rank > 0:
-        #     tmp_client.cfg.log_to_console = False  # type: ignore[union-attr]
+        is_collaborative = bool(client_config["collaborative"])
         # Patch the environment given the received instructions
         with get_env_patcher(
             collaborative=is_collaborative,
             run_uuid=(
-                str(fl_instructions_config["run_uuid"])
+                str(client_config["run_uuid"])
                 if is_collaborative
                 else self.worker_uuid
             ),
             rank=str(self.worker_rank),
-            master_port=str(fl_instructions_config["MASTER_PORT"]),
+            master_port=str(client_config["MASTER_PORT"]),
             cpu_only=self.cpu_only,
             cpu_concurrency=self.cpu_concurrency,
         ):
@@ -264,8 +263,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
             try:
                 if action == "fit":
                     # Launch the fit routine
-                    # self._fit_action(tmp_client, fl_instructions_config)
-                    self._fit_action(client_id, fl_instructions_config)
+                    self._fit_action(client_id, client_config)
                     # Take the timestamp after the task is done
                     end_time = time.time_ns()
                     # Only rank 0 returns the result
@@ -280,8 +278,7 @@ class Worker(mp.Process):  # type: ignore[reportAttributeAccessIssue]
                         )
                 elif action == "evaluate":
                     # Launch the evaluate routine
-                    # self._evaluate_action(tmp_client, fl_instructions_config)
-                    self._evaluate_action(client_id, fl_instructions_config)
+                    self._evaluate_action(client_id, client_config)
                     # Only rank 0 returns the result
                     if int(os.getenv("LOCAL_RANK", "")) == 0:
                         # Take the timestamp after the task is done

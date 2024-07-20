@@ -12,6 +12,8 @@ from typing import SupportsIndex
 import numpy as np
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
+from flwr.common.recordset_compat import ConfigsRecord
+from flwr.common.record.typeddict import TypedDict
 
 from flower_llm.strategy.aggregation import (
     aggregate_inplace,
@@ -132,6 +134,33 @@ def get_config_shm(
 
 def set_config_shm(
     config: Config,
+    shm: SharedMemory,
+) -> None:
+    """Set Shared Memory object and backed config."""
+    config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+    shm.buf[:] = config_bytes
+
+
+def get_dict_configsrecord_shm(
+    config: TypedDict[str, ConfigsRecord],
+    create: bool = False,
+    name: str = POLLEN_CONFIG_SHM,
+) -> tuple[TypedDict[str, ConfigsRecord], SharedMemory]:
+    """Get a Shared Memory object and its backed config."""
+    if create and config is None:
+        raise ValueError("Cannot create config without config object.")
+    if create:
+        config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+        shm = SharedMemory(create=True, size=len(config_bytes), name=name)
+        config_sh = config
+    else:
+        shm = SharedMemory(name=name)
+        config_sh = pickle.loads(shm.buf)
+    return config_sh, shm
+
+
+def set_dict_configsrecord_shm(
+    config: TypedDict[str, ConfigsRecord],
     shm: SharedMemory,
 ) -> None:
     """Set Shared Memory object and backed config."""

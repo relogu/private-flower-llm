@@ -1,6 +1,7 @@
 """Utility functions for running the main server loop in flwr next."""
 
 from collections.abc import Callable, Generator
+from dataclasses import asdict
 from logging import DEBUG
 import time
 from flwr.common import (
@@ -16,6 +17,8 @@ from flwr.common import (
 from flwr.common.recordset_compat import fitins_to_recordset, evaluateins_to_recordset
 from flwr.common.typing import ConfigsRecordValues
 from flwr.server import Driver
+
+from flower_llm.utils import ClientState
 
 
 def wait_for_nodes_to_connect(driver: Driver, n_nodes: int, timeout: float = 3) -> None:
@@ -58,12 +61,15 @@ def message_collaborative(
     gen_ins_function: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
     all_node_ids: list[int],
     current_round: int,
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
     msg_str: str,
 ) -> Generator[Message, None, None]:
+    log(DEBUG, "Collaborative messaging.")
     # Constructing separate record sets for each client
     record_sets: list[RecordSet] = []
     for cid in sampled_clients:
-        record_set = fit_or_evaluate_ins_recordset(msg_str, current_round, [cid])  # type: ignore[reportArgumentType]
+        record_set = fit_or_evaluate_ins_recordset(msg_str, current_round, [cid], client_state, server_steps_cumulative)  # type: ignore[reportArgumentType]
         # Create a config record for the client
         record_set.configs_records.update(
             {str(cid): ConfigsRecord(gen_ins_function(current_round, cid))}
@@ -102,8 +108,10 @@ def message_collaborative(
                     group_id=str(current_round),
                     ttl=DEFAULT_TTL,
                 )
-        message_ids = driver.push_messages(messages)
-        log(DEBUG, "Pushed another %s messages: %s", len(messages), message_ids)
+                messages.append(message)
+        if messages:
+            message_ids = driver.push_messages(messages)
+            log(DEBUG, "Pushed another %s messages: %s", len(messages), message_ids)
         for res in replies:
             yield res
 
@@ -115,6 +123,8 @@ def message_independent(
     all_node_ids: list[int],
     current_round: int,
     assignment_function: Callable[[int], list[int] | list[str]],
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
     msg_str: str,
 ) -> Generator[Message, None, None]:
     """Generate and send messages to nodes for independent processing and yield results.
@@ -145,6 +155,14 @@ def message_independent(
     assignment_function : Callable[[int], list[int] | list[str]]
         A function that assigns client identifiers to a node based on the node
         identifier. It returns a list of client identifiers assigned to the node.
+    client_state : dict[str | int, ClientState]
+        A dictionary mapping client identifiers to their current state information. This
+        information is included in the instructions to provide context to the clients
+        about their previous interactions with the server.
+    server_steps_cumulative : int
+        The cumulative number of training steps performed by the server across all
+        rounds. This value is included in the instructions to provide context to the
+        clients.
     msg_str : str
         A string prefix used in message creation to identify or categorize the message.
 
@@ -162,6 +180,7 @@ def message_independent(
     on the `Driver` interface for message handling and the `create_merged_recordset`
     function for generating the content of each message.
     """
+    log(DEBUG, "Independent messaging.")
     messages = []
     for node_id in all_node_ids:
         cids_to_train = assignment_function(node_id)
@@ -171,6 +190,8 @@ def message_independent(
                     sampled_clients=cids_to_train,
                     current_round=current_round,
                     gen_ins_function=gen_ins_function,
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
                     msg_str=msg_str,
                 ),
                 message_type=message_type,
@@ -210,6 +231,8 @@ def create_merged_recordset(
     sampled_clients: list[int] | list[str],
     current_round: int,
     gen_ins_function: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
     msg_str: str,
 ) -> RecordSet:
     """Create a merged record set for the sampled clients in a federated learning round.
@@ -233,6 +256,14 @@ def create_merged_recordset(
         A generator function that takes the current round and a client identifier as
         inputs and returns a dictionary representing the client's configuration record
         values.
+    client_state : dict[str | int, ClientState]
+        A dictionary mapping client identifiers to their current state information. This
+        information is included in the instructions to provide context to the clients
+        about their previous interactions with the server.
+    server_steps_cumulative : int
+        The cumulative number of training steps performed by the server across all
+        rounds. This value is included in the instructions to provide context to the
+        clients.
     msg_str : str
         A string used to prefix the main configuration record key, typically indicating
         the type of message or operation being performed.
@@ -252,7 +283,9 @@ def create_merged_recordset(
     respectively.
     """
     # Create shared recordset for all clients in this assignment
-    record_set = fit_or_evaluate_ins_recordset(msg_str, current_round, sampled_clients)
+    record_set = fit_or_evaluate_ins_recordset(
+        msg_str, current_round, sampled_clients, client_state, server_steps_cumulative
+    )
     # Create a config record for each client
     configs = {
         str(cid): ConfigsRecord(gen_ins_function(current_round, cid))
@@ -264,7 +297,11 @@ def create_merged_recordset(
 
 
 def fit_or_evaluate_ins_recordset(
-    msg_str: str, current_round: int, sampled_clients: list[int] | list[str]
+    msg_str: str,
+    current_round: int,
+    sampled_clients: list[int] | list[str],
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
 ) -> RecordSet:
     """Create a RecordSet for fit or evaluation instructions based on the message type.
 
@@ -288,6 +325,14 @@ def fit_or_evaluate_ins_recordset(
         A list of client identifiers (either integers or strings) that have been sampled
         for participation in the current round. These identifiers are included in the
         instructions to specify the target clients.
+    client_state : dict[str | int, ClientState]
+        A dictionary mapping client identifiers to their current state information. This
+        information is included in the instructions to provide context to the clients
+        about their previous interactions with the server.
+    server_steps_cumulative : int
+        The cumulative number of training steps performed by the server across all
+        rounds. This value is included in the instructions to provide context to the
+        clients.
 
     Returns
     -------
@@ -327,6 +372,10 @@ def fit_or_evaluate_ins_recordset(
                     config={
                         "server_round": current_round,
                         "client_ids": str(sampled_clients),
+                        "client_state": str(
+                            {k: asdict(v) for k, v in client_state.items()}
+                        ),
+                        "server_steps_cumulative": server_steps_cumulative,
                     },
                 ),
                 keep_input=True,
@@ -341,6 +390,10 @@ def fit_or_evaluate_ins_recordset(
                     config={
                         "server_round": current_round,
                         "client_ids": str(sampled_clients),
+                        "client_state": str(
+                            {k: asdict(v) for k, v in client_state.items()}
+                        ),
+                        "server_steps_cumulative": server_steps_cumulative,
                     },
                 ),
                 keep_input=True,
