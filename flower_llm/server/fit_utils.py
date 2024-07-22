@@ -244,11 +244,13 @@ def get_handle_success_and_failure_fit(
         match result:
             case (True, res):
                 fit_res = cast(FitRes, res)
-                metrics_accumulator.append((
-                    fit_res.metrics,
-                    fit_res.status,
-                    fit_res.num_examples,
-                ))
+                metrics_accumulator.append(
+                    (
+                        fit_res.metrics,
+                        fit_res.status,
+                        fit_res.num_examples,
+                    )
+                )
                 return (True, fit_res)
             case (False, res):
                 cnt_failures += 1

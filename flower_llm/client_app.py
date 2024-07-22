@@ -260,11 +260,13 @@ def train(msg: Message, ctx: Context) -> Message:
     )
     # Translate FitRes to RecordSet
     recordset = fitres_to_recordset(fitres, keep_input=False)
-    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord({
-        "endpoint_id": app.node_manager_uuid,
-        "file_name": "parameters",
-        "current_round": str(config["server_round"]),
-    })
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
+        {
+            "endpoint_id": app.node_manager_uuid,
+            "file_name": "parameters",
+            "current_round": str(config["server_round"]),
+        }
+    )
     msg_str = "fitres"
     return replace_remote_with_parameters_in_recordset(
         remote_uploader_downloader=app.remote_up_down,
@@ -341,11 +343,13 @@ def evaluate(msg: Message, ctx: Context) -> Message:
     )
     # Translate EvaluateRes to RecordSet
     recordset = evaluateres_to_recordset(evaluateres)
-    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord({
-        "endpoint_id": app.node_manager_uuid,
-        "file_name": "parameters",
-        "current_round": str(config["server_round"]),
-    })
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
+        {
+            "endpoint_id": app.node_manager_uuid,
+            "file_name": "parameters",
+            "current_round": str(config["server_round"]),
+        }
+    )
     return msg.create_reply(recordset)
 
 

@@ -587,9 +587,11 @@ class NodeManager(fl.client.NumPyClient):
         except Exception as e:
             log(ERROR, "NodeManager %s", self.name, exc_info=e, stack_info=True)
         # Adding node training time in the metrics
-        node_train_metrics.update({
-            "node_training_time_s": float(time.time() - start_time),
-        })
+        node_train_metrics.update(
+            {
+                "node_training_time_s": float(time.time() - start_time),
+            }
+        )
         log(
             DEBUG,
             "NodeManager %s: results have been processed. "
@@ -638,9 +640,11 @@ class NodeManager(fl.client.NumPyClient):
                 self.remote_up_down.post_close()
                 self._create_remote_up_down()
             log(DEBUG, "Node parameters have been pushed to S3 Object Store")
-            node_train_metrics.update({
-                "endpoint_id": self.node_manager_uuid,
-            })
+            node_train_metrics.update(
+                {
+                    "endpoint_id": self.node_manager_uuid,
+                }
+            )
             aggregated_params = [np.array([[0.0], [0.0]])]
         # Return results
         return (

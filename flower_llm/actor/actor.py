@@ -13,18 +13,12 @@ import ray
 from flwr.common.context import Context
 
 
-from collections.abc import Callable
-
 from flwr.common import (
     Message,
 )
-from flower_llm.conf.base_schema import S3CommConfig
 
 from flwr.client.typing import ClientFnExt, Mod
-from flower_llm.clients.virtual_llm_client import VirtualLLMClient
-from flower_llm.node_manager.node_manager import NodeManager
 from flower_llm.node_manager.node_manager_app import NodeManagerApp
-from flower_llm.node_manager.utils import ModelParametersMetadata
 
 
 @ray.remote
@@ -55,7 +49,7 @@ class VirtualClientEngineActorPollen(VirtualClientEngineActor):
             app: ClientApp = client_app_fn()
 
             # Handle task message
-            out_message = app(message=message, context=(context, self.node_manager))  # type: ignore[reportArgumentType]
+            out_message = app(message=message, context=(context, self.node_manager))  # type: ignore[reportArgumentType,arg-type]
 
         except LoadClientAppError:
             raise
