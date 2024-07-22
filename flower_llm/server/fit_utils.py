@@ -48,6 +48,31 @@ def handle_fit_replies(
         tuple[list[tuple[dict[str, Scalar], Status, int]], list[FitRes | None]],
     ]
 ):
+    """Handle fit replies from clients.
+
+    Parameters
+    ----------
+    cfg : BaseConfig
+        The configuration object.
+    replies : Generator[Message, None, None]
+        The generator of messages from clients.
+    strategy : FedAvg
+        The strategy object.
+    current_round : int
+        The current round number.
+    remote_up_down : RemoteUploaderDownloader | None
+        The object to handle remote communication.
+    client_state : dict[str | int, ClientState]
+        The dictionary of client states.
+    server_steps_cumulative : int
+        The cumulative number of server steps.
+
+    Returns
+    -------
+    None | Tuple[Parameters | None, Dict[str, Scalar],
+        Tuple[List[Tuple[Dict[str, Scalar], Status, int]], List[FitRes | None]]]
+        The aggregated parameters, the aggregated metrics, and the metrics and failures.
+    """
     # Translate message with fake parameters with parameters downloaded from the S3
     processed_msgs = (
         (
@@ -219,13 +244,11 @@ def get_handle_success_and_failure_fit(
         match result:
             case (True, res):
                 fit_res = cast(FitRes, res)
-                metrics_accumulator.append(
-                    (
-                        fit_res.metrics,
-                        fit_res.status,
-                        fit_res.num_examples,
-                    )
-                )
+                metrics_accumulator.append((
+                    fit_res.metrics,
+                    fit_res.status,
+                    fit_res.num_examples,
+                ))
                 return (True, fit_res)
             case (False, res):
                 cnt_failures += 1

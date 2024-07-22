@@ -233,6 +233,18 @@ class NodeManagerApp(ClientApp):
         self,
         configs: TypedDict[str, ConfigsRecord],
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
+        """Fit the model.
+
+        Parameters
+        ----------
+        configs : TypedDict[str, ConfigsRecord]
+            The configurations for the clients.
+
+        Returns
+        -------
+        tuple[NDArrays, int, dict[str, Scalar]]
+            The aggregated parameters, the sum of samples, metrics.
+        """
         start_time = time.time()
         # # TODO: This is old based on Pollen that assigns clients to specific hardware
         # # resources. We will need to re-think how to do this.
@@ -300,11 +312,9 @@ class NodeManagerApp(ClientApp):
                 stack_info=True,
             )
         # Adding node training time in the metrics
-        node_train_metrics.update(
-            {
-                "node_training_time_s": float(time.time() - start_time),
-            }
-        )
+        node_train_metrics.update({
+            "node_training_time_s": float(time.time() - start_time),
+        })
         log(
             DEBUG,
             "NodeManager %s: results have been processed. "
@@ -538,15 +548,13 @@ class NodeManagerApp(ClientApp):
         for cid in list_of_cids_to_eval:
             configs[str(cid)].update(evaluate_ins_config)
             configs[str(cid)].update({"collaborative": is_evaluate_collaborative})
-            configs[str(cid)].update(
-                {
-                    "run_uuid": (
-                        self.cfg.run_uuid
-                        if is_evaluate_collaborative
-                        else self.node_manager_uuid
-                    )
-                }
-            )
+            configs[str(cid)].update({
+                "run_uuid": (
+                    self.cfg.run_uuid
+                    if is_evaluate_collaborative
+                    else self.node_manager_uuid
+                )
+            })
         # Loop over virtual clients' results
         num_processed_virtual_clients = 0
         clients_eval_losses: list[tuple[int, float]] = []

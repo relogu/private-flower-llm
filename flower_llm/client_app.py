@@ -146,6 +146,23 @@ def set_parameters(msg: Message, ctx: Context) -> Message:
 
 
 def get_properties(msg: Message, ctx: Context) -> Message:
+    """Get client properties.
+
+    This function is responsible for handling a message that requests the client
+
+    Parameters
+    ----------
+    msg : Message
+        The incoming message containing the request for client properties.
+    ctx : Context
+        The context in which the function operates, providing access to the
+        application's state and configuration.
+
+    Returns
+    -------
+    Message
+        A reply message containing the client properties.
+    """
     msg.content = RecordSet(
         configs_records={"get_properties": ConfigsRecord(app.properties)}
     )
@@ -153,6 +170,21 @@ def get_properties(msg: Message, ctx: Context) -> Message:
 
 
 def free_resources(msg: Message, ctx: Context) -> Message:
+    """Free resources message.
+
+    Parameters
+    ----------
+    msg : Message
+        The incoming message containing the request to free resources.
+    ctx : Context
+        The context in which the function operates, providing access to the
+        application's state and configuration.
+
+    Returns
+    -------
+    Message
+        A reply message indicating the status of freeing resources.
+    """
     return msg.create_reply(content=msg.content)
 
 
@@ -228,13 +260,11 @@ def train(msg: Message, ctx: Context) -> Message:
     )
     # Translate FitRes to RecordSet
     recordset = fitres_to_recordset(fitres, keep_input=False)
-    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
-        {
-            "endpoint_id": app.node_manager_uuid,
-            "file_name": "parameters",
-            "current_round": str(config["server_round"]),
-        }
-    )
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord({
+        "endpoint_id": app.node_manager_uuid,
+        "file_name": "parameters",
+        "current_round": str(config["server_round"]),
+    })
     msg_str = "fitres"
     return replace_remote_with_parameters_in_recordset(
         remote_uploader_downloader=app.remote_up_down,
@@ -311,18 +341,33 @@ def evaluate(msg: Message, ctx: Context) -> Message:
     )
     # Translate EvaluateRes to RecordSet
     recordset = evaluateres_to_recordset(evaluateres)
-    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
-        {
-            "endpoint_id": app.node_manager_uuid,
-            "file_name": "parameters",
-            "current_round": str(config["server_round"]),
-        }
-    )
+    recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord({
+        "endpoint_id": app.node_manager_uuid,
+        "file_name": "parameters",
+        "current_round": str(config["server_round"]),
+    })
     return msg.create_reply(recordset)
 
 
 @app.query()
 def query(msg: Message, ctx: Context) -> Message:
+    """Dispatch to arbitrary task.
+
+    It will dispatch based on message content.
+
+    Parameters
+    ----------
+    msg : Message
+        The incoming message containing the query.
+    ctx : Context
+        The context in which the query is being performed, providing access to
+        application state and utilities.
+
+    Returns
+    -------
+    Message
+        A reply message containing the results of the query.
+    """
     # This method serves as dispatcher to perform those tasks that are not train or
     # eval. It will dispatch to the appropriate method based on the contents of the
     # message.
