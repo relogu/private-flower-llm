@@ -220,16 +220,6 @@ class NodeManagerApp(ClientApp):
             )
             self.remote_up_down.init(run_name=self.cfg.run_uuid)
 
-    def __del__(self) -> None:
-        """Implement the closing on the NodeManagerApp."""
-        log(DEBUG, "Closing NodeManagerApp...")
-        # TODO: Check if the following function call throws an error
-        # Closing workers
-        self._close_workers()
-        # Free shared memories
-        close_all_shms(self.node_manager_uuid)
-        log(DEBUG, "Shared memories closed")
-
     def fit(
         self,
         configs: TypedDict[str, ConfigsRecord],
