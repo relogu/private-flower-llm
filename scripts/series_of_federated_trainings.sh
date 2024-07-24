@@ -31,29 +31,29 @@ echo "PROJECT_PATH=$PROJECT_PATH"
 # unset RUN_UUID
 # export RUN_UUID="fed-75M-reset-20240323_183000-fix-nesto"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/scripts/pollen_llm_75M.sh
+# . "$PROJECT_PATH"/scripts/photon_llm_75M.sh
 
 # unset RUN_UUID
 # export RUN_UUID="fed-125M-reset-20240323_213000-fix-nesto"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/scripts/pollen_llm_125M.sh
+# . "$PROJECT_PATH"/scripts/photon_llm_125M.sh
 
 # unset RUN_UUID
 # export RUN_UUID="fed-1B-20240322_221900-fix-nesto"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/scripts/pollen_llm_1B.sh
+# . "$PROJECT_PATH"/scripts/photon_llm_1B.sh
 
 unset RUN_UUID
 unset SAVE_PATH
-. "$PROJECT_PATH"/scripts/pollen_llm_3B.sh
+. "$PROJECT_PATH"/scripts/photon_llm_3B.sh
 
 # unset RUN_UUID
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/scripts/pollen_llm_7B.sh
+# . "$PROJECT_PATH"/scripts/photon_llm_7B.sh
 
 # unset RUN_UUID
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="test-fed-$DATETIME"
 # export RUN_UUID="test-fed-20240702_114457"
 # unset SAVE_PATH
-# . "$PROJECT_PATH"/scripts/pollen_llm_small.sh
+# . "$PROJECT_PATH"/scripts/photon_llm_small.sh
