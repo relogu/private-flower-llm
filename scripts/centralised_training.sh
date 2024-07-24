@@ -69,8 +69,10 @@ fi
 export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Set `LLM_OPTIONS` environment variable
-# export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
-export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
+export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
+mkdir -p $DATASET_CACHE_DIR
+# export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4-c4  dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4-c4"
+export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised dataset.train.root_local=$DATASET_CACHE_DIR/c4  dataset.val.root_local=$DATASET_CACHE_DIR/c4"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=100ba llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-5 "  # Comment this out to use the default hyperparameters for the selceted model size
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=16 llm_config.eval_subset_num_batches=100"
@@ -95,10 +97,11 @@ fi
 echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
+
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # TORCH_LOGS="+dynamo" TORCHDYNAMO_VERBOSE=1

@@ -102,16 +102,16 @@ isort = "^5.13.2"
 black = { version = "^24.4.2", extras = ["jupyter"] }
 docformatter = "^1.7.5"
 mypy = "^1.8.0"
-pylint = "^3.2.5"
+pylint = "^3.2.6"
 flake8 = "==7.1.0"
 pytest-watch = "==4.2.0"
-ruff = "^0.5.0"
+ruff = "^0.5.4"
 yamlfix = "^1.16.0"
 pre-commit = "^3.7.1"
 pytest = ">=7.2.1,<9"
 pytest_codeblocks = ">=0.16.1,<0.18"
 pytest-cov = ">=4,<6"
-pyright = "1.1.369"
+pyright = "1.1.372"
 toml = ">=0.10.2,<0.11"
 packaging = ">=21,<25"
 hf_transfer = "0.1.6"
@@ -127,7 +127,7 @@ use_parentheses = true
 [tool.black]
 line-length = 88
 preview = true
-target-version = ["py310"]
+target-version = ["py311"]
 
 [tool.pytest.ini_options]
 minversion = "6.2"
@@ -177,7 +177,7 @@ none_representation = "null"
 whitelines = 1
 section_whitelines = 1
 exclude = [
-    ".bzr",
+    ".bzr", 
     ".direnv",
     ".eggs",
     ".git",
@@ -205,7 +205,7 @@ exclude = [
 
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 preview = true
 lint.select = ["A", "D", "E", "F", "W", "B", "ISC", "N", "ANN",

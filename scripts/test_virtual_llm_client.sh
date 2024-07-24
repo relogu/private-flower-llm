@@ -87,10 +87,11 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.sched
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-# export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
-export TMPDIR="/local/scratch/tmp/flower_llm/$RUN_UUID"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
+
 #! Test VirtualLLMClient
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.clients.virtual_llm_client $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/virtual_llm_client.log
