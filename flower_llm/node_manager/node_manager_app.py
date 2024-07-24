@@ -223,6 +223,7 @@ class NodeManagerApp(ClientApp):
     def __del__(self) -> None:
         """Implement the closing on the NodeManagerApp."""
         log(DEBUG, "Closing NodeManagerApp...")
+        # TODO: Check if the following function call throws an error
         # Closing workers
         self._close_workers()
         # Free shared memories

@@ -30,7 +30,7 @@ from composer import Trainer
 from composer.utils import dist
 from flwr.common import Config, NDArrays, log, parameters_to_ndarrays
 from torch import device as device_type
-from typing_extensions import Self
+from typing import Self
 from composer.utils.file_helpers import list_remote_objects
 
 import wandb
