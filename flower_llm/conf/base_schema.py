@@ -4,6 +4,7 @@ from typing import Any
 from pydantic.dataclasses import dataclass
 from omegaconf import DictConfig, MISSING
 from hydra.core.config_store import ConfigStore
+from enum import StrEnum, auto
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -69,6 +70,18 @@ class Pollen(DictConfig):
     resume_round: int | None = MISSING
 
 
+class StrategyName(StrEnum):
+    """Strategy type."""
+
+    NESTOROV = auto()
+    FEDAVG = auto()
+    NESTOROV_MATRIX = auto()
+
+
+class StrategyKWArgs(dict[str, Any], DictConfig):  # type: ignore[reportIncompatibleMethodOverride,misc]
+    """StrategyKWArgs configuration."""
+
+
 @dataclass(config={"arbitrary_types_allowed": True})
 class FL(DictConfig):
     """Federated learning configuration.
@@ -87,10 +100,6 @@ class FL(DictConfig):
         Number of local epochs
     n_local_steps: int = MISSING
         Number of local steps
-    server_learning_rate: float = MISSING
-        Learning rate of the server
-    server_momentum: float = MISSING
-        Momentum of the server
     """
 
     n_total_clients: int = MISSING
@@ -99,8 +108,12 @@ class FL(DictConfig):
     reset_optimizer: bool = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
-    server_learning_rate: float = MISSING
-    server_momentum: float = MISSING
+
+    ignore_failed_rounds: bool = MISSING
+    accept_failures_cnt: int = MISSING
+
+    strategy_name: StrategyName = MISSING
+    strategy_kwargs: StrategyKWArgs = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})

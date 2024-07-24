@@ -13,9 +13,11 @@ import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR
 from pathlib import Path
 from typing import Any, Literal, cast
+
+from composer.loggers import RemoteUploaderDownloader
 
 import numpy as np
 import psutil
@@ -25,7 +27,6 @@ import torch
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel
 from torch.distributed.fsdp.api import FullStateDictConfig, StateDictType
 from composer import Trainer
-from composer.loggers import RemoteUploaderDownloader
 from composer.utils import dist
 from flwr.common import Config, NDArrays, log, parameters_to_ndarrays
 from torch import device as device_type
@@ -1093,7 +1094,7 @@ def obtain_sorted_runs(server_path: str) -> list[int]:
         The sorted runs.
     """
     remote_objects = list_remote_objects(server_path)
-    log(INFO, "Found files %s", remote_objects)
+    log(DEBUG, "Found files %s", remote_objects)
     # Take only the unique indices
     return sorted(
         {
@@ -1102,3 +1103,61 @@ def obtain_sorted_runs(server_path: str) -> list[int]:
             if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
         }
     )
+
+
+def create_remote_up_down(
+    bucket_name: str,
+    prefix: str,
+    run_uuid: str,
+    num_attempts: int,
+    client_config: dict[str, Any],
+    num_concurrent_uploads: int = 1,
+    upload_staging_folder: str | None = None,  # Don't touch, it's /tmp by default
+    use_procs: bool = True,
+) -> RemoteUploaderDownloader:
+    """Create the remote uploader/downloader.
+
+    Parameters
+    ----------
+    bucket_name : str
+        The name of the bucket.
+    run_uuid : str
+        The UUID of the run.
+    num_attempts : int
+        The number of attempts.
+    client_config : dict[str, Any]
+        The configuration of the client.
+    num_concurrent_uploads : int, optional
+        The number of concurrent uploads, by default 1.
+    upload_staging_folder : str | None, optional
+        The upload staging folder, dont't touch, by default None.
+    use_procs : bool, optional
+        Whether to use processes, by default True. Don't touch.
+
+    Returns
+    -------
+    RemoteUploaderDownloader
+        The remote uploader/downloader.
+    """
+    bucket_uri = f"s3://{bucket_name}"
+    remote_up_down = RemoteUploaderDownloader(
+        bucket_uri=bucket_uri,
+        backend_kwargs={
+            "bucket": bucket_name,
+            "prefix": prefix,  # Don't touch
+            "region_name": None,  # Not necessary
+            "endpoint_url": None,  # Will be read from env var
+            "aws_access_key_id": None,  # Will be read from config file
+            "aws_secret_access_key": None,  # Will be read from config file
+            "aws_session_token": None,  # Will be automatically generated
+            "client_config": client_config,  # And using defaults
+            "transfer_config": None,  # Using defaults
+        },
+        file_path_format_string="{remote_file_name}",  # Don't touch
+        num_concurrent_uploads=num_concurrent_uploads,
+        upload_staging_folder=upload_staging_folder,  # Don't touch, default: /tmp
+        use_procs=use_procs,  # Don't touch
+        num_attempts=num_attempts,
+    )
+    remote_up_down.init(run_name=run_uuid)  # Don't touch
+    return remote_up_down

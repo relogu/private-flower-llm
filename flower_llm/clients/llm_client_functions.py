@@ -23,6 +23,7 @@ from composer.utils import dist, reproducibility, get_device
 from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays, Scalar
+from flwr.common.recordset_compat import ConfigsRecord
 from llmfoundry.data.dataloader import build_dataloader
 
 from llmfoundry.utils.builders import (
@@ -769,14 +770,14 @@ def set_parameters_to_state(
 
 def llm_fit(
     parameters: NDArrays,
-    config: dict,
+    config: ConfigsRecord,
     cfg: DictConfig,
     cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
     # Retrieve the clients' states
     client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
-        config["client_state"]
+        str(config["client_state"])
     )
     # Extract current client's state
     client_state_struct = ClientState(**client_state[cid])
@@ -789,10 +790,11 @@ def llm_fit(
     n_samples_trained = 0
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
+    server_steps_cumulative = cast(int, config["server_steps_cumulative"])
     skip_iteration = set_client_load_path(
         cfg,
         cid,
-        config["server_steps_cumulative"] + num_batches_trained,
+        server_steps_cumulative + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
@@ -822,7 +824,7 @@ def llm_fit(
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the timestamp to the current time
-        set_trainer_timestamp(trainer, config["server_steps_cumulative"])
+        set_trainer_timestamp(trainer, server_steps_cumulative)
 
         # Set the parameters
         if parameters is not None and not skip_iteration:
@@ -936,7 +938,7 @@ def llm_fit(
 
 def llm_eval(
     parameters: NDArrays,
-    config: dict,
+    config: ConfigsRecord,
     cfg: DictConfig,
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""

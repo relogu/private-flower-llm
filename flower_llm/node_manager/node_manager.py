@@ -45,7 +45,6 @@ from flower_llm.conf.base_schema import BaseConfig
 import cloudpickle
 import flwr as fl
 import numpy as np
-import psutil
 import pyarrow as pa
 import torch
 import transformers
@@ -57,10 +56,10 @@ from flwr.common import (
 )
 from flwr.common.logger import log, update_console_handler
 from flwr.server.strategy.aggregate import weighted_loss_avg
+from flower_llm.strategy.aggregation import weighted_average
 from flwr.client import ClientApp
 from multiprocess import Queue, set_start_method  # type: ignore[reportAttributeAccessIssue]
 from omegaconf import DictConfig, OmegaConf
-from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 from flower_llm.conf.base_schema import S3CommConfig
 
@@ -94,8 +93,9 @@ from flower_llm.node_manager.worker import (
     start_worker,
 )
 from flower_llm.placements import add_constant_column_to_clients_stats_table
-from flower_llm.resources_manager import Device, Node, get_gpu_prop
+from flower_llm.resources_manager import get_node_properties
 from flower_llm.utils import (
+    create_remote_up_down,
     download_file_from_s3,
     dump_model_parameters_to_file,
     get_n_cuda_devices,
@@ -104,7 +104,6 @@ from flower_llm.utils import (
     sum_of_squares,
     upload_file_to_s3,
 )
-from flower_llm.strategy.aggregation import weighted_average
 
 transformers.logging.set_verbosity_error()
 set_start_method("spawn", force=True)
@@ -148,8 +147,8 @@ class NodeManager(fl.client.NumPyClient):
         # One result_queue for all GPUs
         self.result_queue: QueueType = Queue()
         # Get node properties about hardware accelerators
-        self.node: Node = Node()
-        self.properties = self._get_node_properties()
+        self.node = get_node_properties(self.cpu_only, self.cpu_concurrency)
+        self.properties = {"node": str(self.node)}
         assert self.node.device_info is not None
         # Set how many processes can be run on each GPU given the properties
         [(k, v.concurrency) for k, v in self.node.device_info.items()]
@@ -166,48 +165,6 @@ class NodeManager(fl.client.NumPyClient):
         self.workers_dict: dict[int, Worker] = {}
         self._create_and_start_workers()
 
-    def _get_node_properties(self) -> dict[str, Scalar]:
-        device_info: dict[str, Device] = {}
-        # Get hardware accelerator properties
-        if torch.cuda.is_available() and not self.cpu_only:
-            device_info = dict(
-                get_gpu_prop(merge=True),
-                **device_info,
-            )
-        elif self.cpu_only:
-            device_info["cpu-merged"] = Device(
-                device_id=0,
-                name="cpu:0",
-                device_type="cpu",
-                total_memory=psutil.virtual_memory().total,
-                allocated_memory=psutil.virtual_memory().total
-                - psutil.virtual_memory().used,
-                concurrency=1,
-            )
-        else:
-            raise ValueError("Running without cpu_only but GPU is not available.")
-        try:
-            cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
-        except AttributeError:
-            cpus = psutil.cpu_count()
-        # Get general node properties
-        if self.node is None:
-            self.node = Node(
-                name=getfqdn(),
-                cpu_num=cpus,
-                cpu_ram_total=psutil.virtual_memory().total,
-                cpu_ram_available=psutil.virtual_memory().total
-                - psutil.virtual_memory().used,
-                device_info=device_info,
-            )
-        elif self.node.device_info is None:
-            self.node.device_info = device_info
-        else:
-            for k, v in device_info.items():
-                if k not in self.node.device_info:
-                    self.node.device_info[k] = v
-        return {"node": str(self.node)}
-
     def get_properties(self, config: Config) -> dict[str, Scalar]:
         """Implement how to get properties."""
         return self.properties
@@ -218,30 +175,16 @@ class NodeManager(fl.client.NumPyClient):
 
     def _create_remote_up_down(self) -> None:
         """Create the remote uploader/downloader."""
-        if self.use_s3_comm:
-            bucket_uri = f"s3://{self.s3_comm_config.bucket_name}"  # type: ignore[union-attr]
-            self.remote_up_down = RemoteUploaderDownloader(
-                bucket_uri=bucket_uri,
-                backend_kwargs={
-                    "bucket": self.s3_comm_config.bucket_name,  # type: ignore[union-attr]
-                    "prefix": f"{self.run_uuid}/server",  # Don't touch
-                    "region_name": None,  # Not necessary
-                    "endpoint_url": None,  # Will be read from env var
-                    "aws_access_key_id": None,  # Will be read from config file
-                    "aws_secret_access_key": None,  # Will be read from config file
-                    "aws_session_token": None,  # Will be automatically generated
-                    "client_config": OmegaConf.to_container(
-                        self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
-                    ),  # And using defaults
-                    "transfer_config": None,  # Using defaults
-                },
-                file_path_format_string="{remote_file_name}",  # Don't touch
-                num_concurrent_uploads=1,
-                upload_staging_folder=None,  # Don't touch, it's /tmp by default
-                use_procs=True,  # Don't touch
-                num_attempts=self.s3_comm_config.num_attempts,  # type: ignore[union-attr]
+        if self.use_s3_comm and self.s3_comm_config is not None:
+            self.remote_up_down = create_remote_up_down(
+                bucket_name=self.s3_comm_config.bucket_name,
+                prefix=f"{self.run_uuid}/server",
+                num_attempts=self.s3_comm_config.num_attempts,
+                run_uuid=self.run_uuid,
+                client_config=OmegaConf.to_container(  # type: ignore[arg-type]
+                    self.s3_comm_config.backend_kwargs.client_config  # type: ignore[union-attr]
+                ),  # type: ignore[union-attr]
             )
-            self.remote_up_down.init(run_name=self.run_uuid)
 
     def _check_workers_health(self) -> None:
         """Check if workers are alive and restart them if not."""

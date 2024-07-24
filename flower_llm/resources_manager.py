@@ -9,6 +9,7 @@ import io
 import json
 import os
 import shlex
+from socket import getfqdn
 import subprocess as sp
 import time
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -270,6 +271,41 @@ class Node:
                 for k, v in cast(dict[str, str], dict(dict_json["device_info"])).items()
             },
         )
+
+
+def get_node_properties(cpu_only: bool = False, cpu_concurrency: int = 1) -> Node:
+    """Return the hardware capabilities of the current node."""
+    device_info: dict[str, Device] = {}
+    # Get hardware accelerator properties
+    if torch.cuda.is_available() and not cpu_only:
+        device_info = dict(
+            get_gpu_prop(merge=True),
+            **device_info,
+        )
+    elif cpu_only:
+        device_info["cpu-merged"] = Device(
+            device_id=0,
+            name="cpu:0",
+            device_type="cpu",
+            total_memory=psutil.virtual_memory().total,
+            allocated_memory=psutil.virtual_memory().total
+            - psutil.virtual_memory().used,
+            concurrency=cpu_concurrency,
+        )
+    else:
+        raise ValueError("Running without cpu_only but GPU is not available.")
+    try:
+        cpus = len(psutil.Process().cpu_affinity())  # type: ignore[reportArgumentType]
+    except AttributeError:
+        cpus = psutil.cpu_count()
+    # Get general node properties
+    return Node(
+        name=getfqdn(),
+        cpu_num=cpus,
+        cpu_ram_total=psutil.virtual_memory().total,
+        cpu_ram_available=psutil.virtual_memory().total - psutil.virtual_memory().used,
+        device_info=device_info,
+    )
 
 
 class ResourcesMonitor(Thread):
