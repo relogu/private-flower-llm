@@ -5,10 +5,10 @@ from collections.abc import Callable, Generator
 from logging import ERROR, WARNING
 from typing import Any, cast
 
-from flower_llm.pollen_server import TooManyFailuresError
 from flower_llm.server.s3_utils import (
     replace_parameters_in_recordset_with_remote,
 )
+from flower_llm.server.server_util import TooManyFailuresError
 from flower_llm.utils import (
     ClientState,
 )

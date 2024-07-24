@@ -21,6 +21,10 @@ from flwr.server import Driver
 from flower_llm.utils import ClientState
 
 
+class TooManyFailuresError(Exception):
+    """Exception raised when a client is dropped out of the tree."""
+
+
 def wait_for_nodes_to_connect(driver: Driver, n_nodes: int, timeout: float = 3) -> None:
     """Wait for a specified number of client nodes to connect.
 

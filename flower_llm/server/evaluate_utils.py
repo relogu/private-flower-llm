@@ -4,7 +4,6 @@ from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR
 from typing import cast
 
-from flower_llm.pollen_server import TooManyFailuresError
 from flwr.common import (
     log,
     Message,
@@ -21,6 +20,7 @@ from flwr.server.strategy import FedAvg
 
 
 from flower_llm.conf.base_schema import BaseConfig
+from flower_llm.server.server_util import TooManyFailuresError
 
 
 def handle_evaluate_replies(
