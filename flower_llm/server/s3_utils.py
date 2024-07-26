@@ -2,7 +2,7 @@
 
 import ast
 from dataclasses import asdict
-from logging import DEBUG, INFO
+from logging import DEBUG, INFO, WARNING
 from pathlib import Path
 import pickle
 from tempfile import TemporaryDirectory
@@ -523,11 +523,15 @@ def download_server_checkpoint(
             server_state["client_state"]
         )
     else:
-        # TODO: Retro-compatibility with previous versions
+        # NOTE: This `local_steps_cumulative` is just used for backlogging and not by
+        # any logic during training so we put a zero for now.
+        log(
+            WARNING,
+            "No client state found in the checkpoint."
+            "We will put dummy values of zero.",
+        )
         saved_client_state = {
-            # cid: {"local_steps_cumulative": int(500 * cfg.pollen.resume_round)}
-            cid: {"local_steps_cumulative": 0}
-            for cid in range(cfg.fl.n_total_clients)
+            cid: {"local_steps_cumulative": 0} for cid in range(cfg.fl.n_total_clients)
         }
     client_state = {k: ClientState(**v) for k, v in saved_client_state.items()}
     time_offset = 0.0
