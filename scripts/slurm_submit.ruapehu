@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
 #!SBATCH -c 192
-#SBATCH -c 96
-#!SBATCH -c 48
+#!SBATCH -c 96
+#SBATCH -c 48
 #SBATCH -w ruapehu
 #SBATCH --gres=gpu:2
 #!SBATCH --gres=gpu:1
@@ -75,9 +75,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="test-fed-small-$DATETIME"
-bash "$PROJECT_PATH"/scripts/photon_llm_small.sh
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-fed-small-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/photon_llm_small.sh
 # bash "$PROJECT_PATH"/scripts/photon_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
@@ -89,3 +89,8 @@ bash "$PROJECT_PATH"/scripts/photon_llm_small.sh
 # bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
 # bash $HOME/projects/flower_llm/scripts/photon_llm_1B.sh
 # bash $HOME/projects/flower_llm/scripts/photon_llm_7B.sh
+
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="diloco-$DATETIME"
+# export RUN_UUID="diloco-20240725_162438"
+bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
