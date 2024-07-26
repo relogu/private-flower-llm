@@ -1,4 +1,4 @@
-"""TODO: Add description here."""
+"""NodeManager-Worker utility functions and data classes."""
 
 import copy
 from dataclasses import dataclass

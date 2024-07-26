@@ -1,4 +1,4 @@
-"""TODO: Add description here."""
+"""Implement the Worker class that manages one GPU for the NodeManager."""
 
 import copy
 import gc

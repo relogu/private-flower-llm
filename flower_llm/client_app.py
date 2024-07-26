@@ -1,4 +1,4 @@
-"""TODO."""
+"""Implementation of the override functions for the client application."""
 
 from logging import DEBUG
 import time
