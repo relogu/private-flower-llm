@@ -1,5 +1,6 @@
 """TODO:."""
 
+from collections.abc import Callable
 from logging import DEBUG, INFO
 import os
 import timeit
@@ -34,6 +35,7 @@ from composer.loggers import RemoteUploaderDownloader
 
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.strategy.dispatcher import dispatch_strategy
+from flower_llm.strategy.rs_nesterov import FedNesterov
 from flower_llm.utils import (
     create_remote_up_down,
     wandb_init,
@@ -175,11 +177,18 @@ def main(driver: Driver, context: Context) -> None:
                 momentum_vector,
             ) = initialize_round(cfg, remote_up_down)
 
-        # TODO: @Lorenzo, reconcile initialization of parameters and momentum vector
-        # with what the Strategy does,
-        # NOTE: Calling the `get_initial_parameters` method to for consistently
-        # freeing up the memory allocated for the initial parameters in strategy.
-        # parameters = get_initial_parameters(strategy)
+        # NOTE: The strategy needs to hold a copy of the initial parameters, but we want
+        # it to free the reference it holds as an attribute. Then, similarly to the
+        # `initialize_parameters()` of FedAvg, we nullify such attribute
+        if strategy.initial_parameters:
+            strategy.initial_parameters = None
+        # NOTE: Since we initialized the strategy object before creating the parameters,
+        # we must assign to the strategy attributes the parameters we got from the
+        # initialization
+        if isinstance(strategy, FedNesterov):
+            assert momentum_vector is not None, "Momentum vector must be initialized"
+            strategy.parameters = parameters
+            strategy.momentum_vector = momentum_vector
 
         # TODO: @Lorenzo, fix this
         if start_round == 0:
@@ -206,37 +215,35 @@ def main(driver: Driver, context: Context) -> None:
         # Run federated learning for number of rounds
         log(INFO, "FL starting from round %s", start_round + 1)
         start_time = timeit.default_timer()
+
+        # Broadcast model parameters to all NodeManagers
+        broadcast_time = time.time_ns()
+        all_node_ids = driver.get_node_ids()
+        broadcast_parameters_to_nodes(
+            driver=driver,
+            parameters=parameters,
+            node_ids=all_node_ids,
+            current_round=start_round,
+            remote_uploader_downloader=remote_up_down,
+            use_s3_comm=cfg.use_s3_comm,
+        )
+        history.add_metrics_centralized(
+            server_round=start_round + 1,
+            metrics={
+                "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
+            },
+        )
         for current_round in range(start_round + 1, num_rounds + 1):
             start_round_time = time.time_ns()
             log(DEBUG, f"Commencing server round {current_round}")
 
-            first_check_nm_time = time.time_ns()
-
             # Check NodeManagers health
+            first_check_nm_time = time.time_ns()
             all_node_ids = driver.get_node_ids()
-
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
                     "server/first_check_nm_time": (time.time_ns() - first_check_nm_time)
-                    * 1e-9
-                },
-            )
-
-            broadcast_time = time.time_ns()
-            # Broadcast model parameters to all NodeManagers
-            broadcast_parameters_to_nodes(
-                driver=driver,
-                parameters=parameters,
-                node_ids=all_node_ids,
-                current_round=current_round,
-                remote_uploader_downloader=remote_up_down,
-                use_s3_comm=cfg.use_s3_comm,
-            )
-            history.add_metrics_centralized(
-                server_round=current_round,
-                metrics={
-                    "server/broadcast_pre_time": (time.time_ns() - broadcast_time)
                     * 1e-9
                 },
             )
@@ -248,6 +255,7 @@ def main(driver: Driver, context: Context) -> None:
 
             # Make an assignment function that round-robin divides the clients
             # NOTE: extend to add other types
+            rr_assignment: Callable[[int], list[int] | list[str]] | None = None
             rr_assignment = get_rr_assignment_function(sampled_clients, all_node_ids)
 
             # TODO: Encapsulate this into a `fit_round` function
@@ -279,7 +287,6 @@ def main(driver: Driver, context: Context) -> None:
                     server_steps_cumulative=server_steps_cumulative,
                 )
             )
-
             res_fit = handle_fit_replies(
                 cfg,
                 fit_replies,
@@ -294,6 +301,8 @@ def main(driver: Driver, context: Context) -> None:
                     parameters_aggregated,
                     fit_metrics,
                     (_raw_metrics, _failures),
+                    client_state,
+                    server_steps_cumulative,
                 ) = res_fit
                 parameters = (
                     parameters_aggregated
@@ -303,13 +312,15 @@ def main(driver: Driver, context: Context) -> None:
                 history.add_metrics_distributed_fit(
                     server_round=current_round, metrics=fit_metrics
                 )
-
             history.add_metrics_centralized(
                 server_round=current_round,
                 metrics={
                     "server/fit_round_time": (time.time_ns() - fit_round_time) * 1e-9
                 },
             )
+            # Nullify assignments
+            rr_assignment = None
+            sampled_clients = []
 
             # Broadcast model parameters to all NodeManagers
             broadcast_time = time.time_ns()
@@ -336,7 +347,7 @@ def main(driver: Driver, context: Context) -> None:
                 loss_cen, metrics_cen = res_cen
                 log(
                     INFO,
-                    "fit progress: (%s, %s, %s, %s)",
+                    "strategy.evaluate progress: (%s, %s, %s, %s)",
                     current_round,
                     loss_cen,
                     metrics_cen,
@@ -355,7 +366,6 @@ def main(driver: Driver, context: Context) -> None:
 
             # Check for changes in connected NodeManagers
             second_check_nm_time = time.time_ns()
-            # Check NodeManagers health
             all_node_ids = driver.get_node_ids()
             history.add_metrics_centralized(
                 server_round=current_round,
@@ -371,6 +381,12 @@ def main(driver: Driver, context: Context) -> None:
             # Evaluate model on a sample of available clients
             evaluate_round_time = time.time_ns()
 
+            # NOTE: We are re-using the nodes attached for doing centralized evaluation
+            # at the moment
+            def _rr_assignment(x: int) -> list[int]:
+                return [0]
+
+            sampled_clients = [0]
             eval_replies = (
                 # Send on client-message at a time
                 message_collaborative(
@@ -392,13 +408,12 @@ def main(driver: Driver, context: Context) -> None:
                     gen_ins_function=pollen_evaluate_config,
                     all_node_ids=all_node_ids,
                     current_round=current_round,
-                    assignment_function=rr_assignment,
+                    assignment_function=_rr_assignment,
                     msg_str="evaluateins",
                     client_state=client_state,
                     server_steps_cumulative=server_steps_cumulative,
                 )
             )
-
             res_fed = handle_evaluate_replies(
                 cfg, eval_replies, strategy, current_round
             )
@@ -424,6 +439,9 @@ def main(driver: Driver, context: Context) -> None:
                     "server/round_time": (time.time_ns() - start_round_time) * 1e-9
                 },
             )
+            # Nullify assignments
+            rr_assignment = None
+            sampled_clients = []
 
             # Save the checkpoint to S3 Object Store
             if cfg.pollen.checkpoint or cfg.use_s3_comm:
