@@ -64,7 +64,7 @@ ipython = "^8.17.2"
 torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.3.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=5df7e3cb3961018a891e4edef1e0bc1f3304a8d943f81b24a8c6bf687ca49a67"}
 torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.3.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=8dd66913e7b08c63c76b21b0706130c24aee4ed4adc0bc12f8d62df98b5c6ea0"}
 torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.18.0%2Bcu121-cp311-cp311-linux_x86_64.whl#sha256=1e516779520fc92157d6cb245ac0fd3f79872fe81c84b8593a8f2e998106f5b1"}
-mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.2.2", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
+mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.2.3", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
 accelerate = ">=0.25,<0.26"
 mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", tag = "dodo_v0.2.0" }
 datasets = ">=2.19,<2.20"
