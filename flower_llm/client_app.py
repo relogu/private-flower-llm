@@ -1,6 +1,7 @@
 """TODO."""
 
 from logging import DEBUG
+import time
 import warnings
 from flwr.common import (
     Message,
@@ -33,6 +34,8 @@ from flower_llm.server.s3_utils import (
     replace_parameters_in_recordset_with_remote,
     replace_remote_with_parameters_in_recordset,
 )
+
+EXPECTED_LATENCY = 300  # 5 minutes of expected latency between supernode and superlink
 
 # Fix the logger
 update_console_handler(level=DEBUG, colored=False, timestamps=True)
@@ -236,6 +239,7 @@ def train(msg: Message, ctx: Context) -> Message:
         assuming the existence of `Message`, `Context`, `FitIns`, `FitRes`, `Status`,
         `Code`, `ConfigsRecord`, and `ndarrays_to_parameters` functions or classes.
     """
+    start_time = time.time()
     msg_str = "fitres"
     fitins = recordset_to_fitins(msg.content, False)
     config = fitins.config
@@ -263,14 +267,22 @@ def train(msg: Message, ctx: Context) -> Message:
     recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
         {
             "endpoint_id": app.node_manager_uuid,
+            "folder_name": "comm_stack",
             "file_name": "parameters",
-            "current_round": str(config["server_round"]),
         }
     )
     msg_str = "fitres"
+    # Estimate the TTL
+    # NOTE: This must be set if the time from the creation of the incoming message from
+    # the superlink and the time of creation of the reply message is greater than
+    # DEAFAULT_TTL = 3600 seconds
+    ttl = EXPECTED_LATENCY + int(time.time() - start_time)
     return replace_remote_with_parameters_in_recordset(
         remote_uploader_downloader=app.remote_up_down,
-        outgoing_message=msg.create_reply(recordset),
+        outgoing_message=msg.create_reply(
+            content=recordset,
+            ttl=ttl,
+        ),
         use_s3_comm=app.cfg.use_s3_comm,
         msg_str=msg_str,
     )
@@ -346,8 +358,8 @@ def evaluate(msg: Message, ctx: Context) -> Message:
     recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
         {
             "endpoint_id": app.node_manager_uuid,
+            "folder_name": "comm_stack",
             "file_name": "parameters",
-            "current_round": str(config["server_round"]),
         }
     )
     return msg.create_reply(recordset)

@@ -112,8 +112,8 @@ def broadcast_parameters_to_nodes(
     recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
         {
             "endpoint_id": "server",
+            "folder_name": "comm_stack",
             "file_name": "parameters",
-            "current_round": str(current_round),
         }
     )
     # Translating the message and uploading the parameters to S3 if asked to

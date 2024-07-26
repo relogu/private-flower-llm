@@ -92,12 +92,12 @@ def extract_s3_comm_config_from_configrecord(
         file_name = str(s3_comm_config["file_name"])
     else:
         raise ValueError("file_name is not present in the message")
-    current_round: Any
-    if "current_round" in s3_comm_config:
-        current_round = str(s3_comm_config["current_round"])
+    folder_name: Any
+    if "folder_name" in s3_comm_config:
+        folder_name = str(s3_comm_config["folder_name"])
     else:
-        raise ValueError("current_round is not present in the message")
-    return endpoint_id, file_name, current_round
+        raise ValueError("folder_name is not present in the message")
+    return endpoint_id, file_name, folder_name
 
 
 def interpret_resume_round(
@@ -637,11 +637,11 @@ def replace_remote_with_parameters_in_recordset(
         s3_comm_config = recordset.configs_records[f"{msg_str}.s3_comm_config"]
         parameters = recordset.parameters_records[f"{msg_str}.parameters"]
         # Extract endpoint id from the content of the message
-        endpoint_id, file_name, current_round = (
-            extract_s3_comm_config_from_configrecord(s3_comm_config)
+        endpoint_id, file_name, folder_name = extract_s3_comm_config_from_configrecord(
+            s3_comm_config
         )
         # Set the file names
-        remote_file_name = f"{current_round}/{endpoint_id}/{file_name}.npz"
+        remote_file_name = f"{folder_name}/{endpoint_id}/{file_name}.npz"
         local_file_name = Path(temp_dir.name) / f"{endpoint_id}_{file_name}.npz"
         dump_model_parameters_to_file(
             local_file_name,
@@ -666,7 +666,7 @@ def replace_remote_with_parameters_in_recordset(
         remote_file_name_no_ext = (
             f"s3://{remote_uploader_downloader.remote_bucket_name}/"
             f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
-            f"{current_round}/{endpoint_id}/{file_name}"
+            f"{folder_name}/{endpoint_id}/{file_name}"
         )
         while not file_found:
             file_found = validate_given_remote_path(
@@ -749,15 +749,15 @@ def replace_parameters_in_recordset_with_remote(
         temp_dir: TemporaryDirectory = TemporaryDirectory()
         s3_comm_config = recordset.configs_records[f"{msg_str}.s3_comm_config"]
         # Extract endpoint id from the content of the message
-        endpoint_id, file_name, current_round = (
-            extract_s3_comm_config_from_configrecord(s3_comm_config)
+        endpoint_id, file_name, folder_name = extract_s3_comm_config_from_configrecord(
+            s3_comm_config
         )
         # Check whether the server has uploaded the parameters
         file_found = False
         remote_file_name_no_ext = (
             f"s3://{remote_uploader_downloader.remote_bucket_name}/"
             f"{remote_uploader_downloader.backend_kwargs['prefix']}/"
-            f"{current_round}/{endpoint_id}/{file_name}"
+            f"{folder_name}/{endpoint_id}/{file_name}"
         )
         while not file_found:
             file_found = validate_given_remote_path(
@@ -766,9 +766,9 @@ def replace_parameters_in_recordset_with_remote(
             time.sleep(0.5)
         # Set the file names depending on the extension found
         remote_file_name = (
-            f"{current_round}/{endpoint_id}/{file_name}.bin"
+            f"{folder_name}/{endpoint_id}/{file_name}.bin"
             if validate_given_remote_path(remote_file_name_no_ext + ".bin")
-            else f"{current_round}/{endpoint_id}/{file_name}.npz"
+            else f"{folder_name}/{endpoint_id}/{file_name}.npz"
         )
         local_file_name = (
             Path(temp_dir.name) / f"tmp-{endpoint_id}.bin"
