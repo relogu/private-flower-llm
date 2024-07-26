@@ -46,6 +46,8 @@ def handle_fit_replies(
         Parameters | None,
         dict[str, Scalar],
         tuple[list[tuple[dict[str, Scalar], Status, int]], list[FitRes | None]],
+        dict[str | int, ClientState],
+        int,
     ]
 ):
     """Handle fit replies from clients.
@@ -69,9 +71,15 @@ def handle_fit_replies(
 
     Returns
     -------
-    None | Tuple[Parameters | None, Dict[str, Scalar],
-        Tuple[List[Tuple[Dict[str, Scalar], Status, int]], List[FitRes | None]]]
-        The aggregated parameters, the aggregated metrics, and the metrics and failures.
+    None | Tuple[
+        Parameters | None,
+        Dict[str, Scalar],
+        Tuple[List[Tuple[Dict[str, Scalar], Status, int]], List[FitRes | None]],
+        dict[str | int, ClientState],
+        int,
+    ]
+        The aggregated parameters, the aggregated metrics, the metrics and failures, the
+        update client states and the updated server steps cumulative.
     """
     # Translate message with fake parameters with parameters downloaded from the S3
     processed_msgs = (
@@ -92,7 +100,6 @@ def handle_fit_replies(
     status = Status(code=Code.FIT_NOT_IMPLEMENTED, message="Unexpected empty content")
     error_fitres = FitRes(
         status=status,
-        # parameters=ndarrays_to_parameters([np.array([[0.0], [0.0]])]),
         parameters=Parameters(tensors=[], tensor_type="empty"),
         metrics={},
         num_examples=1,
@@ -197,7 +204,13 @@ def handle_fit_replies(
             )
         else:
             raise
-    return parameters_aggregated, metrics_aggregated, (metrics_accumulator, failures)
+    return (
+        parameters_aggregated,
+        metrics_aggregated,
+        (metrics_accumulator, failures),
+        client_state,
+        server_steps_cumulative,
+    )
 
 
 def get_handle_success_and_failure_fit(
