@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Generator
 from logging import DEBUG, ERROR
+import time
 from typing import cast
 
 from flwr.common import (
@@ -11,16 +12,24 @@ from flwr.common import (
     EvaluateRes,
     Status,
     Code,
+    MessageType,
 )
+from flwr.common.typing import ConfigsRecordValues
 
 from flwr.common.recordset_compat import (
     recordset_to_evaluateres,
 )
+from flwr.server import Driver, History
 from flwr.server.strategy import FedAvg
 
 
 from flower_llm.conf.base_schema import BaseConfig
-from flower_llm.server.server_util import TooManyFailuresError
+from flower_llm.server.server_util import (
+    TooManyFailuresError,
+    message_collaborative,
+    message_independent,
+)
+from flower_llm.utils import ClientState
 
 
 def handle_evaluate_replies(
@@ -223,3 +232,99 @@ def get_handle_success_and_failure_evaluate(
         return result
 
     return handle_success_and_failure_evaluate
+
+
+def evaluate_round(
+    driver: Driver,
+    sampled_clients: list[int] | list[str],
+    evaluate_config_fn: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
+    all_node_ids: list[int],
+    current_round: int,
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
+    cfg: BaseConfig,
+    strategy: FedAvg,
+    history: History,
+) -> History:
+    """Execute a round of federated evaluation.
+
+    Parameters
+    ----------
+        driver (Driver): The driver responsible for communication with clients.
+        sampled_clients (list[int] | list[str]): List of client IDs selected for this
+            round.
+        evaluate_config_fn (Callable[[int, int | str], dict[str, ConfigsRecordValues]]):
+            Function to generate evaluation configuration for each client.
+        all_node_ids (list[int]): List of all node IDs available for assignment.
+        current_round (int): The current round number of federated evaluation.
+        client_state (dict[str | int, ClientState]): Dictionary maintaining the state of
+            each client.
+        server_steps_cumulative (int): Cumulative number of server steps.
+        cfg (BaseConfig): Configuration object containing various settings.
+        strategy (FedAvg): Federated averaging strategy for aggregating client updates.
+        history (History): Object to record the history of metrics and events.
+
+    Returns
+    -------
+        History: Updated history object with evaluation metrics and events.
+    """
+    # Evaluate model on a sample of available clients
+    evaluate_round_time = time.time_ns()
+
+    # NOTE: We are re-using the nodes attached for doing centralized evaluation
+    # at the moment
+    def _rr_assignment(x: int) -> list[int]:
+        """Implement a dummy round-robin assignment function for evaluation.
+
+        Parameters
+        ----------
+            x (int): Node ID.
+
+        Returns
+        -------
+            list[int]: List containing a single node ID (0).
+        """
+        return [0]
+
+    eval_replies = (
+        # Send on client-message at a time
+        message_collaborative(
+            driver=driver,
+            message_type=MessageType.EVALUATE,
+            sampled_clients=sampled_clients,
+            gen_ins_function=evaluate_config_fn,
+            all_node_ids=all_node_ids,
+            current_round=current_round,
+            msg_str="evaluateins",
+            client_state=client_state,
+            server_steps_cumulative=server_steps_cumulative,
+        )
+        if cfg.pollen.eval_collaborative
+        # Send one-shot assignment of multiple clients
+        else message_independent(
+            driver=driver,
+            message_type=MessageType.EVALUATE,
+            gen_ins_function=evaluate_config_fn,
+            all_node_ids=all_node_ids,
+            current_round=current_round,
+            assignment_function=_rr_assignment,
+            msg_str="evaluateins",
+            client_state=client_state,
+            server_steps_cumulative=server_steps_cumulative,
+        )
+    )
+    res_fed = handle_evaluate_replies(cfg, eval_replies, strategy, current_round)
+    if res_fed is not None:
+        loss_fed, evaluate_metrics_fed, _ = res_fed
+        if loss_fed is not None:
+            history.add_loss_distributed(server_round=current_round, loss=loss_fed)
+            history.add_metrics_distributed(
+                server_round=current_round, metrics=evaluate_metrics_fed
+            )
+    history.add_metrics_centralized(
+        server_round=current_round,
+        metrics={
+            "server/evaluate_round_time": (time.time_ns() - evaluate_round_time) * 1e-9
+        },
+    )
+    return history

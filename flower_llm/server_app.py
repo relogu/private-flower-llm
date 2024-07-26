@@ -1,6 +1,5 @@
-"""TODO:."""
+"""Implementation of the Flower's ServerApp for orchestrating federate learning."""
 
-from collections.abc import Callable
 from logging import DEBUG, INFO
 import os
 import timeit
@@ -11,21 +10,17 @@ import warnings
 
 
 from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
-from flower_llm.server.evaluate_utils import handle_evaluate_replies
-from flower_llm.server.fit_utils import handle_fit_replies
+from flower_llm.server.evaluate_utils import evaluate_round
+from flower_llm.server.fit_utils import fit_round
 from flower_llm.server.init_utils import initialize_round, resume_from_round
 from flower_llm.server.s3_utils import import_checkpoints, upload_server_checkpoint
 from flower_llm.server.server_util import (
-    message_collaborative,
-    message_independent,
-    get_rr_assignment_function,
     wait_for_nodes_to_connect,
 )
 import wandb
 import flwr as fl
 from flwr.common import (
     Context,
-    MessageType,
 )
 from flwr.common.typing import ConfigsRecordValues
 from flwr.common.logger import log, update_console_handler
@@ -72,7 +67,15 @@ app = fl.server.ServerApp()
 
 @app.main()
 def main(driver: Driver, context: Context) -> None:
-    """TODO."""
+    """Implement the main function for the Flower ServerApp.
+
+    Parameters
+    ----------
+    driver : fl.server.Driver
+        The driver object for the server.
+    context : fl.common.Context
+        The context object for the server.
+    """
     start_up_time = timeit.default_timer()
     # Get the environmental variable for the dump folder
     save_path = os.environ.get("POLLEN_SAVE_PATH", "")
@@ -190,20 +193,6 @@ def main(driver: Driver, context: Context) -> None:
             strategy.parameters = parameters
             strategy.momentum_vector = momentum_vector
 
-        # TODO: @Lorenzo, fix this
-        if start_round == 0:
-            log(INFO, "Evaluating initial parameters")
-            res = strategy.evaluate(0, parameters=parameters)
-            if res is not None:
-                log(
-                    INFO,
-                    "initial parameters (loss, other metrics): %s, %s",
-                    res[0],
-                    res[1],
-                )
-                history.add_loss_centralized(server_round=0, loss=res[0])
-                history.add_metrics_centralized(server_round=0, metrics=res[1])
-
         # Wait for the minimum number of nodes to connect
         wait_for_nodes_to_connect(driver, n_nodes)
 
@@ -249,77 +238,30 @@ def main(driver: Driver, context: Context) -> None:
             )
 
             # List of sampled Client IDs in this round
-            sampled_clients: list[int] = []
             sampled_clients = rng.sample(range(n_total_clients), n_clients_per_round)
             log(DEBUG, f"Sampled {len(sampled_clients)} Client IDs: {sampled_clients}")
 
-            # Make an assignment function that round-robin divides the clients
-            # NOTE: extend to add other types
-            rr_assignment: Callable[[int], list[int] | list[str]] | None = None
-            rr_assignment = get_rr_assignment_function(sampled_clients, all_node_ids)
-
-            # TODO: Encapsulate this into a `fit_round` function
-            fit_round_time = time.time_ns()
-            fit_replies = (
-                # Send on client-message at a time
-                message_collaborative(
-                    driver=driver,
-                    message_type=MessageType.TRAIN,
-                    sampled_clients=sampled_clients,
-                    gen_ins_function=pollen_fit_config,
-                    all_node_ids=all_node_ids,
-                    current_round=current_round,
-                    msg_str="fitins",
-                    client_state=client_state,
-                    server_steps_cumulative=server_steps_cumulative,
-                )
-                if cfg.pollen.fit_collaborative
-                # Send one-shot assignment of multiple clients
-                else message_independent(
-                    driver=driver,
-                    message_type=MessageType.TRAIN,
-                    gen_ins_function=pollen_fit_config,
-                    all_node_ids=all_node_ids,
-                    current_round=current_round,
-                    assignment_function=rr_assignment,
-                    msg_str="fitins",
-                    client_state=client_state,
-                    server_steps_cumulative=server_steps_cumulative,
-                )
-            )
-            res_fit = handle_fit_replies(
-                cfg,
-                fit_replies,
-                strategy,
-                current_round,
-                remote_up_down,
+            # Launch the federated fit process
+            (
+                parameters,
                 client_state,
                 server_steps_cumulative,
+                history,
+            ) = fit_round(
+                sampled_clients=sampled_clients,
+                all_node_ids=all_node_ids,
+                driver=driver,
+                fit_config_fn=pollen_fit_config,
+                current_round=current_round,
+                client_state=client_state,
+                server_steps_cumulative=server_steps_cumulative,
+                cfg=cfg,
+                strategy=strategy,
+                remote_up_down=remote_up_down,
+                history=history,
+                parameters=parameters,
             )
-            if res_fit is not None:
-                (
-                    parameters_aggregated,
-                    fit_metrics,
-                    (_raw_metrics, _failures),
-                    client_state,
-                    server_steps_cumulative,
-                ) = res_fit
-                parameters = (
-                    parameters_aggregated
-                    if parameters_aggregated is not None
-                    else parameters
-                )
-                history.add_metrics_distributed_fit(
-                    server_round=current_round, metrics=fit_metrics
-                )
-            history.add_metrics_centralized(
-                server_round=current_round,
-                metrics={
-                    "server/fit_round_time": (time.time_ns() - fit_round_time) * 1e-9
-                },
-            )
-            # Nullify assignments
-            rr_assignment = None
+            # Nullify sampled clients
             sampled_clients = []
 
             # Broadcast model parameters to all NodeManagers
@@ -340,30 +282,6 @@ def main(driver: Driver, context: Context) -> None:
                 },
             )
 
-            # Evaluate the model on the server
-            evaluate_time = time.time_ns()
-            res_cen = strategy.evaluate(current_round, parameters=parameters)
-            if res_cen is not None:
-                loss_cen, metrics_cen = res_cen
-                log(
-                    INFO,
-                    "strategy.evaluate progress: (%s, %s, %s, %s)",
-                    current_round,
-                    loss_cen,
-                    metrics_cen,
-                    timeit.default_timer() - start_time,
-                )
-                history.add_loss_centralized(server_round=current_round, loss=loss_cen)
-                history.add_metrics_centralized(
-                    server_round=current_round, metrics=metrics_cen
-                )
-            history.add_metrics_centralized(
-                server_round=current_round,
-                metrics={
-                    "server/evaluate_time": (time.time_ns() - evaluate_time) * 1e-9
-                },
-            )
-
             # Check for changes in connected NodeManagers
             second_check_nm_time = time.time_ns()
             all_node_ids = driver.get_node_ids()
@@ -377,70 +295,21 @@ def main(driver: Driver, context: Context) -> None:
                 },
             )
 
-            # TODO: Encapsulate this into a `evaluate_round` function
-            # Evaluate model on a sample of available clients
-            evaluate_round_time = time.time_ns()
-
-            # NOTE: We are re-using the nodes attached for doing centralized evaluation
-            # at the moment
-            def _rr_assignment(x: int) -> list[int]:
-                return [0]
-
+            # Launch the evaluate process
             sampled_clients = [0]
-            eval_replies = (
-                # Send on client-message at a time
-                message_collaborative(
-                    driver=driver,
-                    message_type=MessageType.EVALUATE,
-                    sampled_clients=sampled_clients,
-                    gen_ins_function=pollen_evaluate_config,
-                    all_node_ids=all_node_ids,
-                    current_round=current_round,
-                    msg_str="evaluateins",
-                    client_state=client_state,
-                    server_steps_cumulative=server_steps_cumulative,
-                )
-                if cfg.pollen.eval_collaborative
-                # Send one-shot assignment of multiple clients
-                else message_independent(
-                    driver=driver,
-                    message_type=MessageType.EVALUATE,
-                    gen_ins_function=pollen_evaluate_config,
-                    all_node_ids=all_node_ids,
-                    current_round=current_round,
-                    assignment_function=_rr_assignment,
-                    msg_str="evaluateins",
-                    client_state=client_state,
-                    server_steps_cumulative=server_steps_cumulative,
-                )
-            )
-            res_fed = handle_evaluate_replies(
-                cfg, eval_replies, strategy, current_round
-            )
-            if res_fed is not None:
-                loss_fed, evaluate_metrics_fed, _ = res_fed
-                if loss_fed is not None:
-                    history.add_loss_distributed(
-                        server_round=current_round, loss=loss_fed
-                    )
-                    history.add_metrics_distributed(
-                        server_round=current_round, metrics=evaluate_metrics_fed
-                    )
-            history.add_metrics_centralized(
-                server_round=current_round,
-                metrics={
-                    "server/evaluate_round_time": (time.time_ns() - evaluate_round_time)
-                    * 1e-9
-                },
-            )
-            history.add_metrics_centralized(
-                server_round=current_round,
-                metrics={
-                    "server/round_time": (time.time_ns() - start_round_time) * 1e-9
-                },
+            history = evaluate_round(
+                driver=driver,
+                sampled_clients=sampled_clients,
+                evaluate_config_fn=pollen_evaluate_config,
+                all_node_ids=all_node_ids,
+                current_round=current_round,
+                client_state=client_state,
+                server_steps_cumulative=server_steps_cumulative,
+                cfg=cfg,
+                strategy=strategy,
+                history=history,
             )
             # Nullify assignments
-            rr_assignment = None
             sampled_clients = []
 
             # Save the checkpoint to S3 Object Store
@@ -458,6 +327,14 @@ def main(driver: Driver, context: Context) -> None:
                     client_state=client_state,
                     remote_up_down=remote_up_down,
                 )
+
+            # Log the time taken for the round
+            history.add_metrics_centralized(
+                server_round=current_round,
+                metrics={
+                    "server/round_time": (time.time_ns() - start_round_time) * 1e-9
+                },
+            )
 
         # Bookkeeping
         end_time = timeit.default_timer()

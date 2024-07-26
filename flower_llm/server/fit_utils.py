@@ -3,12 +3,18 @@
 import ast
 from collections.abc import Callable, Generator
 from logging import ERROR, WARNING
+import time
 from typing import Any, cast
 
 from flower_llm.server.s3_utils import (
     replace_parameters_in_recordset_with_remote,
 )
-from flower_llm.server.server_util import TooManyFailuresError
+from flower_llm.server.server_util import (
+    TooManyFailuresError,
+    get_rr_assignment_function,
+    message_collaborative,
+    message_independent,
+)
 from flower_llm.utils import (
     ClientState,
 )
@@ -20,7 +26,10 @@ from flwr.common import (
     FitRes,
     Status,
     Code,
+    MessageType,
 )
+from flwr.common.typing import ConfigsRecordValues
+from flwr.server import Driver, History
 
 from flwr.common.recordset_compat import (
     recordset_to_fitres,
@@ -280,3 +289,113 @@ def get_handle_success_and_failure_fit(
         return result
 
     return handle_success_and_failure_fit
+
+
+def fit_round(
+    sampled_clients: list[str] | list[int],
+    all_node_ids: list[int],
+    driver: Driver,
+    fit_config_fn: Callable[[int, int | str], dict[str, ConfigsRecordValues]],
+    current_round: int,
+    client_state: dict[str | int, ClientState],
+    server_steps_cumulative: int,
+    cfg: BaseConfig,
+    strategy: FedAvg,
+    remote_up_down: RemoteUploaderDownloader | None,
+    history: History,
+    parameters: Parameters,
+) -> tuple[
+    Parameters,
+    dict[str | int, ClientState],
+    int,
+    History,
+]:
+    """Execute a round of federated training.
+
+    Parameters
+    ----------
+        sampled_clients (list[str] | list[int]): List of client IDs selected for this
+            round.
+        all_node_ids (list[int]): List of all node IDs available for assignment.
+        driver (Driver): The driver responsible for communication with clients.
+        fit_config_fn (Callable[[int, int | str], dict[str, ConfigsRecordValues]]):
+            Function to generate configuration for each client.
+        current_round (int): The current round number of federated training.
+        client_state (dict[str | int, ClientState]): Dictionary maintaining the state of
+            each client.
+        server_steps_cumulative (int): Cumulative number of server steps.
+        cfg (BaseConfig): Configuration object containing various settings.
+        strategy (FedAvg): Federated averaging strategy for aggregating client updates.
+        remote_up_down (RemoteUploaderDownloader | None): Optional remote
+            uploader/downloader for handling data transfer.
+        history (History): Object to record the history of metrics and events.
+        parameters (Parameters): Current model parameters.
+
+    Returns
+    -------
+        tuple: A tuple containing updated parameters, client state, server steps
+            cumulative, and history.
+    """
+    # Make an assignment function that round-robin divides the clients
+    # NOTE: extend to add other types
+    rr_assignment: Callable[[int], list[int] | list[str]] | None = None
+    rr_assignment = get_rr_assignment_function(sampled_clients, all_node_ids)
+
+    # TODO: Encapsulate this into a `fit_round` function
+    fit_round_time = time.time_ns()
+    fit_replies = (
+        # Send on client-message at a time
+        message_collaborative(
+            driver=driver,
+            message_type=MessageType.TRAIN,
+            sampled_clients=sampled_clients,
+            gen_ins_function=fit_config_fn,
+            all_node_ids=all_node_ids,
+            current_round=current_round,
+            msg_str="fitins",
+            client_state=client_state,
+            server_steps_cumulative=server_steps_cumulative,
+        )
+        if cfg.pollen.fit_collaborative
+        # Send one-shot assignment of multiple clients
+        else message_independent(
+            driver=driver,
+            message_type=MessageType.TRAIN,
+            gen_ins_function=fit_config_fn,
+            all_node_ids=all_node_ids,
+            current_round=current_round,
+            assignment_function=rr_assignment,
+            msg_str="fitins",
+            client_state=client_state,
+            server_steps_cumulative=server_steps_cumulative,
+        )
+    )
+    res_fit = handle_fit_replies(
+        cfg,
+        fit_replies,
+        strategy,
+        current_round,
+        remote_up_down,
+        client_state,
+        server_steps_cumulative,
+    )
+    if res_fit is not None:
+        (
+            parameters_aggregated,
+            fit_metrics,
+            (_raw_metrics, _failures),
+            client_state,
+            server_steps_cumulative,
+        ) = res_fit
+        parameters = (
+            parameters_aggregated if parameters_aggregated is not None else parameters
+        )
+        history.add_metrics_distributed_fit(
+            server_round=current_round, metrics=fit_metrics
+        )
+    history.add_metrics_centralized(
+        server_round=current_round,
+        metrics={"server/fit_round_time": (time.time_ns() - fit_round_time) * 1e-9},
+    )
+
+    return parameters, client_state, server_steps_cumulative, history
