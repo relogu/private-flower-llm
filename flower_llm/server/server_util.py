@@ -271,9 +271,30 @@ def get_rr_assignment_function(
     sampled_clients: list[int] | list[str],
     all_node_ids: list[int],
 ) -> Callable[[int], list[int] | list[str]]:
-    """Create a round-robin assignment function for the given clients and nodes."""
+    """Create a round-robin assignment function for distributing clients among nodes.
+
+    Parameters
+    ----------
+        sampled_clients (list[int] | list[str]): A list of client IDs to be assigned.
+        all_node_ids (list[int]): A list of all node IDs available for assignment.
+
+    Returns
+    -------
+        Callable[[int], list[int] | list[str]]: A function that takes a node ID and
+            returns a list of client IDs assigned to that node.
+    """
 
     def assignment_function(node_id: int) -> list[int] | list[str]:
+        """Assign clients to the given node ID based on a round-robin distribution.
+
+        Parameters
+        ----------
+            node_id (int): The ID of the node to assign clients to.
+
+        Returns
+        -------
+            list[int] | list[str]: A list of client IDs assigned to the node.
+        """
         return [
             client_id
             for i, client_id in enumerate(sampled_clients)
