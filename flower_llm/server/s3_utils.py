@@ -35,12 +35,12 @@ from flwr.common.recordset_compat import (
     parameters_to_parametersrecord,
     parametersrecord_to_parameters,
 )
-from flwr.server import History
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import validate_given_remote_path
 
 
 from flower_llm.conf.base_schema import BaseConfig
+from flower_llm.wandb_history import WandbHistory
 
 
 class NoCheckpointsFoundError(Exception):
@@ -220,7 +220,7 @@ def import_checkpoints(
 
 
 def _upload_server_state(
-    history: History,
+    history: WandbHistory,
     current_round: int,
     current_time_elapsed: float,
     server_steps_cumulative: int,
@@ -236,7 +236,7 @@ def _upload_server_state(
 
     Parameters
     ----------
-    history : History
+    history : WandbHistory
         The history object containing the training history.
     current_round : int
         The current federated learning round.
@@ -365,7 +365,7 @@ def _upload_model_parameters(
 
 def upload_server_checkpoint(
     parameters: Parameters | None,
-    history: History | None,
+    history: WandbHistory | None,
     current_round: int,
     current_time_elapsed: float | None,
     server_steps_cumulative: int | None,
@@ -384,7 +384,7 @@ def upload_server_checkpoint(
     ----------
     parameters : Parameters | None
         The model parameters to be uploaded, if any.
-    history : History | None
+    history : WandbHistory | None
         The training history to be uploaded, if any.
     current_round : int
         The current federated learning round.
@@ -439,7 +439,13 @@ def download_server_checkpoint(
     remote_up_down: RemoteUploaderDownloader,
     timeout: float = 0.5,
 ) -> tuple[
-    Parameters, History, int, float, int, dict[str | int, ClientState], NDArrays | None
+    Parameters,
+    WandbHistory,
+    int,
+    float,
+    int,
+    dict[str | int, ClientState],
+    NDArrays | None,
 ]:
     """Download the server checkpoint from the S3 Object Store.
 
@@ -517,7 +523,7 @@ def download_server_checkpoint(
     assert (
         start_round == cfg.pollen.resume_round
     ), "Server round mismatch with checkpoint"
-    history: History = server_state["history"]
+    history: WandbHistory = server_state["history"]
     if "client_state" in server_state:
         saved_client_state: dict[str | int, dict[str, Any]] = ast.literal_eval(
             server_state["client_state"]

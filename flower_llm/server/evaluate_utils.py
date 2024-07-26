@@ -19,7 +19,7 @@ from flwr.common.typing import ConfigsRecordValues
 from flwr.common.recordset_compat import (
     recordset_to_evaluateres,
 )
-from flwr.server import Driver, History
+from flwr.server import Driver
 from flwr.server.strategy import FedAvg
 
 
@@ -30,6 +30,7 @@ from flower_llm.server.server_util import (
     message_independent,
 )
 from flower_llm.utils import ClientState
+from flower_llm.wandb_history import WandbHistory
 
 
 def handle_evaluate_replies(
@@ -134,7 +135,7 @@ def handle_evaluate_replies(
     )
 
     results = (result for success, result in results_and_failures if success)
-    completed_results = [(None, fit_res) for fit_res in results]
+    completed_results = [(None, evaluate_res) for evaluate_res in results]
 
     aggregated_result: tuple[
         float | None,
@@ -208,15 +209,15 @@ def get_handle_success_and_failure_evaluate(
 
         match result:
             case (True, res):
-                fit_res = cast(EvaluateRes, res)
+                evaluate_res = cast(EvaluateRes, res)
                 metrics_accumulator.append(
                     (
-                        fit_res.metrics,
-                        fit_res.status,
-                        fit_res.num_examples,
+                        evaluate_res.metrics,
+                        evaluate_res.status,
+                        evaluate_res.num_examples,
                     )
                 )
-                return (True, fit_res)
+                return (True, evaluate_res)
             case (False, res):
                 cnt_failures += 1
                 if (
@@ -244,8 +245,8 @@ def evaluate_round(
     server_steps_cumulative: int,
     cfg: BaseConfig,
     strategy: FedAvg,
-    history: History,
-) -> History:
+    history: WandbHistory,
+) -> WandbHistory:
     """Execute a round of federated evaluation.
 
     Parameters
@@ -262,11 +263,11 @@ def evaluate_round(
         server_steps_cumulative (int): Cumulative number of server steps.
         cfg (BaseConfig): Configuration object containing various settings.
         strategy (FedAvg): Federated averaging strategy for aggregating client updates.
-        history (History): Object to record the history of metrics and events.
+        history (WandbHistory): Object to record the history of metrics and events.
 
     Returns
     -------
-        History: Updated history object with evaluation metrics and events.
+        WandbHistory: Updated history object with evaluation metrics and events.
     """
     # Evaluate model on a sample of available clients
     evaluate_round_time = time.time_ns()

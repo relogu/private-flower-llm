@@ -29,7 +29,7 @@ from flwr.common import (
     MessageType,
 )
 from flwr.common.typing import ConfigsRecordValues
-from flwr.server import Driver, History
+from flwr.server import Driver
 
 from flwr.common.recordset_compat import (
     recordset_to_fitres,
@@ -39,6 +39,7 @@ from composer.loggers import RemoteUploaderDownloader
 
 
 from flower_llm.conf.base_schema import BaseConfig
+from flower_llm.wandb_history import WandbHistory
 
 
 def handle_fit_replies(
@@ -155,7 +156,7 @@ def handle_fit_replies(
 
     try:
         # Aggregate training results
-        parameters_aggregated, _ = strategy.aggregate_fit(
+        parameters_aggregated, metrics_aggregated = strategy.aggregate_fit(
             current_round,
             ((None, fit_res) for fit_res in results),  # type: ignore[reportArgumentType, arg-type]
             failures,  # type: ignore[reportArgumentType, arg-type]
@@ -302,13 +303,13 @@ def fit_round(
     cfg: BaseConfig,
     strategy: FedAvg,
     remote_up_down: RemoteUploaderDownloader | None,
-    history: History,
+    history: WandbHistory,
     parameters: Parameters,
 ) -> tuple[
     Parameters,
     dict[str | int, ClientState],
     int,
-    History,
+    WandbHistory,
 ]:
     """Execute a round of federated training.
 
@@ -328,7 +329,7 @@ def fit_round(
         strategy (FedAvg): Federated averaging strategy for aggregating client updates.
         remote_up_down (RemoteUploaderDownloader | None): Optional remote
             uploader/downloader for handling data transfer.
-        history (History): Object to record the history of metrics and events.
+        history (WandbHistory): Object to record the history of metrics and events.
         parameters (Parameters): Current model parameters.
 
     Returns

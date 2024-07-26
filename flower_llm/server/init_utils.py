@@ -26,12 +26,12 @@ from flwr.common import (
     log,
 )
 
-from flwr.server import History
 from omegaconf import OmegaConf
 from composer.loggers import RemoteUploaderDownloader
 
 
 from flower_llm.conf.base_schema import BaseConfig
+from flower_llm.wandb_history import WandbHistory
 
 
 def get_initial_parameters(cfg: BaseConfig) -> Parameters:
@@ -93,7 +93,13 @@ def get_initial_parameters(cfg: BaseConfig) -> Parameters:
 def initialize_round(
     cfg: BaseConfig, remote_up_down: RemoteUploaderDownloader | None
 ) -> tuple[
-    Parameters, History, int, float, int, dict[str | int, ClientState], NDArrays | None
+    Parameters,
+    WandbHistory,
+    int,
+    float,
+    int,
+    dict[str | int, ClientState],
+    NDArrays | None,
 ]:
     """Initialize the state for a new round of federated learning.
 
@@ -130,7 +136,7 @@ def initialize_round(
     start_round: int = 0
     time_offset: float = 0.0
     server_steps_cumulative: int = 0
-    history = History()
+    history = WandbHistory(use_wandb=cfg.use_wandb)
     # Initialize client_state_dict
     client_state: dict[str | int, ClientState] = {
         cid: ClientState(0) for cid in range(cfg.fl.n_total_clients)
@@ -168,7 +174,13 @@ def initialize_round(
 def resume_from_round(
     cfg: BaseConfig, remote_up_down: RemoteUploaderDownloader
 ) -> tuple[
-    Parameters, History, int, float, int, dict[str | int, ClientState], NDArrays | None
+    Parameters,
+    WandbHistory,
+    int,
+    float,
+    int,
+    dict[str | int, ClientState],
+    NDArrays | None,
 ]:
     """Resume from a previous round.
 
@@ -183,7 +195,7 @@ def resume_from_round(
     -------
     tuple[
         Parameters,
-        History,
+        WandbHistory,
         int,
         float,
         int,

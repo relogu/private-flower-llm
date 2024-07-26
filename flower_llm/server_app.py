@@ -169,6 +169,12 @@ def main(driver: Driver, context: Context) -> None:
                 client_state,
                 momentum_vector,
             ) = resume_from_round(cfg, remote_up_down)
+            # Loop over the PRNG to get to the correct round
+            for _ in range(start_round):
+                sampled_clients = rng.sample(
+                    range(n_total_clients), n_clients_per_round
+                )
+            sampled_clients = []
         else:
             (
                 parameters,
