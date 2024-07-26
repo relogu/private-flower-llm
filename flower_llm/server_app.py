@@ -320,7 +320,7 @@ def main(driver: Driver, context: Context) -> None:
                 upload_server_checkpoint(
                     parameters=parameters,
                     history=history,
-                    current_round=start_round,
+                    current_round=current_round,
                     current_time_elapsed=time_offset,
                     server_steps_cumulative=server_steps_cumulative,
                     momentum_vector=momentum_vector,
