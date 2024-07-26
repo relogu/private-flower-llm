@@ -72,6 +72,13 @@ from dataclasses import asdict
 import ast
 from flower_llm.utils import ClientState
 
+# NOTE: We need this if we want to compile the model because the attention
+# implementation in the MPT code is dispatched using a dictionary that raises:
+# `AssertionError: Dict types must use ConstDictVariable.`
+import torch._dynamo
+
+torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
+
 
 def copy_old_checkpoints_to_new_run(
     remote_up_down: RemoteUploaderDownloader,
