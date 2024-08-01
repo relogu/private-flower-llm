@@ -228,6 +228,25 @@ def main(driver: Driver, context: Context) -> None:
                 "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
             },
         )
+
+        # Launch the evaluate process for the starting round
+        sampled_clients = [0]
+        history = evaluate_round(
+            driver=driver,
+            sampled_clients=sampled_clients,
+            evaluate_config_fn=pollen_evaluate_config,
+            all_node_ids=all_node_ids,
+            current_round=start_round,
+            client_state=client_state,
+            server_steps_cumulative=server_steps_cumulative,
+            cfg=cfg,
+            strategy=strategy,
+            history=history,
+        )
+        # Nullify assignments
+        sampled_clients = []
+
+        # Federated learning loop
         for current_round in range(start_round + 1, num_rounds + 1):
             start_round_time = time.time_ns()
             log(DEBUG, f"Commencing server round {current_round}")
