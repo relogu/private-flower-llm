@@ -146,7 +146,7 @@ def message_collaborative(
         messages.append(message)
     message_ids = driver.push_messages(messages)
     received = 0
-    total = len(messages)
+    total = len(sampled_clients)
     log(DEBUG, "Pushed %s messages: %s", len(messages), message_ids)
 
     while received < total:
