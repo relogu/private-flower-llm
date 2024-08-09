@@ -9,6 +9,11 @@ autoresume: false
 # Run Name
 run_name: ${run_uuid}  # If left blank, will be read from env var $RUN_NAME
 
+# Evaluation gauntlet
+eval_gauntlet: ${eval_gauntlet_config.eval_gauntlet}
+icl_tasks_config: ${icl_tasks_config}
+icl_tasks: ${icl_tasks_config.icl_tasks}
+
 # Model
 model:
   name: mpt_causal_lm
