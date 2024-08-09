@@ -56,6 +56,7 @@ from flower_llm.clients.llm_config_functions import (
     set_client_tensorboard_logger,
     set_client_wandb_logger,
     set_dataset_default_params,
+    set_icl_tasks_root_dir,
     validate_config,
     set_n_workers_dataloaders,
 )
@@ -371,7 +372,10 @@ def _get_trainer_object(
     eval_loader_config: DictConfig | ListConfig | None = pop_config(
         _cfg, "eval_loader", must_exist=False, default_value=None
     )
-    icl_tasks_config: ListConfig | str | None = pop_config(
+    icl_tasks_config: DictConfig | str | None = pop_config(
+        _cfg, "icl_tasks_config", must_exist=False, default_value=None
+    )
+    icl_tasks_listconfig: ListConfig | str | None = pop_config(
         _cfg, "icl_tasks", must_exist=False, default_value=None
     )
     eval_gauntlet_config: DictConfig | str | None = pop_config(
@@ -657,14 +661,27 @@ def _get_trainer_object(
 
     eval_gauntlet_callback = None
 
-    if icl_tasks_config is not None:
+    if icl_tasks_listconfig is not None:
+        assert eval_gauntlet_config is not None
+        destination_dir: str | None = None
+        if not isinstance(eval_gauntlet_config, str):
+            assert isinstance(eval_gauntlet_config, DictConfig)
+            destination_dir = eval_gauntlet_config.pop("destination_dir", None)
+        if (
+            icl_tasks_config is not None
+            and isinstance(icl_tasks_config, DictConfig)
+            and icl_tasks_config.root_dir is not None
+            and isinstance(icl_tasks_listconfig, ListConfig)
+        ):
+            set_icl_tasks_root_dir(icl_tasks_listconfig, icl_tasks_config.root_dir)
         icl_evaluators, _, eval_gauntlet_callback = build_icl_data_and_gauntlet(
-            icl_tasks_config,
+            icl_tasks_listconfig,
             eval_gauntlet_config,
             tokenizer,
             device_eval_batch_size,
             icl_seq_len or max_seq_len,
             icl_subset_num_batches,
+            destination_dir=destination_dir,
         )
         evaluators.extend(icl_evaluators)
 
