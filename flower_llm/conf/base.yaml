@@ -45,6 +45,8 @@ defaults:
   # - base_schema
   - _self_
   - llm_config: mpt-125m
+  - eval_gauntlet_config: eval_gauntlet_v0.3
+  - icl_tasks_config: tasks_v0.3
   - dataset: fed-c4-c4
   - dataset/streams@dataset.train.streams: 8_clients
   - dataset/streams@dataset.val.streams: centralised
