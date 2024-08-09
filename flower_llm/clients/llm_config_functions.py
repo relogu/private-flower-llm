@@ -39,6 +39,27 @@ class StreamDict:
     keep_zip: bool | None = None
 
 
+def set_icl_tasks_root_dir(icl_tasks_listconfig: ListConfig, root_dir: str) -> None:
+    """Update the dataset URI for each ICL task in the given ListConfig.
+
+    The update is performed by prepending the specified root directory.
+
+    Parameters
+    ----------
+        icl_tasks_listconfig : ListConfig
+            A ListConfig object containing ICL tasks, each with a `dataset_uri` attr.
+        root_dir : str
+            The root directory to prepend to each task's `dataset_uri`.
+
+    Returns
+    -------
+        None
+    """
+    for icl_task in icl_tasks_listconfig:
+        old_dataset_uri = icl_task.dataset_uri
+        icl_task.dataset_uri = root_dir + "/" + old_dataset_uri
+
+
 def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
     """Set the client data configuration for the client.
 
