@@ -269,6 +269,16 @@ def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
 
+        # NOTE: This part won't catch any client-level modification to the config and
+        # use directly the one taken form the whole run
+        # Get the environmental variable for the dump folder
+        save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+        # Raise an error if the environmental variable is not set
+        if not save_path:
+            raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+        # Add configuration to the wandb config parameter
+        cfg.loggers.wandb["config_file"] = save_path + "/config.yaml"
+
 
 def set_client_tensorboard_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the tensorboard logger for the client."""
