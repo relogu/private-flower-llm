@@ -3,7 +3,7 @@
 import ast
 from collections import defaultdict
 import copy
-from functools import reduce
+from functools import partial, reduce
 import time
 from collections.abc import Generator, Iterable
 from logging import DEBUG
@@ -12,6 +12,74 @@ from flwr.common import FitRes, NDArrays, Parameters, bytes_to_ndarray, Config
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 import numpy as np
+
+
+def aggregate_gradients(
+    old_parameters: NDArrays,
+    accumulator: tuple[NDArrays | None, int],
+    current: tuple[NDArrays, int],
+) -> tuple[NDArrays | None, int]:
+    """Aggregate gradients from multiple clients on the accumulated gradients.
+
+    Parameters
+    ----------
+        old_parameters : NDArrays
+            The original model parameters before the current update.
+        accumulator : tuple[NDArrays | None, int]
+            A tuple containing the accumulated gradients and the total number of
+            examples seen so far.
+        current : tuple[NDArrays, int]
+            A tuple containing the current gradients and the number of examples in the
+            current update.
+
+    Returns
+    -------
+        tuple[NDArrays | None, int]: A tuple containing the updated accumulated
+        gradients and the new total number of examples.
+    """
+    current_params, num_examples = current
+    start_time = time.time()
+    log(DEBUG, f"Started aggregating client gradients with samples: {num_examples}")
+
+    grads, prev_total_examples = accumulator
+
+    # Compute the new total number of samples
+    new_total_samples = prev_total_examples + num_examples
+
+    # Compute scaling factor for the accumulator
+    acc_scaling_factor = float(prev_total_examples) / new_total_samples
+
+    # Compute scaling factor for the update
+    scaling_factor = float(num_examples) / new_total_samples
+
+    # Compute the pseudo-gradients
+    current_grads = [x - y for x, y in zip(old_parameters, current_params, strict=True)]
+
+    # NOTE: Maybe be useless but let's help the Python GC figure out what to do
+    del current_params
+
+    if grads is None:
+        grads = list(current_grads)
+    else:
+        # Avoid allocating any temporaries
+        for x, y in zip(grads, current_grads, strict=True):
+            x *= acc_scaling_factor
+            y *= scaling_factor
+            x += y
+            # Lack of scoping requires this
+            del y
+
+    # NOTE: Maybe be useless but let's help the Python GC figure out what to do
+    del current_grads
+
+    log(
+        DEBUG,
+        f"""Aggregated client with samples: {num_examples}
+                total samples used: {new_total_samples}
+                time: {time.time() - start_time} """,
+    )
+
+    return grads, new_total_samples
 
 
 def aggregate_parameters(
@@ -34,7 +102,7 @@ def aggregate_parameters(
     """
     current_params, num_examples = current
     start_time = time.time()
-    log(DEBUG, f"Started aggregating client with samples: {num_examples}")
+    log(DEBUG, f"Started aggregating client parameters with samples: {num_examples}")
 
     params, prev_total_examples = accumulator
 
@@ -73,30 +141,43 @@ def aggregate_parameters(
 
 def aggregate_inplace(
     results: Iterable[tuple[NDArrays, int]],
+    old_parameters: NDArrays | None,
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # Holds the parameters and the total number of samples
     accumulator: tuple[NDArrays | None, int] = (None, 0)
 
-    # Aggregate the parameters
-    params, _ = reduce(aggregate_parameters, results, accumulator)
+    # Choose the aggregation function
+    aggregation_fn = (
+        aggregate_parameters
+        if old_parameters is None
+        else partial(
+            aggregate_gradients,
+            old_parameters,
+        )
+    )
 
-    return params
+    # Aggregate the parameters
+    agg_results, _ = reduce(aggregation_fn, results, accumulator)  # type: ignore[call-overload]
+
+    return agg_results
 
 
 def aggregate_cumulative_average(
     results: Iterable[tuple[ClientProxy, FitRes]],
+    old_parameters: NDArrays | None,
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # NOTE: Only one ndarray exists at a time
     return aggregate_inplace(
-        (
+        results=(
             (
                 parameters_to_ndarrays_gen(fit_res.parameters),  # type: ignore[reportArgumentType, misc]
                 fit_res.num_examples,
             )
             for _, fit_res in results
-        )
+        ),
+        old_parameters=old_parameters,
     )
 
 
@@ -117,7 +198,7 @@ def partially_aggregate(
         updated_agg = copy.deepcopy(new_results[0])
         total_num_examples = copy.deepcopy(new_results[1])
     else:
-        updated_agg = aggregate_inplace([current_agg, new_results])
+        updated_agg = aggregate_inplace([current_agg, new_results], None)
         assert updated_agg is not None
         total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
             new_results[1]

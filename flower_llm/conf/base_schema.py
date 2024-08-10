@@ -74,7 +74,10 @@ class StrategyName(StrEnum):
     """Strategy type."""
 
     NESTOROV = auto()
+    FEDMOM = auto()
     FEDAVG = auto()
+    FEDYOGI = auto()
+    FEDADAM = auto()
     NESTOROV_MATRIX = auto()
 
 

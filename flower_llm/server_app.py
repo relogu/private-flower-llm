@@ -30,7 +30,7 @@ from composer.loggers import RemoteUploaderDownloader
 
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.strategy.dispatcher import dispatch_strategy
-from flower_llm.strategy.rs_nesterov import FedNesterov
+from flower_llm.strategy.fednestorov import FedNesterov
 from flower_llm.utils import (
     create_remote_up_down,
     wandb_init,

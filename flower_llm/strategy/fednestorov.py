@@ -1,14 +1,13 @@
-"""Federated Averaging with Nestorov Momentum (FedAvgM) strategy.
+"""Federated Averaging with Nestorov Momentum strategy.
 
-This aggregation mechanism is used and discussed in several papers:
-[Hsu et al., 2019], [Huo et al., 2020]
-
-Papers:
-- https://arxiv.org/pdf/1909.06335.pdf
-- https://arxiv.org/pdf/2002.02090.pdf
+This implementation is based on the SGD with Nestorov Momentum implementation in PyTorch.
+It can either partially aggregate updated model parameters as soon as they arrive and the compute
+the averaged pseudo-gradient or partially aggregate pseudo-gradients while computing them.
+The averaged pseudo-gradient is then used to update the global model parameters.
 """
 
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from logging import INFO
 from pathlib import Path
 
@@ -19,26 +18,33 @@ from flwr.common import (
     Parameters,
     Scalar,
     log,
-    ndarrays_to_parameters,
     parameters_to_ndarrays,
+    ndarray_to_bytes,
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate
+from flwr.server.strategy import FedAvg
 import numpy as np
 
-from flower_llm.strategy.aggregation import aggregate_cumulative_average
-from flower_llm.strategy.rs_fedavg import FedAvgReproducibleSampling
-from flower_llm.utils import l2_norm, sum_of_squares
+from flower_llm.strategy.aggregation import (
+    aggregate_cumulative_average,
+    parameters_to_ndarrays_gen,
+)
+from flower_llm.utils import (
+    l2_norm,
+    sum_of_squares,
+)
 
 
 # flake8: noqa: E501
-class FedNesterov(FedAvgReproducibleSampling):
+class FedNesterov(FedAvg):
     """Configurable FedNesterov strategy implementation."""
 
     # pylint: disable=too-many-arguments,too-many-instance-attributes,line-too-long
     def __init__(
         self,
         *,
+        initial_parameters: Parameters,
         saving_path: Path | None = None,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
@@ -55,18 +61,15 @@ class FedNesterov(FedAvgReproducibleSampling):
         on_fit_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         on_evaluate_config_fn: Callable[[int], dict[str, Scalar]] | None = None,
         accept_failures: bool = True,
-        initial_parameters: Parameters | None = None,
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
-        seed: int = 1337,
         server_learning_rate: float = 0.7,  # default DiLoCo value
         server_momentum: float = 0.9,  # default DiLoCo value
+        use_gradients: bool = True,  # default DiLoCo implementation
         track_norms: bool = True,
         track_inplace_aggregation: bool = False,
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy.
-
-        It uses reproducible sampling and model saving.
 
         Parameters
         ----------
@@ -84,19 +87,25 @@ class FedNesterov(FedAvgReproducibleSampling):
             Minimum number of clients used during validation. Defaults to 2.
         min_available_clients : int, optional
             Minimum number of total clients in the system. Defaults to 2.
-        evaluate_fn : Optional[Callable[[int, NDArrays, Dict[str, Scalar]], Optional[Tuple[float, Dict[str, Scalar]]]]]
+        evaluate_fn : (
+                Callable[
+                    [int, NDArrays, dict[str, Scalar]],
+                    tuple[float, dict[str, Scalar]] | None,
+                ]
+                | None
+            )
             Optional function used for validation. Defaults to None.
-        on_fit_config_fn : Callable[[int], Dict[str, Scalar]], optional
+        on_fit_config_fn : Callable[[int], dict[str, Scalar]], optional
             Function used to configure training. Defaults to None.
-        on_evaluate_config_fn : Callable[[int], Dict[str, Scalar]], optional
+        on_evaluate_config_fn : Callable[[int], dict[str, Scalar]], optional
             Function used to configure validation. Defaults to None.
         accept_failures : bool, optional
             Whether or not accept rounds containing failures. Defaults to True.
         initial_parameters : Parameters, optional
             Initial global model parameters.
-        fit_metrics_aggregation_fn : Optional[MetricsAggregationFn]
+        fit_metrics_aggregation_fn : MetricsAggregationFn | None
             Metrics aggregation function, optional.
-        evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
+        evaluate_metrics_aggregation_fn : MetricsAggregationFn | None
             Metrics aggregation function, optional.
         seed : int, optional
             Seed for reproducibility. Defaults to 1337.
@@ -104,6 +113,8 @@ class FedNesterov(FedAvgReproducibleSampling):
             Learning rate used by the server-side optimizer. Defaults to 0.7.
         server_momentum: float, optional
             Momentum coefficient used by the server-side optimizer. Defaults to 0.9.
+        use_gradients: bool, optional
+            Flag for using gradients in the aggregation instead of model parameters. Defaults to True.
         track_norms: bool, optional
             Flag for tracking the norms of the aggregated updates. Defaults to True.
         track_inplace_aggregation: bool, optional
@@ -122,22 +133,22 @@ class FedNesterov(FedAvgReproducibleSampling):
             initial_parameters=initial_parameters,
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-            seed=seed,
         )
         if saving_path is None:
             saving_path = Path(Path.cwd())
         self.saving_path = saving_path
 
-        # Default to DiLoCo values
+        # Default optimizer values
         self.server_learning_rate = server_learning_rate
         self.server_momentum = server_momentum
 
-        # Avoid translating between parameters and NDArrays every time unnecessarily
-        self.ndarray_parameters: NDArrays | None = (
-            parameters_to_ndarrays(initial_parameters)
-            if initial_parameters is not None
-            else None
-        )
+        # Aggregation implementation
+        self.use_gradients = use_gradients
+
+        # NOTE: This avoids translating between parameters and NDArrays every time. However, it incurs in a higher memory peak. We decided to go for the previous approach that uses a pointer to the parameters at the server.
+        # self.ndarray_parameters: NDArrays = parameters_to_ndarrays(initial_parameters)
+        self.parameters: Parameters = initial_parameters
+        assert self.parameters is self.initial_parameters
 
         log(
             INFO,
@@ -146,7 +157,9 @@ class FedNesterov(FedAvgReproducibleSampling):
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: NDArrays | None = None
+        self.momentum_vector: NDArrays = deepcopy(
+            parameters_to_ndarrays(initial_parameters)
+        )
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -159,7 +172,7 @@ class FedNesterov(FedAvgReproducibleSampling):
     ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
         assert (
-            self.ndarray_parameters is not None
+            self.parameters is not None
         ), "When using server-side optimization, model needs to be initialized."
 
         fit_metrics: list[tuple[int, dict[str, Scalar]]] = []
@@ -179,82 +192,94 @@ class FedNesterov(FedAvgReproducibleSampling):
             results_cached = list(results)
             results = (val for val in results_cached)
 
-        fedavg_result = aggregate_cumulative_average(results)
+        # Get the cumulative average of the results
+        fedavg_result = aggregate_cumulative_average(
+            results,
+            old_parameters=(
+                parameters_to_ndarrays(self.parameters) if self.use_gradients else None
+            ),
+        )
 
+        # Return None if no results were aggregated
         if fedavg_result is None:
             return None, {}
 
-        pseudo_gradient: NDArrays = [
-            x - y for x, y in zip(self.ndarray_parameters, fedavg_result, strict=False)
-        ]
+        # Initialize the metrics
+        layerwise_l2_norms_pseudo_gradient: list[float] = []
+        layerwise_l2_norms_momentum_vector: list[float] = []
+        layerwise_l2_norms_fedavg_result: list[float] = []
+        layerwise_l2_norms_model: list[float] = []
+        # Loop over layer, apply the server optimizer and compute metrics
+        for i, x in enumerate(parameters_to_ndarrays_gen(self.parameters)):
+            # Layer i pseudo-gradient
+            layer_pseudo_gradient = (
+                fedavg_result[i] if self.use_gradients else x - fedavg_result[i]
+            )
 
-        if server_round > 1:
-            assert self.momentum_vector, "Momentum should have been created on round 1."
+            # Using torch.optim.SGD implementation
+            # Compute momentum vector
+            if server_round == 1:
+                self.momentum_vector[i] = layer_pseudo_gradient
+            else:
+                self.momentum_vector[i] = (
+                    self.server_momentum * self.momentum_vector[i]
+                    + layer_pseudo_gradient
+                )
+            # Applying Nestorov momentum
+            layer_pseudo_gradient += self.server_momentum * self.momentum_vector[i]
+            # Layer i new values
+            layer_fedavgm_result = x - self.server_learning_rate * layer_pseudo_gradient
 
-            self.momentum_vector = [
-                self.server_momentum * v + w
-                for w, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
-            ]
-        else:  # Round 1
-            # Initialize server-side model
+            # Assign new values to the parameters variable
+            self.parameters.tensors[i] = ndarray_to_bytes(layer_fedavgm_result)
+            # Metrics collection
+            layerwise_l2_norms_pseudo_gradient.append(l2_norm([layer_pseudo_gradient]))
+            layerwise_l2_norms_momentum_vector.append(
+                l2_norm([self.momentum_vector[i]])
+            )
+            layerwise_l2_norms_fedavg_result.append(l2_norm([x]))
+            layerwise_l2_norms_model.append(l2_norm([layer_fedavgm_result]))
 
-            # Initialize momentum vector
-            self.momentum_vector = pseudo_gradient
-
-        # Applying Nesterov
-        pseudo_gradient = [
-            g + self.server_momentum * v
-            for g, v in zip(pseudo_gradient, self.momentum_vector, strict=False)
-        ]
-
-        # Federated Averaging with Server Momentum
-        fedavgm_result = [
-            w - self.server_learning_rate * v
-            for w, v in zip(self.ndarray_parameters, pseudo_gradient, strict=False)
-        ]
-
-        self.ndarray_parameters = fedavgm_result
-
-        parameters_aggregated = ndarrays_to_parameters(fedavgm_result)
-
-        # NOTE: This is handled by the server
-        # # Aggregate custom metrics if aggregation fn was provided
         metrics_aggregated: dict[str, Scalar] = {}
-        # if self.fit_metrics_aggregation_fn:
-        #     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        # elif server_round == 1:  # Only log this warning once
-        #     log(WARNING, "No fit_metrics_aggregation_fn provided")
-
         if self.track_norms:
             metrics_aggregated |= {
-                "server/l2_norm_pseudo_gradient": l2_norm(pseudo_gradient),
-                "server/l2_norm_momentum_vector": l2_norm(self.momentum_vector),
-                "server/l2_norm_model": l2_norm(fedavgm_result),
-                "server/l2_norm_fedavg_result": l2_norm(fedavg_result),
+                "server/l2_norm_pseudo_gradient": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_pseudo_gradient))
+                ),
+                "server/l2_norm_momentum_vector": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_momentum_vector))
+                ),
+                "server/l2_norm_fedavg_result": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_fedavg_result))
+                ),
+                "server/l2_norm_model": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_model))
+                ),
             }
-            for i, plnpg in enumerate([l2_norm([layer]) for layer in pseudo_gradient]):
-                metrics_aggregated |= {
-                    f"server/layer_{i}/l2_norm_pseudo_gradient": plnpg
-                }
-            for i, plnpg in enumerate(
-                [l2_norm([layer]) for layer in self.momentum_vector]
+            for i, (a, b, c, d) in enumerate(
+                zip(
+                    layerwise_l2_norms_pseudo_gradient,
+                    layerwise_l2_norms_momentum_vector,
+                    layerwise_l2_norms_fedavg_result,
+                    layerwise_l2_norms_model,
+                    strict=True,
+                )
             ):
-                metrics_aggregated |= {
-                    f"server/layer_{i}/l2_norm_momentum_vector": plnpg
-                }
-            for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavgm_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l2_norm_model": plnpg}
-            for i, plnpg in enumerate([l2_norm([layer]) for layer in fedavg_result]):
-                metrics_aggregated |= {f"server/layer_{i}/l2_norm_fedavg_result": plnpg}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_pseudo_gradient": a}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_momentum_vector": b}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_fedavg_result": c}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_model": d}
             log(
                 INFO,
-                "Nesterov Momentum: l2_norm(pseudo_gradient)=%s,"
-                " l2_norm(self.momentum_vector)=%s, l2_norm(model)=%s,"
-                " l2_norm(fedavg_result)=%s",
-                l2_norm(pseudo_gradient),
-                l2_norm(self.momentum_vector),
-                l2_norm(fedavgm_result),
-                l2_norm(fedavg_result),
+                "Nesterov Momentum:"
+                " l2_norm(pseudo_gradient)=%s,"
+                " l2_norm(self.momentum_vector)=%s,"
+                " l2_norm(fedavg_result)=%s"
+                " l2_norm(model)=%s,",
+                metrics_aggregated["server/l2_norm_pseudo_gradient"],
+                metrics_aggregated["server/l2_norm_momentum_vector"],
+                metrics_aggregated["server/l2_norm_fedavg_result"],
+                metrics_aggregated["server/l2_norm_model"],
             )
 
         if self.track_inplace_aggregation:
@@ -278,4 +303,4 @@ class FedNesterov(FedAvgReproducibleSampling):
                 len(results_cached),
             )
 
-        return parameters_aggregated, metrics_aggregated
+        return self.parameters, metrics_aggregated
