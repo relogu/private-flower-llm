@@ -191,9 +191,12 @@ def set_trainer_trainable_params_dict(
             if cpu_state:
                 # Set the parameters only if they require gradients
                 for name, param in cpu_state.items():
+                    current_dtype = param.data.dtype
                     # NOTE: We need to add the prefix "model." to the name of the
                     # parameter to match the state dict
-                    cpu_state[name] = parameters_dict["model." + name].to(param.device)
+                    cpu_state[name] = parameters_dict["model." + name].to(
+                        device=param.device, dtype=current_dtype
+                    )
             # Broadcast the state dict across all ranks
             # NOTE: This step is necessary as all the ranks must load the same state
             # dict concurrently
@@ -207,12 +210,16 @@ def set_trainer_trainable_params_dict(
             if param.requires_grad:
                 # DDP
                 if name.startswith("module."):
+                    current_dtype = param.data.dtype
                     param.data = parameters_dict[name.replace("module.", "")].to(
-                        param.device
+                        device=param.device, dtype=current_dtype
                     )
                 # Single GPU
                 else:
-                    param.data = parameters_dict[name].to(param.device)
+                    current_dtype = param.data.dtype
+                    param.data = parameters_dict[name].to(
+                        device=param.device, dtype=current_dtype
+                    )
     dist.barrier()
 
 
