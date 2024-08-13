@@ -7,16 +7,16 @@ SPDX-License-Identifier: Apache-2.0
 
 import gc
 from logging import DEBUG, INFO
+import os
 from pathlib import Path
+from typing import cast
 
-import hydra
 import numpy as np
 import torch
 from composer import Trainer
 from flwr.common import log
 from omegaconf import OmegaConf
 
-from flower_llm.conf import base_schema
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
@@ -30,12 +30,15 @@ from flower_llm.utils import (
 )
 
 
-base_schema.register_config(name="base_schema")
-
-
-@hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(_cfg: BaseConfig) -> Trainer:
+def main() -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
+    # Get the environmental variable for the dump folder
+    save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+    # Raise an error if the environmental variable is not set
+    if not save_path:
+        raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+    # Load the configuration from the config file
+    _cfg = cast(BaseConfig, OmegaConf.load(save_path + "/config.yaml"))
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(_cfg)
     OmegaConf.set_struct(_cfg, False)
