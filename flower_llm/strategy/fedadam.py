@@ -141,10 +141,10 @@ class FedAdam(FedAvg):
         self.beta_1 = beta_1
         self.beta_2 = beta_2
         # Lazy initialization
-        self.m_t: NDArrays = [
+        self.momentum_vector: NDArrays = [
             np.zeros_like(x) for x in parameters_to_ndarrays(self.parameters)
         ]
-        self.v_t: NDArrays = [
+        self.second_momentum_vector: NDArrays = [
             np.zeros_like(x) for x in parameters_to_ndarrays(self.parameters)
         ]
 
@@ -206,26 +206,32 @@ class FedAdam(FedAvg):
                 fedavg_result[i] if self.use_gradients else x - fedavg_result[i]
             )
             # Compute first momentum of layer i
-            self.m_t[i] = (
-                self.beta_1 * self.m_t[i] + (1 - self.beta_1) * layer_pseudo_gradient
+            self.momentum_vector[i] = (
+                self.beta_1 * self.momentum_vector[i]
+                + (1 - self.beta_1) * layer_pseudo_gradient
             ) * (1 / (self.beta_1**server_round))
             # Compute second momentum of layer i
-            self.v_t[i] = (
-                self.beta_2 * self.v_t[i]
+            self.second_momentum_vector[i] = (
+                self.beta_2 * self.second_momentum_vector[i]
                 + (1 - self.beta_2)
                 * np.multiply(layer_pseudo_gradient, layer_pseudo_gradient)
             ) * (1 / (self.beta_2**server_round))
             # Compute the new weights of layer i
             layer_fedadam_result = x + self.eta * np.divide(
-                self.m_t[i], (np.sqrt(self.v_t[i]) + self.tau)
+                self.momentum_vector[i],
+                (np.sqrt(self.second_momentum_vector[i]) + self.tau),
             )
             # Assign new values to the parameters variable
             self.parameters.tensors[i] = ndarray_to_bytes(layer_fedadam_result)
 
             # Metrics collection
             layerwise_l2_norms_pseudo_gradient.append(l2_norm([layer_pseudo_gradient]))
-            layerwise_l2_norms_momentum_vector.append(l2_norm([self.m_t[i]]))
-            layerwise_l2_norms_second_momentum_vector.append(l2_norm([self.v_t[i]]))
+            layerwise_l2_norms_momentum_vector.append(
+                l2_norm([self.momentum_vector[i]])
+            )
+            layerwise_l2_norms_second_momentum_vector.append(
+                l2_norm([self.second_momentum_vector[i]])
+            )
             layerwise_l2_norms_fedavg_result.append(
                 l2_norm([x - layer_pseudo_gradient])
             )

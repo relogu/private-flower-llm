@@ -30,7 +30,10 @@ from composer.loggers import RemoteUploaderDownloader
 
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.strategy.dispatcher import dispatch_strategy
+from flower_llm.strategy.fedadam import FedAdam
+from flower_llm.strategy.fedmom import FedMom
 from flower_llm.strategy.fednestorov import FedNesterov
+from flower_llm.strategy.fedyogi import FedYogi
 from flower_llm.utils import (
     create_remote_up_down,
     wandb_init,
@@ -194,10 +197,16 @@ def main(driver: Driver, context: Context) -> None:
         # NOTE: Since we initialized the strategy object before creating the parameters,
         # we must assign to the strategy attributes the parameters we got from the
         # initialization
-        if isinstance(strategy, FedNesterov):
-            assert momentum_vector is not None, "Momentum vector must be initialized"
+        if isinstance(strategy, FedNesterov | FedMom | FedYogi | FedAdam):
             strategy.parameters = parameters
+        if isinstance(strategy, FedNesterov | FedMom | FedYogi | FedAdam):
+            assert momentum_vector is not None, "Momentum vector must be initialized"
             strategy.momentum_vector = momentum_vector
+        # if isinstance(strategy, FedYogi | FedAdam):
+        #     assert second_momentum_vector is not None, (
+        #         "Second momentum vector must be initialized"
+        #     )
+        #     strategy.second_momentum_vector = second_momentum_vector
 
         # Wait for the minimum number of nodes to connect
         wait_for_nodes_to_connect(driver, n_nodes)
