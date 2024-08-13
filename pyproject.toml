@@ -82,6 +82,7 @@ huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
 tenacity = ">=8.2.3,<9"
 llm-foundry = { git = "https://github.com/relogu/llm-foundry.git", tag = "dodo_v0.2.1" }
+lm-eval = { git = "https://github.com/EleutherAI/lm-evaluation-harness.git", tag = "v0.4.2" }
 wheel = "^0.42.0"
 loralib = "0.1.1"
 bitsandbytes = "0.39.1"
