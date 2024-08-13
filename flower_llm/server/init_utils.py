@@ -1,10 +1,10 @@
 """Utility functions for initialization task on main server loop in flwr next."""
 
-from copy import deepcopy
 import copy
 from logging import DEBUG, INFO
 from pathlib import Path
 from typing import cast
+import numpy as np
 
 from flower_llm.clients.llm_client_functions import (
     get_raw_model_parameters,
@@ -100,6 +100,7 @@ def initialize_round(
     int,
     dict[str | int, ClientState],
     NDArrays | None,
+    NDArrays | None,
 ]:
     """Initialize the state for a new round of federated learning.
 
@@ -123,8 +124,9 @@ def initialize_round(
     -------
     tuple
         A tuple containing the initialized global parameters, history object, starting
-        round number, time offset, cumulative server steps, client state dictionary, and
-        the initial momentum vector (or None if not applicable).
+        round number, time offset, cumulative server steps, client state dictionary,
+        the initial momentum vector (or None if not applicable), the initial second
+        momentum vector (or None if not applicable).
 
     Raises
     ------
@@ -144,7 +146,12 @@ def initialize_round(
     # Initialize parameters
     log(INFO, "Initializing global parameters")
     parameters = get_initial_parameters(cfg)
-    momentum_vector = deepcopy(parameters_to_ndarrays(parameters))
+    momentum_vector: NDArrays = [
+        np.zeros_like(x) for x in parameters_to_ndarrays(parameters)
+    ]
+    second_momentum_vector: NDArrays = [
+        np.zeros_like(x) for x in parameters_to_ndarrays(parameters)
+    ]
     # Save the checkpoint to S3 Object Store (w/ model parameters)
     if cfg.pollen.checkpoint or cfg.use_s3_comm:
         assert (
@@ -157,6 +164,7 @@ def initialize_round(
             current_time_elapsed=time_offset,
             server_steps_cumulative=server_steps_cumulative,
             momentum_vector=momentum_vector,
+            second_momentum_vector=second_momentum_vector,
             client_state=client_state,
             remote_up_down=remote_up_down,
         )
@@ -168,6 +176,7 @@ def initialize_round(
         server_steps_cumulative,
         client_state,
         momentum_vector,
+        second_momentum_vector,
     )
 
 
@@ -180,6 +189,7 @@ def resume_from_round(
     float,
     int,
     dict[str | int, ClientState],
+    NDArrays | None,
     NDArrays | None,
 ]:
     """Resume from a previous round.
@@ -200,10 +210,11 @@ def resume_from_round(
         float,
         int,
         dict[str | int, ClientState],
+        NDArrays | None,
         NDArrays | None
     ]
         The model parameters, the history, the round number, the time offset, the
-        cumulative number of steps, the client state, and the momentum vector.
+        cumulative number of steps, the client state, and the momentum vectors.
     """
     cfg.pollen.resume_round = interpret_resume_round(
         resume_round=cfg.pollen.resume_round,

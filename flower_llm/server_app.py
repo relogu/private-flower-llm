@@ -171,6 +171,7 @@ def main(driver: Driver, context: Context) -> None:
                 server_steps_cumulative,
                 client_state,
                 momentum_vector,
+                second_momentum_vector,
             ) = resume_from_round(cfg, remote_up_down)
             # Loop over the PRNG to get to the correct round
             for _ in range(start_round):
@@ -187,6 +188,7 @@ def main(driver: Driver, context: Context) -> None:
                 server_steps_cumulative,
                 client_state,
                 momentum_vector,
+                second_momentum_vector,
             ) = initialize_round(cfg, remote_up_down)
 
         # NOTE: The strategy needs to hold a copy of the initial parameters, but we want
@@ -202,11 +204,15 @@ def main(driver: Driver, context: Context) -> None:
         if isinstance(strategy, FedNesterov | FedMom | FedYogi | FedAdam):
             assert momentum_vector is not None, "Momentum vector must be initialized"
             strategy.momentum_vector = momentum_vector
-        # if isinstance(strategy, FedYogi | FedAdam):
-        #     assert second_momentum_vector is not None, (
-        #         "Second momentum vector must be initialized"
-        #     )
-        #     strategy.second_momentum_vector = second_momentum_vector
+        else:
+            momentum_vector = None
+        if isinstance(strategy, FedYogi | FedAdam):
+            assert (
+                second_momentum_vector is not None
+            ), "Second momentum vector must be initialized"
+            strategy.second_momentum_vector = second_momentum_vector
+        else:
+            second_momentum_vector = None
 
         # Wait for the minimum number of nodes to connect
         wait_for_nodes_to_connect(driver, n_nodes)
@@ -358,6 +364,7 @@ def main(driver: Driver, context: Context) -> None:
                     current_time_elapsed=time_offset,
                     server_steps_cumulative=server_steps_cumulative,
                     momentum_vector=momentum_vector,
+                    second_momentum_vector=second_momentum_vector,
                     client_state=client_state,
                     remote_up_down=remote_up_down,
                 )

@@ -278,6 +278,7 @@ def _upload_momentum_vector(
     current_round: int,
     momentum_vector: NDArrays,
     remote_up_down: RemoteUploaderDownloader,
+    is_second_momentum: bool = False,
 ) -> None:
     """Upload the current momentum vector to the S3 Object Store.
 
@@ -303,9 +304,14 @@ def _upload_momentum_vector(
     # Create a temporary directory
     temp_dir = TemporaryDirectory()
     log(DEBUG, "Dump momentum vector to disk")
+    filename_no_ext = (
+        "current_momentum_vector"
+        if not is_second_momentum
+        else "current_second_momentum_vector"
+    )
     dump_mom_vec_time = time.time()
     dump_model_parameters_to_file(
-        Path(temp_dir.name) / "current_momentum_vector.npz",
+        Path(temp_dir.name) / f"{filename_no_ext}.npz",
         momentum_vector,
     )
     log(
@@ -315,8 +321,8 @@ def _upload_momentum_vector(
     )
     upload_file_to_s3(
         remote_up_down,
-        f"{current_round}/current_momentum_vector.npz",
-        Path(temp_dir.name) / "current_momentum_vector.npz",
+        f"{current_round}/{filename_no_ext}.npz",
+        Path(temp_dir.name) / f"{filename_no_ext}.npz",
     )
 
 
@@ -370,6 +376,7 @@ def upload_server_checkpoint(
     current_time_elapsed: float | None,
     server_steps_cumulative: int | None,
     momentum_vector: NDArrays | None,
+    second_momentum_vector: NDArrays | None,
     client_state: dict[str | int, ClientState] | None,
     remote_up_down: RemoteUploaderDownloader,
 ) -> None:
@@ -377,7 +384,7 @@ def upload_server_checkpoint(
 
     This function uploads various components of the server's state as part of the
     checkpointing process. It includes the model parameters, training history, current
-    round, time elapsed, cumulative server steps, momentum vector, and client states.
+    round, time elapsed, cumulative server steps, momentum vectors, and client states.
     Each component is uploaded separately, and only if it is not None.
 
     Parameters
@@ -393,6 +400,8 @@ def upload_server_checkpoint(
     server_steps_cumulative : int | None
         The cumulative number of server steps taken, if applicable.
     momentum_vector : NDArrays | None
+        The momentum vector to be uploaded, if any.
+    second_momentum_vector : NDArrays | None
         The momentum vector to be uploaded, if any.
     client_state : dict[str | int, ClientState] | None
         The client states to be uploaded, if any.
@@ -425,6 +434,14 @@ def upload_server_checkpoint(
             momentum_vector=momentum_vector,
             remote_up_down=remote_up_down,
         )
+    # Dump and upload second momentum vector if present
+    if second_momentum_vector is not None:
+        _upload_momentum_vector(
+            current_round=current_round,
+            momentum_vector=second_momentum_vector,
+            remote_up_down=remote_up_down,
+            is_second_momentum=True,
+        )
     # Dump and upload model parameters
     if parameters is not None:
         _upload_model_parameters(
@@ -445,6 +462,7 @@ def download_server_checkpoint(
     float,
     int,
     dict[str | int, ClientState],
+    NDArrays | None,
     NDArrays | None,
 ]:
     """Download the server checkpoint from the S3 Object Store.
@@ -472,7 +490,7 @@ def download_server_checkpoint(
     tuple
         A tuple containing the loaded server checkpoint components. The exact components
         include model parameters, training history, current round, time elapsed,
-        cumulative server steps, client states, and (potentially) the momentum vector.
+        cumulative server steps, client states, and (potentially) the momentum vectors.
     """
     # Set the path to server checkpoints
     server_path = f"s3://{cfg.s3_comm_config.bucket_name}/" f"{cfg.run_uuid}/server/"
@@ -571,6 +589,25 @@ def download_server_checkpoint(
         # Download the parameters
         download_file_from_s3(remote_up_down, remote_file_name, local_file_name)
         momentum_vector = load_model_parameters_from_file(local_file_name)
+
+    # Momentum vector
+    second_momentum_vector: NDArrays | None = None
+    remote_file_name_momentum = (
+        server_path + f"{cfg.pollen.resume_round}/current_second_momentum_vector.npz"
+    )
+    if "momentum" in server_state:
+        log(DEBUG, "Get momentum vector from server state")
+        second_momentum_vector = server_state["momentum"]
+    elif validate_given_remote_path(remote_file_name_momentum):
+        log(DEBUG, "Pull momentum from S3 Object Store")
+        # Set the file names depending on the extension found
+        remote_file_name = (
+            f"{cfg.pollen.resume_round}/current_second_momentum_vector.npz"
+        )
+        local_file_name = Path(temp_dir.name) / "current_second_momentum_vector.npz"
+        # Download the parameters
+        download_file_from_s3(remote_up_down, remote_file_name, local_file_name)
+        second_momentum_vector = load_model_parameters_from_file(local_file_name)
     log(INFO, "Checkpoint loaded")
     return (
         parameters,
@@ -580,6 +617,7 @@ def download_server_checkpoint(
         server_steps_cumulative,
         client_state,
         momentum_vector,
+        second_momentum_vector,
     )
 
 
