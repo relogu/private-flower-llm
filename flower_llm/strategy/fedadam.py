@@ -14,14 +14,17 @@ from flwr.common import (
     NDArrays,
     Parameters,
     Scalar,
-    ndarrays_to_parameters,
     parameters_to_ndarrays,
     log,
+    ndarray_to_bytes,
 )
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 
-from flower_llm.strategy.aggregation import aggregate_cumulative_average
+from flower_llm.strategy.aggregation import (
+    aggregate_cumulative_average,
+    parameters_to_ndarrays_gen,
+)
 from flower_llm.utils import l2_norm
 
 
@@ -124,14 +127,26 @@ class FedAdam(FedAvg):
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
         )
-        self.current_weights = parameters_to_ndarrays(initial_parameters)
+
+        # NOTE: This avoids translating between parameters and NDArrays every time.
+        # However, it incurs in a higher memory peak. We decided to go for the previous
+        # approach that uses a pointer to the parameters at the server.
+        # self.ndarray_parameters: NDArrays = parameters_to_ndarrays(initial_parameters)
+        self.parameters: Parameters = initial_parameters
+        assert self.parameters is self.initial_parameters
+
         self.eta = eta
         self.eta_l = eta_l
         self.tau = tau
         self.beta_1 = beta_1
         self.beta_2 = beta_2
-        self.m_t: NDArrays = [np.zeros_like(x) for x in self.current_weights]
-        self.v_t: NDArrays = [np.zeros_like(x) for x in self.current_weights]
+        # Lazy initialization
+        self.m_t: NDArrays = [
+            np.zeros_like(x) for x in parameters_to_ndarrays(self.parameters)
+        ]
+        self.v_t: NDArrays = [
+            np.zeros_like(x) for x in parameters_to_ndarrays(self.parameters)
+        ]
 
         # Aggregation implementation
         self.use_gradients = use_gradients
@@ -152,7 +167,7 @@ class FedAdam(FedAvg):
     ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """Aggregate fit results using weighted average."""
         assert (
-            self.current_weights is not None
+            self.parameters is not None
         ), "When using server-side optimization, model needs to be initialized."
 
         fit_metrics: list[tuple[int, dict[str, Scalar]]] = []
@@ -167,66 +182,104 @@ class FedAdam(FedAvg):
         results = (acc_metrics(result) for result in results)
 
         # Get the cumulative average of the results
-        fedavg_weights_aggregate = aggregate_cumulative_average(
+        fedavg_result = aggregate_cumulative_average(
             results,
-            old_parameters=self.current_weights if self.use_gradients else None,
+            old_parameters=(
+                parameters_to_ndarrays(self.parameters) if self.use_gradients else None
+            ),
         )
 
         # Return None if no results were aggregated
-        if fedavg_weights_aggregate is None:
+        if fedavg_result is None:
             return None, {}
 
-        # Adam
-        delta_t: NDArrays = (
-            [
-                x - y
-                for x, y in zip(
-                    fedavg_weights_aggregate, self.current_weights, strict=True
-                )
-            ]
-            if not self.use_gradients
-            else fedavg_weights_aggregate
-        )
+        # Initialize the metrics
+        layerwise_l2_norms_pseudo_gradient: list[float] = []
+        layerwise_l2_norms_momentum_vector: list[float] = []
+        layerwise_l2_norms_second_momentum_vector: list[float] = []
+        layerwise_l2_norms_fedavg_result: list[float] = []
+        layerwise_l2_norms_model: list[float] = []
+        # Loop over layer, apply the server optimizer and compute metrics
+        for i, x in enumerate(parameters_to_ndarrays_gen(self.parameters)):
+            # Layer i pseudo-gradient
+            layer_pseudo_gradient = (
+                fedavg_result[i] if self.use_gradients else x - fedavg_result[i]
+            )
+            # Compute first momentum of layer i
+            self.m_t[i] = (
+                self.beta_1 * self.m_t[i] + (1 - self.beta_1) * layer_pseudo_gradient
+            ) * (1 / (self.beta_1**server_round))
+            # Compute second momentum of layer i
+            self.v_t[i] = (
+                self.beta_2 * self.v_t[i]
+                + (1 - self.beta_2)
+                * np.multiply(layer_pseudo_gradient, layer_pseudo_gradient)
+            ) * (1 / (self.beta_2**server_round))
+            # Compute the new weights of layer i
+            layer_fedadam_result = x + self.eta * np.divide(
+                self.m_t[i], (np.sqrt(self.v_t[i]) + self.tau)
+            )
+            # Assign new values to the parameters variable
+            self.parameters.tensors[i] = ndarray_to_bytes(layer_fedadam_result)
 
-        # m_t
-        self.m_t = [
-            np.multiply(self.beta_1, x) + (1 - self.beta_1) * y
-            for x, y in zip(self.m_t, delta_t, strict=True)
-        ]
-
-        # v_t
-        self.v_t = [
-            self.beta_2 * x + (1 - self.beta_2) * np.multiply(y, y)
-            for x, y in zip(self.v_t, delta_t, strict=True)
-        ]
-
-        new_weights = [
-            x + self.eta * y / (np.sqrt(z) + self.tau)
-            for x, y, z in zip(self.current_weights, self.m_t, self.v_t, strict=True)
-        ]
-
-        self.current_weights = new_weights
+            # Metrics collection
+            layerwise_l2_norms_pseudo_gradient.append(l2_norm([layer_pseudo_gradient]))
+            layerwise_l2_norms_momentum_vector.append(l2_norm([self.m_t[i]]))
+            layerwise_l2_norms_second_momentum_vector.append(l2_norm([self.v_t[i]]))
+            layerwise_l2_norms_fedavg_result.append(
+                l2_norm([x - layer_pseudo_gradient])
+            )
+            layerwise_l2_norms_model.append(l2_norm([layer_fedadam_result]))
 
         metrics_aggregated: dict[str, Scalar] = {}
         if self.track_norms:
             metrics_aggregated |= {
-                "server/l2_norm_pseudo_gradient": l2_norm(delta_t),
-                "server/l2_norm_momentum_vector": l2_norm(self.m_t),
-                "server/l2_norm_second_momentum_vector": l2_norm(self.v_t),
-                "server/l2_norm_fedavg_result": l2_norm(fedavg_weights_aggregate),
-                "server/l2_norm_model": l2_norm(self.current_weights),
+                "server/l2_norm_pseudo_gradient": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_pseudo_gradient))
+                ),
+                "server/l2_norm_momentum_vector": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_momentum_vector))
+                ),
+                "server/l2_norm_second_momentum_vector": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_second_momentum_vector))
+                ),
+                "server/l2_norm_fedavg_result": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_fedavg_result))
+                ),
+                "server/l2_norm_model": np.sqrt(
+                    np.sum(np.square(layerwise_l2_norms_model))
+                ),
             }
+            for i, (a, b, c, d, e) in enumerate(
+                zip(
+                    layerwise_l2_norms_pseudo_gradient,
+                    layerwise_l2_norms_momentum_vector,
+                    layerwise_l2_norms_second_momentum_vector,
+                    layerwise_l2_norms_fedavg_result,
+                    layerwise_l2_norms_model,
+                    strict=True,
+                )
+            ):
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_pseudo_gradient": a}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_momentum_vector": b}
+                metrics_aggregated |= {
+                    f"server/layer/{i}/l2_norm_second_momentum_vector": c
+                }
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_fedavg_result": d}
+                metrics_aggregated |= {f"server/layer/{i}/l2_norm_model": e}
             log(
                 INFO,
-                "FedYogi:"
+                "FedAdam:"
                 " l2_norm(pseudo_gradient)=%s,"
-                " l2_norm(self.momentum_vector)=%s,"
+                " l2_norm(momentum_vector)=%s,"
+                " l2_norm(second_momentum_vector)=%s,"
                 " l2_norm(fedavg_result)=%s"
                 " l2_norm(model)=%s,",
                 metrics_aggregated["server/l2_norm_pseudo_gradient"],
                 metrics_aggregated["server/l2_norm_momentum_vector"],
+                metrics_aggregated["server/l2_norm_second_momentum_vector"],
                 metrics_aggregated["server/l2_norm_fedavg_result"],
                 metrics_aggregated["server/l2_norm_model"],
             )
 
-        return ndarrays_to_parameters(self.current_weights), metrics_aggregated
+        return self.parameters, metrics_aggregated
