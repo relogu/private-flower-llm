@@ -7,7 +7,6 @@ The averaged pseudo-gradient is then used to update the global model parameters.
 """
 
 from collections.abc import Callable, Iterable
-from copy import deepcopy
 from logging import INFO
 from pathlib import Path
 
@@ -157,9 +156,10 @@ class FedNesterov(FedAvg):
             self.server_learning_rate,
             self.server_momentum,
         )
-        self.momentum_vector: NDArrays = deepcopy(
-            parameters_to_ndarrays(initial_parameters)
-        )
+        # Lazy initialization
+        self.momentum_vector: NDArrays = [
+            np.zeros_like(x) for x in parameters_to_ndarrays(self.parameters)
+        ]
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
@@ -218,27 +218,27 @@ class FedNesterov(FedAvg):
 
             # Using torch.optim.SGD implementation
             # Compute momentum vector
-            if server_round == 1:
-                self.momentum_vector[i] = layer_pseudo_gradient
-            else:
-                self.momentum_vector[i] = (
-                    self.server_momentum * self.momentum_vector[i]
-                    + layer_pseudo_gradient
-                )
+            self.momentum_vector[i] = (
+                self.server_momentum * self.momentum_vector[i] + layer_pseudo_gradient
+            )
             # Applying Nestorov momentum
             layer_pseudo_gradient += self.server_momentum * self.momentum_vector[i]
             # Layer i new values
-            layer_fedavgm_result = x - self.server_learning_rate * layer_pseudo_gradient
+            layer_fednestorov_result = (
+                x - self.server_learning_rate * layer_pseudo_gradient
+            )
 
             # Assign new values to the parameters variable
-            self.parameters.tensors[i] = ndarray_to_bytes(layer_fedavgm_result)
+            self.parameters.tensors[i] = ndarray_to_bytes(layer_fednestorov_result)
             # Metrics collection
             layerwise_l2_norms_pseudo_gradient.append(l2_norm([layer_pseudo_gradient]))
             layerwise_l2_norms_momentum_vector.append(
                 l2_norm([self.momentum_vector[i]])
             )
-            layerwise_l2_norms_fedavg_result.append(l2_norm([x]))
-            layerwise_l2_norms_model.append(l2_norm([layer_fedavgm_result]))
+            layerwise_l2_norms_fedavg_result.append(
+                l2_norm([x - layer_pseudo_gradient])
+            )
+            layerwise_l2_norms_model.append(l2_norm([layer_fednestorov_result]))
 
         metrics_aggregated: dict[str, Scalar] = {}
         if self.track_norms:
@@ -271,7 +271,7 @@ class FedNesterov(FedAvg):
                 metrics_aggregated |= {f"server/layer/{i}/l2_norm_model": d}
             log(
                 INFO,
-                "Nesterov Momentum:"
+                "FedNestorov:"
                 " l2_norm(pseudo_gradient)=%s,"
                 " l2_norm(self.momentum_vector)=%s,"
                 " l2_norm(fedavg_result)=%s"
