@@ -68,8 +68,6 @@ class FedYogi(FedAvg):
         Metrics aggregation function, optional.
     eta : float, optional
         Server-side learning rate. Defaults to 1e-2.
-    eta_l : float, optional
-        Client-side learning rate. Defaults to 0.0316.
     beta_1 : float, optional
         Momentum parameter. Defaults to 0.9.
     beta_2 : float, optional
@@ -107,7 +105,6 @@ class FedYogi(FedAvg):
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         eta: float = 1e-2,
-        eta_l: float = 0.0316,
         beta_1: float = 0.9,
         beta_2: float = 0.99,
         tau: float = 1e-3,
@@ -137,7 +134,6 @@ class FedYogi(FedAvg):
         assert self.parameters is self.initial_parameters
 
         self.eta = eta
-        self.eta_l = eta_l
         self.tau = tau
         self.beta_1 = beta_1
         self.beta_2 = beta_2
@@ -210,21 +206,26 @@ class FedYogi(FedAvg):
             self.momentum_vector[i] = (
                 self.beta_1 * self.momentum_vector[i]
                 + (1 - self.beta_1) * layer_pseudo_gradient
-            ) * (1 / (self.beta_1**server_round))
+            )
             # Compute second momentum of layer i
-            self.second_momentum_vector[i] = (
-                self.second_momentum_vector[i]
-                + (1 - self.beta_2)
+            self.second_momentum_vector[i] += (
+                (1 - self.beta_2)
                 * np.multiply(layer_pseudo_gradient, layer_pseudo_gradient)
                 * np.sign(
                     np.multiply(layer_pseudo_gradient, layer_pseudo_gradient)
                     - self.second_momentum_vector[i]
                 )
-            ) * (1 / (self.beta_2**server_round))
+            )
             # Compute the new weights of layer i
             layer_fedyogi_result = x + self.eta * np.divide(
-                self.momentum_vector[i],
-                (np.sqrt(self.second_momentum_vector[i]) + self.tau),
+                self.momentum_vector[i] * (1 / (self.beta_1**server_round)),
+                (
+                    np.sqrt(
+                        self.second_momentum_vector[i]
+                        * (1 / (self.beta_2**server_round))
+                    )
+                    + self.tau
+                ),
             )
             # Assign new values to the parameters variable
             self.parameters.tensors[i] = ndarray_to_bytes(layer_fedyogi_result)
