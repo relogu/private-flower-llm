@@ -88,13 +88,21 @@ mkdir -p $DATASET_CACHE_DIR
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4-c4"
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null pollen.restore_run_uuid=null"
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
 # POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=8 fl.n_rounds=176" # FL setting
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=10"                                                                            # FL setting
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9"                             # DiLoCo
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=10" # FL setting
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=20"                                                                            # FL setting
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.5 fl.strategy_kwargs.server_momentum=0.9"                             # DiLoCo + decreasing server learning rate
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.3 fl.strategy_kwargs.server_momentum=0.9"                             # DiLoCo + decreasing again server learning rate
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.1 fl.strategy_kwargs.server_momentum=0.9"                             # DiLoCo + decreasing again again server learning rate
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) increase warmup - 125M
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=3.0e-4" # MosaicML (+200ba) decrease LR - 125M
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=1.5e-4" # MosaicML (+200ba) decrease LR again - 125M
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6e-5" # MosaicML (+200ba) decrease LR again again - 125M
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=100ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 
@@ -108,6 +116,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 #! Start a Superlink
 # GRPC_VERBOSITY=debug
 poetry run flower-superlink --insecure --driver-api-address '[::]:50752' --fleet-api-address '[::]:51752' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+SUPERLINK_PID=$!
 sleep 5
 
 #! Launch NodeManager as a SuperNode - ClientApp
@@ -115,14 +124,19 @@ sleep 5
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
 CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:51752' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
-#! Keep the pid of the NodeManager
-BACK_PID=$!
+#! Keep the pid of the ClientApp
+CLIENTAPP_PID=$!
 
 #! Launch ServerWithPollen as a ServerApp
 # GRPC_VERBOSITY=debug
 poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:50752' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+#! Keep the pid of the ServerApp
+SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes
 trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
-#! Wait for the NodeManager to finish
-wait $BACK_PID
+#! Wait for the ServerApp to finish
+wait $SERVERAPP_PID
+#! Kill the ClientApp and Superlink
+kill $CLIENTAPP_PID
+kill $SUPERLINK_PID
