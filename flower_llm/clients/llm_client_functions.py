@@ -4,14 +4,16 @@ import atexit
 import copy
 import gc
 from itertools import groupby
+import json
 import logging
 import operator
 import os
+from pathlib import Path
 import re
 import time
 import warnings
 from collections import OrderedDict
-from logging import DEBUG, ERROR, WARN
+from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, cast
 
 import streaming
@@ -397,6 +399,24 @@ def _get_trainer_object(
     icl_seq_len: int | None = pop_config(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
+    # Optional DeepSpeed configs
+    deepspeed_config_file: str | None = pop_config(
+        _cfg, "deepspeed_config_file", must_exist=False, default_value=None
+    )
+    deepspeed_config: dict[str, Any] | None = None
+    if deepspeed_config_file is not None:
+        # assert os.path.exists(deepspeed_config_file), (
+        assert Path(
+            deepspeed_config_file
+        ).exists(), (
+            "DeepSpeed config file not found. Please check the path to the DeepSpeed"
+        )
+        assert (
+            Path(deepspeed_config_file).suffix == ".json"
+        ), "DeepSpeed config file must be a JSON file."
+        with open(deepspeed_config_file, encoding="utf-8") as f:
+            deepspeed_config = json.load(f)
+    log(INFO, f"DeepSpeed config: {deepspeed_config}")
     # Optional logging, evaluation and callback configs
     log_name = f"_client_{cid}" if log_name is None else log_name
     set_client_wandb_logger(_cfg, log_name)
@@ -717,6 +737,7 @@ def _get_trainer_object(
 
     # Build the Trainer
     trainer = Trainer(
+        deepspeed_config=deepspeed_config,
         run_name=run_name,
         seed=seed,
         model=model,
@@ -872,6 +893,10 @@ def llm_fit(
             trainer.eval()
             train_metrics |= {
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
+            }
+            train_metrics |= {
+                f"PrePersonalization{k}": v.detach().cpu().item()  # type: ignore[attr-defined]
+                for k, v in trainer.state.eval_metric_values.items()
             }
         # log(DEBUG, "Starting training...")
         # Execute fit step for the appointed duration

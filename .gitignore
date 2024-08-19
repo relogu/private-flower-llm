@@ -214,6 +214,7 @@ events.out.tfevents.*
 # Dataset shards and metadata
 *.mds*
 *.json
+!flower_llm/conf/deepspeed_config/*.json
 
 # Runs
 runs/

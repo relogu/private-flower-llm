@@ -124,6 +124,10 @@ export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 # export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"  # Complete MosaicML Gauntlet
 export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
 
+#! DeepSpeed configuration file
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
+# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'"
+
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
