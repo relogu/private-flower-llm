@@ -72,17 +72,33 @@ mkdir -p "$POLLEN_SAVE_PATH"
 #! Set dataset related configurations
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - centralized, when stream_id=null streaming will be merged anyway, so any stream configuration is fine
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=1_client_small dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - centralized, when stream_id=null streaming will be merged anyway, so any stream configuration is fine
 
 #! Size specific optimization parameters
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=88000ba llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DiLoCo - 75M
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
+
+#! Load a model from a checkpoint (residing in the S3 bucket)
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-760M-20240305_190707/ep0-ba17500-rank0.pt"  # Centralised 760M
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-1B-20240229_104204/ep0-ba25500-rank0.pt"  # Centralised 1B
+
+#! Load a model from a NDArrays on a federated server
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_350M_checkpoint.npz"  # Federated 350M  -- there's something broken here
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_long_checkpoint.npz"  # Federated 1B long run
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_short_checkpoint.npz"  # Federated 1B short run
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_3B_checkpoint.npz"  # Federated 3B
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_7B_checkpoint.npz"  # Federated 7B
 
 #! General training parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba llm_config.console_log_interval=100ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"
-echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
+# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"  # Compiles the model with default parameters
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                 # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor" # Clears OptimizerMonitor (not supported when using DeepSpeed)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
@@ -104,14 +120,23 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 
+#! Evaluation gauntlet configuration
+# export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"  # Complete MosaicML Gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
+
+echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
 
+#! Run Hydra resolver
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # TORCH_LOGS="+dynamo" TORCHDYNAMO_VERBOSE=1
-APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
+APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID
