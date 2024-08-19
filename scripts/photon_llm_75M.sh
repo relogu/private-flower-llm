@@ -87,14 +87,29 @@ mkdir -p $DATASET_CACHE_DIR
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 8 clients
 # POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=false"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null pollen.restore_run_uuid=null"
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.1 fl.strategy_kwargs.server_momentum=0.9"  # Conservative choice
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=176"  # Ours
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=8 fl.n_rounds=176"                                                                           # DiLoCo
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
+
+#! ServerOpt
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.1 fl.strategy_kwargs.server_momentum=0.9"  # Conservative choice (DiLoCo)
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0"  # FedAvg
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDADAM +fl.strategy_kwargs.eta=0.0007 +fl.strategy_kwargs.beta_1=0.9 +fl.strategy_kwargs.beta_2=0.99 +fl.strategy_kwargs.tau=1e-9"  # FedAdam
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDYOGI +fl.strategy_kwargs.eta=0.0007 +fl.strategy_kwargs.beta_1=0.9 +fl.strategy_kwargs.beta_2=0.99 +fl.strategy_kwargs.tau=1e-3" # FedYogi
+
+#! FL setting
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=8 fl.n_rounds=176"                                                                           # DiLoCo
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=4 fl.n_clients_per_round=2 fl.n_rounds=176"                                                                           # DiLoCo halved
+# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=2 fl.n_rounds=176"                                                                           # DiLoCo halved twice
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=176" # Ours
+
+#! ClientOpt
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4 fl.reset_optimizer=false" # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4 fl.reset_optimizer=true" # DiLoCo + reset ClientOpt
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-5" # DiLoCo + lr trick
+
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=100ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
+# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=1"
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 
@@ -107,22 +122,28 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 
 #! Start a Superlink
 # GRPC_VERBOSITY=debug
-poetry run flower-superlink --insecure --driver-api-address '[::]:50751' --fleet-api-address '[::]:51751' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+poetry run flower-superlink --insecure --driver-api-address '[::]:49751' --fleet-api-address '[::]:49741' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+SUPERLINK_PID=$!
 sleep 5
 
 #! Launch NodeManager as a SuperNode - ClientApp
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:51751' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
-#! Keep the pid of the NodeManager
-BACK_PID=$!
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:49741' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+#! Keep the pid of the ClientApp
+CLIENTAPP_PID=$!
 
 #! Launch ServerWithPollen as a ServerApp
 # GRPC_VERBOSITY=debug
-poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:50751' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:49751' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+#! Keep the pid of the ServerApp
+SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes
 trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
-#! Wait for the NodeManager to finish
-wait $BACK_PID
+#! Wait for the ServerApp to finish
+wait $SERVERAPP_PID
+#! Kill the ClientApp and Superlink
+kill $CLIENTAPP_PID
+kill $SUPERLINK_PID
