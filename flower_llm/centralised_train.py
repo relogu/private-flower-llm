@@ -16,6 +16,7 @@ import torch
 from composer import Trainer
 from flwr.common import log
 from omegaconf import OmegaConf
+from llmfoundry.callbacks import EvalGauntlet
 
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.llm_client_functions import (
@@ -79,6 +80,21 @@ def main() -> Trainer:
     # Eval first if requested
     if eval_first and trainer.state.timestamp.batch.value == 0:
         trainer.eval()
+        eval_gauntlet_callback: EvalGauntlet | None = None
+        for callback in trainer.state.callbacks:
+            if isinstance(callback, EvalGauntlet):
+                eval_gauntlet_callback = callback
+        if eval_gauntlet_callback is not None:
+            assert isinstance(eval_gauntlet_callback, EvalGauntlet)
+            composite_scores = eval_gauntlet_callback.eval_after_all(
+                trainer.state,
+                trainer.logger,
+            )
+            log(
+                INFO,
+                "Evaluated model with the Gauntlet before training: %s",
+                composite_scores,
+            )
 
     # Dump model parameters to file
     if _cfg.centralized.store_init_model:
