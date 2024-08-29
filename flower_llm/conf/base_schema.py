@@ -114,6 +114,7 @@ class FL(DictConfig):
 
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
+    eval_fl: bool = MISSING
 
     strategy_name: StrategyName = MISSING
     strategy_kwargs: StrategyKWArgs = MISSING
