@@ -101,7 +101,10 @@ def extract_s3_comm_config_from_configrecord(
 
 
 def interpret_resume_round(
-    resume_round: int | None, server_path: str, raise_error: bool = True
+    resume_round: int | None,
+    server_path: str,
+    state_keys: tuple[str, ...],
+    raise_error: bool = True,
 ) -> int | None:
     """Interpret the resume round parameter for server checkpoint resumption.
 
@@ -144,7 +147,7 @@ def interpret_resume_round(
     if resume_round is None:
         return None
     if resume_round < 0:
-        server_round_indices = obtain_sorted_runs(server_path)
+        server_round_indices = obtain_sorted_runs(server_path, state_keys)
         log(DEBUG, "Found server round indices %s", server_round_indices)
         if not server_round_indices and raise_error:
             raise NoCheckpointsFoundError
@@ -200,7 +203,13 @@ def import_checkpoints(
         f"{cfg.pollen.restore_run_uuid}/server/"
     )
     cfg.pollen.resume_round = interpret_resume_round(
-        cfg.pollen.resume_round, server_path
+        cfg.pollen.resume_round,
+        server_path,
+        state_keys=(
+            "state.bin",
+            "current_server_parameters",
+            "current_momentum_vector",
+        ),
     )
     assert (
         cfg.pollen.resume_round is not None

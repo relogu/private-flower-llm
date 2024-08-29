@@ -243,21 +243,21 @@ def main(driver: Driver, context: Context) -> None:
                 "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
             },
         )
-
-        # Launch the evaluate process for the starting round
-        sampled_clients = [0]
-        history = evaluate_round(
-            driver=driver,
-            sampled_clients=sampled_clients,
-            evaluate_config_fn=pollen_evaluate_config,
-            all_node_ids=all_node_ids,
-            current_round=start_round,
-            client_state=client_state,
-            server_steps_cumulative=server_steps_cumulative,
-            cfg=cfg,
-            strategy=strategy,
-            history=history,
-        )
+        if cfg.fl.eval_fl:
+            # Launch the evaluate process for the starting round
+            sampled_clients = [0]
+            history = evaluate_round(
+                driver=driver,
+                sampled_clients=sampled_clients,
+                evaluate_config_fn=pollen_evaluate_config,
+                all_node_ids=all_node_ids,
+                current_round=start_round,
+                client_state=client_state,
+                server_steps_cumulative=server_steps_cumulative,
+                cfg=cfg,
+                strategy=strategy,
+                history=history,
+            )
         # Nullify assignments
         sampled_clients = []
 
@@ -334,21 +334,21 @@ def main(driver: Driver, context: Context) -> None:
                     * 1e-9
                 },
             )
-
-            # Launch the evaluate process
-            sampled_clients = [0]
-            history = evaluate_round(
-                driver=driver,
-                sampled_clients=sampled_clients,
-                evaluate_config_fn=pollen_evaluate_config,
-                all_node_ids=all_node_ids,
-                current_round=current_round,
-                client_state=client_state,
-                server_steps_cumulative=server_steps_cumulative,
-                cfg=cfg,
-                strategy=strategy,
-                history=history,
-            )
+            if cfg.fl.eval_fl:
+                # Launch the evaluate process
+                sampled_clients = [0]
+                history = evaluate_round(
+                    driver=driver,
+                    sampled_clients=sampled_clients,
+                    evaluate_config_fn=pollen_evaluate_config,
+                    all_node_ids=all_node_ids,
+                    current_round=current_round,
+                    client_state=client_state,
+                    server_steps_cumulative=server_steps_cumulative,
+                    cfg=cfg,
+                    strategy=strategy,
+                    history=history,
+                )
             # Nullify assignments
             sampled_clients = []
 

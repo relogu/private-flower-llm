@@ -1087,13 +1087,15 @@ class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
-def obtain_sorted_runs(server_path: str) -> list[int]:
+def obtain_sorted_runs(server_path: str, state_keys: tuple[str, ...]) -> list[int]:
     """Obtain the sorted runs from the server path.
 
     Parameters
     ----------
     server_path : str
         The path to the server.
+    state_keys : Tuple[str]
+        The state keys to check in the paths.
 
     Returns
     -------
@@ -1102,14 +1104,27 @@ def obtain_sorted_runs(server_path: str) -> list[int]:
     """
     remote_objects = list_remote_objects(server_path)
     log(DEBUG, "Found files %s", remote_objects)
-    # Take only the unique indices
-    return sorted(
-        {
-            int(reg.group(1))
-            for path in remote_objects
-            if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
-        }
-    )
+
+    # Extract unique run numbers
+    run_numbers = {
+        int(reg.group(1))
+        for path in remote_objects
+        if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
+    }
+
+    valid_runs = set()
+
+    for run in run_numbers:
+        # Filter paths for the current run
+        run_paths = [path for path in remote_objects if f"server/{run}/" in path]
+
+        # Check if all state_keys are present in the paths for this run
+        if all(
+            any(state_key in path for path in run_paths) for state_key in state_keys
+        ):
+            valid_runs.add(run)
+
+    return sorted(valid_runs)
 
 
 def create_remote_up_down(
