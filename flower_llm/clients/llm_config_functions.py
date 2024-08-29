@@ -204,7 +204,11 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                         int(reg.group(2)),  # number of batches
                     )
                     for path in remote_objects
-                    if (reg := re.search(r"client_.*/ep(\d+)-ba(\d+)", path))
+                    if (
+                        reg := re.search(
+                            r"client_" + str(cid) + r"/ep(\d+)-ba(\d+)", path
+                        )
+                    )
                     is not None
                 ],
                 key=operator.itemgetter(1),
