@@ -223,6 +223,11 @@ def resume_from_round(
         ),
         # NOTE: Check whether we can relax this condition
         raise_error=cfg.pollen.resume_round != -1,
+        state_keys=(
+            "state.bin",
+            "current_server_parameters",
+            "current_momentum_vector",
+        ),
     )
     assert (
         cfg.pollen.resume_round is not None
