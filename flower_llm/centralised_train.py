@@ -6,9 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import gc
-from logging import DEBUG, INFO
+from logging import INFO
 import os
-from pathlib import Path
 from typing import cast
 
 import numpy as np
@@ -24,11 +23,7 @@ from flower_llm.clients.llm_client_functions import (
     get_parameters_from_state,
 )
 from flower_llm.clients.llm_config_functions import validate_config
-from flower_llm.utils import (
-    construct_parameters_dict,
-    load_model_parameters_from_file,
-    set_trainer_trainable_params_dict,
-)
+from flower_llm.server.s3_utils import load_pretrained_model_from_path
 
 
 def main() -> Trainer:
@@ -57,28 +52,22 @@ def main() -> Trainer:
         "Creating trainer object using stream_id: %s...",
         _cfg.centralized.stream_id,
     )
-    trainer, eval_first, _, parameters_names = _get_trainer_object(
+    trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg, cid=_cfg.centralized.stream_id, log_name="_centralised"
     )
     torch.cuda.empty_cache()
     gc.collect()
 
     if _cfg.pretrained_model_path:
-        log(
-            DEBUG,
-            "Loading pretrained model from %s",
-            _cfg.pretrained_model_path,
+        load_pretrained_model_from_path(
+            trainer=trainer,
+            pretrained_model_path=_cfg.pretrained_model_path,
+            run_uuid=_cfg.run_uuid,
+            s3_comm_config=_cfg.s3_comm_config,
         )
-        initial_parameters = load_model_parameters_from_file(
-            Path(_cfg.pretrained_model_path)
-        )
-        initial_parameters_dict = construct_parameters_dict(
-            parameters_names, initial_parameters
-        )
-        set_trainer_trainable_params_dict(trainer, initial_parameters_dict)
 
     # Eval first if requested
-    if eval_first and trainer.state.timestamp.batch.value == 0:
+    if eval_first:
         trainer.eval()
         eval_gauntlet_callback: EvalGauntlet | None = None
         for callback in trainer.state.callbacks:

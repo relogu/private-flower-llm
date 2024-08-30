@@ -63,11 +63,9 @@ from flower_llm.clients.llm_config_functions import (
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
-    construct_parameters_dict,
-    get_list_of_parameters_names,
     get_trainable_params_dict,
     parameters_checker,
-    set_trainer_trainable_params_dict,
+    set_trainer_params_from_ndarrays,
     sum_of_squares,
     get_parameters_from_state,
 )
@@ -280,7 +278,7 @@ def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str | None,
     log_name: str | None = None,
-) -> tuple[Trainer, bool, DictConfig, list[str]]:
+) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
@@ -716,7 +714,6 @@ def _get_trainer_object(
         init_context=init_context,
         master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
-    parameters_names = get_list_of_parameters_names(model)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
@@ -777,7 +774,7 @@ def _get_trainer_object(
         compile_config=compile_config,
         device=device,
     )
-    return trainer, eval_first, logged_cfg, parameters_names
+    return trainer, eval_first, logged_cfg
 
 
 def get_parameters(
@@ -852,10 +849,7 @@ def llm_fit(
     #     # Ignoring loading the model as we need to set it from the server
     #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
-    trainer, eval_first, _, parameters_names = _get_trainer_object(_cfg=cfg, cid=cid)
-
-    # Create the server parameters dictionary
-    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+    trainer, eval_first, _ = _get_trainer_object(_cfg=cfg, cid=cid)
 
     initial_trainer_parameters = get_parameters_from_state(
         {},
@@ -875,7 +869,7 @@ def llm_fit(
         if parameters is not None and not skip_iteration:
             # log(DEBUG, "Initializing model...")
             start_time = time.time_ns()
-            set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+            set_trainer_params_from_ndarrays(parameters, trainer)
 
             current_trainer_parameters = get_parameters_from_state({}, trainer)
             parameters_checker(
@@ -1000,13 +994,10 @@ def llm_eval(
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, _, _, parameters_names = _get_trainer_object(
+    trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
         cid=None,  # For doing "centralized" evaluation
     )
-
-    # Create the server parameters dictionary
-    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
 
     initial_trainer_parameters = get_parameters_from_state({}, trainer)
     parameters_checker(initial_trainer_parameters, parameters, False)
@@ -1016,7 +1007,7 @@ def llm_eval(
     # Set the parameters
     # log(DEBUG, "Initializing model...")
     start_time = time.time_ns()
-    set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+    set_trainer_params_from_ndarrays(parameters, trainer)
 
     current_trainer_parameters = get_parameters_from_state({}, trainer)
     parameters_checker(current_trainer_parameters, initial_trainer_parameters, False)

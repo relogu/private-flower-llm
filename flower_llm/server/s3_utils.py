@@ -9,15 +9,19 @@ from tempfile import TemporaryDirectory
 from typing import Any
 import time
 
+from omegaconf import OmegaConf
+
 from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
 )
 from flower_llm.utils import (
     ClientState,
+    create_remote_up_down,
     download_file_from_s3,
     dump_model_parameters_to_file,
     load_model_parameters_from_file,
     obtain_sorted_runs,
+    set_trainer_params_from_ndarrays,
     upload_file_to_s3,
 )
 from flwr.common import (
@@ -35,11 +39,12 @@ from flwr.common.recordset_compat import (
     parameters_to_parametersrecord,
     parametersrecord_to_parameters,
 )
+from composer import Trainer
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path
+from composer.utils.file_helpers import validate_given_remote_path, parse_uri
 
 
-from flower_llm.conf.base_schema import BaseConfig
+from flower_llm.conf.base_schema import BaseConfig, S3CommConfig
 from flower_llm.wandb_history import WandbHistory
 
 
@@ -851,3 +856,76 @@ def replace_parameters_in_recordset_with_remote(
     else:
         # No translation performed as we assume the task failed
         return incoming_message
+
+
+def load_pretrained_model_from_path(
+    pretrained_model_path: str,
+    run_uuid: str,
+    s3_comm_config: S3CommConfig,
+    trainer: Trainer,
+) -> None:
+    """Load a pretrained model from a specified path and set it to the trainer.
+
+    This function supports loading models from both local file paths and S3 URIs.
+    It downloads the model if the path points to an S3 bucket, and then sets the
+    parameters in the provided trainer object.
+
+    Parameters
+    ----------
+        pretrained_model_path (str): The path to the pretrained model. Can be a local
+            file path or an S3 URI.
+        run_uuid (str): The unique identifier for the run, used for S3 operations.
+        s3_comm_config (S3CommConfig): The S3 communication configuration.
+        trainer (Trainer): The trainer object whose model parameters are to be set.
+
+    Raises
+    ------
+        ValueError: If the backend specified in the URI is unknown.
+        AssertionError: If the local file path is None or does not exist.
+    """
+    log(
+        INFO,
+        "Loading pretrained model from %s",
+        pretrained_model_path,
+    )
+    # Create a temporary directory for storing the downloaded parameters
+    temp_dir = TemporaryDirectory()
+    # Interpret the URI
+    backend, bucket_name, remote_file_name = parse_uri(pretrained_model_path)
+    local_file_path: Path | None = None
+    if backend == "s3":
+        log(
+            INFO,
+            "Downloading model %s from S3 bucket %s",
+            remote_file_name,
+            bucket_name,
+        )
+        # Create RemoteUploaderDownloader object
+        remote_up_down = create_remote_up_down(
+            bucket_name=bucket_name,
+            prefix="",
+            run_uuid=run_uuid,
+            num_attempts=5,
+            client_config=OmegaConf.to_container(
+                s3_comm_config.backend_kwargs.client_config
+            ),  # type: ignore[reportArgumentType, arg-type]
+        )
+        local_file_path = Path(temp_dir.name) / (
+            "checkpoint" + Path(remote_file_name).suffix
+        )
+        download_file_from_s3(remote_up_down, remote_file_name, local_file_path)
+    elif not backend:
+        log(
+            INFO,
+            "Loading model from local file %s",
+            Path(pretrained_model_path),
+        )
+        local_file_path = Path(pretrained_model_path)
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
+
+    # Load the local file path
+    assert local_file_path is not None, "Local file path is None"
+    assert local_file_path.exists(), f"Local file path {local_file_path} does not exist"
+    initial_parameters = load_model_parameters_from_file(local_file_path)
+    set_trainer_params_from_ndarrays(initial_parameters, trainer)

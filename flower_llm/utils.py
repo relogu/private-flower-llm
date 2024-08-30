@@ -191,6 +191,12 @@ def set_trainer_trainable_params_dict(
             if cpu_state:
                 # Set the parameters only if they require gradients
                 for name, param in cpu_state.items():
+                    # Raise error if the shapes don't match
+                    if param.shape != parameters_dict["model." + name].shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{parameters_dict['model.' + name].shape}"
+                        )
                     current_dtype = param.data.dtype
                     # NOTE: We need to add the prefix "model." to the name of the
                     # parameter to match the state dict
@@ -210,12 +216,27 @@ def set_trainer_trainable_params_dict(
             if param.requires_grad:
                 # DDP
                 if name.startswith("module."):
+                    # Raise error if the shapes don't match
+                    if (
+                        param.shape
+                        != parameters_dict[name.replace("module.", "")].shape
+                    ):
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{parameters_dict[name.replace('module.', '')].shape}"
+                        )
                     current_dtype = param.data.dtype
                     param.data = parameters_dict[name.replace("module.", "")].to(
                         device=param.device, dtype=current_dtype
                     )
                 # Single GPU
                 else:
+                    # Raise error if the shapes don't match
+                    if param.shape != parameters_dict[name].shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{parameters_dict[name].shape}"
+                        )
                     current_dtype = param.data.dtype
                     param.data = parameters_dict[name].to(
                         device=param.device, dtype=current_dtype
@@ -275,6 +296,50 @@ def set_trainable_params_dict(
                 else:
                     param.data = parameters_dict[name].to(param.device)
     dist.barrier()
+
+
+def set_trainer_params_from_ndarrays(parameters: NDArrays, trainer: Trainer) -> None:
+    """Set the parameters of a trainer from a list of NDArrays.
+
+    This function attempts to set the parameters of the trainer's model using
+    the provided NDArrays. It first tries to set the parameters assuming they
+    are ordered. If this fails due to shape mismatches, it retries with the
+    parameters unordered.
+
+    Parameters
+    ----------
+        parameters (NDArrays): The list of NDArrays representing the model parameters.
+        trainer (Trainer): The trainer object whose model parameters are to be set.
+
+    Raises
+    ------
+        ValueError: If setting the parameters fails due to shape mismatches or other
+        issues.
+    """
+    # Get the unordered and ordered list of parameter names
+    parameters_names = get_list_of_parameters_names(
+        trainer.state.model, sort_dict=False
+    )
+    ordered_parameters_names = sorted(parameters_names)
+    # Try to set the parameters a s if they are ordered
+    try:
+        parameters_dict = construct_parameters_dict(
+            ordered_parameters_names, parameters
+        )
+        set_trainer_trainable_params_dict(trainer, parameters_dict)
+    except ValueError as e:
+        if "Shapes don't match" in str(e):
+            log(
+                ERROR,
+                "Error trying to set the parameters as ordered, trying unordered",
+                exc_info=e,
+                stack_info=True,
+            )
+            # If the ordered parameters failed, try to set the parameters as unordered
+            parameters_dict = construct_parameters_dict(parameters_names, parameters)
+            set_trainer_trainable_params_dict(trainer, parameters_dict)
+        else:
+            raise
 
 
 def get_list_of_parameters_names(
