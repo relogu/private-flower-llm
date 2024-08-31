@@ -75,34 +75,22 @@ mkdir -p $DATASET_CACHE_DIR
 export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=1_client_small dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - centralized, when stream_id=null streaming will be merged anyway, so any stream configuration is fine
 
 #! Size specific optimization parameters
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=88000ba llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DiLoCo - 75M
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
 
 #! Load a model from a checkpoint of type .pt (residing in the S3 bucket)
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-760M-20240305_190707/ep0-ba17500-rank0.pt"  # Centralised 760M
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-1B-20240229_104204/ep0-ba25500-rank0.pt"  # Centralised 1B
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/centralised-7B-20240724_190529_centralised/ep0-ba63900-rank0.pt" # Centralised 7B
 
 #! Load a model from a checkpoint of type NDArrays
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-2024505_100605/server/19/current_server_parameters.npz"  # Federated 350M  -- 1
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-20240505_100605/server/19/current_server_parameters.npz"  # Federated 350M  -- 2
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-20240506_204125/server/51/current_server_parameters.npz"  # Federated 350M  -- 3
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_long_checkpoint.npz"  # Federated 1B long run
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_short_checkpoint.npz"  # Federated 1B short run
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-3B-20240702_141112/server/25/current_server_parameters.npz"  # Federated 3B
-# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_7B_checkpoint.npz"  # Federated 7B
-export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
+export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
 
 #! General training parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba llm_config.console_log_interval=100ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"  # Compiles the model with default parameters
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
+# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"  		# Compiles the model with default parameters
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                 # Removes FSDP
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor" # Clears OptimizerMonitor (not supported when using DeepSpeed)
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch" # Shut down flash attention
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
@@ -125,12 +113,11 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 
 #! Evaluation gauntlet configuration
-# export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"  # Complete MosaicML Gauntlet
-export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+# export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty"  # Exclude MosaicML Gauntlet
 
 #! DeepSpeed configuration file
 export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'"
 
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 

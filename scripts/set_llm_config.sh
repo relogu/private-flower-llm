@@ -35,7 +35,7 @@ fi
 #! Get info about GPU resources available
 GPU_TYPE=$(nvidia-smi -L)
 
-#! Defaults
+#! Defaults - MPT models
 LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
 LLM_CONFIG_MPT_16M="llm_config=mpt-16m"
 LLM_CONFIG_MPT_75M="llm_config=mpt-75m"
@@ -51,6 +51,10 @@ LLM_CONFIG_MPT_7B="llm_config=mpt-7b"
 LLM_CONFIG_MPT_13B="llm_config=mpt-13b"
 LLM_CONFIG_MPT_30B="llm_config=mpt-30b"
 LLM_CONFIG_MPT_70B="llm_config=mpt-70b"
+
+#! Defaults - HF models
+LLM_CONFIG_GPT2_SMALL="llm_config=gpt2-small"
+LLM_CONFIG_GPT2_NEO_125M="llm_config=gpt2-neo-125m"
 
 #! Set `llm_config` names
 if [[ $GPU_TYPE == *'A40'* ]]; then
@@ -168,9 +172,13 @@ elif [[ $1 == "30B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_30B"
 elif [[ $1 == "70B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_70B"
+elif [[ $1 == "gpt2-small" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_GPT2_SMALL"
+elif [[ $1 == "gpt2-neo-125m" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_GPT2_NEO_125M"
 else
 	echo "set_llm_config.sh: Invalid input argument: $1"
-	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 13B, 30B, 70B"
+	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 13B, 30B, 70B, gpt2-small, gpt2-neo-125m"
 	exit 1
 fi
 
