@@ -218,3 +218,6 @@ events.out.tfevents.*
 
 # Runs
 runs/
+
+# Exclude checkpoints folder
+flower_llm_checkpoints
