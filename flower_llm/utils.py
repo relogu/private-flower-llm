@@ -191,16 +191,17 @@ def set_trainer_trainable_params_dict(
             if cpu_state:
                 # Set the parameters only if they require gradients
                 for name, param in cpu_state.items():
+                    param_from_dict = parameters_dict[name]
                     # Raise error if the shapes don't match
-                    if param.shape != parameters_dict["model." + name].shape:
+                    if param.shape != param_from_dict.shape:
                         raise ValueError(
                             f"Shapes don't match: {param.shape} != "
-                            f"{parameters_dict['model.' + name].shape}"
+                            f"{param_from_dict.shape}"
                         )
                     current_dtype = param.data.dtype
                     # NOTE: We need to add the prefix "model." to the name of the
                     # parameter to match the state dict
-                    cpu_state[name] = parameters_dict["model." + name].to(
+                    cpu_state[name] = param_from_dict.to(
                         device=param.device, dtype=current_dtype
                     )
             # Broadcast the state dict across all ranks
@@ -216,17 +217,15 @@ def set_trainer_trainable_params_dict(
             if param.requires_grad:
                 # DDP
                 if name.startswith("module."):
+                    param_from_dict = parameters_dict[name]
                     # Raise error if the shapes don't match
-                    if (
-                        param.shape
-                        != parameters_dict[name.replace("module.", "")].shape
-                    ):
+                    if param.shape != param_from_dict.shape:
                         raise ValueError(
                             f"Shapes don't match: {param.shape} != "
-                            f"{parameters_dict[name.replace('module.', '')].shape}"
+                            f"{param_from_dict.shape}"
                         )
                     current_dtype = param.data.dtype
-                    param.data = parameters_dict[name.replace("module.", "")].to(
+                    param.data = param_from_dict.to(
                         device=param.device, dtype=current_dtype
                     )
                 # Single GPU
@@ -346,11 +345,18 @@ def get_list_of_parameters_names(
     model: torch.nn.Module, sort_dict: bool = True
 ) -> list[str]:
     """Return the list of parameters names."""
+    # Get named parameters dictionary of the model
     params_dict = {
         name: param for name, param in model.named_parameters() if param.requires_grad
     }
+    # Trim some annoying prefixes
+    params_dict = {k.replace("model.", ""): v for k, v in params_dict.items()}
+    params_dict = {k.replace("module.", ""): v for k, v in params_dict.items()}
+    params_dict = {k.replace("_fsdp_wrapped_", ""): v for k, v in params_dict.items()}
+    # Sort the dictionary if requested
     if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
+    # Return the list of parameter names
     return list(params_dict.keys())
 
 
