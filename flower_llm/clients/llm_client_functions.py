@@ -718,6 +718,7 @@ def _get_trainer_object(
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
     logged_cfg.update({"n_params": n_params})
+    log(INFO, f"Number of model parameters: {n_params:,}")
 
     # Optimizer
     optimizer_name: str = optimizer_config.pop("name")
