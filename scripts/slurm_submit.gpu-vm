@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 20
+#SBATCH -c 30
 #SBATCH -w gpu-vm
 #SBATCH --gres=gpu:2
 #!SBATCH --job-name=fed_llm_75M
@@ -12,9 +12,9 @@
 #!SBATCH --job-name=centralised_llm_350M
 #!SBATCH --job-name=centralised_llm_760M
 #!SBATCH --job-name=diloco_75M
-#!SBATCH --job-name=test
+#!SBATCH --job-name=test-hf-flower-llm
 #!SBATCH --job-name=test-deepspeed
-#SBATCH --job-name=gauntlet
+#SBATCH --job-name=eval-gauntlet
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --partition=debug
@@ -53,9 +53,9 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "160M"
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "420M"
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-deepspeed-$DATETIME"
-export RUN_UUID="eval-gauntlet-$DATETIME"
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-hf-flower-llm-$DATETIME"
+# export RUN_UUID="eval-gauntlet-$DATETIME"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "small"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "16M"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "75M"
@@ -64,9 +64,11 @@ export RUN_UUID="eval-gauntlet-$DATETIME"
 # export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
-bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "gpt2-small"
 
 # unset RUN_UUID
 # bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "small"
@@ -107,3 +109,26 @@ bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # export RUN_UUID="test-$DATETIME"
 # bash $PROJECT_PATH/scripts/photon_llm_75M.sh
 
+export RUN_UUID="pile-matrix-125M-p-tle-eval-gauntlet-$DATETIME"
+export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz"
+bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+# export RUN_UUID="pile-full-125M-p-tle-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/full-125M-p-tle/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+# export RUN_UUID="pile-pers-125M-p-20240821_tle-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/pers-125M-p-20240821_tle/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+# export RUN_UUID="c4-matrix-125M-20240823-tle-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-20240823-tle/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+# export RUN_UUID="c4-full-125M-20240823_125915-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/full-125M-20240823_125915/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+# export RUN_UUID="c4-pers-125M-20240823_131628-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/pers-125M-20240823_131628/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"

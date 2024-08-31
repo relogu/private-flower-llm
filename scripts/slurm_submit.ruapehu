@@ -13,7 +13,8 @@
 #!SBATCH --job-name=centralised_llm_350M
 #!SBATCH --job-name=centralised_llm_760M
 #!SBATCH --job-name=diloco_75M
-#SBATCH --job-name=eval-gauntlet
+#!SBATCH --job-name=eval-gauntlet
+#SBATCH --job-name=test-distro
 #!SBATCH --job-name=gauntlet_fed_350M
 #!SBATCH --job-name=mosaicml_fed_125M
 #SBATCH --tasks-per-node=1
@@ -53,8 +54,8 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "420M"
 
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="fed-760M-eval-gauntlet-$DATETIME"
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="cen-7B-eval-gauntlet-$DATETIME"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "small"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "16M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "75M" "10ba"
@@ -62,8 +63,8 @@ export RUN_UUID="fed-760M-eval-gauntlet-$DATETIME"
 # export RUN_UUID="centralised-350M-20240414_225031"
 # export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
-bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
-# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
+bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 

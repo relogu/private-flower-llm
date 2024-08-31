@@ -94,15 +94,22 @@ export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 datas
 # export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_short_checkpoint.npz"  # Federated 1B short run
 # export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-3B-20240702_141112/server/25/current_server_parameters.npz"  # Federated 3B
 # export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_7B_checkpoint.npz"  # Federated 7B
-export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
 
 #! General training parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba llm_config.console_log_interval=100ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"  # Compiles the model with default parameters
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
-# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor" # Clears OptimizerMonitor (not supported when using DeepSpeed)
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}" # Compiles the model with default parameters
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"             # Clears OptimizerMonitor (not supported when using DeepSpeed)
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                    # Clears LRMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8"
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
