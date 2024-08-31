@@ -217,7 +217,9 @@ def set_trainer_trainable_params_dict(
             if param.requires_grad:
                 # DDP
                 if name.startswith("module."):
-                    param_from_dict = parameters_dict[name]
+                    param_from_dict = parameters_dict[
+                        name.replace("model.", "").replace("module.", "")
+                    ]
                     # Raise error if the shapes don't match
                     if param.shape != param_from_dict.shape:
                         raise ValueError(
