@@ -38,7 +38,7 @@ fi
 sudo nvidia-smi -pm 1
 
 #! Create the scratch in /local/scratch
-sudo mkdir -p /local/scratch/tmp/flower_llm
+sudo mkdir -p /local/scratch/flower_llm
 sudo chown -R ubuntu /local
 sudo chgrp -R ubuntu /local
 
