@@ -10,29 +10,29 @@ sudo apt-get install -y build-essential zlib1g-dev libedit-dev \
 	libreadline-dev libsqlite3-dev
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
-if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-	echo "CUDA 12.1 is detected."
+if [[ $NVCC_OUTPUT == *"release 12.4"* ]]; then
+	echo "CUDA 12.4 is detected."
 else
-	#! Get and install CUDA 12.1.1 and its drivers
-	wget https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
-	sudo sh cuda_12.1.1_530.30.02_linux.run --toolkit --no-man-page --silent
+	#! Get and install CUDA 12.4.1 and its drivers
+	wget https://developer.download.nvidia.com/compute/cuda/12.4.1/local_installers/cuda_12.4.1_550.54.15_linux.run
+	sudo sh cuda_12.4.1_550.54.15_linux.run --toolkit --no-man-page --silent
 fi
-if [[ $PATH == *"cuda-12.1"* ]]; then
+if [[ $PATH == *"cuda-12.4"* ]]; then
 	echo "PATH variable is already set."
 else
 	#! Set the PATH env variables for the new CUDA version
-	echo '# Adding CUDA 12.1 to the PATH environmental variables' >>~/.bashrc
+	echo '# Adding CUDA 12.4 to the PATH environmental variables' >>~/.bashrc
 	# shellcheck disable=SC2016
-	echo 'export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}' >>~/.bashrc
-	export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
+	echo 'export PATH=/usr/local/cuda-12.4/bin${PATH:+:${PATH}}' >>~/.bashrc
+	export PATH=/usr/local/cuda-12.4/bin${PATH:+:${PATH}}
 fi
-if [[ $LD_LIBRARY_PATH == *"cuda-12.1"* ]]; then
+if [[ $LD_LIBRARY_PATH == *"cuda-12.4"* ]]; then
 	echo "LD_LIBRARY_PATH variable is already set."
 else
 	#! Set the LD_LIBRARY_PATH env variables for the new CUDA version
 	# shellcheck disable=SC2016
-	echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >>~/.bashrc
-	export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+	echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >>~/.bashrc
+	export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 fi
 #! Set GPU persistence mode
 sudo nvidia-smi -pm 1

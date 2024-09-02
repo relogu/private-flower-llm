@@ -49,19 +49,19 @@ fi
 # shellcheck disable=SC1091
 . "$POETRY_ENV_PATH"/bin/activate
 # Adding CUDA paths to environment variables
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+export PATH=/usr/local/cuda-12.4/bin${PATH:+:${PATH}}
+export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
 if [[ $1 == "no_cuda" ]]; then
 	echo "install_env.sh: skipping any GPU-related setting."
 else
 	#! Check the output of `nvcc -V`
 	NVCC_OUTPUT=$(nvcc -V)
-	if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-		echo "install_env.sh: CUDA 12.1 is detected."
+	if [[ $NVCC_OUTPUT == *"release 12.4"* ]]; then
+		echo "install_env.sh: CUDA 12.4 is detected."
 	else
 
-		echo "install_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+		echo "install_env.sh: CUDA 12.4 not detected. Please install CUDA 12.4. Exiting..."
 		exit 1
 
 	fi
