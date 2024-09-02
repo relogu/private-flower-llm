@@ -650,6 +650,11 @@ def _get_trainer_object(
     # Train loader
     train_loader = None
     if train_loader_config is not None:
+        train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
+        assert isinstance(train_loader_config, dict), (
+            "Expected train_loader_config to be a dict,"
+            f" got {type(train_loader_config)}"
+        )
         train_loader = build_dataloader(
             train_loader_config,
             tokenizer,
@@ -663,8 +668,14 @@ def _get_trainer_object(
         is_multi_eval = isinstance(eval_loader_config, ListConfig)
         eval_configs = eval_loader_config if is_multi_eval else [eval_loader_config]
         for eval_config in eval_configs:
+            eval_config = OmegaConf.to_container(eval_config, resolve=True)  # type: ignore[reportAssignmentType]
+            assert isinstance(eval_config, dict), (
+                "Expected eval_config to be a dict," f" got {type(eval_config)}"
+            )
             eval_dataloader = build_dataloader(
-                eval_config, tokenizer, device_eval_batch_size
+                eval_config,  # type: ignore[reportArgumentType]
+                tokenizer,
+                device_eval_batch_size,
             )
             eval_loader = Evaluator(
                 label=(
@@ -692,6 +703,20 @@ def _get_trainer_object(
             and isinstance(icl_tasks_listconfig, ListConfig)
         ):
             set_icl_tasks_root_dir(icl_tasks_listconfig, icl_tasks_config.root_dir)
+        icl_tasks_listconfig = OmegaConf.to_container(
+            icl_tasks_listconfig, resolve=True
+        )  # type: ignore[reportAssignmentType]
+        assert isinstance(icl_tasks_listconfig, list | str), (
+            "Expected icl_tasks_listconfig to be a list or a string,"
+            f" got {type(icl_tasks_listconfig)}"
+        )
+        eval_gauntlet_config = OmegaConf.to_container(
+            eval_gauntlet_config, resolve=True
+        )  # type: ignore[reportAssignmentType]
+        assert isinstance(eval_gauntlet_config, dict | str), (
+            "Expected eval_gauntlet_config to be a dict,"
+            f" got {type(eval_gauntlet_config)}"
+        )
         icl_evaluators, _, eval_gauntlet_callback = build_icl_data_and_gauntlet(
             icl_tasks_listconfig,
             eval_gauntlet_config,
@@ -707,8 +732,12 @@ def _get_trainer_object(
         callbacks.append(eval_gauntlet_callback)
 
     # Model
+    model_config = dict(OmegaConf.to_container(model_config, resolve=True))  # type: ignore[reportAssignmentType]
+    assert isinstance(model_config, dict), (
+        "Expected model_config to be a dict," f" got {type(model_config)}"
+    )
     model = build_composer_model(
-        name=model_config.name,
+        name=model_config["name"],
         cfg=model_config,
         tokenizer=tokenizer,
         init_context=init_context,
