@@ -111,10 +111,11 @@ export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"              
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512" # DisTrO 8 devices batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"              # DisTrO 8 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"              # DisTrO 2 devices batch size
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
 
