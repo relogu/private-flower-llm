@@ -364,10 +364,11 @@ def validate_config(cfg: DictConfig) -> None:
             "to enable layers using fp8 precision.",
         )
 
-    if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
-        "ffn_config", {}
-    ).get("ffn_type", "mptmlp"):
-        fsdp_config = cfg.get("fsdp_config", None)
+    fsdp_config = cfg.get("fsdp_config", None)
+    if (
+        cfg.model.get("fc_type", "torch") == "te"
+        or "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp")
+    ) and fsdp_config is not None:
         act_ckpt = fsdp_config.get("activation_checkpointing", False)
         act_ckpt_reentrant = fsdp_config.get("activation_checkpointing_reentrant", True)
         if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:
