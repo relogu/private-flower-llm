@@ -77,6 +77,7 @@ export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 datas
 #! Size specific optimization parameters
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=88000ba llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DiLoCo - 75M
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.scheduler.t_max=25000ba llm_config.scheduler.t_warmup=400ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DisTrO
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
 
 #! Load a model from a checkpoint of type .pt (residing in the S3 bucket)
@@ -97,19 +98,28 @@ export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 datas
 # export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
 
 #! General training parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba llm_config.console_log_interval=100ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}" # Compiles the model with default parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"           # Disable evaluation first`
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"        # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1" # Evaluate the entire validation set
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"        # Compiles the model with default parameters
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"             # Clears OptimizerMonitor (not supported when using DeepSpeed)
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                    # Clears LRMonitor
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
+
+#! Model parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"  # Use PyTorch's attention implementation
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
@@ -151,7 +161,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $EXTERNAL_CONF
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # TORCH_LOGS="+dynamo" TORCHDYNAMO_VERBOSE=1
-APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID

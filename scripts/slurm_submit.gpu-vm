@@ -1,8 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 30
+#SBATCH -c 10
 #SBATCH -w gpu-vm
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
+#!SBATCH --gres=gpu:2
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
@@ -14,7 +15,8 @@
 #!SBATCH --job-name=diloco_75M
 #!SBATCH --job-name=test-hf-flower-llm
 #!SBATCH --job-name=test-deepspeed
-#SBATCH --job-name=eval-gauntlet
+#SBATCH --job-name=test-distro
+#!SBATCH --job-name=eval-gauntlet
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --partition=debug
@@ -64,7 +66,7 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
-# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 
@@ -109,9 +111,9 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # export RUN_UUID="test-$DATETIME"
 # bash $PROJECT_PATH/scripts/photon_llm_75M.sh
 
-export RUN_UUID="pile-matrix-125M-p-tle-eval-gauntlet-$DATETIME"
-export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz"
-bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+# export RUN_UUID="pile-matrix-125M-p-tle-eval-gauntlet-$DATETIME"
+# export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz"
+# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
 
 # export RUN_UUID="pile-full-125M-p-tle-eval-gauntlet-$DATETIME"
 # export CHECKPOINT_PATH="s3://checkpoints/full-125M-p-tle/server/10/current_server_parameters.npz"
