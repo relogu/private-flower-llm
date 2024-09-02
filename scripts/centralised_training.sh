@@ -101,19 +101,20 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.sche
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"           # Disable evaluation first`
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"        # Local evaluation interval
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1" # Evaluate the entire validation set
-export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"        # Compiles the model with default parameters
-# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"                         # Disable evaluation first`
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                      # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"               # Evaluate the entire validation set
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                      # Compiles the model with default parameters
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                             # Removes FSDP
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"             # Clears OptimizerMonitor (not supported when using DeepSpeed)
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                    # Clears LRMonitor
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
 export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512" # DisTrO 8 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
 
