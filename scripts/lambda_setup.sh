@@ -37,6 +37,12 @@ fi
 #! Set GPU persistence mode
 sudo nvidia-smi -pm 1
 
+#! Install CuDNN latest
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt-get update
+sudo apt-get -y install cudnn9-cuda-12
+
 #! Create the scratch in /local/scratch
 sudo mkdir -p /local/scratch/flower_llm
 sudo chown -R ubuntu /local
