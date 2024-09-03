@@ -80,8 +80,8 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
-N_LOCAL_STEPS=500
-POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
+N_LOCAL_STEPS=857
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=20"
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
@@ -89,10 +89,11 @@ mkdir -p $DATASET_CACHE_DIR
 #! Dataset configuration
 POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients"                      # 8 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients"                    # 64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients dataset/streams@dataset.val.streams=32_clients"                    # 32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients"                    # 64 clients
 
 #! Photon configuration
+POLLEN_CONFIG="run_uuid=$RUN_UUID"                               # Run UUID
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true"            # Enable checkpointing
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.saving_path=$SAVE_PATH"     # Save path for Photon Server
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_folder=$SAVE_PATH" # Save path for PhotonLLM Client
@@ -101,12 +102,13 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.n_nodes=1"                  # Number of nod
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=false"    # Non-collaborative training on local GPUs
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=true"     # Collaborative training on local GPUs
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1"            # Resume round for Photon Server
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.refresh_period=-1"          # PhotonLLM Client workers refresh period
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run UUID for Photon Server
 
 #! FL setting
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=32"     # Number of total clients in the federation
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=32" # Number of clients per round
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=50"            # Total number of rounds
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64"    # Number of total clients in the federation
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=2" # Number of clients per round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=50"           # Total number of rounds
 
 #! ServerOpt
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV"                                                          # Server optimizer strategy
@@ -115,21 +117,28 @@ POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.str
 
 #! ClientOpt (AdamW + Cosine LR scheduler) parameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=25000ba llm_config.scheduler.t_warmup=400ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DisTrO setting
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=true"                                                                                                                # Reset local optimizer every round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"                                                                                                               # Keep the local optimizer every round
 
 #! Training hyperparameters
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba" # Save checkpoint interval
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.console_log_interval=100ba"       # Console log interval
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.local_steps=${N_LOCAL_STEPS}ba"   # Local steps
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"               # Enable evaluation at the first step
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"           # Local evaluation interval
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"    # Evaluate the entire validation set
-POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                     # Use DDP only
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"               # Fastest precision context when using DDP
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"       # DisTrO single device batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=256"   # DisTrO 4 devices batch size
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba"               # Save checkpoint interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.console_log_interval=100ba"                     # Console log interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.local_steps=${N_LOCAL_STEPS}ba"                 # Local steps
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"                             # Enable evaluation at the first step
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                         # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"                  # Evaluate the entire validation set
+POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                   # Use DDP only
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                             # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                     # DisTrO single device batch size (one client simulates one device)
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=8" # DisTrO 4xA40 devices microbatch size w/ compilation
 POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"               # Compile the model at Trainer initialization
+
+#! Model parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"                                                                                                                                                   # Use PyTorch's attention implementation
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=flash"                                                                                                                                                   # Use Flash attention implementation
 
 #! Evaluation gauntlet configuration
 export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet

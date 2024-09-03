@@ -101,27 +101,30 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.sche
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"                         # Disable evaluation first`
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                      # Local evaluation interval
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"               # Evaluate the entire validation set
-export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                      # Compiles the model with default parameters
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                             # Removes FSDP
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"             # Clears OptimizerMonitor (not supported when using DeepSpeed)
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                    # Clears LRMonitor
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"              # DisTrO 8 devices batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"              # DisTrO 2 devices batch size
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=24"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"                            # Disable evaluation first
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                         # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"                  # Evaluate the entire validation set
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                         # Compiles the model with default parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                                # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"                # Clears OptimizerMonitor (not supported when using DeepSpeed)
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                       # Clears LRMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                   # Clears MemoryMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"                # Clears RuntimeEstimator
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model"    # Clears ActivationMonitorFullModel
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"                 # DisTrO 8 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"                 # DisTrO 2 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=256"                 # DisTrO 4 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"                  # DisTrO single device batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=8"              # DisTrO 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16" # Standard Automatic Mixed Precision float16 context -- use with < Ampere GPUs
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_bf16" # Standard Automatic Mixed Precision brainfloat16 precision context -- use with >= Ampere GPUs
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
 
 #! Model parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"  # Use PyTorch's attention implementation
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"                                                                                                                                                   # Use PyTorch's attention implementation
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
@@ -144,12 +147,13 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 
 #! Evaluation gauntlet configuration
-# export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"  # Complete MosaicML Gauntlet
-export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty"                                                                                                                                           # Empty gauntlet
 
 #! DeepSpeed configuration file
 export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'"
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'"
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
 
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 
