@@ -87,21 +87,21 @@ export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
 
 #! Dataset configuration
-export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
-export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
-export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
+POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4"                                     # Dataset name
+POLLEN_CONFIG="$POLLEN_CONFIG dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+POLLEN_CONFIG="$POLLEN_CONFIG dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
 
 #! Photon configuration
 POLLEN_CONFIG="$POLLEN_CONFIG run_uuid=$RUN_UUID"                # Run UUID
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true"            # Enable checkpointing
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false"           # Disable checkpointing
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true"            # Enable checkpointing
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.saving_path=$SAVE_PATH"     # Save path for Photon Server
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_folder=$SAVE_PATH" # Save path for PhotonLLM Client
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_overwrite=true"    # Overwrite the existing checkpoint for PhotonLLM Client
@@ -114,14 +114,14 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.refresh_period=60"          # PhotonLLM Cli
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run UUID for Photon Server
 
 #! FL setting
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64"    # Number of total clients in the federation
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=4" # Number of clients per round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8"     # Number of total clients in the federation
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=8" # Number of clients per round
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=176"          # Total number of rounds
 
 #! ServerOpt
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV"                                                          # Server optimizer strategy
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0" # FedAvg
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
 
 #! ClientOpt (AdamW + Cosine LR scheduler) parameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba"   # DiLoCo
@@ -144,9 +144,9 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Eva
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
 POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DiLoCo single device batch size (one client simulates one device)
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DiLoCo single device batch size (one client simulates one device -> 512/8=64)
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=32"               # 2xV100 devices microbatch size -- DDP/FSDP
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"          # Automatic microbatch size
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"             # Automatic microbatch size
 
 #! Model parameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=flash" # Use Flash attention implementation

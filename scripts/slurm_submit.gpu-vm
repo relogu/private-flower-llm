@@ -86,7 +86,7 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="photon-75M-keep-opt-$DATETIME"
+export RUN_UUID="diloco-75M-$DATETIME"
 # bash $PROJECT_PATH/scripts/photon_llm_small.sh
 # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
