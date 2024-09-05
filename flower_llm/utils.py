@@ -191,6 +191,10 @@ def set_trainer_trainable_params_dict(
             if cpu_state:
                 # Set the parameters only if they require gradients
                 for name, param in cpu_state.items():
+                    assert name in parameters_dict, (
+                        f"Parameter {name} not found across list"
+                        " of parameters {parameters_dict.keys()}"
+                    )
                     param_from_dict = parameters_dict[name]
                     # Raise error if the shapes don't match
                     if param.shape != param_from_dict.shape:
@@ -355,6 +359,9 @@ def get_list_of_parameters_names(
     params_dict = {k.replace("model.", ""): v for k, v in params_dict.items()}
     params_dict = {k.replace("module.", ""): v for k, v in params_dict.items()}
     params_dict = {k.replace("_fsdp_wrapped_", ""): v for k, v in params_dict.items()}
+    params_dict = {
+        k.replace("_checkpoint_wrapped_", ""): v for k, v in params_dict.items()
+    }
     # Sort the dictionary if requested
     if sort_dict:
         params_dict = dict(sorted(params_dict.items()))

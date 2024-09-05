@@ -63,6 +63,7 @@ from flower_llm.clients.llm_config_functions import (
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
+    get_list_of_parameters_names,
     get_trainable_params_dict,
     parameters_checker,
     set_trainer_params_from_ndarrays,
@@ -269,7 +270,7 @@ def get_raw_model_parameters(
         for _, val in get_trainable_params_dict(model).items()
     ]
     if return_names:
-        return parameters_ndarrays, list(get_trainable_params_dict(model).keys())
+        return parameters_ndarrays, get_list_of_parameters_names(model=model)
     else:
         return parameters_ndarrays
 
