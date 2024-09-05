@@ -72,13 +72,23 @@ mkdir -p "$POLLEN_SAVE_PATH"
 #! Set dataset related configurations
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=1_client_small dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - centralized, when stream_id=null streaming will be merged anyway, so any stream configuration is fine
+export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
+export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use for centralized training (they are concatenated if null)
 
-#! Size specific optimization parameters
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=88000ba llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DiLoCo - 75M
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=5000ba llm_config.scheduler.t_max=5000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # MosaicML (+200ba) - 125M
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.scheduler.t_max=25000ba llm_config.scheduler.t_warmup=400ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4" # DisTrO
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
+#! Size specific optimization parameters (comment this out to use the default values)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba"       # Number of totale training steps
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_max=0ba"    # Duration of the learning rate cosine scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_warmup=0ba" # Warmup steps for the learning rate scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.alpha_f=0.1"  # Final learning rate multiplier for the cosine scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.optimizer.lr=6.0e-4"    # Learning rate
 
 #! Load a model from a checkpoint of type .pt (residing in the S3 bucket)
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
@@ -98,33 +108,34 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=25000ba llm_config.sche
 # export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
 
 #! General training parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"           # Disable evaluation first
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"        # Local evaluation interval
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1" # Evaluate the entire validation set
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                         # Compiles the model with default parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
-# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                                # Removes FSDP
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"             # Clears OptimizerMonitor (not supported when using DeepSpeed)
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                    # Clears LRMonitor
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                # Clears MemoryMonitor
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"             # Clears RuntimeEstimator
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model" # Clears ActivationMonitorFullModel
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"              # DisTrO 8 devices batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"              # DisTrO 2 devices batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=256"              # DisTrO 4 devices batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"               # DisTrO single device batch size
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=8"           # DisTrO 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16" # Standard Automatic Mixed Precision float16 context -- use with < Ampere GPUs
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_bf16" # Standard Automatic Mixed Precision brainfloat16 precision context -- use with >= Ampere GPUs
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"                            # Save interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"                      # Console log interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"                                 # Enable evaluation first
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"                                # Disable evaluation first
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                             # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"                      # Evaluate the entire validation set
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                             # Compiles the model with default parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP"     # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                                    # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"                    # Clears OptimizerMonitor (not supported when using DeepSpeed)
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                           # Clears LRMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                       # Clears MemoryMonitor
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"                    # Clears RuntimeEstimator
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model"        # Clears ActivationMonitorFullModel
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"                     # DisTrO 8 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"                     # DisTrO 2 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=256"                     # DisTrO 4 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"                      # DisTrO single device batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=8"                  # DisTrO 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"               # Automatic microbatch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"                              # Standard Automatic Mixed Precision float16 context -- use with < Ampere GPUs
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_bf16"                              # Standard Automatic Mixed Precision brainfloat16 precision context -- use with >= Ampere GPUs
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te" # Standard Automatic Mixed Precision float8 context -- use with >= Ampere GPUs
 
 #! Model parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"                                                                                                                                                   # Use PyTorch's attention implementation
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=flash"                                                                                                                                                   # Use flash attention implementation
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
