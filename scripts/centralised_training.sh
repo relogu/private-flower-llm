@@ -81,7 +81,7 @@ export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_client
 export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
 export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
 export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use for centralized training (they are concatenated if null)
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
 
 #! Size specific optimization parameters (comment this out to use the default values)
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba"       # Number of totale training steps

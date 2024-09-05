@@ -88,10 +88,16 @@ export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
 
 #! Dataset configuration
-POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients"                    # 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients dataset/streams@dataset.val.streams=32_clients"                    # 32 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients"                      # 8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
+export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
 
 #! Photon configuration
 POLLEN_CONFIG="$POLLEN_CONFIG run_uuid=$RUN_UUID"                # Run UUID
@@ -133,13 +139,13 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.local_steps=${N_LOCAL_STEPS}ba"   # Loc
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true"                  # Enable evaluation at the first step
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_interval=250ba"              # Local evaluation interval
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Evaluate the entire validation set
-# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                   # Use DDP only
+# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                  # Use DDP only
+# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
 POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DisTrO single device batch size (one client simulates one device)
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"                # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"
-# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"               # Compile the model at Trainer initialization
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"          # Automatic microbatch size
 
 #! Model parameters
 # POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
@@ -151,8 +157,8 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=flash" # Us
 POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
 
 #! DeepSpeed configuration file
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'" # Empty DeepSpeed configuration file (default)
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file=null"                                                                               # Disable DeepSpeed
+# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'" # Empty DeepSpeed configuration file (default)
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file=null" # Disable DeepSpeed
 
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
