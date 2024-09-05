@@ -1,9 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 10
+#SBATCH -c 20
 #SBATCH -w gpu-vm
-#SBATCH --gres=gpu:1
-#!SBATCH --gres=gpu:2
+#!SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
@@ -12,10 +12,10 @@
 #!SBATCH --job-name=centralised_llm_160M
 #!SBATCH --job-name=centralised_llm_350M
 #!SBATCH --job-name=centralised_llm_760M
-#!SBATCH --job-name=diloco_75M
+#SBATCH --job-name=photon_75M
 #!SBATCH --job-name=test-hf-flower-llm
 #!SBATCH --job-name=test-deepspeed
-#SBATCH --job-name=test-distro
+#!SBATCH --job-name=test-distro
 #!SBATCH --job-name=eval-gauntlet
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
@@ -66,7 +66,7 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
-bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 
@@ -85,8 +85,8 @@ bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-fed-small-$DATETIME"
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="photon-75M-keep-opt-$DATETIME"
 # bash $PROJECT_PATH/scripts/photon_llm_small.sh
 # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
@@ -94,7 +94,7 @@ bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # export RUN_UUID="test-fed-75M-$DATETIME"
 # export RUN_UUID="fed-75M-20240313_181750"
 # export RUN_UUID="fed-75M-20240506_234900"
-# bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
 # export RUN_UUID="fed-125M-20240328_000428-restore-3"
 # bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
 # export RUN_UUID="fed-160M-20240507_114745"

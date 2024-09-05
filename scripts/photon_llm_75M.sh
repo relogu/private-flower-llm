@@ -77,41 +77,82 @@ else
 fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
-MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
+MINIO_COMM_STACK_OPTIONS="use_s3_comm=true"                                                 # Use S3 communication stack
+MINIO_COMM_STACK_OPTIONS="use_s3_comm=false"                                                # Don't use S3 communication stack
+MINIO_COMM_STACK_OPTIONS="$MINIO_COMM_STACK_OPTIONS s3_comm_config.bucket_name=checkpoints" # S3 bucket name
 #! Set Pollen and FL config
 N_LOCAL_STEPS=500
-POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=20 fl.n_rounds=176"
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
-POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 8 clients
-# POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.fit_collaborative=false"
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1 pollen.restore_run_uuid=null"
 
-#! ServerOpt
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=0.1 fl.strategy_kwargs.server_momentum=0.9"  # Conservative choice (DiLoCo)
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0"  # FedAvg
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDADAM +fl.strategy_kwargs.eta=0.0007 +fl.strategy_kwargs.beta_1=0.9 +fl.strategy_kwargs.beta_2=0.99 +fl.strategy_kwargs.tau=1e-9"  # FedAdam
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDYOGI +fl.strategy_kwargs.eta=0.0007 +fl.strategy_kwargs.beta_1=0.9 +fl.strategy_kwargs.beta_2=0.99 +fl.strategy_kwargs.tau=1e-3" # FedYogi
+#! Dataset configuration
+POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4 dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=8_clients"                      # 8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients dataset/streams@dataset.val.streams=32_clients"                    # 32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients"                    # 64 clients
+
+#! Photon configuration
+POLLEN_CONFIG="$POLLEN_CONFIG run_uuid=$RUN_UUID"                # Run UUID
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=true"            # Enable checkpointing
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false"           # Disable checkpointing
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.saving_path=$SAVE_PATH"     # Save path for Photon Server
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_folder=$SAVE_PATH" # Save path for PhotonLLM Client
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_overwrite=true"    # Overwrite the existing checkpoint for PhotonLLM Client
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.n_nodes=1"                  # Number of nodes in the Photon federation
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=false"    # Non-collaborative training on local GPUs
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=true"     # Collaborative training on local GPUs
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1"            # Resume round fro latest for the Photon Server
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null"          # Start from scratch
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.refresh_period=60"          # PhotonLLM Client workers refresh period
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run UUID for Photon Server
 
 #! FL setting
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=8 fl.n_rounds=176"                                                                           # DiLoCo
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=4 fl.n_clients_per_round=2 fl.n_rounds=176"                                                                           # DiLoCo halved
-# POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8 fl.n_clients_per_round=2 fl.n_rounds=176"                                                                           # DiLoCo halved twice
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64 fl.n_clients_per_round=4 fl.n_rounds=176" # Ours
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64"    # Number of total clients in the federation
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=4" # Number of clients per round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=176"          # Total number of rounds
 
-#! ClientOpt
-# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4 fl.reset_optimizer=false" # DiLoCo
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=4.0e-4 fl.reset_optimizer=true" # DiLoCo + reset ClientOpt
-# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba llm_config.scheduler.t_warmup=1000ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-5" # DiLoCo + lr trick
+#! ServerOpt
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV"                                                          # Server optimizer strategy
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0" # FedAvg
 
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=100ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-# POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=1"
-# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
-# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
+#! ClientOpt (AdamW + Cosine LR scheduler) parameters
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=88000ba"   # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_warmup=1000ba" # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.alpha_f=0.1"     # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.optimizer.lr=4.0e-4"       # DiLoCo
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=true"              # Reset local optimizer every round (Ours)
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"             # Keep the local optimizer every round (DiLoCo)
+
+#! Training hyperparameters
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=90000ba"            # Save checkpoint interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba" # Save checkpoint interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.console_log_interval=100ba"       # Console log interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.local_steps=${N_LOCAL_STEPS}ba"   # Local steps
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_first=true"                  # Enable evaluation at the first step
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_interval=250ba"              # Local evaluation interval
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=1"        # Evaluate only one batch of the entire validation set
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Evaluate the entire validation set
+# POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                   # Use DDP only
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DiLoCo single device batch size (one client simulates one device)
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=32"               # 2xV100 devices microbatch size -- DDP/FSDP
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"
+# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"               # Compile the model at Trainer initialization
+
+#! Model parameters
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=flash" # Use Flash attention implementation
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=torch" # Use PyTorch's attention implementation
+
+#! Evaluation gauntlet configuration
+# POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
+
+#! DeepSpeed configuration file
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'" # Empty DeepSpeed configuration file (default)
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.deepspeed_config_file=null"                                                                               # Disable DeepSpeed
 
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
 export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
@@ -130,7 +171,7 @@ sleep 5
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:49741' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:49741' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the ClientApp
 CLIENTAPP_PID=$!
 
