@@ -494,6 +494,9 @@ def _get_trainer_object(
     device_train_microbatch_size: str | int = pop_config(
         _cfg, "device_train_microbatch_size", must_exist=False, default_value="auto"
     )
+    device_eval_microbatch_size: str | int = pop_config(
+        _cfg, "device_eval_microbatch_size", must_exist=False, default_value="auto"
+    )
     eval_subset_num_batches: int = pop_config(
         _cfg, "eval_subset_num_batches", must_exist=False, default_value=-1
     )
@@ -686,6 +689,7 @@ def _get_trainer_object(
                 ),
                 dataloader=eval_dataloader,
                 metric_names=[],  # we will add these after model is created
+                device_eval_microbatch_size=device_eval_microbatch_size,
             )
             eval_loaders.append(eval_loader)
 
@@ -727,6 +731,8 @@ def _get_trainer_object(
             icl_subset_num_batches,
             destination_dir=destination_dir,
         )
+        for icl_evaluator in icl_evaluators:
+            icl_evaluator.auto_microbatching = device_eval_microbatch_size == "auto"
         evaluators.extend(icl_evaluators)
 
     if eval_gauntlet_callback is not None:
