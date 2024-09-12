@@ -1,6 +1,8 @@
 ---
+destination_dir: null
+
 eval_gauntlet:
-  destination_dir: null
+  destination_dir: ${eval_gauntlet_config.destination_dir}
   weighting: EQUAL
   subtract_random_baseline: true
   rescale_accuracy: true
