@@ -5,11 +5,13 @@ from dataclasses import asdict
 from logging import DEBUG, INFO, WARNING
 from pathlib import Path
 import pickle
+import re
 from tempfile import TemporaryDirectory
 from typing import Any
 import time
 
 from omegaconf import OmegaConf
+from composer.utils.object_store import S3ObjectStore
 
 from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
@@ -41,7 +43,12 @@ from flwr.common.recordset_compat import (
 )
 from composer import Trainer
 from composer.loggers import RemoteUploaderDownloader
-from composer.utils.file_helpers import validate_given_remote_path, parse_uri
+from composer.utils.file_helpers import (
+    validate_given_remote_path,
+    parse_uri,
+    maybe_create_object_store_from_uri,
+    list_remote_objects,
+)
 
 
 from flower_llm.conf.base_schema import BaseConfig, S3CommConfig
@@ -929,3 +936,149 @@ def load_pretrained_model_from_path(
     assert local_file_path.exists(), f"Local file path {local_file_path} does not exist"
     initial_parameters = load_model_parameters_from_file(local_file_path)
     set_trainer_params_from_ndarrays(initial_parameters, trainer)
+
+
+def get_num_batches_from_checkpoint_name(checkpoint_name: str) -> int:
+    """Extract the number of batches from the checkpoint name.
+
+    The checkpoint name is expected to be in the format:
+    ep{n_epochs}-ba{n_batches}-rank{rank}.pt
+
+    Parameters
+    ----------
+        checkpoint_name (str): The name of the checkpoint file.
+
+    Returns
+    -------
+        int: The number of batches extracted from the checkpoint name.
+
+    Raises
+    ------
+        ValueError: If the checkpoint name does not match the expected format.
+    """
+    match = re.search(r"-ba(\d+)-", checkpoint_name)
+    if match:
+        return int(match.group(1))
+    else:
+        raise ValueError(f"Invalid checkpoint name format: {checkpoint_name}")
+
+
+def delete_clients_checkpoints(run_uuid_path: str, end_idx: int = -1) -> None:
+    """Delete client checkpoints from an S3 bucket.
+
+    This function deletes the specified client checkpoints from an S3 bucket using the
+    provided run UUID path. It lists all the remote objects, extracts unique client IDs,
+    and removes the corresponding checkpoints for each client based on the `end_idx`
+    parameter.
+
+    Parameters
+    ----------
+    run_uuid_path : str
+        The path to the run UUID, which includes the backend and bucket name.
+    end_idx : int, optional
+        The index up to which checkpoints should be deleted. Defaults to -1, which means
+        all checkpoints.
+
+    Raises
+    ------
+    ValueError
+        If the run UUID path is not a valid URI or if the objects cannot be deleted.
+    """
+    # Parse the URI to extract the backend and bucket name
+    backend, bucket_name, _prefix = parse_uri(run_uuid_path)
+    # List all the remote objects in the run UUID path
+    remote_objects = list_remote_objects(run_uuid_path)
+    # Extract unique client IDs from the remote objects
+    unique_client_ids = {
+        int(reg.group(1))
+        for path in remote_objects
+        if (reg := re.search(r"client_(\d+)/.*$", path)) is not None
+    }
+    for client_id in unique_client_ids:
+        # List all the remote objects for the client
+        client_remote_objects = list_remote_objects(
+            f"{run_uuid_path}/client_{client_id}/"
+        )
+        # Remove symlinks from the list of files
+        client_remote_objects = [
+            cro for cro in client_remote_objects if not cro.endswith(".symlink")
+        ]
+        # Sort by number of batches the client trained on
+        sorted_client_objects = sorted(
+            client_remote_objects, key=get_num_batches_from_checkpoint_name
+        )
+        # Delete only the last `end_idx` checkpoints
+        objects_to_remove = sorted_client_objects[:end_idx]
+        for object_to_remove in objects_to_remove:
+            delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+
+
+def delete_rounds(
+    run_uuid_path: str, state_keys: tuple[str, ...], end_idx: int = -1
+) -> None:
+    """Delete specified federated rounds from an S3 bucket.
+
+    This function deletes the specified federated rounds from an S3 bucket using the
+    provided run UUID path and state keys. It lists all the federated rounds, determines
+    which rounds to delete based on the `end_idx` parameter, and removes the
+    corresponding objects from the S3 bucket.
+
+    Parameters
+    ----------
+    run_uuid_path : str
+        The path to the run UUID, which includes the backend and bucket name.
+    state_keys : tuple[str, ...]
+        A tuple of state keys used to identify the federated rounds.
+    end_idx : int, optional
+        The index up to which rounds should be deleted. Defaults to -1, which means all
+        rounds.
+
+    Raises
+    ------
+    ValueError
+        If the run UUID path is not a valid URI or if the objects cannot be deleted.
+    """
+    # Parse the URI to extract the backend and bucket name
+    backend, bucket_name, _prefix = parse_uri(run_uuid_path)
+    # List all the federated rounds in the run UUID path
+    sorted_rounds = obtain_sorted_runs(run_uuid_path, state_keys)
+    # Delete only the last `end_idx` rounds
+    rounds_to_delete = sorted_rounds[:end_idx]
+    for round_to_delete in rounds_to_delete:
+        # List all the remote objects for the server at the round specified
+        objects_to_remove = list_remote_objects(
+            f"{run_uuid_path}/server/{round_to_delete}/"
+        )
+        # Remove the objects found
+        for object_to_remove in objects_to_remove:
+            delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+
+
+def delete_object(object_name: str) -> None:
+    """Delete an object from an S3 bucket.
+
+    This function deletes an object from an S3 bucket using the provided object name.
+    It creates an S3 object store from the object name, parses the URI to extract the
+    prefix, and then deletes the object from the object store.
+
+    Parameters
+    ----------
+        object_name (str): The name of the object to delete. This should be a URI that
+                           includes the bucket name and the object key.
+
+    Raises
+    ------
+        ValueError: If the object name is not a valid URI or if the object cannot be
+            deleted.
+    """
+    # Create an object store from the object name
+    object_store: S3ObjectStore | None = maybe_create_object_store_from_uri(object_name)  # type: ignore[assignment,reportAssignmentType]
+    if object_store is None:
+        raise ValueError(f"Invalid object name: {object_name}")
+    # Parse the URI to extract the prefix to use as the key to delete the file
+    _backend, _bucket_name, prefix = parse_uri(object_name)
+    # Delete the object from the object store
+    object_store.client.delete_object(
+        Bucket=object_store.bucket,
+        Key=object_store.get_key(prefix),
+    )
