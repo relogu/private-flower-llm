@@ -108,8 +108,8 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_overwrite=true"    # Overwrite the
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.n_nodes=1"                  # Number of nodes in the Photon federation
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=false"    # Non-collaborative training on local GPUs
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.fit_collaborative=true"     # Collaborative training on local GPUs
-POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1"            # Resume round fro latest for the Photon Server
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=null"          # Start from scratch
+POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=-1"            # Resume round from the latest for the Photon Server
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.refresh_period=60"          # PhotonLLM Client workers refresh period
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run UUID for Photon Server
 
@@ -144,6 +144,8 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Eva
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
 POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto"            # Automatic microbatch size for evaluation
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"                    # Evaluation batch size
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DiLoCo single device batch size (one client simulates one device -> 512/8=64)
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=32"               # 2xV100 devices microbatch size -- DDP/FSDP
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"             # Automatic microbatch size
@@ -153,7 +155,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=flash" # Us
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=torch" # Use PyTorch's attention implementation
 
 #! Evaluation gauntlet configuration
-# POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+# POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
 POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
 
 #! DeepSpeed configuration file

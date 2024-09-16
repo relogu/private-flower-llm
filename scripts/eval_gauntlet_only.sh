@@ -72,10 +72,19 @@ mkdir -p "$POLLEN_SAVE_PATH"
 #! Set dataset related configurations
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null dataset=fed-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=1_client_small dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4 dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4" # C4 - centralized, when stream_id=null streaming will be merged anyway, so any stream configuration is fine
 
-#! Size specific optimization parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.scheduler.t_max=0ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4" # No training (Eval only)
+#! Dataset configuration
+export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
+export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
+
+#! ClientOpt (AdamW + Cosine LR scheduler) parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba"       # No training (Eval only)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_max=0ba"    # No training (Eval only)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_warmup=0ba" # No training (Eval only)
 
 #! Load a model from a checkpoint of type .pt (residing in the S3 bucket)
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
@@ -84,13 +93,16 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba llm_config.schedule
 export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
 
 #! General training parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba llm_config.console_log_interval=100ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=250ba llm_config.eval_subset_num_batches=-1"
-# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"  		# Compiles the model with default parameters
-# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                 # Removes FSDP
-# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor" # Clears OptimizerMonitor (not supported when using DeepSpeed)
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch" # Shut down flash attention
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=200ba"                # Save checkpoint interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba"         # Console log interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"                    # Enable evaluation at the first step
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"                # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1"         # Evaluate the entire validation set
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                       # Removes FSDP
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.device_eval_microbatch_size=auto" # Automatic microbatch size for evaluation
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_eval_batch_size=256"         # Evaluation batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"  # Automatic microbatch size for training
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"  # Shut down flash attention
 
 #! Getting visible GPUs
 if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
@@ -113,20 +125,20 @@ echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
 
 #! Evaluation gauntlet configuration
-export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
 # export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty"  # Exclude MosaicML Gauntlet
 
 #! DeepSpeed configuration file
-export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null" # Disable DeepSpeed
 
 echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
 
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
+export TMPDIR="/local/scratch/flower_llm/$DATETIME"
 mkdir -p "$TMPDIR"
 
 #! Run Hydra resolver
-HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $EXTERNAL_CONFIGS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
 
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.

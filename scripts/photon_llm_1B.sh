@@ -88,16 +88,16 @@ export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
 
 #! Dataset configuration
-export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
-export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
-export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
-export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
-export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
+POLLEN_CONFIG="$POLLEN_CONFIG dataset=fed-c4"                                     # Dataset name
+POLLEN_CONFIG="$POLLEN_CONFIG dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+POLLEN_CONFIG="$POLLEN_CONFIG dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
 
 #! Photon configuration
 POLLEN_CONFIG="$POLLEN_CONFIG run_uuid=$RUN_UUID"                # Run UUID
@@ -116,21 +116,21 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run U
 
 #! FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8"     # Number of total clients in the federation
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=2" # Number of clients per round
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=50"           # Total number of rounds
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=8" # Number of clients per round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=25"           # Total number of rounds
 
 #! ServerOpt
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV"                                                          # Server optimizer strategy
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0" # FedAvg
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
 
 #! ClientOpt (AdamW + Cosine LR scheduler) parameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=25000ba"   # Total number of training steps
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_warmup=1000ba" # Number of warmup steps
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.alpha_f=0.1"     # Decay factor for the cosine scheduler
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.optimizer.lr=4.0e-4"       # Learning rate for the optimizer
-POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"             # Keep the local optimizer every round
 POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=true"              # Reset local optimizer every round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"             # Keep the local optimizer every round
 
 #! Training hyperparameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba" # Save checkpoint interval
@@ -143,9 +143,11 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Eva
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
 POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto"            # Automatic microbatch size for evaluation
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"                    # Evaluation batch size
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DisTrO single device batch size (one client simulates one device)
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"                # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"          # Automatic microbatch size
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"             # Automatic microbatch size
 
 #! Model parameters
 # POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
@@ -153,7 +155,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=torch" # Us
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.attn_config.attn_impl=flash" # Use Flash attention implementation
 
 #! Evaluation gauntlet configuration
-# POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.eval_gauntlet.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+# POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
 POLLEN_CONFIG="$POLLEN_CONFIG icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
 
 #! DeepSpeed configuration file
@@ -165,7 +167,7 @@ export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
 
 #! Run Hydra resolver
-HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS $EXTERNAL_CONFIGS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
 
 #! Start a Superlink
 # GRPC_VERBOSITY=debug

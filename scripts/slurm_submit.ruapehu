@@ -83,9 +83,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
 DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="photon-1B-857steps-$DATETIME"
-# bash "$PROJECT_PATH"/scripts/photon_llm_small.sh
-# bash "$PROJECT_PATH"/scripts/photon_llm_16M.sh
+export RUN_UUID="diloco-1B-1000steps-$DATETIME"
+# export EXTERNAL_CONFIGS=""
+# bash "$PROJECT_PATH"/scripts/photon_llm_small.squeue
 # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="test-fed-75M-$DATETIME"
