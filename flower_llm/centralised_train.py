@@ -13,7 +13,7 @@ from typing import cast
 import numpy as np
 import torch
 from composer import Trainer
-from flwr.common import log
+from flwr.common import log, NDArray
 from omegaconf import OmegaConf
 from llmfoundry.callbacks import EvalGauntlet
 
@@ -24,6 +24,10 @@ from flower_llm.clients.llm_client_functions import (
 )
 from flower_llm.clients.llm_config_functions import validate_config
 from flower_llm.server.s3_utils import load_pretrained_model_from_path
+from flower_llm.utils import (
+    get_wte_parameters_from_trainer,
+    set_wte_parameters_to_trainer,
+)
 
 
 def main() -> Trainer:
@@ -58,6 +62,16 @@ def main() -> Trainer:
     torch.cuda.empty_cache()
     gc.collect()
 
+    wte_parameters: NDArray | None = None
+    if _cfg.wte_parameters_path:
+        load_pretrained_model_from_path(
+            trainer=trainer,
+            pretrained_model_path=_cfg.wte_parameters_path,
+            run_uuid=_cfg.run_uuid,
+            s3_comm_config=_cfg.s3_comm_config,
+        )
+        wte_parameters = get_wte_parameters_from_trainer(trainer)
+
     if _cfg.pretrained_model_path:
         load_pretrained_model_from_path(
             trainer=trainer,
@@ -65,6 +79,9 @@ def main() -> Trainer:
             run_uuid=_cfg.run_uuid,
             s3_comm_config=_cfg.s3_comm_config,
         )
+
+    if wte_parameters is not None:
+        set_wte_parameters_to_trainer(trainer, wte_parameters)
 
     # Eval first if requested
     if eval_first:
@@ -95,8 +112,9 @@ def main() -> Trainer:
         with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
             np.savez(f, *model_parameters)
 
-    log(INFO, "Starting training...")
-    trainer.fit()
+    if not _cfg.centralized.eval_only:
+        log(INFO, "Starting training...")
+        trainer.fit()
 
     # Dump model parameters to file
     if _cfg.centralized.store_final_model:

@@ -19,11 +19,14 @@ class Centralized(DictConfig):
         Whether to store the final model
     stream_id: str | None = MISSING
         Stream id to pass to the data configuration
+    eval_only: bool = MISSING
+        Whether to only execute the evaluation
     """
 
     store_init_model: bool = MISSING
     store_final_model: bool = MISSING
     stream_id: str | None = MISSING
+    eval_only: bool = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -232,6 +235,8 @@ class BaseConfig(DictConfig):
         Whether to run in test mode
     pretrained_model_path: str = MISSING
         Path to the pretrained model
+    wte_parameters_path: str = MISSING
+        Path to the model from which to take the WTE parameters
     centralized: Centralized = MISSING
         Centralized configuration
     pollen: Pollen
@@ -252,6 +257,7 @@ class BaseConfig(DictConfig):
     seed: int = MISSING
     is_test: bool = MISSING
     pretrained_model_path: str | None = MISSING
+    wte_parameters_path: str | None = MISSING
     centralized: Centralized = MISSING
     pollen: Pollen = MISSING
     fl: FL = MISSING

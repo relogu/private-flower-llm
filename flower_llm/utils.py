@@ -28,7 +28,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataP
 from torch.distributed.fsdp.api import FullStateDictConfig, StateDictType
 from composer import Trainer
 from composer.utils import dist
-from flwr.common import Config, NDArrays, log, parameters_to_ndarrays
+from flwr.common import Config, NDArrays, log, parameters_to_ndarrays, NDArray
 from torch import device as device_type
 from typing import Self
 from composer.utils.file_helpers import list_remote_objects
@@ -219,33 +219,19 @@ def set_trainer_trainable_params_dict(
         for name, param in trainer.state.model.named_parameters():
             # Set the parameters only if they require gradients
             if param.requires_grad:
-                # DDP
-                if name.startswith("module."):
-                    param_from_dict = parameters_dict[
-                        name.replace("model.", "").replace("module.", "")
-                    ]
-                    # Raise error if the shapes don't match
-                    if param.shape != param_from_dict.shape:
-                        raise ValueError(
-                            f"Shapes don't match: {param.shape} != "
-                            f"{param_from_dict.shape}"
-                        )
-                    current_dtype = param.data.dtype
-                    param.data = param_from_dict.to(
-                        device=param.device, dtype=current_dtype
+                param_from_dict = parameters_dict[
+                    name.replace("model.", "").replace("module.", "")
+                ]
+                # Raise error if the shapes don't match
+                if param.shape != param_from_dict.shape:
+                    raise ValueError(
+                        f"Shapes don't match: {param.shape} != "
+                        f"{param_from_dict.shape}"
                     )
-                # Single GPU
-                else:
-                    # Raise error if the shapes don't match
-                    if param.shape != parameters_dict[name].shape:
-                        raise ValueError(
-                            f"Shapes don't match: {param.shape} != "
-                            f"{parameters_dict[name].shape}"
-                        )
-                    current_dtype = param.data.dtype
-                    param.data = parameters_dict[name].to(
-                        device=param.device, dtype=current_dtype
-                    )
+                current_dtype = param.data.dtype
+                param.data = param_from_dict.to(
+                    device=param.device, dtype=current_dtype
+                )
     dist.barrier()
 
 
@@ -345,6 +331,40 @@ def set_trainer_params_from_ndarrays(parameters: NDArrays, trainer: Trainer) -> 
             set_trainer_trainable_params_dict(trainer, parameters_dict)
         else:
             raise
+
+
+def get_wte_parameters_from_trainer(trainer: Trainer) -> NDArray:
+    """Get the parameters of the WTE layer of a model from a trainer."""
+    # Get the parameter names of the model
+    model_parameter_names = get_list_of_parameters_names(trainer.state.model)
+    # Get the WTE parameters
+    wte_parameters_dict = {
+        name: param
+        for name, param in zip(
+            model_parameter_names, get_parameters_from_state({}, trainer), strict=False
+        )
+        if "wte" in name
+    }
+    # Return the WTE parameters
+    wte_parameters = list(wte_parameters_dict.values())
+    assert len(wte_parameters) > 0, "There are no WTE parameters"
+    assert len(wte_parameters) == 1, "WTE parameters are not unique"
+    return wte_parameters[0]
+
+
+def set_wte_parameters_to_trainer(trainer: Trainer, wte_parameters: NDArray) -> None:
+    """Set the parameters of the WTE layer of a model to a trainer."""
+    # Get the parameter names of the model
+    model_parameter_names = get_list_of_parameters_names(trainer.state.model)
+    # Get the WTE parameters
+    model_parameters: list[NDArray] = [
+        param if "wte" not in name else wte_parameters
+        for name, param in zip(
+            model_parameter_names, get_parameters_from_state({}, trainer), strict=False
+        )
+    ]
+    # Set the WTE parameters
+    set_trainer_params_from_ndarrays(model_parameters, trainer)
 
 
 def get_list_of_parameters_names(
