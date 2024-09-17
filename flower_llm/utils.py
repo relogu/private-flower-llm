@@ -1156,7 +1156,9 @@ def get_file_names_from_file_number(fds: list[int]) -> list[str]:
     """Return a list of file names given a list of file descriptor numbers."""
     names = []
     for fd in fds:
-        names.append(str(Path.readlink(Path("/proc/self/fd/%d" % fd))))
+        # Convert fd to a double
+        fd_double = float(fd)
+        names.append(str(Path.readlink(Path(f"/proc/self/fd/{fd_double}"))))
     return names
 
 
@@ -1187,23 +1189,29 @@ class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
-def obtain_sorted_runs(server_path: str, state_keys: tuple[str, ...]) -> list[int]:
+def obtain_sorted_runs(run_uuid_path: str, state_keys: tuple[str, ...]) -> list[int]:
     """Obtain the sorted runs from the server path.
+
+    The function invokes the `list_remote_objects` function to get the list of remote
+    objects in the run uuid path. It then extracts the unique run numbers, under
+    `{run_uuid_path}/server/`, from the paths and filters them based on the state keys
+    provided. The function returns the sorted runs.
 
     Parameters
     ----------
-    server_path : str
-        The path to the server.
+    run_uuid_path : str
+        The path to the run uuid root.
     state_keys : Tuple[str]
-        The state keys to check in the paths.
+        The state keys to check in the paths. Keys are intended to be the prefixes of
+        any file name. For example, if the keys are ("state", "model"), then the
+        function will return any path that starts with "state" and "model".
 
     Returns
     -------
     List[int]
         The sorted runs.
     """
-    remote_objects = list_remote_objects(server_path)
-    log(DEBUG, "Found files %s", remote_objects)
+    remote_objects = list_remote_objects(run_uuid_path)
 
     # Extract unique run numbers
     run_numbers = {
