@@ -129,6 +129,7 @@ def fit_clients(
                     tmp_results.append(
                         aggregate_inplace(
                             results,  # type: ignore[arg-type]
+                            None,
                         )
                     )
                 # Clear lists
@@ -170,6 +171,7 @@ def fit_clients(
             tmp_results.append(
                 aggregate_inplace(
                     results,  # type: ignore[arg-type]
+                    None,
                 )
             )
         # Clear lists
@@ -181,7 +183,7 @@ def fit_clients(
 
     metrics_aggregated = {}
     if tmp_results:
-        aggregate_ndarrays = aggregate_inplace(tmp_results)
+        aggregate_ndarrays = aggregate_inplace(tmp_results, None)
         assert aggregate_ndarrays is not None
         parameters_aggregated = ndarrays_to_parameters(aggregate_ndarrays)
     if strategy.fit_metrics_aggregation_fn:
