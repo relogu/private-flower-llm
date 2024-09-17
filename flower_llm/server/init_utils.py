@@ -218,9 +218,7 @@ def resume_from_round(
     """
     cfg.pollen.resume_round = interpret_resume_round(
         resume_round=cfg.pollen.resume_round,
-        server_path=(
-            f"s3://{cfg.s3_comm_config.bucket_name}/" f"{cfg.run_uuid}/server/"
-        ),
+        run_uuid_path=(f"s3://{cfg.s3_comm_config.bucket_name}/{cfg.run_uuid}/"),
         # NOTE: Check whether we can relax this condition
         raise_error=cfg.pollen.resume_round != -1,
         state_keys=(

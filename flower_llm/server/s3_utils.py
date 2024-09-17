@@ -114,11 +114,12 @@ def extract_s3_comm_config_from_configrecord(
 
 def interpret_resume_round(
     resume_round: int | None,
-    server_path: str,
+    run_uuid_path: str,
     state_keys: tuple[str, ...],
     raise_error: bool = True,
 ) -> int | None:
-    """Interpret the resume round parameter for server checkpoint resumption.
+    """
+    Interpret the resume round parameter for server checkpoint resumption.
 
     This function interprets the `resume_round` parameter, which specifies the round
     to resume server operations from. If `resume_round` is negative, it is treated as
@@ -133,8 +134,10 @@ def interpret_resume_round(
     resume_round : int | None
         The round number to resume from. If negative, treated as a reverse index. If
         None, indicates no resumption is required.
-    server_path : str
-        The path to the server's checkpoint directory.
+    run_uuid_path : str
+        The path to the run uuid root.
+    state_keys : tuple[str, ...]
+        A tuple of state keys used to identify the federated rounds.
     raise_error : bool, optional
         Whether to raise an error if no checkpoints are found and `resume_round` is
         negative. Default is True.
@@ -152,14 +155,14 @@ def interpret_resume_round(
     log(
         DEBUG,
         "The parameter `resume_round=%s` will be interpret as an index "
-        "for the list of rounds for the server_path=%s",
+        "for the list of rounds for the run_uuid_path=%s",
         resume_round,
-        server_path,
+        run_uuid_path,
     )
     if resume_round is None:
         return None
     if resume_round < 0:
-        server_round_indices = obtain_sorted_runs(server_path, state_keys)
+        server_round_indices = obtain_sorted_runs(run_uuid_path, state_keys)
         log(DEBUG, "Found server round indices %s", server_round_indices)
         if not server_round_indices and raise_error:
             raise NoCheckpointsFoundError
