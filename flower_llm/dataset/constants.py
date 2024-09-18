@@ -64,7 +64,7 @@ pile_constants.splits["train_small"] = DataSplitConstants(
     raw_samples=1000000,
     truncated_samples=100000,
 )
-pile_constants.splits["val"] = DataSplitConstants(
+pile_constants.splits["validation"] = DataSplitConstants(
     path="",
     name="",
     split="validation",
@@ -92,12 +92,12 @@ pile_constants.splits["val_xsmall"] = DataSplitConstants(
 
 """------------------- C4 (en) -------------------"""
 
-c4_constants = DatasetConstants(
+c4_en_constants = DatasetConstants(
     chars_per_sample=2163,  # Computed over validation set
     chars_per_token=4,  # OpenAI estimate
     splits={},
 )
-c4_constants.splits["train"] = DataSplitConstants(
+c4_en_constants.splits["train"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="train",
@@ -106,7 +106,7 @@ c4_constants.splits["train"] = DataSplitConstants(
     truncated_samples=None,
     denominator=85336729,
 )
-c4_constants.splits["train_small"] = DataSplitConstants(
+c4_en_constants.splits["train_small"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="train",
@@ -114,7 +114,7 @@ c4_constants.splits["train_small"] = DataSplitConstants(
     raw_samples=1000000,
     truncated_samples=100000,
 )
-c4_constants.splits["val"] = DataSplitConstants(
+c4_en_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="validation",
@@ -123,7 +123,7 @@ c4_constants.splits["val"] = DataSplitConstants(
     truncated_samples=None,
     denominator=85039,
 )
-c4_constants.splits["val_small"] = DataSplitConstants(
+c4_en_constants.splits["val_small"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="validation",
@@ -131,7 +131,7 @@ c4_constants.splits["val_small"] = DataSplitConstants(
     raw_samples=10000,
     truncated_samples=10000,
 )
-c4_constants.splits["val_xsmall"] = DataSplitConstants(
+c4_en_constants.splits["val_xsmall"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="validation",
@@ -139,7 +139,7 @@ c4_constants.splits["val_xsmall"] = DataSplitConstants(
     raw_samples=3000,
     truncated_samples=3000,
 )
-c4_constants.splits["val_xxsmall"] = DataSplitConstants(
+c4_en_constants.splits["val_xxsmall"] = DataSplitConstants(
     path="allenai/c4",
     name="en",
     split="validation",
@@ -166,7 +166,7 @@ c4_sr_constants.splits["train"] = DataSplitConstants(
     truncated_samples=None,
     denominator=0,
 )
-c4_sr_constants.splits["val"] = DataSplitConstants(
+c4_sr_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="sr",
     split="validation",
@@ -181,6 +181,7 @@ c4_sr_constants.splits["val"] = DataSplitConstants(
 
 c4_la_constants = DatasetConstants(
     chars_per_sample=2604,  # Computed over validation set
+    # chars_per_sample=2503,  # Computed over train set
     chars_per_token=0,
     splits={},
 )
@@ -189,11 +190,11 @@ c4_la_constants.splits["train"] = DataSplitConstants(
     name="la",
     split="train",
     folder_split="train",
-    raw_samples=0,
+    raw_samples=1674463,
     truncated_samples=None,
     denominator=0,
 )
-c4_la_constants.splits["val"] = DataSplitConstants(
+c4_la_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="la",
     split="validation",
@@ -208,6 +209,7 @@ c4_la_constants.splits["val"] = DataSplitConstants(
 
 c4_sw_constants = DatasetConstants(
     chars_per_sample=3349,  # Computed over validation set
+    # chars_per_sample=3317,  # Computed over train set
     chars_per_token=0,
     splits={},
 )
@@ -216,11 +218,11 @@ c4_sw_constants.splits["train"] = DataSplitConstants(
     name="sw",
     split="train",
     folder_split="train",
-    raw_samples=0,
+    raw_samples=985654,
     truncated_samples=None,
     denominator=0,
 )
-c4_sw_constants.splits["val"] = DataSplitConstants(
+c4_sw_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="sw",
     split="validation",
@@ -235,6 +237,7 @@ c4_sw_constants.splits["val"] = DataSplitConstants(
 
 c4_ur_constants = DatasetConstants(
     chars_per_sample=3418,  # Computed over validation set
+    # chars_per_sample=3209,  # Computed over train set
     chars_per_token=0,
     splits={},
 )
@@ -243,11 +246,11 @@ c4_ur_constants.splits["train"] = DataSplitConstants(
     name="ur",
     split="train",
     folder_split="train",
-    raw_samples=0,
+    raw_samples=1950124,
     truncated_samples=None,
     denominator=0,
 )
-c4_ur_constants.splits["val"] = DataSplitConstants(
+c4_ur_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="ur",
     split="validation",
@@ -274,7 +277,7 @@ c4_ms_constants.splits["train"] = DataSplitConstants(
     truncated_samples=None,
     denominator=0,
 )
-c4_ms_constants.splits["val"] = DataSplitConstants(
+c4_ms_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="ms",
     split="validation",
@@ -301,7 +304,7 @@ c4_zh_constants.splits["train"] = DataSplitConstants(
     truncated_samples=None,
     denominator=0,
 )
-c4_zh_constants.splits["val"] = DataSplitConstants(
+c4_zh_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="zh",
     split="validation",
@@ -328,7 +331,7 @@ c4_it_constants.splits["train"] = DataSplitConstants(
     truncated_samples=None,
     denominator=0,
 )
-c4_it_constants.splits["val"] = DataSplitConstants(
+c4_it_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
     name="it",
     split="validation",
@@ -341,7 +344,7 @@ c4_it_constants.splits["val"] = DataSplitConstants(
 """------------------- Constants dict -------------------"""
 
 CONSTANTS: dict[str, DatasetConstants] = {
-    "c4": c4_constants,
+    "c4_en": c4_en_constants,
     "c4_it": c4_it_constants,
     "c4_zh": c4_zh_constants,
     "c4_ms": c4_ms_constants,
