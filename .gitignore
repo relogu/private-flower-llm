@@ -221,3 +221,6 @@ runs/
 
 # Exclude checkpoints folder
 flower_llm_checkpoints
+
+# Exclude tokenizers
+tokenizer_*
