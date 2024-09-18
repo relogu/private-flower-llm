@@ -82,7 +82,7 @@ Example
     check_tokenizer_config(tokenizer, bos_text="<s>", eos_text="</s>")
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from tempfile import TemporaryDirectory
 
 from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
@@ -348,3 +348,45 @@ def build_dataloader(
         num_workers=num_workers,
         prefetch_factor=prefetch_factor,
     )
+
+
+def generate_samples(
+    iterator: Iterable[str], truncate_num_samples: int | None = None
+) -> Iterator[str]:
+    """
+    Generate samples from an iterator with optional truncation.
+
+    This function takes an iterator of strings and yields items from it. If the
+    `truncate_num_samples` parameter is provided, the function will yield up to
+    that many items and then stop. If `truncate_num_samples` is None, all items
+    from the iterator will be yielded.
+
+    Parameters
+    ----------
+    iterator : Iterable[str]
+        An iterator that yields strings.
+    truncate_num_samples : int | None, optional
+        The maximum number of samples to yield. If None, all items from the iterator
+        will be yielded. Default is None.
+
+    Returns
+    -------
+    Iterator[str]
+        An iterator that yields strings from the input iterator, up to the specified
+        number of samples.
+
+    Example
+    -------
+    >>> data = ["sample1", "sample2", "sample3"]
+    >>> for sample in generate_samples(data, truncate_num_samples=2):
+    ...     print(sample)
+    sample1
+    sample2
+    """
+    if truncate_num_samples is None:
+        truncate_num_samples = -1
+    for item in iterator:
+        if truncate_num_samples == 0:
+            return
+        truncate_num_samples -= 1
+        yield item
