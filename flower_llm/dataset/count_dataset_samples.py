@@ -140,9 +140,9 @@ def main(args: Namespace) -> None:
     >>> args = Namespace(names=['en'], splits=['train'], path='allenai/c4')
     >>> main(args)
     """
-    temp_dir = TemporaryDirectory()
     for name in args.names:
         for split in args.splits:
+            temp_dir = TemporaryDirectory()
             log(
                 INFO,
                 "Processing split %s of dataset %s with configuration %s",
