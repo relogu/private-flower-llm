@@ -299,7 +299,6 @@ def main(args: Namespace) -> None:
             f"{args.path}-{args.name}-{split_name}. "
             f"Available constants for {args.path}-{args.name}: {dataset_constants}"
         )
-        folder_split = split_constants.folder_split
         truncate_num_samples = split_constants.truncated_samples
         # Create the dataset given the parameters
         # NOTE: We can't know how many samples we will get from the dataset
@@ -387,7 +386,11 @@ def main(args: Namespace) -> None:
                 compression=args.compression,
             ) as out:
                 for j, sample in enumerate(
-                    tqdm(samples, desc=folder_split, total=expected_samples_per_client)
+                    tqdm(
+                        samples,
+                        desc=f"client_{i}_{args.path}_{args.name}_{split_name}",
+                        total=expected_samples_per_client,
+                    )
                 ):
                     # Writing the sample to the MDS file
                     out.write(sample)
