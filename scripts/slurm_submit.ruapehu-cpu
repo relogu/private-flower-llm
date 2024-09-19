@@ -33,25 +33,4 @@ while true; do
 done
 echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
-# python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/count_dataset_samples.py --path allenai/c4 --name it zh ms la --splits train
-# python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name it zh ms ur sw la sr --splits train
-
-# Vocab size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name ur --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name sw --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name la --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name sr --splits train --vocab_size 32000
-
-# Vocab size 50000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name ur --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name sw --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name la --splits train --vocab_size 32000
-
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/train_tokenizer.py --output_root_dir "/nfs-share/ls985/projects/flower_llm/" --path allenai/c4 --name sr --splits train --vocab_size 32000
+python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/count_dataset_samples.py --path allenai/c4 --name zh --splits train
