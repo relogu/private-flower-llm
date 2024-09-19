@@ -24,7 +24,6 @@ class DataSplitConstants:
 
     raw_samples: int
     truncated_samples: int | None
-    denominator: int | None = None
 
 
 @dataclass
@@ -104,7 +103,6 @@ c4_en_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=364868892,
     truncated_samples=None,
-    denominator=85336729,
 )
 c4_en_constants.splits["train_small"] = DataSplitConstants(
     path="allenai/c4",
@@ -121,7 +119,6 @@ c4_en_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=364608,
     truncated_samples=None,
-    denominator=85039,
 )
 c4_en_constants.splits["val_small"] = DataSplitConstants(
     path="allenai/c4",
@@ -164,7 +161,6 @@ c4_sr_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=3398483,
     truncated_samples=None,
-    denominator=0,
 )
 c4_sr_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -173,7 +169,6 @@ c4_sr_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=3443,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -192,7 +187,6 @@ c4_la_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=1674463,
     truncated_samples=None,
-    denominator=0,
 )
 c4_la_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -201,7 +195,6 @@ c4_la_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=1654,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -220,7 +213,6 @@ c4_sw_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=985654,
     truncated_samples=None,
-    denominator=0,
 )
 c4_sw_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -229,7 +221,6 @@ c4_sw_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=994,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -248,7 +239,6 @@ c4_ur_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=1950124,
     truncated_samples=None,
-    denominator=0,
 )
 c4_ur_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -257,7 +247,6 @@ c4_ur_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=1885,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -275,7 +264,6 @@ c4_ms_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=0,
     truncated_samples=None,
-    denominator=0,
 )
 c4_ms_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -284,7 +272,6 @@ c4_ms_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=13391,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -302,7 +289,6 @@ c4_zh_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=0,
     truncated_samples=None,
-    denominator=0,
 )
 c4_zh_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -311,7 +297,6 @@ c4_zh_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=54656,
     truncated_samples=None,
-    denominator=0,
 )
 
 
@@ -329,7 +314,6 @@ c4_it_constants.splits["train"] = DataSplitConstants(
     folder_split="train",
     raw_samples=0,
     truncated_samples=None,
-    denominator=0,
 )
 c4_it_constants.splits["validation"] = DataSplitConstants(
     path="allenai/c4",
@@ -338,7 +322,6 @@ c4_it_constants.splits["validation"] = DataSplitConstants(
     folder_split="val",
     raw_samples=186030,
     truncated_samples=None,
-    denominator=0,
 )
 
 """------------------- Constants dict -------------------"""
