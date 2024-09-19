@@ -86,6 +86,7 @@ from collections.abc import Iterable, Iterator
 from tempfile import TemporaryDirectory
 
 from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
+import torch
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from transformers import PreTrainedTokenizerBase
 
@@ -421,4 +422,7 @@ def generate_samples_from_dataloader(
             if truncate_num_samples == 0:
                 return
             truncate_num_samples -= 1
-            yield batch[keys[0]][idx]
+            yield {
+                k: v[idx].numpy() if isinstance(v[idx], torch.Tensor) else v[idx]
+                for k, v in batch.items()
+            }

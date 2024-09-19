@@ -285,7 +285,7 @@ def main(args: Namespace) -> None:
     # for the model
     tokenizer.model_max_length = int(1e30)
     # Set the columns for the MDS file
-    columns = {"tokens": "bytes"}
+    columns = {"tokens": "ndarray:int32"}
     # Loop over passed splits
     for split_name in args.splits:
         # Create temporary directory for caching the dataset
@@ -319,7 +319,7 @@ def main(args: Namespace) -> None:
         # Build a batched dataloader for streaming the HF dataset in batches so that we
         # can actually take advantage of multiprocessing
         loader = build_dataloader(
-            dataset=dataset, batch_size=1, num_workers=args.num_workers
+            dataset=dataset, batch_size=512, num_workers=args.num_workers
         )
         # Build a generator that yields samples from the batched dataloader, truncating
         # if needed
@@ -334,6 +334,10 @@ def main(args: Namespace) -> None:
             desc=f"Counting tokens for {args.path}-{args.name}-{split_name}",
         ):
             total_num_samples += 1
+        # Re-generate samples iterator
+        samples = generate_samples_from_dataloader(
+            loader, truncate_num_samples=truncate_num_samples
+        )
         log(
             INFO,
             "Number of samples in %s-%s-%s is %s, using tokenizer %s.",
