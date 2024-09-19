@@ -213,16 +213,6 @@ def main(args: Namespace) -> None:
                     trust_remote_code=True,
                 )
             )
-            # TODO: Check out this
-            # special_tokens = [
-            #     "<s>",
-            #     "<pad>",
-            #     "</s>",
-            #     "<unk>",
-            #     "<cls>",
-            #     "<sep>",
-            #     "<mask>",
-            # ]
             log(
                 INFO,
                 "Training tokenizer on %s samples",
@@ -251,20 +241,6 @@ def main(args: Namespace) -> None:
                 model_max_length=args.max_length,
                 special_tokens=args.special_tokens,
             )
-            # tokenizer.bos_token = "<s>"
-            # tokenizer.bos_token_id = tokenizer.token_to_id("<s>")
-            # tokenizer.pad_token = "<pad>"
-            # tokenizer.pad_token_id = tokenizer.token_to_id("<pad>")
-            # tokenizer.eos_token = "</s>"
-            # tokenizer.eos_token_id = tokenizer.token_to_id("</s>")
-            # tokenizer.unk_token = "<unk>"
-            # tokenizer.unk_token_id = tokenizer.token_to_id("<unk>")
-            # tokenizer.cls_token = "<cls>"
-            # tokenizer.cls_token_id = tokenizer.token_to_id("<cls>")
-            # tokenizer.sep_token = "<sep>"
-            # tokenizer.sep_token_id = tokenizer.token_to_id("<sep>")
-            # tokenizer.mask_token = "<mask>"
-            # tokenizer.mask_token_id = tokenizer.token_to_id("<mask>")
             # Create the filename
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             save_directory = (
