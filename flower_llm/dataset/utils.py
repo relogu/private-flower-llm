@@ -91,6 +91,7 @@ from transformers import PreTrainedTokenizerBase
 
 import datasets as hf_datasets
 
+
 from flower_llm.dataset.constants import ConcatMode
 from flower_llm.utils import get_n_cpu_cores
 
@@ -390,3 +391,34 @@ def generate_samples(
             return
         truncate_num_samples -= 1
         yield item
+
+
+def generate_samples_from_dataloader(
+    loader: DataLoader, truncate_num_samples: int | None = None
+) -> Iterable[dict[str, bytes]]:
+    """Build a Generator over samples of a dataloader.
+
+    Args:
+       loader (DataLoader):
+        A dataloader emitting batches like
+        {key: [sample0_bytes, sample1_bytes, sample2_bytes, ...]}
+       truncate_num_samples (Optional[int]): An optional # of samples to stop at.
+
+    Yields
+    ------
+        Sample dicts.
+    """
+    if truncate_num_samples is None:
+        truncate_num_samples = -1
+    for batch in loader:
+        # Get the keys of the batch
+        keys = list(batch.keys())
+        assert len(keys) == 1, "The batch should have only one key."
+        # Get the current batch size from the first key
+        current_bs = len(batch[keys[0]])
+        # Loop over the current batch size
+        for idx in range(current_bs):
+            if truncate_num_samples == 0:
+                return
+            truncate_num_samples -= 1
+            yield batch[keys[0]][idx]
