@@ -44,12 +44,29 @@ else
 fi
 #! Export the endpoint of the S3 object store, using directly the IP to avoid name resolution issues
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
+
 #! Execute the command
 poetry run python -m flower_llm.dataset.convert_dataset_hf \
 	--path "allenai/c4" \
 	--name sr \
-	--splits train validation \
-	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240918192420_v-32000_l-2048_d-allenai-c4_n-sr_s-validation \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240919093538_v-50257_l-2048_d-allenai-c4_n-sr_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name la \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240919000759_v-50257_l-2048_d-allenai-c4_n-la_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name sw \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240918233908_v-50257_l-2048_d-allenai-c4_n-sw_s-train \
 	--num_clients 8
 
 #! Remove the positional arguments
