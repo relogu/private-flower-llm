@@ -92,7 +92,6 @@ from transformers import PreTrainedTokenizerBase
 
 import datasets as hf_datasets
 
-
 from flower_llm.dataset.constants import ConcatMode
 from flower_llm.utils import get_n_cpu_cores
 
@@ -353,7 +352,9 @@ def build_dataloader(
 
 
 def generate_samples(
-    iterator: Iterable[str], truncate_num_samples: int | None = None
+    iterator: Iterable[str],
+    truncate_num_samples: int | None = None,
+    max_sample_length: int | None = None,
 ) -> Iterator[str]:
     """
     Generate samples from an iterator with optional truncation.
@@ -391,6 +392,8 @@ def generate_samples(
         if truncate_num_samples == 0:
             return
         truncate_num_samples -= 1
+        if max_sample_length is not None and len(item) > max_sample_length:
+            continue
         yield item
 
 
@@ -426,3 +429,50 @@ def generate_samples_from_dataloader(
                 k: v[idx].numpy() if isinstance(v[idx], torch.Tensor) else v[idx]
                 for k, v in batch.items()
             }
+
+
+def generate_samples_from_hf_dataloader(
+    loader: DataLoader, truncate_num_samples: int | None = None
+) -> Iterator[str]:
+    """
+    Generate samples from a Hugging Face DataLoader with optional truncation.
+
+    This function takes a DataLoader yielding batches of samples and yields individual
+    samples from these batches. If the `truncate_num_samples` parameter is provided, the
+    function will yield up to that many samples and then stop. If `truncate_num_samples`
+    is None, all samples from the DataLoader will be yielded.
+
+    Parameters
+    ----------
+    loader : DataLoader
+        A DataLoader that yields batches of samples.
+    truncate_num_samples : int | None, optional
+        The maximum number of samples to yield. If None, all samples from the DataLoader
+        will be yielded. Default is None.
+
+    Returns
+    -------
+    Iterator[str]
+        An iterator that yields individual samples from the DataLoader, up to the
+        specified number of samples.
+
+    Example
+    -------
+    >>> from torch.utils.data import DataLoader
+    >>> data = [["sample1", "sample2"], ["sample3", "sample4"]]
+    >>> loader = DataLoader(data, batch_size=2)
+    >>> for sample in generate_samples_from_hf_dataloader(loader, 3):
+    ...     print(sample)
+    sample1
+    sample2
+    sample3
+    """
+    if truncate_num_samples is None:
+        truncate_num_samples = -1
+    for batch in loader:
+        # Loop over the current batch size
+        for item in batch:
+            if truncate_num_samples == 0:
+                return
+            truncate_num_samples -= 1
+            yield item

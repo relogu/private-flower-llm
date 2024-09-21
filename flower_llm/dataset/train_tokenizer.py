@@ -56,7 +56,11 @@ from tokenizers.implementations import SentencePieceUnigramTokenizer
 from transformers import PreTrainedTokenizerFast
 
 from flower_llm.dataset.constants import CONSTANTS, DataSplitConstants
-from flower_llm.dataset.utils import NoConcatDatasetString, generate_samples
+from flower_llm.dataset.utils import (
+    NoConcatDatasetString,
+    build_dataloader,
+    generate_samples_from_hf_dataloader,
+)
 
 
 def parse_args() -> Namespace:
@@ -88,6 +92,8 @@ def parse_args() -> Namespace:
         - vocab_size (int): Size of the vocabulary. Default is 32000.
         - truncate_num_samples (int): Number of samples to truncate to. Default is -1
             (no truncation).
+        - num_workers (int | None): Number of worker processes to use for data loading.
+         Default is None.
 
     Notes
     -----
@@ -109,6 +115,7 @@ def parse_args() -> Namespace:
     >>> print(args.output_root_dir)
     >>> print(args.max_length)
     >>> print(args.vocab_size)
+    >>> print(args.num_workers)
     >>> print(args.truncate_num_samples)
     """
     parser = ArgumentParser(
@@ -129,6 +136,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--vocab_size", type=int, default=32000)
     parser.add_argument("--truncate_num_samples", type=int, default=-1)
+    parser.add_argument("--num_workers", type=int, required=False, default=None)
     parsed = parser.parse_args()
     if parsed.names is not None:
         parsed.names = set(parsed.names)
@@ -159,6 +167,7 @@ def main(args: Namespace) -> None:
         - output_root_dir (str): Directory where the output will be saved.
         - max_length (int): Maximum length of the sequences.
         - vocab_size (int): Size of the vocabulary.
+        - num_workers (int | None): Number of worker processes to use for data loading.
         - truncate_num_samples (int): Number of samples to truncate to.
 
     Returns
@@ -175,6 +184,7 @@ def main(args: Namespace) -> None:
     ...     special_tokens=["<unk>", "</s>"],
     ...     output_root_dir="output_dir",
     ...     max_length=512,
+    ...     num_workers=4,
     ...     vocab_size=32000,
     ...     truncate_num_samples=-1
     ... )
@@ -218,12 +228,21 @@ def main(args: Namespace) -> None:
                 "Training tokenizer on %s samples",
                 dataset_split_constants.raw_samples,
             )
+            # Build a batched dataloader for streaming the HF dataset in batches so that
+            # we can actually take advantage of multiprocessing and pre-fetching
+            loader = build_dataloader(
+                dataset=hf_dataset, batch_size=512, num_workers=args.num_workers
+            )
             # Create a tokenizer object to be trained
             tokenizer = SentencePieceUnigramTokenizer()
             log(INFO, "Training tokenizer %s", tokenizer)
             # Train the tokenizer
             tokenizer.train_from_iterator(
-                iterator=generate_samples(hf_dataset, args.truncate_num_samples),
+                iterator=(
+                    generate_samples_from_hf_dataloader(
+                        loader, args.truncate_num_samples
+                    )
+                ),
                 vocab_size=args.vocab_size,
                 show_progress=True,
                 special_tokens=args.special_tokens,
