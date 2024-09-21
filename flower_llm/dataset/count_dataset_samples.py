@@ -169,7 +169,13 @@ def main(args: Namespace) -> None:
             loader = build_dataloader(
                 dataset=hf_dataset, batch_size=1, num_workers=None  # type: ignore[reportArgumentType]
             )
-            log(INFO, "Looping over dataset %s split %s to obtain general statistics.")
+            log(
+                INFO,
+                "Looping over  %s-%s-%s to obtain general statistics.",
+                args.path,
+                name,
+                split,
+            )
             n_samples = 0
             for batch in tqdm(loader):
                 n_samples += len(batch)
