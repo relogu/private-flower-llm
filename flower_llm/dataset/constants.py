@@ -254,6 +254,7 @@ c4_ur_constants.splits["validation"] = DataSplitConstants(
 
 c4_ms_constants = DatasetConstants(
     chars_per_sample=3556,  # Computed over validation set
+    # chars_per_sample=3564,  # Computed over train set
     chars_per_token=0,
     splits={},
 )
@@ -262,7 +263,7 @@ c4_ms_constants.splits["train"] = DataSplitConstants(
     name="ms",
     split="train",
     folder_split="train",
-    raw_samples=0,
+    raw_samples=13180647,
     truncated_samples=None,
 )
 c4_ms_constants.splits["validation"] = DataSplitConstants(
@@ -295,7 +296,7 @@ c4_zh_constants.splits["validation"] = DataSplitConstants(
     name="zh",
     split="validation",
     folder_split="val",
-    raw_samples=54656,
+    raw_samples=54656,  # 1000x validation = 54,656,000, 11000000
     truncated_samples=None,
 )
 
@@ -312,7 +313,7 @@ c4_it_constants.splits["train"] = DataSplitConstants(
     name="it",
     split="train",
     folder_split="train",
-    raw_samples=0,
+    raw_samples=0,  # 1000x validation = 186,030,000, 37000000
     truncated_samples=None,
 )
 c4_it_constants.splits["validation"] = DataSplitConstants(
@@ -321,6 +322,131 @@ c4_it_constants.splits["validation"] = DataSplitConstants(
     split="validation",
     folder_split="val",
     raw_samples=186030,
+    truncated_samples=None,
+)
+
+
+"""------------------- C4 (es) -------------------"""
+
+c4_es_constants = DatasetConstants(
+    chars_per_sample=0,
+    chars_per_token=0,
+    splits={},
+)
+c4_es_constants.splits["train"] = DataSplitConstants(
+    path="allenai/c4",
+    name="es",
+    split="train",
+    folder_split="train",
+    raw_samples=0,
+    truncated_samples=None,
+)
+c4_es_constants.splits["validation"] = DataSplitConstants(
+    path="allenai/c4",
+    name="es",
+    split="validation",
+    folder_split="val",
+    raw_samples=0,
+    truncated_samples=None,
+)
+
+
+"""------------------- C4 (de) -------------------"""
+
+c4_de_constants = DatasetConstants(
+    chars_per_sample=0,
+    chars_per_token=0,
+    splits={},
+)
+c4_de_constants.splits["train"] = DataSplitConstants(
+    path="allenai/c4",
+    name="de",
+    split="train",
+    folder_split="train",
+    raw_samples=0,
+    truncated_samples=None,
+)
+c4_de_constants.splits["validation"] = DataSplitConstants(
+    path="allenai/c4",
+    name="de",
+    split="validation",
+    folder_split="val",
+    raw_samples=0,
+    truncated_samples=None,
+)
+
+
+"""------------------- C4 (el) -------------------"""
+
+c4_el_constants = DatasetConstants(
+    chars_per_sample=0,
+    chars_per_token=0,
+    splits={},
+)
+c4_el_constants.splits["train"] = DataSplitConstants(
+    path="allenai/c4",
+    name="el",
+    split="train",
+    folder_split="train",
+    raw_samples=0,
+    truncated_samples=None,
+)
+c4_el_constants.splits["validation"] = DataSplitConstants(
+    path="allenai/c4",
+    name="el",
+    split="validation",
+    folder_split="val",
+    raw_samples=0,
+    truncated_samples=None,
+)
+
+
+"""------------------- C4 (ru) -------------------"""
+
+c4_ru_constants = DatasetConstants(
+    chars_per_sample=0,
+    chars_per_token=0,
+    splits={},
+)
+c4_ru_constants.splits["train"] = DataSplitConstants(
+    path="allenai/c4",
+    name="ru",
+    split="train",
+    folder_split="train",
+    raw_samples=0,
+    truncated_samples=None,
+)
+c4_ru_constants.splits["validation"] = DataSplitConstants(
+    path="allenai/c4",
+    name="ru",
+    split="validation",
+    folder_split="val",
+    raw_samples=0,
+    truncated_samples=None,
+)
+
+
+"""------------------- C4 (hi) -------------------"""
+
+c4_hi_constants = DatasetConstants(
+    chars_per_sample=0,
+    chars_per_token=0,
+    splits={},
+)
+c4_hi_constants.splits["train"] = DataSplitConstants(
+    path="allenai/c4",
+    name="hi",
+    split="train",
+    folder_split="train",
+    raw_samples=0,
+    truncated_samples=None,
+)
+c4_hi_constants.splits["validation"] = DataSplitConstants(
+    path="allenai/c4",
+    name="hi",
+    split="validation",
+    folder_split="val",
+    raw_samples=0,
     truncated_samples=None,
 )
 
@@ -335,5 +461,10 @@ CONSTANTS: dict[str, DatasetConstants] = {
     "c4_sw": c4_sw_constants,
     "c4_la": c4_la_constants,
     "c4_sr": c4_sr_constants,
+    "c4_es": c4_es_constants,
+    "c4_de": c4_de_constants,
+    "c4_el": c4_el_constants,
+    "c4_ru": c4_ru_constants,
+    "c4_hi": c4_hi_constants,
     "the_pile": pile_constants,
 }
