@@ -69,5 +69,69 @@ poetry run python -m flower_llm.dataset.convert_dataset_hf \
 	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240918233908_v-50257_l-2048_d-allenai-c4_n-sw_s-train \
 	--num_clients 8
 
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name it \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921115318_v-50257_l-2048_d-allenai-c4_n-it_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name de \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921120851_v-50257_l-2048_d-allenai-c4_n-de_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ru \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921181300_v-50257_l-2048_d-allenai-c4_n-ru_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name hi \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921172445_v-50257_l-2048_d-allenai-c4_n-hi_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name el \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921173321_v-50257_l-2048_d-allenai-c4_n-el_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ur \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921194442_v-50257_l-2048_d-allenai-c4_n-ur_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name es \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921200055_v-50257_l-2048_d-allenai-c4_n-es_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ms \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921222137_v-50257_l-2048_d-allenai-c4_n-ms_s-train \
+	--num_clients 8
+
 #! Remove the positional arguments
 eval set --
