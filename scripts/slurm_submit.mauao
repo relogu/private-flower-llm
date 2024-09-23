@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 40
+#SBATCH -c 80
 #SBATCH -w mauao
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:8
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
@@ -16,7 +16,7 @@
 #SBATCH --job-name=mclr-eval-gauntlet
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --time=01:30:00
+#!SBATCH --time=01:30:00
 #!SBATCH --dependency=afterany:3872
 
 # Default project path
@@ -157,4 +157,6 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++wte_parameters_path='s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz'"
 # export CHECKPOINT_PATH="s3://checkpoints/pers-125M-p-20240821_tle/server/10/current_server_parameters.npz"
 # bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
+
+bash /nfs-share/ls985/projects/flower_llm/scripts/eval_list_final_125m.sh
 

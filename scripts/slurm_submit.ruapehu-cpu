@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 1
+#SBATCH -c 48
 #SBATCH -w ruapehu
 #SBATCH --gres=gpu:0
 #!SBATCH --job-name=dataset_countings
@@ -15,7 +15,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
-  echo "slurm_submit.mauao: Error parsing options" >&2
+  echo "slurm_submit.ruapehu: Error parsing options" >&2
   exit 1
 fi
 
@@ -31,6 +31,6 @@ while true; do
       break ;;
   esac
 done
-echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
+echo "slurm_submit.ruapehu: PROJECT_PATH=$PROJECT_PATH"
 
-python /nfs-share/ls985/projects/flower_llm/flower_llm/dataset/count_dataset_samples.py --path allenai/c4 --name zh --splits train
+bash /nfs-share/ls985/projects/flower_llm/scripts/tokenizers_training1.sh
