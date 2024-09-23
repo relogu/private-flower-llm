@@ -80,6 +80,8 @@ export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c
 export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
 export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
 export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
+export LLM_OPTIONS="$LLM_OPTIONS +centralized.eval_only=true"                        # Only executes the initial evaluation
+export LLM_OPTIONS="$LLM_OPTIONS +wte_parameters_path=null"                          # Path to the WTE parameters
 
 #! ClientOpt (AdamW + Cosine LR scheduler) parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba"       # No training (Eval only)
@@ -90,7 +92,7 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_warmup=0ba" # No trainin
 # export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
 
 #! Load a model from a checkpoint of type NDArrays
-export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
 
 #! General training parameters
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=200ba"                # Save checkpoint interval
