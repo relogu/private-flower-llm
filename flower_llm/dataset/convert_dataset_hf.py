@@ -55,6 +55,7 @@ from tempfile import TemporaryDirectory
 from flwr.common.logger import log
 from llmfoundry.utils.builders import build_tokenizer
 from streaming import MDSWriter
+import torch
 from tqdm import tqdm
 
 
@@ -265,6 +266,7 @@ def main(args: Namespace) -> None:
     >>> main(args)
     """
     log(INFO, "Arguments received: %s", args)
+    torch.multiprocessing.set_sharing_strategy("file_system")
     # Create temporary directory
     temp_dir = TemporaryDirectory()
     # Retrieve constants for the dataset
