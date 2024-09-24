@@ -118,12 +118,7 @@ def parse_args() -> Namespace:
     >>> print(args.num_workers)
     >>> print(args.truncate_num_samples)
     """
-    parser = ArgumentParser(
-        description=(
-            "Receive a dataset with a set of configurations and counts the number of "
-            "samples and average char per sample."
-        )
-    )
+    parser = ArgumentParser(description=("Tokenizer Training Script."))
     parser.add_argument("--path", type=str, required=True, help='E.g. "allenai/c4"')
     parser.add_argument("--names", nargs="+", default=None, help='E.g. "en" or "it"')
     parser.add_argument(
