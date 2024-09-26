@@ -40,6 +40,33 @@ Functions
     ) -> DataLoader
     Build a DataLoader for a given dataset with specified batch size and number of
     workers.
+- generate_samples(
+        iterator: Iterable[str],
+        truncate_num_samples: int | None = None
+    ) -> Iterator[str]
+    Generate samples from an iterator with optional truncation.
+- generate_samples_from_hf_dataloader(
+        loader: DataLoader,
+        truncate_num_samples: int | None = None
+    ) -> Iterator[str]
+    Generate samples from a Hugging Face DataLoader with optional truncation.
+- generate_samples_tokenized_streaming_text_dataset(
+        loader: DataLoader,
+        tokenizer: PreTrainedTokenizerBase,
+        truncate_num_samples: int | None = None
+    ) -> Iterator[str]
+    Generate samples from a tokenized streaming text dataset with optional truncation.
+- generate_samples_retokenized_streaming_text_dataset(
+        loader: DataLoader,
+        decode_tokenizer: PreTrainedTokenizerBase,
+        encode_tokenizer: PreTrainedTokenizerBase,
+        bos_text: str,
+        eos_text: str,
+        max_length: int,
+        no_wrap: bool,
+        truncate_num_samples: int | None = None
+    ) -> Iterator[dict[str, NDArray]]
+    Generate retokenized samples from a streaming text dataset with optional truncation.
 
 Dependencies
 ------------
@@ -48,42 +75,12 @@ Dependencies
 - llmfoundry.data
 - torch.utils.data
 - transformers
-- datasets (Hugging Face)
-- flower_llm.dataset.constants
-- flower_llm.utils
-
-Usage
------
-This module is intended to be used as a utility module for handling datasets and
-tokenizers in machine learning workflows. Import the necessary functions and classes as
-needed.
-
-Example
--------
-    from utils import build_hf_dataset, build_dataloader, check_tokenizer_config
-
-    # Example usage of build_hf_dataset
-    dataset = build_hf_dataset(
-        path="dataset_path",
-        split="train",
-        mode=ConcatMode.CONCAT,
-        temp_dir=TemporaryDirectory(),
-        max_length=512,
-        bos_text="<s>",
-        eos_text="</s>",
-        tokenizer=AutoTokenizer.from_pretrained("facebook/opt-125m"),
-        name="dataset_name"
-    )
-
-    # Example usage of build_dataloader
-    dataloader = build_dataloader(dataset, batch_size=32, num_workers=4)
-
-    # Example usage of check_tokenizer_config
-    check_tokenizer_config(tokenizer, bos_text="<s>", eos_text="</s>")
 """
 
 from collections.abc import Iterable, Iterator
 from tempfile import TemporaryDirectory
+import numpy as np
+from numpy.typing import NDArray
 
 from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
 import torch
@@ -476,3 +473,171 @@ def generate_samples_from_hf_dataloader(
                 return
             truncate_num_samples -= 1
             yield item
+
+
+def generate_samples_tokenized_streaming_text_dataset(
+    loader: DataLoader,
+    tokenizer: PreTrainedTokenizerBase,
+    truncate_num_samples: int | None = None,
+    chunk_size: int = 64,
+) -> Iterator[str]:
+    """
+    Generate samples from a tokenized streaming text dataset with optional truncation.
+
+    This function takes a DataLoader that yields batches of tokenized samples and yields
+    individual decoded samples from these batches. If the `truncate_num_samples`
+    parameter is provided, the function will yield up to that many samples and then
+    stop. If `truncate_num_samples` is None, all samples from the DataLoader will be
+    yielded.
+
+    Parameters
+    ----------
+    loader : DataLoader
+        A DataLoader that yields batches of tokenized samples.
+    tokenizer : PreTrainedTokenizerBase
+        A tokenizer to decode the tokenized samples.
+    truncate_num_samples : int | None, optional
+        The maximum number of samples to yield. If None, all samples from the DataLoader
+        will be yielded. Default is None.
+    chunk_size : int, optional
+        The maximum size of the chunks to yield. Default is 256.
+
+    Returns
+    -------
+    Iterator[str]
+        An iterator that yields individual decoded samples from the DataLoader, up to
+        the specified number of samples.
+
+    Example
+    -------
+    >>> from torch.utils.data import DataLoader
+    >>> from transformers import PreTrainedTokenizerFast
+    >>> data = [[101, 102], [103, 104]]
+    >>> loader = DataLoader(data, batch_size=2)
+    >>> tokenizer = PreTrainedTokenizerFast.from_pretrained("bert-base-uncased")
+    >>> for sample in generate_samples_tokenized_streaming_text_dataset(
+    ...     loader, tokenizer, truncate_num_samples=3
+    ... ):
+    ...     print(sample)
+    [CLS] [SEP]
+    [UNK] [UNK]
+    """
+    if truncate_num_samples is None:
+        truncate_num_samples = -1
+    for batch in loader:
+        # Loop over the current batch size
+        for sample in batch:
+            if truncate_num_samples == 0:
+                return
+            truncate_num_samples -= 1
+            decoded_sample = tokenizer.decode(sample)
+            if len(decoded_sample) > chunk_size:
+                for i in range(0, len(decoded_sample), chunk_size):
+                    yield decoded_sample[i : i + chunk_size]
+            else:
+                yield decoded_sample
+
+
+def generate_samples_retokenized_streaming_text_dataset(
+    loader: DataLoader,
+    decode_tokenizer: PreTrainedTokenizerBase,
+    encode_tokenizer: PreTrainedTokenizerBase,
+    bos_text: str,
+    eos_text: str,
+    max_length: int,
+    no_wrap: bool,
+    truncate_num_samples: int | None = None,
+) -> Iterator[dict[str, NDArray]]:
+    """
+    Generate retokenized samples from a streaming text dataset with optional truncation.
+
+    This function takes a DataLoader that yields batches of tokenized samples, decodes
+    and re-encodes the samples using specified tokenizers, and yields individual samples
+    with concatenated tokens. If the `truncate_num_samples` parameter is provided, the
+    function will yield up to that many samples and then stop. If `truncate_num_samples`
+    is None, all samples from the DataLoader will be yielded.
+
+    Parameters
+    ----------
+    loader : DataLoader
+        A DataLoader that yields batches of tokenized samples.
+    decode_tokenizer : PreTrainedTokenizerBase
+        A tokenizer to decode the tokenized samples.
+    encode_tokenizer : PreTrainedTokenizerBase
+        A tokenizer to re-encode the decoded samples.
+    bos_text : str
+        Text representing the Beginning of Sequence token.
+    eos_text : str
+        Text representing the End of Sequence token.
+    max_length : int
+        Maximum length of the concatenated token sequences.
+    no_wrap : bool
+        Whether to disable wrapping of tokens.
+    truncate_num_samples : int | None, optional
+        The maximum number of samples to yield. If None, all samples from the DataLoader
+        will be yielded. Default is None.
+
+    Returns
+    -------
+    Iterator[dict[str, NDArray]]
+        An iterator that yields dictionaries containing retokenized samples with
+        concatenated tokens, stored as NumPy arrays.
+
+    Example
+    -------
+    >>> from torch.utils.data import DataLoader
+    >>> from transformers import PreTrainedTokenizerFast
+    >>> data = [[101, 102], [103, 104]]
+    >>> loader = DataLoader(data, batch_size=2)
+    >>> decode_tokenizer = PreTrainedTokenizerFast.from_pretrained("bert-base-uncased")
+    >>> encode_tokenizer = PreTrainedTokenizerFast.from_pretrained("gpt2")
+    >>> for sample in generate_samples_retokenized_streaming_text_dataset(
+    ...     loader,
+    ...     decode_tokenizer,
+    ...     encode_tokenizer,
+    ...     bos_text="<s>",
+    ...     eos_text="</s>",
+    ...     max_length=512,
+    ...     no_wrap=False,
+    ...     truncate_num_samples=3
+    ... ):
+    ...     print(sample)
+    {'tokens': array([50256, 101, 102, 50256], dtype=int32)}
+    {'tokens': array([50256, 103, 104, 50256], dtype=int32)}
+    """
+    if truncate_num_samples is None:
+        truncate_num_samples = -1
+    buffer = []  # type: ignore[var-annotated]
+    bos_tokens = encode_tokenizer(
+        bos_text,
+        truncation=False,
+        padding=False,
+        add_special_tokens=False,
+    )["input_ids"]
+    eos_tokens = encode_tokenizer(
+        eos_text,
+        truncation=False,
+        padding=False,
+        add_special_tokens=False,
+    )["input_ids"]
+    for batch in loader:
+        # Loop over the current batch size
+        for sample in batch:
+            if truncate_num_samples == 0:
+                return
+            truncate_num_samples -= 1
+            decoded_sample = decode_tokenizer.decode(sample)
+            encoded = encode_tokenizer(
+                decoded_sample,
+                truncation=False,
+                padding=False,
+            )
+            iids = encoded["input_ids"]
+            buffer = buffer + bos_tokens + iids + eos_tokens  # type: ignore[reportOperatorIssue]
+            while len(buffer) >= max_length:
+                concat_sample = buffer[:max_length]
+                buffer = buffer[max_length:] if not no_wrap else []
+                yield {
+                    # convert to ndarray to store in MDS format
+                    "tokens": np.asarray(concat_sample, dtype=np.int32),
+                }
