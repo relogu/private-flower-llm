@@ -39,6 +39,46 @@ class DatasetConstants:
         yield from self.splits.values()
 
 
+THE_PILE_CLIENT_MAP = {
+    "wikipedia": 0,
+    "arxiv": 1,
+    "gutenberg": 2,
+    "hackernews": 3,
+    "pubmedcentral": 4,
+    "freelaw": 5,
+    "philpapers": 6,
+    "dmmathematics": 7,
+    "enronemails": 8,
+    "europarl": 9,
+    "nihexporter": 10,
+    "github": 11,
+    "pilecc": 12,
+    "pubmedabstract": 13,
+    "stackexchange": 14,
+    "usptobackgrounds": 15,
+}
+
+
+THE_PILE_CLIENT_NAMING_MAP = {
+    "wikipedia": "Wikipedia (en)",
+    "arxiv": "ArXiv",
+    "gutenberg": "Gutenberg (PG-19)",
+    "hackernews": "HackerNews",
+    "pubmedcentral": "PubMed Central",
+    "freelaw": "FreeLaw",
+    "philpapers": "PhilPapers",
+    "dmmathematics": "DM Mathematics",
+    "enronemails": "Enron Emails",
+    "europarl": "EuroParl",
+    "nihexporter": "NIH ExPorter",
+    "github": "Github",
+    "pilecc": "Pile-CC",
+    "pubmedabstract": "PubMed Abstracts",
+    "stackexchange": "StackExchange",
+    "usptobackgrounds": "USPTO Backgrounds",
+}
+
+
 """------------------- The Pile -------------------"""
 
 
