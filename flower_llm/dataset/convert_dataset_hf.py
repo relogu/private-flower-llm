@@ -108,6 +108,7 @@ def parse_args() -> Namespace:
          Default is None.
         - num_clients (int): Number of clients to compose the federated dataset. Default
          is 1.
+        - client (int): Client id to elaborate. Default is None.
         - remote_bucket (str): Name of the remote bucket to upload the files to. Default
          is "s3://iclr2025datasets".
          pad_token
@@ -134,6 +135,7 @@ def parse_args() -> Namespace:
     >>> print(args.no_wrap)
     >>> print(args.num_workers)
     >>> print(args.num_clients)
+    >>> print(args.client)
     >>> print(args.remote_bucket)
     """
     parser = ArgumentParser(
@@ -169,6 +171,7 @@ def parse_args() -> Namespace:
     # Number of clients to compose the federated dataset (this is done at a
     # dataset/configuration/split level)
     parser.add_argument("--num_clients", type=int, required=False, default=1)
+    parser.add_argument("--client", type=int, required=False, default=None)
     # Arguments to use our S3-stored dataset when concatenating tokens
     parser.add_argument(
         "--remote_bucket",
@@ -238,6 +241,7 @@ def main(args: Namespace) -> None:
         - no_wrap (bool): Whether to disable wrapping of tokens.
         - num_workers (int | None): Number of worker processes to use for data loading.
         - num_clients (int): Number of clients to compose the federated dataset.
+        - client (int): Client id to elaborate.
         - remote_bucket (str): Name of the remote bucket to upload the files to.
 
     Returns
@@ -261,6 +265,7 @@ def main(args: Namespace) -> None:
     ...     no_wrap=False,
     ...     num_workers=4,
     ...     num_clients=1,
+    ...     client=None,
     ...     remote_bucket="s3://mybucket"
     ... )
     >>> main(args)
@@ -394,6 +399,8 @@ def main(args: Namespace) -> None:
                         total=expected_samples_per_client,
                     )
                 ):
+                    if args.client and i != args.client:
+                        continue
                     # Writing the sample to the MDS file
                     out.write(sample)
                     # Break if we have reached the expected number of samples
