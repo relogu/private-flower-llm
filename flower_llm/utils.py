@@ -13,7 +13,7 @@ import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
-from logging import DEBUG, ERROR
+from logging import DEBUG, ERROR, WARN
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -219,19 +219,26 @@ def set_trainer_trainable_params_dict(
         for name, param in trainer.state.model.named_parameters():
             # Set the parameters only if they require gradients
             if param.requires_grad:
-                param_from_dict = parameters_dict[
-                    name.replace("model.", "").replace("module.", "")
-                ]
-                # Raise error if the shapes don't match
-                if param.shape != param_from_dict.shape:
-                    raise ValueError(
-                        f"Shapes don't match: {param.shape} != "
-                        f"{param_from_dict.shape}"
+                lookup_name = name.replace("model.", "").replace("module.", "")
+                if lookup_name not in parameters_dict:
+                    log(
+                        WARN,
+                        "Parameter %s not found in the list of parameters"
+                        " and won't be set",
+                        name,
                     )
-                current_dtype = param.data.dtype
-                param.data = param_from_dict.to(
-                    device=param.device, dtype=current_dtype
-                )
+                else:
+                    param_from_dict = parameters_dict[lookup_name]
+                    # Raise error if the shapes don't match
+                    if param.shape != param_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{param_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    param.data = param_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
     dist.barrier()
 
 
@@ -390,9 +397,12 @@ def get_list_of_parameters_names(
 
 
 def construct_parameters_dict(
-    parameters_names: list[str], parameters: NDArrays
+    parameters_names: list[str], parameters: NDArrays, transformer_only: bool = True
 ) -> OrderedDict[str, torch.Tensor]:
     """Construct a dictionary of parameters."""
+    # Remove any non-transformer parameters from parameters_names
+    if transformer_only:
+        parameters_names = [name for name in parameters_names if "transformer" in name]
     zipped_lists = zip(parameters_names, parameters, strict=True)
     return OrderedDict({k: torch.as_tensor(v) for k, v in zipped_lists})
 
