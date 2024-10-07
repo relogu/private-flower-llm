@@ -22,7 +22,7 @@
 #SBATCH --output=%x-%j.out
 #SBATCH --partition=normal
 #!SBATCH --time=01:00:00
-#SBATCH --dependency=afterany:12488
+#SBATCH --dependency=afterany:12621
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"

@@ -21,7 +21,7 @@
 #SBATCH --output=%x-%j.out
 #SBATCH --partition=debug
 #!SBATCH --time=01:00:00
-#SBATCH --dependency=afterany:12482
+#SBATCH --dependency=afterany:12619
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
@@ -46,6 +46,7 @@ while true; do
   esac
 done
 eval "$(cat /home/ls985/.bashrc | tail -n +10)"
+# ssh -p 2224 -L 8888:localhost:8888 -N ls985@tarawera.cl.cam.ac.uk
 echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRARY_PATH, PATH=$PATH"
 
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "small"
