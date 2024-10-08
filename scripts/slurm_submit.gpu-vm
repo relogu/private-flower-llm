@@ -107,34 +107,3 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 export RUN_UUID="diloco-75M-20240905_133735"
 export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9 fl.reset_optimizer=false pollen.resume_round=-1"
 bash $PROJECT_PATH/scripts/photon_llm_75M.sh
-
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-$DATETIME"
-# bash $PROJECT_PATH/scripts/photon_llm_75M.sh
-
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="pile-matrix-125M-p-tle-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz"
-# export EXTERNAL_CONFIGS="++llm_config.device_eval_microbatch_size=16 llm_config.device_eval_batch_size=16"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
-
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="pile-full-125M-p-tle-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/full-125M-p-tle/server/10/current_server_parameters.npz"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
-
-# export RUN_UUID="c4-matrix-125M-20240823-tle-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/matrix-125M-20240823-tle/server/10/current_server_parameters.npz"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M" 
-
-# export RUN_UUID="c4-full-125M-20240823_125915-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/full-125M-20240823_125915/server/10/current_server_parameters.npz"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
-
-# export RUN_UUID="c4-pers-125M-20240823_131628-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/pers-125M-20240823_131628/server/10/current_server_parameters.npz"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
-
-# export RUN_UUID="pile-pers-125M-p-20240821_tle-eval-gauntlet-$DATETIME"
-# export CHECKPOINT_PATH="s3://checkpoints/pers-125M-p-20240821_tle/server/10/current_server_parameters.npz"
-# bash $PROJECT_PATH/scripts/eval_gauntlet_only.sh "125M"
