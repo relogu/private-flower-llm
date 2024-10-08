@@ -51,6 +51,7 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
     QuestionAnsweringModelOutput,
+    TokenClassifierOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -343,6 +344,87 @@ class MPTForSequenceClassification(HuggingFaceModel):
         return output
 
 
+class MPTForTokenClassification(HuggingFaceModel):  # noqa: D101
+
+    def __init__(
+        self,
+        model: ComposerMPTCausalLM,
+        num_labels: int,
+        hidden_size: int,
+        classifier_dropout: float | None = None,
+        hidden_dropout: float | None = None,
+        train_metrics: list[Metric] | None = None,
+        eval_metrics: list[Metric] | None = None,
+    ) -> None:
+        self.num_labels = num_labels
+
+        super().__init__(
+            model=model.model,
+            tokenizer=model.tokenizer,
+            use_logits=True,
+            metrics=train_metrics,
+            eval_metrics=eval_metrics,
+            shift_labels=cast(MPTForCausalLM, model.model).transformer.shift_labels,
+            allow_embedding_resizing=True,
+        )
+
+        self.transformer = model
+        if classifier_dropout is not None:
+            dropout = classifier_dropout
+        elif hidden_dropout is not None:
+            dropout = hidden_dropout
+        else:
+            dropout = 0.1
+        self.dropout = nn.Dropout(dropout)
+        self.classifier = nn.Linear(hidden_size, num_labels)
+
+    def forward(  # noqa: D102
+        self,
+        batch: MutableMapping,
+    ) -> tuple[torch.Tensor] | TokenClassifierOutput:
+
+        labels = batch.pop("labels", None)
+        output_hidden_states = batch.get("output_hidden_states", None)
+        return_dict = batch.get("return_dict", None)
+
+        return_dict = (
+            return_dict
+            if return_dict is not None
+            else self.transformer.config.use_return_dict
+        )
+
+        transformer_outputs: CausalLMOutputWithPast = self.transformer.model(
+            **batch,
+            output_hidden_states=output_hidden_states,
+        )
+
+        hidden_states = transformer_outputs[0]
+        hidden_states = self.dropout(hidden_states)
+        logits = self.classifier(hidden_states)
+
+        loss = None
+        if labels is not None:
+            # Move labels to correct device to enable model parallelism
+            labels = labels.to(logits.device)
+            batch_size, seq_length = labels.shape
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(
+                logits.view(batch_size * seq_length, self.num_labels),
+                labels.view(batch_size * seq_length),
+            )
+
+        if not return_dict:
+            output = (logits,) + transformer_outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
+        )
+
+
 class MPTForQuestionAnswering(HuggingFaceModel):
     """
     MPT Model for Question Answering.
@@ -462,12 +544,11 @@ class MPTForQuestionAnswering(HuggingFaceModel):
         >>> output = model.forward(batch)
         >>> print(output)
         """
-        input_ids = batch.get("input_ids", None)
-        inputs_embeds = batch.get("inputs_embeds", None)
-        attention_mask = batch.get("attention_mask", None)
+        _labels = batch.pop("labels", None)
         start_positions = batch.get("start_positions", None)
         end_positions = batch.get("end_positions", None)
         return_dict = batch.get("return_dict", None)
+        output_hidden_states = self.transformer.model.config.output_hidden_states  # type: ignore[reportAttributeAccessIssue]
 
         return_dict = (
             return_dict
@@ -475,14 +556,12 @@ class MPTForQuestionAnswering(HuggingFaceModel):
             else self.transformer.config.use_return_dict
         )
 
-        outputs: CausalLMOutputWithPast = self.transformer(
-            input_ids,
-            attention_mask=attention_mask,
-            inputs_embeds=inputs_embeds,
-            return_dict=return_dict,
+        transformer_outputs: CausalLMOutputWithPast = self.transformer.model(
+            **batch,
+            output_hidden_states=output_hidden_states,
         )
 
-        sequence_output = outputs.hidden_states
+        sequence_output = transformer_outputs.hidden_states
 
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
@@ -508,13 +587,13 @@ class MPTForQuestionAnswering(HuggingFaceModel):
             total_loss = (start_loss + end_loss) / 2
 
         if not return_dict:
-            output = (start_logits, end_logits) + outputs[2:]
+            output = (start_logits, end_logits) + transformer_outputs[2:]
             return ((total_loss,) + output) if total_loss is not None else output
 
         return QuestionAnsweringModelOutput(
             loss=total_loss,
             start_logits=start_logits,
             end_logits=end_logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
+            hidden_states=transformer_outputs.hidden_states,
+            attentions=transformer_outputs.attentions,
         )
