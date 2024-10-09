@@ -7,7 +7,7 @@ common: &dataset_defaults
   keep_zip: false
   epoch_size: null
   predownload: null
-  cache_limit: null
+  cache_limit: 1gb
   partition_algo: relaxed
   num_canonical_nodes: null
   shuffle: false  # Shuffling happened at partition time
