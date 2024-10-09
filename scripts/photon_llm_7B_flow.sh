@@ -178,7 +178,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 
 #! Start a Superlink
 # GRPC_VERBOSITY=debug
-poetry run flower-superlink --insecure --driver-api-address '[::]:50760' --fleet-api-address '[::]:51760' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+poetry run flower-superlink --insecure --driver-api-address '192.222.54.63:50760' --fleet-api-address '192.222.54.63:51760' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
 SUPERLINK_PID=$!
 sleep 5
 
@@ -186,13 +186,13 @@ sleep 5
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:51760' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/client_app.log &
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '192.222.54.63:51760' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/client_app.log &
 #! Keep the pid of the ClientApp
 CLIENTAPP_PID=$!
 
 #! Launch ServerWithPollen as a ServerApp
 # GRPC_VERBOSITY=debug
-poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:50760' 2>&1 | tee "$POLLEN_SAVE_PATH"/server_app.log &
+poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '192.222.54.63:50760' 2>&1 | tee "$POLLEN_SAVE_PATH"/server_app.log &
 #! Keep the pid of the ServerApp
 SERVERAPP_PID=$!
 
