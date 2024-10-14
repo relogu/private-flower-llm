@@ -482,11 +482,10 @@ class MPTForQuestionAnswering(HuggingFaceModel):
         self,
         model: ComposerMPTCausalLM,
         hidden_size: int,
+        dropout_rate: float = 0.1,
         train_metrics: list[Metric] | None = None,
         eval_metrics: list[Metric] | None = None,
     ) -> None:
-        self.transformer = model
-        self.qa_outputs = nn.Linear(hidden_size, 2)
 
         super().__init__(
             model=model.model,
@@ -497,6 +496,10 @@ class MPTForQuestionAnswering(HuggingFaceModel):
             shift_labels=cast(MPTForCausalLM, model.model).transformer.shift_labels,
             allow_embedding_resizing=True,
         )
+
+        self.transformer = model
+        self.dropout = nn.Dropout(dropout_rate)
+        self.qa_outputs = nn.Linear(hidden_size, 2, bias=True)
 
     def forward(
         self,
@@ -544,9 +547,11 @@ class MPTForQuestionAnswering(HuggingFaceModel):
         >>> output = model.forward(batch)
         >>> print(output)
         """
-        _labels = batch.pop("labels", None)
-        start_positions = batch.get("start_positions", None)
-        end_positions = batch.get("end_positions", None)
+        _example_ids = batch.pop("example_ids", None)
+        _answers = batch.pop("answers", None)
+        _attention_mask = batch.pop("attention_mask", None)
+        start_positions = batch.pop("start_positions", None)
+        end_positions = batch.pop("end_positions", None)
         return_dict = batch.get("return_dict", None)
         output_hidden_states = self.transformer.model.config.output_hidden_states  # type: ignore[reportAttributeAccessIssue]
 
@@ -555,20 +560,27 @@ class MPTForQuestionAnswering(HuggingFaceModel):
             if return_dict is not None
             else self.transformer.config.use_return_dict
         )
-
         transformer_outputs: CausalLMOutputWithPast = self.transformer.model(
             **batch,
             output_hidden_states=output_hidden_states,
         )
+        assert transformer_outputs is not None
+        assert transformer_outputs.hidden_states is not None
 
-        sequence_output = transformer_outputs.hidden_states
+        hidden_states = self.dropout(
+            transformer_outputs.hidden_states[-1]
+        )  # (bs, max_query_len, dim)
+        logits: torch.Tensor = self.qa_outputs(hidden_states)  # (bs, max_query_len, 2)
+        _start_logits, _end_logits = logits.split(1, dim=-1)
+        start_logits: torch.Tensor = _start_logits.squeeze(
+            -1
+        ).contiguous()  # (bs, max_query_len)
+        # print("start_logits.shape", start_logits.shape)
+        end_logits: torch.Tensor = _end_logits.squeeze(
+            -1
+        ).contiguous()  # (bs, max_query_len)
 
-        logits = self.qa_outputs(sequence_output)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1).contiguous()
-        end_logits = end_logits.squeeze(-1).contiguous()
-
-        total_loss = None
+        total_loss: torch.Tensor | None = None
         if start_positions is not None and end_positions is not None:
             # If we are on multi-GPU, split add a dimension
             if len(start_positions.size()) > 1:
@@ -582,18 +594,78 @@ class MPTForQuestionAnswering(HuggingFaceModel):
             end_positions = end_positions.clamp(0, ignored_index)
 
             loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
-            start_loss = loss_fct(start_logits, start_positions)
-            end_loss = loss_fct(end_logits, end_positions)
+            start_loss: torch.Tensor = loss_fct(start_logits, start_positions)
+            end_loss: torch.Tensor = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2
 
         if not return_dict:
             output = (start_logits, end_logits) + transformer_outputs[2:]
             return ((total_loss,) + output) if total_loss is not None else output
 
+        # NOTE: We need to put the "answers" back in to propagate it to the output
+        batch["answers"] = _answers
+
+        # NOTE: We need to put the "example_ids" back in to propagate it to the output
+        batch["example_ids"] = _example_ids
+
         return QuestionAnsweringModelOutput(
-            loss=total_loss,
-            start_logits=start_logits,
-            end_logits=end_logits,
+            loss=total_loss,  # type: ignore[reportArgumentType]
+            start_logits=start_logits,  # type: ignore[reportArgumentType]
+            end_logits=end_logits,  # type: ignore[reportArgumentType]
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+    def eval_forward(  # noqa: ANN201
+        self,
+        batch: MutableMapping,
+        outputs: Any | None = None,
+    ):
+        """
+        Perform a forward pass during evaluation and return the logits.
+
+        This function processes a batch of input data, performs a forward pass using the
+        model, and returns the logits for evaluation. It ensures that the "labels"
+        component is removed from the batch to avoid computing loss during evaluation.
+
+        Parameters
+        ----------
+        batch : dict
+            A dictionary containing the input data for the model. It must include the
+            "labels" key, which will be removed before the forward pass.
+        outputs : Any | None, optional
+            An optional parameter for additional outputs. Default is None.
+
+        Returns
+        -------
+        torch.Tensor
+            The logits obtained from the forward pass. If the model output is of type
+            QuestionAnsweringModelOutput, the logits are extracted from the output.
+            Otherwise, the appropriate tensor is selected based on the output shape.
+
+        Raises
+        ------
+        AssertionError
+            If the "labels" key is not present in the batch.
+
+        Example
+        -------
+        >>> batch = {
+        ...     "input_ids": ...,
+        ...     "attention_mask": ...,
+        ...     "labels": ...
+        ... }
+        >>> model = MPTForQuestionAnswering(...)
+        >>> logits = model.eval_forward(batch)
+        >>> print(logits)
+        """
+        # Pop "labels" component first to avoid computing loss
+        self.labels = batch.pop("labels", None)
+        if outputs is not None and type(outputs) is QuestionAnsweringModelOutput:
+            return outputs.start_logits, outputs.end_logits, batch
+        else:
+            output = self.forward(batch)
+
+            assert type(output) is QuestionAnsweringModelOutput
+
+            return output.start_logits, output.end_logits, batch
