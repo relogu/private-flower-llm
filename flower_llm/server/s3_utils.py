@@ -868,6 +868,93 @@ def replace_parameters_in_recordset_with_remote(
         return incoming_message
 
 
+def get_file_from_path(
+    input_file_path: str,
+    run_uuid: str,
+    s3_comm_config: S3CommConfig,
+    tmp_dir: TemporaryDirectory,
+) -> Path:
+    """
+    Retrieve a file from a given path, which can be either a local path or an S3 URI.
+
+    This function interprets the input file path to determine whether it's a local path
+    or an S3 URI. If it is an S3 URI, the function downloads the file from the specified
+    S3 bucket to a temporary directory. If it is a local path, the function verifies the
+    existence of the file. The function returns the local path to the file.
+
+    Parameters
+    ----------
+    input_file_path : str
+        The input file path, which can be a local path or an S3 URI.
+    run_uuid : str
+        The unique identifier for the current run, used for S3 operations.
+    s3_comm_config : S3CommConfig
+        The S3 communication configuration, containing the necessary credentials and
+        settings.
+    tmp_dir : TemporaryDirectory
+        A temporary directory where the file will be downloaded if it is an S3 URI.
+
+    Returns
+    -------
+    Path
+        The local path to the file.
+
+    Raises
+    ------
+    ValueError
+        If the backend specified in the URI is unknown.
+    AssertionError
+        If the local file path is None or if the file does not exist.
+
+    Example
+    -------
+    >>> input_file_path = "s3://mybucket/myfile.txt"
+    >>> run_uuid = "123e4567-e89b-12d3-a456-426614174000"
+    >>> s3_comm_config = S3CommConfig(...)
+    >>> with TemporaryDirectory() as tmp_dir:
+    ...     local_file_path = get_file_from_path(
+    ...         input_file_path, run_uuid, s3_comm_config, tmp_dir
+    ...     )
+    ...     print(local_file_path)
+    """
+    # Interpret the URI
+    backend, bucket_name, remote_file_name = parse_uri(input_file_path)
+    local_file_path: Path | None = None
+    if backend == "s3":
+        log(
+            INFO,
+            "Downloading model %s from S3 bucket %s",
+            remote_file_name,
+            bucket_name,
+        )
+        # Create RemoteUploaderDownloader object
+        remote_up_down = create_remote_up_down(
+            bucket_name=bucket_name,
+            prefix="",
+            run_uuid=run_uuid,
+            num_attempts=5,
+            client_config=OmegaConf.to_container(
+                s3_comm_config.backend_kwargs.client_config
+            ),  # type: ignore[reportArgumentType, arg-type]
+        )
+        local_file_path = Path(tmp_dir.name) / (
+            "checkpoint" + Path(remote_file_name).suffix
+        )
+        download_file_from_s3(remote_up_down, remote_file_name, local_file_path)
+    elif not backend:
+        log(
+            INFO,
+            "File path %s is local.",
+            Path(input_file_path),
+        )
+        local_file_path = Path(input_file_path)
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
+    assert local_file_path is not None, "Local file path is None"
+    assert local_file_path.exists(), f"Local file path {local_file_path} does not exist"
+    return local_file_path
+
+
 def load_pretrained_model_from_path(
     pretrained_model_path: str,
     run_uuid: str,
@@ -899,44 +986,14 @@ def load_pretrained_model_from_path(
         pretrained_model_path,
     )
     # Create a temporary directory for storing the downloaded parameters
-    temp_dir = TemporaryDirectory()
-    # Interpret the URI
-    backend, bucket_name, remote_file_name = parse_uri(pretrained_model_path)
-    local_file_path: Path | None = None
-    if backend == "s3":
-        log(
-            INFO,
-            "Downloading model %s from S3 bucket %s",
-            remote_file_name,
-            bucket_name,
-        )
-        # Create RemoteUploaderDownloader object
-        remote_up_down = create_remote_up_down(
-            bucket_name=bucket_name,
-            prefix="",
-            run_uuid=run_uuid,
-            num_attempts=5,
-            client_config=OmegaConf.to_container(
-                s3_comm_config.backend_kwargs.client_config
-            ),  # type: ignore[reportArgumentType, arg-type]
-        )
-        local_file_path = Path(temp_dir.name) / (
-            "checkpoint" + Path(remote_file_name).suffix
-        )
-        download_file_from_s3(remote_up_down, remote_file_name, local_file_path)
-    elif not backend:
-        log(
-            INFO,
-            "Loading model from local file %s",
-            Path(pretrained_model_path),
-        )
-        local_file_path = Path(pretrained_model_path)
-    else:
-        raise ValueError(f"Unknown backend: {backend}")
-
+    tmp_dir = TemporaryDirectory()
     # Load the local file path
-    assert local_file_path is not None, "Local file path is None"
-    assert local_file_path.exists(), f"Local file path {local_file_path} does not exist"
+    local_file_path = get_file_from_path(
+        tmp_dir=tmp_dir,
+        input_file_path=pretrained_model_path,
+        run_uuid=run_uuid,
+        s3_comm_config=s3_comm_config,
+    )
     initial_parameters = load_model_parameters_from_file(local_file_path)
     set_trainer_params_from_ndarrays(initial_parameters, trainer)
 
