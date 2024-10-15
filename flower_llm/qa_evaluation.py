@@ -76,7 +76,7 @@ import os
 from typing import Any, cast
 import uuid
 from omegaconf import DictConfig
-from composer import Trainer
+from composer import Trainer, Evaluator
 from flower_llm.server.s3_utils import load_pretrained_model_from_path
 from flower_llm.conf.base_schema import S3CommConfig
 
@@ -134,7 +134,7 @@ def get_preprocess_training_examples_fn(
     Returns
     -------
     Callable[[dict], dict]
-        A function that preprocesses a batch of training examples.
+        A function that pre-processes a batch of training examples.
 
     Example
     -------
@@ -289,7 +289,7 @@ def get_preprocess_validation_examples_fn(
     Returns
     -------
     Callable[[dict], dict]
-        A function that preprocesses a batch of validation examples.
+        A function that pre-processes a batch of validation examples.
 
     Example
     -------
@@ -661,7 +661,7 @@ def main() -> None:
 
     This function performs the following steps:
     1. Initializes the tokenizer.
-    2. Loads and preprocesses the SQuAD dataset.
+    2. Loads and pre-processes the SQuAD dataset.
     3. Creates data loaders for training and evaluation.
     4. Initializes the model and loads pretrained weights.
     5. Sets up the optimizer and learning rate scheduler.
@@ -674,25 +674,16 @@ def main() -> None:
     """
     tokenizer_name = "EleutherAI/gpt-neox-20b"
     tokenizer_kwargs = {"model_max_length": 2048}
-    # tokenizer_kwargs = {"model_max_length": 512}
     tokenizer = build_tokenizer(tokenizer_name, tokenizer_kwargs)
     # NOTE: We shouldn't add tokens but map them to known token with similar
     # functionality
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.sep_token = tokenizer.eos_token
-    tokenizer.cls_token = tokenizer.eos_token
+    tokenizer.pad_token = "<|padding|>"
     # log(INFO, "Tokenizer loaded %s.", tokenizer)
 
-    # from transformers import AutoTokenizer
-    # model_checkpoint = "bert-base-cased"
-    # tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
-    # log(INFO, "Tokenizer loaded %s.", tokenizer)
-
-    # ## Creating Dataloaders
-
-    # Load SQuAD dataset
+    # Load and pre-process SQuAD dataset
     raw_datasets = datasets.load_dataset("squad")
-    max_length = 384
+    # max_length = 384
+    max_length = 2048
     stride = 128
     train_example_ids_map: dict[str, int] = {}
     validation_example_ids_map: dict[str, int] = {}
@@ -702,7 +693,7 @@ def main() -> None:
         stride=stride,
         train_example_ids_map=train_example_ids_map,
     )
-    preprocess_validation_exmaples_fn = get_preprocess_validation_examples_fn(
+    preprocess_validation_examples_fn = get_preprocess_validation_examples_fn(
         tokenizer=tokenizer,
         max_length=max_length,
         stride=stride,
@@ -713,64 +704,28 @@ def main() -> None:
         batched=True,
         remove_columns=raw_datasets["train"].column_names,  # type: ignore[reportIndexIssue,reportAttributeAccessIssue]
     )
-
     validation_dataset = raw_datasets["validation"].map(  # type: ignore[reportIndexIssue,reportAttributeAccessIssue]
-        preprocess_validation_exmaples_fn,
+        preprocess_validation_examples_fn,
         batched=True,
         remove_columns=raw_datasets["validation"].column_names,  # type: ignore[reportIndexIssue,reportAttributeAccessIssue]
     )
-    # log(
-    #     INFO,
-    #     "Raw train dataset had %s samples, preprocessed train dataset has %s samples",
-    #     len(raw_datasets["train"]),  # type: ignore[reportIndexIssue]
-    #     len(train_dataset),
-    # )
-    # log(
-    #     INFO,
-    #     "Raw train dataset had %s samples, preprocessed train dataset has %s samples",
-    #     len(raw_datasets["validation"]),  # type: ignore[reportIndexIssue]
-    #     len(validation_dataset),
-    # )
-    # log(
-    #     INFO,
-    #     "A sample from the preprocessed training dataset look like: %s",
-    #     train_dataset[0],
-    # )
-    # log(
-    #     INFO,
-    #     "A sample from the preprocessed evaluation dataset look like: %s",
-    #     validation_dataset[0],
-    # )
 
+    # Creating Dataloaders
     data_collator = transformers.data.data_collator.default_data_collator
     train_dataloader = DataLoader(
         train_dataset,  # type: ignore[reportArgumentType]
-        batch_size=32,
+        batch_size=1,
         shuffle=False,
         drop_last=False,
         collate_fn=data_collator,
     )
     eval_dataloader = DataLoader(
         validation_dataset,  # type: ignore[reportArgumentType]
-        batch_size=32,
+        batch_size=1,
         shuffle=False,
         drop_last=False,
         collate_fn=data_collator,
     )
-    # log(
-    #     INFO,
-    #     "A sample from the training data loader look like: %s",
-    #     next(iter(train_dataloader)),
-    # )
-    # log(
-    #     INFO,
-    #     "A sample from the evaluation data loader look like: %s",
-    #     next(iter(eval_dataloader)),
-    # )
-
-    # # Load pre-built squad metrics
-    # squad_metric: Metric = load_metric("squad")  # type: ignore[reportAssignmentType]
-    # log(INFO, "SQuAD metrics are %s", squad_metric)
 
     # Instantiate metrics
     exact_match_metric = ExactMatchMetric(tokenizer=tokenizer)
@@ -803,7 +758,8 @@ def main() -> None:
     #     "max_seq_len": 2048,
     #     "vocab_size": 50368,
     #     "attn_config": {
-    #         "attn_impl": "torch",  # "flash"
+    #         # "attn_impl": "torch"
+    #         "attn_impl": "flash"
     #     },
     #     "output_hidden_states": True,
     # }
@@ -839,12 +795,15 @@ def main() -> None:
         "fed-3B-20240702_141112/server/25/current_server_parameters.npz"
     )
     pretrained_model_path = (
-        "/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/"
+        "/nfs-share/ls985/projects/flower_llm /flower_llm_checkpoints/"
         "fed-350M-2024505_100605/server/19/current_server_parameters.npz"
     )
     pretrained_model_path = "s3://checkpoints/G1kgg-centB-125M-p-20240919/server/0/current_server_parameters.npz"
     pretrained_model_path = (
         "s3://checkpoints/GF-pers-125M-p-20240821_tle/ep1-ba1200-rank0.pt"
+    )
+    pretrained_model_path = (
+        "s3://checkpoints/G1kgg-centB-125M-p-20240919/ep0-ba100-rank0.pt"
     )
     s3_comm_config = {
         "bucket_name": "checkpoints",
@@ -857,7 +816,7 @@ def main() -> None:
         },
     }
 
-    # Package the model trainer-friendly Composer model
+    # Wrap the original model with the Composer-ready fine-tuning model
     assert tokenizer.pad_token_id is not None
     composer_model = MPTForQuestionAnswering(
         model,  # type: ignore[reportArgumentType]
@@ -870,33 +829,57 @@ def main() -> None:
     # Optimizers and Learning Rate Schedulers
     optimizer = AdamW(
         params=composer_model.parameters(),
-        # lr=3e-5,
-        lr=0.0001,
+        lr=3e-5,
         betas=(0.9, 0.98),
         eps=1e-6,
         weight_decay=3e-6,
     )
     linear_lr_decay = LinearLR(
-        optimizer, start_factor=1.0, end_factor=0, total_iters=3000
+        # NOTE: The `total_iters` parameter should be set to the number of iterations
+        # that the model is supposed to train for, e.g., if we train for 3 epochs on the
+        # full dataset, then `total_iters` should be set to 3*(number of batches in the
+        # full dataset).
+        optimizer,
+        start_factor=1.0,
+        end_factor=0,
+        total_iters=3000,
     )
 
     # Create Trainer Object
     trainer = Trainer(
         model=composer_model,
         train_dataloader=train_dataloader,
-        eval_dataloader=eval_dataloader,
-        max_duration="2ep",
+        eval_dataloader=Evaluator(
+            label="eval/SQuAD",
+            dataloader=eval_dataloader,
+            metric_names=[],  # we will add these after model is created
+            # NOTE: This is to enable automatic micro-batching so we can select the best
+            # batch size for machine learning purposes and make sure we are nice to the
+            # resources no matter what.
+            device_eval_microbatch_size="auto",
+        ),
+        # NOTE: Set here the number of epochs
+        max_duration="1ep",
         optimizers=optimizer,
         schedulers=[linear_lr_decay],
         device="gpu" if torch.cuda.is_available() else "cpu",
-        train_subset_num_batches=100,
-        eval_subset_num_batches=100,
+        # NOTE: Setting to -1 means using all batches
+        train_subset_num_batches=-1,
+        eval_subset_num_batches=-1,
+        # NOTE: This precision parameter is used to set the floating point precision of
+        # the model weights. Note that Ampere GPUs or later can also use the brain
+        # float16 (by setting `precision="amp_bf16"`) format, which is supposed to be
+        # more efficient. A40s and H100s are Ampere or later, V100s are not!
         precision="amp_fp16",
         seed=17,
         load_path=pretrained_model_path if ".pt" in pretrained_model_path else None,
         load_weights_only=True,
         load_strict_model_weights=False,
         is_model_finetune=True,
+        # NOTE: This is to enable automatic micro-batching so we can select the best
+        # batch size for machine learning purposes and make sure we are nice to the
+        # resources no matter what.
+        device_train_microbatch_size="auto",
     )
     # Eval w/o training
     trainer.eval()
@@ -913,7 +896,8 @@ def main() -> None:
     # Log the final metrics
     log(INFO, "Final training metrics: %s", trainer.state.train_metric_values)
     log(INFO, "Final validation metrics: %s", trainer.state.eval_metric_values)
-    # Save the final model locally
+    # NOTE: Save the final model locally. Please change the filename or comment this out
+    # if you don't want to save the finetuned model.
     torch.save(trainer.state.model.state_dict(), "model.pt")
 
 
