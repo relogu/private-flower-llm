@@ -549,7 +549,6 @@ class MPTForQuestionAnswering(HuggingFaceModel):
         """
         _example_ids = batch.pop("example_ids", None)
         _answers = batch.pop("answers", None)
-        # _attention_mask = batch.pop("attention_mask", None)
         start_positions = batch.pop("start_positions", None)
         end_positions = batch.pop("end_positions", None)
         return_dict = batch.get("return_dict", None)
