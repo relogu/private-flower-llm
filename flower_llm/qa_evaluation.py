@@ -672,6 +672,7 @@ def main() -> None:
     -------
     >>> main()
     """
+    # Create the tokenizer
     tokenizer_name = "EleutherAI/gpt-neox-20b"
     tokenizer_kwargs = {"model_max_length": 2048}
     tokenizer = build_tokenizer(tokenizer_name, tokenizer_kwargs)
@@ -881,8 +882,6 @@ def main() -> None:
         # resources no matter what.
         device_train_microbatch_size="auto",
     )
-    # Eval w/o training
-    trainer.eval()
 
     if ".npz" in pretrained_model_path:
         load_pretrained_model_from_path(
@@ -891,6 +890,8 @@ def main() -> None:
             run_uuid=str(uuid.uuid4()),
             s3_comm_config=cast(S3CommConfig, DictConfig(s3_comm_config)),
         )
+    # Eval w/o training
+    trainer.eval()
     # Start training
     trainer.fit()
     # Log the final metrics
