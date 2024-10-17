@@ -70,9 +70,11 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-# # DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="photon-75M-20240909_161333"
-export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0 fl.reset_optimizer=true pollen.resume_round=-1"
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="photon-75M-gbs2048-$DATETIME"
+export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0 fl.reset_optimizer=true pollen.resume_round=null"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients fl.n_total_clients=64 fl.n_clients_per_round=4"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=512 pollen.fit_collaborative=false llm_config.model.attn_config.attn_impl=flash fl.reset_optimizer=true"
 # # bash $PROJECT_PATH/scripts/photon_llm_small.sh
 # # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
 # # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"

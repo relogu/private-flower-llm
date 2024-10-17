@@ -82,7 +82,7 @@ MINIO_COMM_STACK_OPTIONS="use_s3_comm=false"                                    
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=true"                                                 # Use S3 communication stack
 MINIO_COMM_STACK_OPTIONS="$MINIO_COMM_STACK_OPTIONS s3_comm_config.bucket_name=checkpoints" # S3 bucket name
 #! Set Pollen and FL config
-N_LOCAL_STEPS=1000
+N_LOCAL_STEPS=500
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
@@ -93,10 +93,10 @@ POLLEN_CONFIG="$POLLEN_CONFIG dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4
 POLLEN_CONFIG="$POLLEN_CONFIG dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
-POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
 POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+POLLEN_CONFIG="$POLLEN_CONFIG dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
 POLLEN_CONFIG="$POLLEN_CONFIG centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
 
 #! Photon configuration
@@ -115,22 +115,22 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.refresh_period=60"          # PhotonLLM Cli
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.restore_run_uuid=null"      # Restore run UUID for Photon Server
 
 #! FL setting
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=8"     # Number of total clients in the federation
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_total_clients=64"    # Number of total clients in the federation
 POLLEN_CONFIG="$POLLEN_CONFIG fl.n_clients_per_round=8" # Number of clients per round
-POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=25"           # Total number of rounds
+POLLEN_CONFIG="$POLLEN_CONFIG fl.n_rounds=50"           # Total number of rounds
 
 #! ServerOpt
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=NESTOROV"                                                          # Server optimizer strategy
-POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0" # FedAvg
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9" # DiLoCo parameters
+POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0" # FedAvg
 
 #! ClientOpt (AdamW + Cosine LR scheduler) parameters
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=25000ba"   # Total number of training steps
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_warmup=1000ba" # Number of warmup steps
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.alpha_f=0.1"     # Decay factor for the cosine scheduler
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.optimizer.lr=4.0e-4"       # Learning rate for the optimizer
-POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=true"              # Reset local optimizer every round
-POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"             # Keep the local optimizer every round
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=25000ba"  # Total number of training steps
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_warmup=100ba" # Number of warmup steps
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.alpha_f=0.1"    # Decay factor for the cosine scheduler
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.optimizer.lr=2.0e-4"      # Learning rate for the optimizer
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=false"            # Keep the local optimizer every round
+POLLEN_CONFIG="$POLLEN_CONFIG fl.reset_optimizer=true"             # Reset local optimizer every round
 
 #! Training hyperparameters
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba" # Save checkpoint interval
@@ -141,13 +141,13 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_interval=250ba"              # Loc
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Evaluate the entire validation set
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                  # Use DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                            # Fastest precision context when using DDP
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto"            # Automatic microbatch size for evaluation
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"                    # Evaluation batch size
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                    # DisTrO single device batch size (one client simulates one device)
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"                # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"             # Automatic microbatch size
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                         # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto"         # Automatic microbatch size for evaluation
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"                 # Evaluation batch size
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                 # DisTrO single device batch size (one client simulates one device)
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"             # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"          # Automatic microbatch size
 
 #! Model parameters
 # POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model

@@ -4,7 +4,7 @@
 #SBATCH -c 32
 #SBATCH -w ngongotaha
 #SBATCH --gres=gpu:4
-#SBATCH --job-name=diloco_75M
+#SBATCH --job-name=photon-350m
 #!SBATCH --job-name=test-hf-flower-llm
 #!SBATCH --job-name=test-deepspeed
 #!SBATCH --job-name=test
@@ -77,8 +77,8 @@ echo "slurm_submit.ngongo: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="diloco-75M-20240905_133735"
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+export RUN_UUID="photon-350M-gbs256-$DATETIME"
 # # bash $PROJECT_PATH/scripts/photon_llm_small.sh
 # # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
 # # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
@@ -91,10 +91,10 @@ echo "slurm_submit.ngongo: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 # bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
 # export RUN_UUID="fed-160M-20240507_114745"
 # bash $HOME/projects/flower_llm/scripts/photon_llm_160M.sh
-# bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
+bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
 # bash $HOME/projects/flower_llm/scripts/photon_llm_1B.sh
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="diloco-75M-20240905_133735"
-export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9 fl.reset_optimizer=false pollen.resume_round=-1"
-bash $PROJECT_PATH/scripts/photon_llm_75M.sh
+# export RUN_UUID="diloco-75M-20240905_133735"
+# export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=0.7 fl.strategy_kwargs.server_momentum=0.9 fl.reset_optimizer=false pollen.resume_round=-1"
+# bash $PROJECT_PATH/scripts/photon_llm_75M.sh
