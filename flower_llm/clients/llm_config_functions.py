@@ -142,8 +142,7 @@ def set_dataset_default_params(cfg: DictConfig) -> None:
     """Set the default parameters for the dataset."""
     # Set the `pre-download` value as 8*batch_size
     if cfg.train_loader.dataset.get("predownload", None) is None:
-        # TODO: Change `cfg.global_train_batch_size` to `cfg.device_train_batch_size`
-        cfg.train_loader.dataset.predownload = 8 * cfg.global_train_batch_size
+        cfg.train_loader.dataset.predownload = 8 * cfg.device_train_batch_size
     if cfg.eval_loader.dataset.get("pre_download", None) is None:
         cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
     # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
