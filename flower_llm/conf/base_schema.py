@@ -243,6 +243,8 @@ class BaseConfig(DictConfig):
         Pollen configuration
     fl: FL
         Federated learning configuration
+    use_shm: bool = MISSING
+        Whether to use SharedMemory communication
     use_s3_comm: bool = MISSING
         Whether to use S3 communication
     s3_comm_config: S3CommConfig
@@ -262,6 +264,7 @@ class BaseConfig(DictConfig):
     pollen: Pollen = MISSING
     fl: FL = MISSING
     use_s3_comm: bool = MISSING
+    use_shm: bool = MISSING
     s3_comm_config: S3CommConfig = MISSING
     use_wandb: bool = MISSING
     wandb: Wandb = MISSING

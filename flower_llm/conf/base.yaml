@@ -55,6 +55,9 @@ defaults:
 # S3 communication stack
 use_s3_comm: false
 
+# SharedMemory communication stack
+use_shm: true
+
 s3_comm_config:
   bucket_name: checkpoints
   num_attempts: 3

@@ -284,6 +284,7 @@ def train(msg: Message, ctx: Context) -> Message:
             ttl=ttl,
         ),
         use_s3_comm=app.cfg.use_s3_comm,
+        use_shm=app.cfg.use_shm,
         msg_str=msg_str,
     )
 

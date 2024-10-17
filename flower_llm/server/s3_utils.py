@@ -10,11 +10,19 @@ from tempfile import TemporaryDirectory
 from typing import Any
 import time
 
+import numpy as np
 from omegaconf import OmegaConf
 from composer.utils.object_store import S3ObjectStore
 
 from flower_llm.clients.llm_client_functions import (
     copy_old_checkpoints_to_new_run,
+)
+from flower_llm.node_manager.utils import (
+    POLLEN_PARAMETERS_SHM,
+    ModelParametersMetadata,
+    get_parameters_shm,
+    is_shm_existing,
+    set_parameters_shm,
 )
 from flower_llm.utils import (
     ClientState,
@@ -53,6 +61,9 @@ from composer.utils.file_helpers import (
 
 from flower_llm.conf.base_schema import BaseConfig, S3CommConfig
 from flower_llm.wandb_history import WandbHistory
+
+
+MAX_PARAMETER_BYTES = int(1024 * 1024 * 1.5)  # 1.5 GB
 
 
 class NoCheckpointsFoundError(Exception):
@@ -650,17 +661,19 @@ def replace_remote_with_parameters_in_recordset(
     outgoing_message: Message,
     use_s3_comm: bool,
     msg_str: str,
+    use_shm: bool = True,
 ) -> Message:
-    """Replace parameters in the recordset of a message with ref to S3 location.
+    """
+    Replace parameters in the recordset  with references to S3 or shared memory.
 
     This function modifies the `outgoing_message` by uploading its parameters to an S3
-    bucket and replacing the parameters in the message with references to their
-    locations in S3. This is only done if S3 communication is used (`use_s3_comm` is
-    True) and a `remote_uploader_downloader` is provided. It handles the creation of a
-    temporary directory for storing parameters locally before uploading, constructs the
-    S3 file name based on message content, uploads the file, and then updates the
-    message to reference the S3 location. If S3 communication is not used, the original
-    message is returned without modification.
+    bucket or storing them in shared memory, and replacing the parameters in the message
+    with references to their locations. This is done if S3 communication (`use_s3_comm`)
+    or shared memory (`use_shm`) is used. It handles the creation of a temporary
+    directory for storing parameters locally before uploading, constructs the S3 file
+    name based on message content, uploads the file, and then updates the message to
+    reference the S3 location. If neither S3 communication nor shared memory is used,
+    the original message is returned without modification.
 
     Parameters
     ----------
@@ -668,20 +681,22 @@ def replace_remote_with_parameters_in_recordset(
         The uploader/downloader instance for interacting with S3. Required if
         `use_s3_comm` is True.
     outgoing_message : Message
-        The message whose parameters are to be uploaded to S3. The message is modified
-        in-place.
+        The message whose parameters are to be uploaded to S3 or stored in shared
+        memory.
+        The message is modified in-place.
     use_s3_comm : bool
         Flag indicating whether to use S3 for communication. If False, the function
-        returns the message unchanged.
-    msg_str : str, optional
-        A string identifier used to prefix keys in the message's content, by default
-        "fitres".
+        may use shared memory or return the message unchanged.
+    msg_str : str
+        A string identifier used to prefix keys in the message's content.
+    use_shm : bool, optional
+        Flag indicating whether to use shared memory for communication, by default True.
 
     Returns
     -------
     Message
-        The modified message with parameters replaced by S3 references, or the original
-        message if S3 communication is not used.
+        The modified message with parameters replaced by S3 or shared memory references,
+        or the original message if neither S3 communication nor shared memory is used.
 
     Raises
     ------
@@ -696,9 +711,28 @@ def replace_remote_with_parameters_in_recordset(
     The function assumes the existence of `dump_model_parameters_to_file`,
     `parameters_to_ndarrays`, `parametersrecord_to_parameters`,
     `parameters_to_parametersrecord`, `upload_file_to_s3`, `validate_given_remote_path`,
-    and `log` functions, as well as the `DEBUG` constant for logging purposes. It also
-    relies on the structure of the `Message` object and the `RemoteUploaderDownloader`
-    interface for S3 interactions.
+    `get_parameters_shm`, `is_shm_existing`, `set_parameters_shm`, and `log` functions,
+    as well as the `DEBUG` constant for logging purposes. It also relies on the
+    structure of the `Message` object and the `RemoteUploaderDownloader` interface for
+    S3 interactions.
+
+    Steps
+    -----
+    1. Extract the content of the incoming message.
+    2. If `use_s3_comm` is True and `remote_uploader_downloader` is provided:
+       a. Create a temporary directory for storing the parameters.
+       b. Extract S3 communication configuration from the message.
+       c. Dump the parameters to a local file.
+       d. Upload the local file to S3.
+       e. Empty the parameters in the recordset and update the message content.
+       f. Validate the upload by checking the S3 path.
+    3. If `use_shm` is True:
+       a. Convert the parameters to NDArrays.
+       b. Get the parameters metadata.
+       c. Create or get the shared memory for the parameters.
+       d. Set the parameters in the shared memory.
+       e. Empty the parameters in the recordset and update the message content.
+    4. If neither `use_s3_comm` nor `use_shm` is used, return the original message.
     """
     # Extract the content of the incoming message
     recordset = outgoing_message.content
@@ -751,6 +785,46 @@ def replace_remote_with_parameters_in_recordset(
             endpoint_id,
         )
         return outgoing_message
+    elif use_shm:  # Using SharedMemory to communicate parameters
+        # Get NDArrays from the parameters
+        ndarrays_parameters = parameters_to_ndarrays(
+            parametersrecord_to_parameters(
+                record=recordset.parameters_records[f"{msg_str}.parameters"],
+                keep_input=False,
+            )
+        )
+        # Get parameters metadata
+        parameters_metadata = ModelParametersMetadata.from_ndarrays(ndarrays_parameters)
+        # Create the parameters shared memory
+        shm_name = (
+            str(recordset.configs_records[f"{msg_str}.s3_comm_config"]["endpoint_id"])
+            + POLLEN_PARAMETERS_SHM
+        )
+        shm_parameters, _shm_parameters_sh = get_parameters_shm(
+            parameters_metadata=parameters_metadata,
+            create=not is_shm_existing(shm_name),
+            name=shm_name,
+        )
+        # Set the parameters in the shared memory
+        set_parameters_shm(shm_parameters, ndarrays_parameters)
+        # Empty the recordset parameters
+        recordset.parameters_records[f"{msg_str}.parameters"] = (
+            parameters_to_parametersrecord(
+                Parameters(tensors=[], tensor_type="empty"),
+                False,
+            )
+        )
+        # Serialize ModelParametersMetadata and set it in the recordset
+        parameters_metadata_dict = parameters_metadata.__dict__
+        parameters_metadata_dict["dtypes"] = [
+            str(v) for v in parameters_metadata_dict["dtypes"]
+        ]
+        recordset.configs_records[f"{msg_str}.parameters_metadata"] = ConfigsRecord(
+            {"metadata": str(parameters_metadata_dict)}
+        )
+        # Update the content of the message
+        outgoing_message.content = recordset
+        return outgoing_message
     else:
         # No translation performed as we assume the task failed
         return outgoing_message
@@ -761,16 +835,19 @@ def replace_parameters_in_recordset_with_remote(
     incoming_message: Message,
     use_s3_comm: bool,
     msg_str: str,
+    use_shm: bool = True,
 ) -> Message:
-    """Replace parameters in the recordset of an incoming message with those from S3.
+    """
+    Replace parameters in the recordset with those from S3 or shared memory.
 
     This function checks the status of the task associated with the incoming message.
     If the task was successful and S3 communication is enabled, it downloads the
     parameters from S3 and updates the incoming message's recordset with these
     parameters. The function supports downloading parameters in either binary or NumPy
-    compressed formats. It ensures that the parameters are only downloaded if the task
-    was successful and S3 communication is being used. If the task failed or S3
-    communication is not enabled, the original message is returned without modification.
+    compressed formats. If shared memory communication is enabled, it retrieves the
+    parameters from shared memory and updates the message's recordset. If the task
+    failed or neither S3 nor shared memory communication is enabled, the original
+    message is returned without modification.
 
     Parameters
     ----------
@@ -778,36 +855,58 @@ def replace_parameters_in_recordset_with_remote(
         The uploader/downloader instance for interacting with S3. Required if
         `use_s3_comm` is True.
     incoming_message : Message
-        The message whose parameters are to be replaced with those downloaded from S3.
+        The message whose parameters are to be replaced with those downloaded from S3 or
+        retrieved from shared memory.
     use_s3_comm : bool
         Flag indicating whether to use S3 for communication. If False, the function
-        returns the message unchanged.
+        may use shared memory or return the message unchanged.
     msg_str : str
         A string identifier used to prefix keys in the message's content and to locate
-        the specific parameters
-        within the recordset.
+        the specific parameters within the recordset.
+    use_shm : bool, optional
+        Flag indicating whether to use shared memory for communication, by default True.
 
     Returns
     -------
     Message
-        The modified message with parameters replaced by those downloaded from S3, or
-        the original message if S3 communication is not used or the task associated with
-        the message failed.
+        The modified message with parameters replaced by those downloaded from S3 or
+        retrieved from shared memory, or the original message if neither S3 nor shared
+        memory communication is used or the task associated with the message failed.
 
     Raises
     ------
     ValueError
         If the required S3 communication configuration (`endpoint_id`, `file_name`, or
         `current_round`) is missing from the message's content.
+    TypeError
+        If the `endpoint_id` in the message's content is not a string.
 
     Notes
     -----
     The function assumes the existence of `extract_s3_comm_config_from_configrecord`,
     `validate_given_remote_path`, `download_file_from_s3`, `ndarrays_to_parameters`,
-    `load_model_parameters_from_file`, `parameters_to_parametersrecord`, and `log`
-    functions, as well as the `DEBUG` constant for logging purposes. It also relies on
-    the structure of the `Message` object and the `RemoteUploaderDownloader` interface
-    for S3 interactions.
+    `load_model_parameters_from_file`, `parameters_to_parametersrecord`, `log`,
+    `get_parameters_shm`, `is_shm_existing`, `set_parameters_shm`, and
+    `ModelParametersMetadata` functions/utilities, as well as the `DEBUG` constant for
+    logging purposes. It also relies on the structure of the `Message` object and the
+    `RemoteUploaderDownloader` interface for S3 interactions.
+
+    Steps
+    -----
+    1. Extract the content of the incoming message.
+    2. Check the status of the task associated with the message.
+    3. If the task was successful and `use_s3_comm` is True:
+       a. Create a temporary directory for storing the downloaded parameters.
+       b. Extract S3 communication configuration from the message.
+       c. Check whether the server has uploaded the parameters.
+       d. Download the parameters from S3.
+       e. Update the message's recordset with the downloaded parameters.
+    4. If `use_shm` is True:
+       a. Get parameters metadata from the recordset.
+       b. Create or get the shared memory for the parameters.
+       c. Retrieve the parameters from shared memory.
+       d. Update the message's recordset with the retrieved parameters.
+    5. If neither `use_s3_comm` nor `use_shm` is used, return the original message.
     """
     # Extract the content of the incoming message
     recordset = incoming_message.content
@@ -862,6 +961,32 @@ def replace_parameters_in_recordset_with_remote(
             "Node %s parameters have been read from disk and assigned to the Message",
             endpoint_id,
         )
+        return incoming_message
+    elif use_shm:  # Using SharedMemory to communicate parameters
+        # Get parameters metadata
+        parameters_metadata_dict = ast.literal_eval(
+            str(recordset.configs_records[f"{msg_str}.parameters_metadata"]["metadata"])
+        )
+        parameters_metadata_dict["dtypes"] = [
+            np.dtype(v) for v in parameters_metadata_dict["dtypes"]
+        ]
+        parameters_metadata = ModelParametersMetadata(**parameters_metadata_dict)
+        # Create the parameters shared memory
+        shm_name = (
+            str(recordset.configs_records[f"{msg_str}.s3_comm_config"]["endpoint_id"])
+            + POLLEN_PARAMETERS_SHM
+        )
+        shm_parameters, _shm_parameters_sh = get_parameters_shm(
+            parameters_metadata=parameters_metadata,
+            create=not is_shm_existing(shm_name),
+            name=shm_name,
+        )
+        recordset.parameters_records[f"{msg_str}.parameters"] = (
+            parameters_to_parametersrecord(
+                ndarrays_to_parameters(shm_parameters), False
+            )
+        )
+        incoming_message.content = recordset
         return incoming_message
     else:
         # No translation performed as we assume the task failed

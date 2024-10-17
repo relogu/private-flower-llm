@@ -236,6 +236,7 @@ def main(driver: Driver, context: Context) -> None:
             current_round=start_round,
             remote_uploader_downloader=remote_up_down,
             use_s3_comm=cfg.use_s3_comm,
+            use_shm=cfg.use_shm,
         )
         history.add_metrics_centralized(
             server_round=start_round + 1,
@@ -313,6 +314,7 @@ def main(driver: Driver, context: Context) -> None:
                 current_round=current_round,
                 remote_uploader_downloader=remote_up_down,
                 use_s3_comm=cfg.use_s3_comm,
+                use_shm=cfg.use_shm,
             )
             history.add_metrics_centralized(
                 server_round=current_round,

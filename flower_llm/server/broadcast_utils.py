@@ -55,9 +55,10 @@ def broadcast_parameters_to_nodes(
     current_round: int,
     remote_uploader_downloader: RemoteUploaderDownloader | None,
     use_s3_comm: bool,
+    use_shm: bool,
 ) -> None:
     """
-    Broadcasts parameters to specified nodes using either direct messaging or S3.
+    Broadcast parameters to specified nodes using either direct messaging or S3.
 
     This function takes a set of parameters and broadcasts them to a list of node IDs.
     It supports two modes of communication: direct messaging through the `driver` and
@@ -83,6 +84,8 @@ def broadcast_parameters_to_nodes(
         `use_s3_comm` is True.
     use_s3_comm : bool
         Flag indicating whether to use S3 for communication instead of direct messaging.
+    use_shm : bool
+        Flag indicating whether to use shared memory for communication.
 
     Raises
     ------
@@ -96,6 +99,16 @@ def broadcast_parameters_to_nodes(
     `replace_remote_with_parameters_in_recordset`, `log`, and `time.sleep`
     functions/utilities, as well as `MessageType`, `ConfigsRecord`, `Code`, and `DEBUG`
     constants. It also relies on the `Driver` interface for message handling.
+
+    Steps
+    -----
+    1. Create a recordset from the parameters.
+    2. Add status and S3 configuration information to the recordset.
+    3. If `use_s3_comm` is True, upload the parameters to S3.
+    4. Prepare messages for direct messaging or S3 communication.
+    5. Send the messages to all specified nodes.
+    6. Wait for acknowledgments from all nodes.
+    7. Verify that all nodes have successfully received the parameters.
     """
     # Message name
     msg_str = "broadcastins"
@@ -129,6 +142,7 @@ def broadcast_parameters_to_nodes(
         ),
         use_s3_comm=use_s3_comm,
         msg_str=msg_str,
+        use_shm=use_shm,
     )
     # Replacing recordset with the empty one
     recordset = fake_message.content

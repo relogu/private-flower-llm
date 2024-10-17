@@ -62,6 +62,39 @@ class ModelParametersMetadata:
             dtypes=dtypes,
         )
 
+    @staticmethod
+    def to_str(parameters_metadata: "ModelParametersMetadata") -> str:
+        """Return a string representation of the ModelParametersMetadata."""
+        return (
+            f"ModelParametersMetadata("
+            f"total_num_bytes={parameters_metadata.total_num_bytes}, "
+            f"array_bounds={parameters_metadata.array_bounds}, "
+            f"shapes={parameters_metadata.shapes}, "
+            f"dtypes={parameters_metadata.dtypes})"
+        )
+
+    @staticmethod
+    def from_str(parameters_metadata_str: str) -> "ModelParametersMetadata":
+        """Create a ModelParametersMetadata object from its string representation."""
+        # Remove the class name and parentheses
+        metadata_str = parameters_metadata_str[len("ModelParametersMetadata(") : -1]
+
+        # Split the string into key-value pairs
+        kv_pairs = metadata_str.split(", ")
+
+        # Create a dictionary from the key-value pairs
+        metadata_dict = {}
+        for kv in kv_pairs:
+            key, value = kv.split("=")
+            metadata_dict[key] = eval(value)
+
+        return ModelParametersMetadata(
+            total_num_bytes=metadata_dict["total_num_bytes"],
+            array_bounds=metadata_dict["array_bounds"],
+            shapes=metadata_dict["shapes"],
+            dtypes=metadata_dict["dtypes"],
+        )
+
 
 def aggregate_training_results(
     parameters: list[tuple[NDArrays, int]],
@@ -191,6 +224,16 @@ def get_parameters_shm(
         )
     ]
     return params_sh, shm
+
+
+def is_shm_existing(name: str) -> bool:
+    """Check if the Shared Memory object with the given name exists."""
+    try:
+        shm = SharedMemory(name=name, create=False)
+        shm.close()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def old_get_parameters_shm(
