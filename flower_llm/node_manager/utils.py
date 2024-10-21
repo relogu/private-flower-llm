@@ -103,7 +103,7 @@ def aggregate_training_results(
 ) -> tuple[NDArrays | None, int, dict]:
     """Aggregate the training results."""
     return (
-        copy.deepcopy(aggregate_inplace(parameters, None)),
+        copy.deepcopy(aggregate_inplace(parameters, None, None)),
         sum(samples),
         weighted_average(metrics),
     )
