@@ -1148,7 +1148,7 @@ def get_num_batches_from_checkpoint_name(checkpoint_name: str) -> int:
         raise ValueError(f"Invalid checkpoint name format: {checkpoint_name}")
 
 
-def delete_clients_checkpoints(run_uuid_path: str, end_idx: int = -1) -> None:
+def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> None:
     """Delete client checkpoints from an S3 bucket.
 
     This function deletes the specified client checkpoints from an S3 bucket using the
@@ -1162,7 +1162,7 @@ def delete_clients_checkpoints(run_uuid_path: str, end_idx: int = -1) -> None:
         The path to the run UUID, which includes the backend and bucket name.
     end_idx : int, optional
         The index up to which checkpoints should be deleted. Defaults to -1, which means
-        all checkpoints.
+        all checkpoints except for the last.
 
     Raises
     ------
@@ -1199,7 +1199,7 @@ def delete_clients_checkpoints(run_uuid_path: str, end_idx: int = -1) -> None:
 
 
 def delete_rounds(
-    run_uuid_path: str, state_keys: tuple[str, ...], end_idx: int = -1
+    run_uuid_path: str, state_keys: tuple[str, ...], end_idx: int | None = -1
 ) -> None:
     """Delete specified federated rounds from an S3 bucket.
 
@@ -1216,7 +1216,7 @@ def delete_rounds(
         A tuple of state keys used to identify the federated rounds.
     end_idx : int, optional
         The index up to which rounds should be deleted. Defaults to -1, which means all
-        rounds.
+        rounds except for the last one.
 
     Raises
     ------
