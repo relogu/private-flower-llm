@@ -13,7 +13,12 @@ from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
 from flower_llm.server.evaluate_utils import evaluate_round
 from flower_llm.server.fit_utils import fit_round
 from flower_llm.server.init_utils import initialize_round, resume_from_round
-from flower_llm.server.s3_utils import import_checkpoints, upload_server_checkpoint
+from flower_llm.server.s3_utils import (
+    delete_clients_checkpoints,
+    delete_rounds,
+    import_checkpoints,
+    upload_server_checkpoint,
+)
 from flower_llm.server.server_util import (
     wait_for_nodes_to_connect,
 )
@@ -378,6 +383,19 @@ def main(driver: Driver, context: Context) -> None:
                     "server/round_time": (time.time_ns() - start_round_time) * 1e-9
                 },
             )
+            # Remove old clients checkpoints from the S3 Object Store
+            delete_clients_checkpoints(
+                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+            )
+            # Remove old server checkpoints from the S3 Object Store
+            delete_rounds(
+                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                state_keys=(
+                    "state.bin",
+                    "current_server_parameters",
+                    "current_momentum_vector",
+                ),
+            )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -393,3 +411,21 @@ def main(driver: Driver, context: Context) -> None:
         log(DEBUG, "app_fit: metrics_distributed %s", str(history.metrics_distributed))
         log(DEBUG, "app_fit: losses_centralized %s", str(history.losses_centralized))
         log(DEBUG, "app_fit: metrics_centralized %s", str(history.metrics_centralized))
+
+        # Clean up checkpoints if asked to
+        if cfg.cleanup_checkpoints:
+            # Remove old clients checkpoints from the S3 Object Store
+            delete_clients_checkpoints(
+                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                end_idx=None,
+            )
+            # Remove old server checkpoints from the S3 Object Store
+            delete_rounds(
+                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                state_keys=(
+                    "state.bin",
+                    "current_server_parameters",
+                    "current_momentum_vector",
+                ),
+                end_idx=None,
+            )

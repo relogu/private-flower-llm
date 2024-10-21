@@ -2,6 +2,7 @@
 
 import ast
 from dataclasses import asdict
+from itertools import groupby
 from logging import DEBUG, INFO, WARNING
 from pathlib import Path
 import pickle
@@ -9,14 +10,12 @@ import re
 from tempfile import TemporaryDirectory
 from typing import Any
 import time
+import operator
 
 import numpy as np
 from omegaconf import OmegaConf
 from composer.utils.object_store import S3ObjectStore
 
-from flower_llm.clients.llm_client_functions import (
-    copy_old_checkpoints_to_new_run,
-)
 from flower_llm.node_manager.utils import (
     POLLEN_PARAMETERS_SHM,
     ModelParametersMetadata,
@@ -30,7 +29,6 @@ from flower_llm.utils import (
     download_file_from_s3,
     dump_model_parameters_to_file,
     load_model_parameters_from_file,
-    obtain_sorted_runs,
     set_trainer_params_from_ndarrays,
     upload_file_to_s3,
 )
@@ -68,6 +66,95 @@ MAX_PARAMETER_BYTES = int(1024 * 1024 * 1.5)  # 1.5 GB
 
 class NoCheckpointsFoundError(Exception):
     """Exception raised when there are no checkpoints in the path looked up."""
+
+
+def delete_object(
+    object_path: str,
+) -> None:
+    """
+    Delete an object from a specified path. It can be either a local path or a remote.
+
+    This function attempts to delete the specified object from the provided path. If the
+    path is a remote S3 path, it uses the `delete_remote_object` function to delete the
+    object. If the path is a local path, it deletes the local file using the `unlink`
+    method.
+
+    Parameters
+    ----------
+    object_path : str
+        The path to the object to be deleted. This can be either a local path or a
+        remote S3 path.
+
+    Raises
+    ------
+    ValueError
+        If the object path is not a valid S3 path and cannot be deleted.
+
+    Example
+    -------
+    >>> delete_object("s3://mybucket/myfolder/myfile.txt")
+    >>> delete_object("/local/path/to/myfile.txt")
+
+    Notes
+    -----
+    This function uses the `delete_remote_object` function to delete objects from a
+    remote S3 path. For local paths, it uses the `Path.unlink` method to delete local
+    files.
+    """
+    try:
+        delete_remote_object(object_path)
+    except ValueError:
+        # Local path
+        Path(object_path).unlink()
+
+
+def list_objects(
+    run_uuid_path: str,
+) -> tuple[bool, list[str]]:
+    """
+    List objects in a given path, which can be either a local path or a remote S3 path.
+
+    This function attempts to list objects in the specified path. If the path is remote
+    S3 path, it uses the `list_remote_objects` function to list the objects. If the path
+    is a local path, it lists all files recursively within the directory.
+
+    Parameters
+    ----------
+    run_uuid_path : str
+        The path to list objects from. This can be either a local path or a remote S3
+        path.
+
+    Returns
+    -------
+    tuple[bool, list[str]]
+        A tuple where the first element is a boolean indicating whether the path is
+        remote (True for remote, False for local), and the second element is a list of
+        object paths.
+
+    Raises
+    ------
+    ValueError
+        If the path is not a valid S3 path and cannot be listed.
+
+    Example
+    -------
+    >>> is_remote, objects = list_objects("s3://mybucket/myfolder")
+    >>> print(is_remote)
+    True
+    >>> print(objects)
+    ['s3://mybucket/myfolder/file1.txt', 's3://mybucket/myfolder/file2.txt']
+
+    >>> is_remote, objects = list_objects("/local/path/to/folder")
+    >>> print(is_remote)
+    False
+    >>> print(objects)
+    ['/local/path/to/folder/file1.txt', '/local/path/to/folder/file2.txt']
+    """
+    try:
+        return True, list_remote_objects(run_uuid_path)
+    except ValueError:
+        # Local path
+        return False, [str(p) for p in Path(run_uuid_path).rglob("*") if p.is_file()]
 
 
 def extract_s3_comm_config_from_configrecord(
@@ -1148,18 +1235,84 @@ def get_num_batches_from_checkpoint_name(checkpoint_name: str) -> int:
         raise ValueError(f"Invalid checkpoint name format: {checkpoint_name}")
 
 
-def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> None:
-    """Delete client checkpoints from an S3 bucket.
+def obtain_sorted_runs(run_uuid_path: str, state_keys: tuple[str, ...]) -> list[int]:
+    """
+    Obtain the sorted runs from the server path.
 
-    This function deletes the specified client checkpoints from an S3 bucket using the
-    provided run UUID path. It lists all the remote objects, extracts unique client IDs,
-    and removes the corresponding checkpoints for each client based on the `end_idx`
-    parameter.
+    This function lists the objects in the specified run UUID path, extracts unique run
+    numbers from the paths under `{run_uuid_path}/server/`, and filters them based on
+    the provided state keys. It returns the sorted list of valid run numbers.
 
     Parameters
     ----------
     run_uuid_path : str
-        The path to the run UUID, which includes the backend and bucket name.
+        The path to the run UUID root.
+    state_keys : tuple[str, ...]
+        The state keys to check in the paths. Keys are intended to be the prefixes of
+        any file name. For example, if the keys are ("state", "model"), then the
+        function will return any path that starts with "state" and "model".
+
+    Returns
+    -------
+    list[int]
+        The sorted list of valid run numbers.
+
+    Raises
+    ------
+    ValueError
+        If the run UUID path is not a valid URI or if the objects cannot be listed.
+
+    Example
+    -------
+    >>> run_uuid_path = "s3://mybucket/myfolder"
+    >>> state_keys = ("state", "model")
+    >>> sorted_runs = obtain_sorted_runs(run_uuid_path, state_keys)
+    >>> print(sorted_runs)
+    [1, 2, 3]
+
+    Notes
+    -----
+    This function uses the `list_objects` function to list objects in the given path.
+    It extracts unique run numbers from the paths under `{run_uuid_path}/server/` and
+    filters them based on the provided state keys.
+    """
+    _is_remote, remote_objects = list_objects(run_uuid_path)
+
+    # Extract unique run numbers
+    run_numbers = {
+        int(reg.group(1))
+        for path in remote_objects
+        if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
+    }
+
+    valid_runs = set()
+
+    for run in run_numbers:
+        # Filter paths for the current run
+        run_paths = [path for path in remote_objects if f"server/{run}/" in path]
+
+        # Check if all state_keys are present in the paths for this run
+        if all(
+            any(state_key in path for path in run_paths) for state_key in state_keys
+        ):
+            valid_runs.add(run)
+
+    return sorted(valid_runs)
+
+
+def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> None:
+    """
+    Delete client checkpoints from a specified path. Can be either a local or remote.
+
+    This function deletes the specified client checkpoints from the provided run UUID
+    path. It lists all the objects in the path, extracts unique client IDs, and removes
+    the corresponding checkpoints for each client based on the `end_idx` parameter. The
+    function supports both local and remote S3 paths.
+
+    Parameters
+    ----------
+    run_uuid_path : str
+        The path to the run UUID, which can be either a local path or a remote S3 path.
     end_idx : int, optional
         The index up to which checkpoints should be deleted. Defaults to -1, which means
         all checkpoints except for the last.
@@ -1168,11 +1321,21 @@ def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> 
     ------
     ValueError
         If the run UUID path is not a valid URI or if the objects cannot be deleted.
+
+    Example
+    -------
+    >>> delete_clients_checkpoints("s3://mybucket/myfolder", end_idx=5)
+    >>> delete_clients_checkpoints("/local/path/to/folder", end_idx=5)
+
+    Notes
+    -----
+    This function uses the `list_objects` function to list objects in the given path.
+    For remote S3 paths, it uses the `delete_object` function to delete objects from the
+    S3 bucket. For local paths, it uses the `delete_object` function to delete local
+    files.
     """
-    # Parse the URI to extract the backend and bucket name
-    backend, bucket_name, _prefix = parse_uri(run_uuid_path)
     # List all the remote objects in the run UUID path
-    remote_objects = list_remote_objects(run_uuid_path)
+    _is_remote, remote_objects = list_objects(run_uuid_path)
     # Extract unique client IDs from the remote objects
     unique_client_ids = {
         int(reg.group(1))
@@ -1181,7 +1344,7 @@ def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> 
     }
     for client_id in unique_client_ids:
         # List all the remote objects for the client
-        client_remote_objects = list_remote_objects(
+        is_remote, client_remote_objects = list_objects(
             f"{run_uuid_path}/client_{client_id}/"
         )
         # Remove symlinks from the list of files
@@ -1195,51 +1358,82 @@ def delete_clients_checkpoints(run_uuid_path: str, end_idx: int | None = -1) -> 
         # Delete only the last `end_idx` checkpoints
         objects_to_remove = sorted_client_objects[:end_idx]
         for object_to_remove in objects_to_remove:
-            delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+            if is_remote:
+                # Parse the URI to extract the backend and bucket name
+                backend, bucket_name, _prefix = parse_uri(run_uuid_path)
+                delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+            else:
+                delete_object(object_to_remove)
 
 
 def delete_rounds(
     run_uuid_path: str, state_keys: tuple[str, ...], end_idx: int | None = -1
 ) -> None:
-    """Delete specified federated rounds from an S3 bucket.
+    """
+    List objects in a given path, which can be either a local path or a remote S3 path.
 
-    This function deletes the specified federated rounds from an S3 bucket using the
-    provided run UUID path and state keys. It lists all the federated rounds, determines
-    which rounds to delete based on the `end_idx` parameter, and removes the
-    corresponding objects from the S3 bucket.
+    This function attempts to list objects in the specified path. If the path is remote
+    S3 path, it uses the `list_remote_objects` function to list the objects. If the path
+    is a local path, it lists all files recursively within the directory.
 
     Parameters
     ----------
     run_uuid_path : str
-        The path to the run UUID, which includes the backend and bucket name.
-    state_keys : tuple[str, ...]
-        A tuple of state keys used to identify the federated rounds.
-    end_idx : int, optional
-        The index up to which rounds should be deleted. Defaults to -1, which means all
-        rounds except for the last one.
+        The path to list objects from. This can be either a local path or a remote S3
+        path.
+
+    Returns
+    -------
+    tuple[bool, list[str]]
+        A tuple where the first element is a boolean indicating whether the path is
+        remote (True for remote, False for local), and the second element is a list of
+        object paths.
 
     Raises
     ------
     ValueError
-        If the run UUID path is not a valid URI or if the objects cannot be deleted.
+        If the path is not a valid S3 path and cannot be listed.
+
+    Example
+    -------
+    >>> is_remote, objects = list_objects("s3://mybucket/myfolder")
+    >>> print(is_remote)
+    True
+    >>> print(objects)
+    ['s3://mybucket/myfolder/file1.txt', 's3://mybucket/myfolder/file2.txt']
+
+    >>> is_remote, objects = list_objects("/local/path/to/folder")
+    >>> print(is_remote)
+    False
+    >>> print(objects)
+    ['/local/path/to/folder/file1.txt', '/local/path/to/folder/file2.txt']
+
+    Notes
+    -----
+    This function uses the `list_remote_objects` function to list objects in a remote
+    S3 path. For local paths, it uses the `Path.rglob` method to recursively list all
+    files in the directory.
     """
-    # Parse the URI to extract the backend and bucket name
-    backend, bucket_name, _prefix = parse_uri(run_uuid_path)
     # List all the federated rounds in the run UUID path
     sorted_rounds = obtain_sorted_runs(run_uuid_path, state_keys)
     # Delete only the last `end_idx` rounds
     rounds_to_delete = sorted_rounds[:end_idx]
     for round_to_delete in rounds_to_delete:
         # List all the remote objects for the server at the round specified
-        objects_to_remove = list_remote_objects(
+        is_remote, objects_to_remove = list_objects(
             f"{run_uuid_path}/server/{round_to_delete}/"
         )
         # Remove the objects found
         for object_to_remove in objects_to_remove:
-            delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+            if is_remote:
+                # Parse the URI to extract the backend and bucket name
+                backend, bucket_name, _prefix = parse_uri(run_uuid_path)
+                delete_object(f"{backend}://{bucket_name}/{object_to_remove}")
+            else:
+                delete_object(object_to_remove)
 
 
-def delete_object(object_name: str) -> None:
+def delete_remote_object(object_name: str) -> None:
     """Delete an object from an S3 bucket.
 
     This function deletes an object from an S3 bucket using the provided object name.
@@ -1263,7 +1457,129 @@ def delete_object(object_name: str) -> None:
     # Parse the URI to extract the prefix to use as the key to delete the file
     _backend, _bucket_name, prefix = parse_uri(object_name)
     # Delete the object from the object store
-    object_store.client.delete_object(
+    object_store.client.delete_remote_object(
         Bucket=object_store.bucket,
         Key=object_store.get_key(prefix),
     )
+
+
+def copy_old_checkpoints_to_new_run(
+    remote_up_down: RemoteUploaderDownloader,
+    bucket_uri: str,
+    run_uuid: str,
+    restore_run_uuid: str,
+    restore_run_round: int,
+    restore_run_step: int,
+    n_total_clients: int | None,
+) -> None:
+    """Copy old checkpoints to the new run folder.
+
+    Parameters
+    ----------
+        remote_up_down (RemoteUploaderDownloader): The remote uploader and downloader.
+        bucket_uri (str): The bucket URI.
+        run_uuid (str): The run UUID.
+        restore_run_uuid (str): The restore run UUID.
+        restore_run_round (int): The restore run round.
+        restore_run_step (int): The restore run step.
+        n_total_clients (int): The total number of clients.
+
+    Returns
+    -------
+        None
+
+    Raises
+    ------
+        NotImplementedError: If the backend is not an S3ObjectStore.
+        ValueError: If the old run folder or the new run folder is not found.
+    """
+    backend = remote_up_down.remote_backend
+    if not isinstance(backend, S3ObjectStore):
+        raise NotImplementedError(
+            "Support for resuming from non-S3 backends is not yet implemented."
+        )
+
+    new_run_folder = bucket_uri + f"/{run_uuid}"
+    old_run_folder = bucket_uri + f"/{restore_run_uuid}"
+    if (old_run_val := validate_given_remote_path(old_run_folder)) and (
+        _new_run_val := validate_given_remote_path(new_run_folder)
+    ):
+        state_bin = restore_run_uuid + f"/server/{restore_run_round}/state.bin"
+
+        momentum_vec = (
+            old_run_folder + f"/server/{restore_run_round}/current_momentum_vector.npz"
+        )
+
+        parameters_no_ext = (
+            old_run_folder + f"/server/{restore_run_round}/current_server_parameters"
+        )
+        parameters = (
+            parameters_no_ext.replace(bucket_uri + "/", "") + ".bin"
+            if validate_given_remote_path(parameters_no_ext + ".bin")
+            else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
+        )
+
+        remote_objects = list_remote_objects(old_run_folder)
+
+        # Extract the client and the batches
+        # NOTE: (?:\d+) means a do-not-capture group
+        # As such we allow any number of epochs without extracting
+        # The number of epochs
+        client_path_batches = sorted(
+            [
+                (
+                    path,
+                    int(reg.group(1)),
+                    int(reg.group(2)),
+                )
+                for path in remote_objects
+                if (reg := re.search(r"client_(\d+)/ep(?:\d+)-ba(\d+)", path))
+                is not None
+            ],
+            key=operator.itemgetter(1, 2),
+        )
+
+        # For each client, choose the latest checkpoint
+        # That is consistent with the step of the resume round
+        # groupby acts like an sql groupby
+        client_paths = [
+            list(filter(lambda x: x[2] <= restore_run_step, group))[-1][0]
+            for _, group in groupby(client_path_batches, key=operator.itemgetter(1))
+        ]
+
+        if (
+            n_total_clients is not None
+            and (found_clients := len(client_paths)) != n_total_clients
+        ):
+            raise ValueError(
+                f"Found {found_clients} clients in the old run folder {old_run_folder},"
+                f" but expected {n_total_clients}."
+            )
+
+        paths_to_copy = [state_bin, parameters]
+
+        if validate_given_remote_path(momentum_vec):
+            paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
+        else:
+            log(
+                DEBUG,
+                f"Could not find momentum vector to copy from {momentum_vec}",
+            )
+
+        paths_to_copy.extend(client_paths)
+
+        for path in paths_to_copy:
+            copy_source = {"Bucket": backend.bucket, "Key": path}
+            target_key = path.replace(restore_run_uuid, run_uuid)
+            log(DEBUG, "Copying %s to %s", path, target_key)
+            backend.client.copy(copy_source, backend.bucket, target_key)
+
+    else:
+        if not old_run_val:
+            raise ValueError(
+                f"Could not find the old run folder {old_run_folder} to copy"
+                " checkpoints."
+            )
+        raise ValueError(
+            f"Could not find the new run folder {new_run_folder} to copy checkpoints."
+        )

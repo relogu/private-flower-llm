@@ -3,13 +3,10 @@
 import atexit
 import copy
 import gc
-from itertools import groupby
 import json
 import logging
-import operator
 import os
 from pathlib import Path
-import re
 import time
 import warnings
 from collections import OrderedDict
@@ -22,7 +19,6 @@ from composer import Callback, Evaluator, Trainer
 from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility, get_device
-from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays, Scalar
 from flwr.common.recordset_compat import ConfigsRecord
@@ -45,10 +41,6 @@ from llmfoundry.utils.config_utils import (
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
-
-from composer.loggers import RemoteUploaderDownloader
-from composer.utils import S3ObjectStore
-from composer.utils.file_helpers import list_remote_objects
 
 import numpy as np
 from flower_llm.clients.llm_config_functions import (
@@ -80,128 +72,6 @@ from flower_llm.utils import ClientState
 import torch._dynamo
 
 torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
-
-
-def copy_old_checkpoints_to_new_run(
-    remote_up_down: RemoteUploaderDownloader,
-    bucket_uri: str,
-    run_uuid: str,
-    restore_run_uuid: str,
-    restore_run_round: int,
-    restore_run_step: int,
-    n_total_clients: int | None,
-) -> None:
-    """Copy old checkpoints to the new run folder.
-
-    Parameters
-    ----------
-        remote_up_down (RemoteUploaderDownloader): The remote uploader and downloader.
-        bucket_uri (str): The bucket URI.
-        run_uuid (str): The run UUID.
-        restore_run_uuid (str): The restore run UUID.
-        restore_run_round (int): The restore run round.
-        restore_run_step (int): The restore run step.
-        n_total_clients (int): The total number of clients.
-
-    Returns
-    -------
-        None
-
-    Raises
-    ------
-        NotImplementedError: If the backend is not an S3ObjectStore.
-        ValueError: If the old run folder or the new run folder is not found.
-    """
-    backend = remote_up_down.remote_backend
-    if not isinstance(backend, S3ObjectStore):
-        raise NotImplementedError(
-            "Support for resuming from non-S3 backends is not yet implemented."
-        )
-
-    new_run_folder = bucket_uri + f"/{run_uuid}"
-    old_run_folder = bucket_uri + f"/{restore_run_uuid}"
-    if (old_run_val := validate_given_remote_path(old_run_folder)) and (
-        _new_run_val := validate_given_remote_path(new_run_folder)
-    ):
-        state_bin = restore_run_uuid + f"/server/{restore_run_round}/state.bin"
-
-        momentum_vec = (
-            old_run_folder + f"/server/{restore_run_round}/current_momentum_vector.npz"
-        )
-
-        parameters_no_ext = (
-            old_run_folder + f"/server/{restore_run_round}/current_server_parameters"
-        )
-        parameters = (
-            parameters_no_ext.replace(bucket_uri + "/", "") + ".bin"
-            if validate_given_remote_path(parameters_no_ext + ".bin")
-            else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
-        )
-
-        remote_objects = list_remote_objects(old_run_folder)
-
-        # Extract the client and the batches
-        # NOTE: (?:\d+) means a do-not-capture group
-        # As such we allow any number of epochs without extracting
-        # The number of epochs
-        client_path_batches = sorted(
-            [
-                (
-                    path,
-                    int(reg.group(1)),
-                    int(reg.group(2)),
-                )
-                for path in remote_objects
-                if (reg := re.search(r"client_(\d+)/ep(?:\d+)-ba(\d+)", path))
-                is not None
-            ],
-            key=operator.itemgetter(1, 2),
-        )
-
-        # For each client, choose the latest checkpoint
-        # That is consistent with the step of the resume round
-        # groupby acts like an sql groupby
-        client_paths = [
-            list(filter(lambda x: x[2] <= restore_run_step, group))[-1][0]
-            for _, group in groupby(client_path_batches, key=operator.itemgetter(1))
-        ]
-
-        if (
-            n_total_clients is not None
-            and (found_clients := len(client_paths)) != n_total_clients
-        ):
-            raise ValueError(
-                f"Found {found_clients} clients in the old run folder {old_run_folder},"
-                f" but expected {n_total_clients}."
-            )
-
-        paths_to_copy = [state_bin, parameters]
-
-        if validate_given_remote_path(momentum_vec):
-            paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
-        else:
-            log(
-                DEBUG,
-                f"Could not find momentum vector to copy from {momentum_vec}",
-            )
-
-        paths_to_copy.extend(client_paths)
-
-        for path in paths_to_copy:
-            copy_source = {"Bucket": backend.bucket, "Key": path}
-            target_key = path.replace(restore_run_uuid, run_uuid)
-            log(DEBUG, "Copying %s to %s", path, target_key)
-            backend.client.copy(copy_source, backend.bucket, target_key)
-
-    else:
-        if not old_run_val:
-            raise ValueError(
-                f"Could not find the old run folder {old_run_folder} to copy"
-                " checkpoints."
-            )
-        raise ValueError(
-            f"Could not find the new run folder {new_run_folder} to copy checkpoints."
-        )
 
 
 def set_trainer_timestamp(trainer: Trainer, timestamp: int) -> None:

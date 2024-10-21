@@ -8,7 +8,6 @@ import fcntl
 import gc
 import os
 import pickle
-import re
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
@@ -31,7 +30,6 @@ from composer.utils import dist
 from flwr.common import Config, NDArrays, log, parameters_to_ndarrays, NDArray
 from torch import device as device_type
 from typing import Self
-from composer.utils.file_helpers import list_remote_objects
 
 import wandb
 
@@ -1197,52 +1195,6 @@ class Capture:
 
 class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""
-
-
-def obtain_sorted_runs(run_uuid_path: str, state_keys: tuple[str, ...]) -> list[int]:
-    """Obtain the sorted runs from the server path.
-
-    The function invokes the `list_remote_objects` function to get the list of remote
-    objects in the run uuid path. It then extracts the unique run numbers, under
-    `{run_uuid_path}/server/`, from the paths and filters them based on the state keys
-    provided. The function returns the sorted runs.
-
-    Parameters
-    ----------
-    run_uuid_path : str
-        The path to the run uuid root.
-    state_keys : Tuple[str]
-        The state keys to check in the paths. Keys are intended to be the prefixes of
-        any file name. For example, if the keys are ("state", "model"), then the
-        function will return any path that starts with "state" and "model".
-
-    Returns
-    -------
-    List[int]
-        The sorted runs.
-    """
-    remote_objects = list_remote_objects(run_uuid_path)
-
-    # Extract unique run numbers
-    run_numbers = {
-        int(reg.group(1))
-        for path in remote_objects
-        if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
-    }
-
-    valid_runs = set()
-
-    for run in run_numbers:
-        # Filter paths for the current run
-        run_paths = [path for path in remote_objects if f"server/{run}/" in path]
-
-        # Check if all state_keys are present in the paths for this run
-        if all(
-            any(state_key in path for path in run_paths) for state_key in state_keys
-        ):
-            valid_runs.add(run)
-
-    return sorted(valid_runs)
 
 
 def create_remote_up_down(

@@ -7,7 +7,6 @@ import re
 from typing import Any
 
 import torch
-from composer.utils.file_helpers import list_remote_objects
 from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
@@ -15,6 +14,7 @@ from flwr.common.logger import log
 from omegaconf import DictConfig, ListConfig
 
 
+from flower_llm.server.s3_utils import list_objects
 from flower_llm.utils import (
     get_n_cpu_cores,
     get_n_cuda_devices,
@@ -184,7 +184,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         try:
             # Are there any checkpoints?
-            remote_objects = list_remote_objects(cfg.save_folder)
+            _is_remote, remote_objects = list_objects(cfg.save_folder)
             if not remote_objects:
                 log(
                     INFO,
