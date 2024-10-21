@@ -744,7 +744,7 @@ def llm_fit(
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     server_steps_cumulative = cast(int, config["server_steps_cumulative"])
-    skip_iteration = set_client_load_path(
+    skip_iteration, is_chkpt_loaded = set_client_load_path(
         cfg,
         cid,
         server_steps_cumulative + num_batches_trained,
@@ -767,7 +767,7 @@ def llm_fit(
         trainer,
     )
 
-    if config["fake_gradient_update"]:
+    if config["fake_gradient_update"] and is_chkpt_loaded:
         apply_fake_gradient_update(
             trainer,
             initial_trainer_parameters,

@@ -174,7 +174,9 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
         log(DEBUG, "Set save folder: %s", cfg.save_folder)
 
 
-def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
+def set_client_load_path(
+    cfg: DictConfig, cid: int | str, n_steps: int
+) -> tuple[bool, bool]:
     """Set the save and load path given the server round and client id."""
     # Set client load path
     set_client_save_and_load_path(cfg, cid)
@@ -192,7 +194,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                     cfg.save_folder,
                 )
                 assert cfg.load_path is None
-                return skip_iteration
+                return skip_iteration, False
             # NOTE: We always need to check all of the checkpoints
             # Given the epoch change
             # As such we extract the epoch number and number of batches
@@ -245,7 +247,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                 )
                 # NOTE: Don't re-save the checkpoint when resuming mid-round
                 cfg.save_folder = None
-                return skip_iteration
+                return skip_iteration, True
             # Load the latest checkpoint
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
@@ -257,7 +259,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
             log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
-    return skip_iteration
+    return skip_iteration, False
 
 
 def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
