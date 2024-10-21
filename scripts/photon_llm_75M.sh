@@ -81,7 +81,7 @@ MINIO_COMM_STACK_OPTIONS="use_s3_comm=true"                                     
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false"                                                # Don't use S3 communication stack
 MINIO_COMM_STACK_OPTIONS="$MINIO_COMM_STACK_OPTIONS s3_comm_config.bucket_name=checkpoints" # S3 bucket name
 #! Set Pollen and FL config
-N_LOCAL_STEPS=500
+N_LOCAL_STEPS=5
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
@@ -190,7 +190,8 @@ poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[
 SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes
-trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
+trap 'kill $CLIENTAPP_PID $SUPERLINK_PID $SERVERAPP_PID' SIGINT SIGTERM
+
 #! Wait for the ServerApp to finish
 wait $SERVERAPP_PID
 #! Kill the ClientApp and Superlink

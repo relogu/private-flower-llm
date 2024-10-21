@@ -100,9 +100,10 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=5120ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=5120ba"   
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=100ba" 
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"    
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"      
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=8.5e-4"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE centralized.stream_id=6"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false fl.n_clients_per_round=2 pollen.checkpoint=false fl.n_rounds=160 llm_config.local_steps=32ba llm_config.eval_subset_num_batches=10 llm_config.eval_interval=320ba fl.reset_optimizer=false llm_config.save_interval=32ba fl.n_total_clients=2"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=true fl.n_clients_per_round=2 pollen.checkpoint=false fl.n_rounds=160 llm_config.local_steps=32ba llm_config.eval_subset_num_batches=10 llm_config.eval_interval=5120ba fl.reset_optimizer=false llm_config.save_interval=32ba fl.n_total_clients=2"
 # bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
 bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
 

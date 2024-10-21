@@ -1,0 +1,48 @@
+#!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
+#SBATCH -c 28
+#SBATCH -w ngongotaha
+#SBATCH --gres=gpu:4
+#SBATCH --job-name=photon-125M-4cpr32-fp-bs64
+#SBATCH --tasks-per-node=1
+#SBATCH --output=%x-%j.out
+#SBATCH --dependency=afterany:13550
+
+# Default project path
+PROJECT_PATH="$HOME/projects/flower_llm"
+# Get the current date and time
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+
+
+# Parse command-line options
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
+  echo "slurm_submit.mauao: Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
+
+BATCH_SIZE=64
+export RUN_UUID="photon-125M-4cpr32-fp-bs$BATCH_SIZE-$DATETIME"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=20480ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=20480ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=400ba" 
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"    
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"      
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE centralized.stream_id=4"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false fl.n_clients_per_round=4 pollen.checkpoint=false fl.n_rounds=640 llm_config.local_steps=32ba llm_config.eval_subset_num_batches=12 llm_config.eval_interval=20480ba fl.reset_optimizer=false llm_config.save_interval=32ba fl.n_total_clients=4 llm_config.model.attn_config.attn_impl=torch"
+# bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
+bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
