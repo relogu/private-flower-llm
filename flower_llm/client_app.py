@@ -245,7 +245,7 @@ def train(msg: Message, ctx: Context) -> Message:
     config = fitins.config
     assert "server_round" in config, "Server round must be in the config"
     # Restart all the worker every `app.refresh_period` rounds
-    if config["server_round"] % app.refresh_period == 0:
+    if (int(config["server_round"]) + 1) % app.refresh_period == 0:
         # Close and remove the workers
         app._close_workers()
         # Re-create and start the workers
@@ -266,7 +266,7 @@ def train(msg: Message, ctx: Context) -> Message:
     recordset = fitres_to_recordset(fitres, keep_input=False)
     recordset.configs_records[f"{msg_str}.s3_comm_config"] = ConfigsRecord(
         {
-            "endpoint_id": app.node_manager_uuid,
+            "endpoint_id": "comms_" + app.node_manager_uuid,
             "folder_name": "comm_stack",
             "file_name": "parameters",
         }
@@ -338,12 +338,6 @@ def evaluate(msg: Message, ctx: Context) -> Message:
     evaluateins = recordset_to_evaluateins(msg.content, False)
     config = evaluateins.config
     assert "server_round" in config, "Server round must be in the config"
-    # Restart all the worker every `app.refresh_period` rounds
-    if config["server_round"] % app.refresh_period == 0:
-        # Close and remove the workers
-        app._close_workers()
-        # Re-create and start the workers
-        app._create_and_start_workers()
     # Launch the actual training
     loss, num_examples, metrics = app.eval(configs=msg.content.configs_records)
     # Compile EvaluateRes
