@@ -111,6 +111,7 @@ def main(driver: Driver, context: Context) -> None:
             "n_local_epochs": cfg.fl.n_local_epochs,
             "collaborative": cfg.pollen.fit_collaborative,
             "reset_optimizer": cfg.fl.reset_optimizer,
+            "fake_gradient_update": cfg.fl.fake_gradient_update,
         }
 
     def pollen_evaluate_config(

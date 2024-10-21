@@ -29,6 +29,7 @@ from flower_llm.strategy.aggregation import (
     aggregate_cumulative_average,
     parameters_to_ndarrays_gen,
 )
+from flower_llm.strategy.metrics import ServerMetricCallback
 from flower_llm.utils import (
     l2_norm,
     sum_of_squares,
@@ -66,6 +67,7 @@ class FedNesterov(FedAvg):
         server_momentum: float = 0.9,  # default DiLoCo value
         use_gradients: bool = True,  # default DiLoCo implementation
         track_norms: bool = True,
+        obtain_server_metrics_callback: type[ServerMetricCallback] | None = None,
         track_inplace_aggregation: bool = False,
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy.
@@ -163,6 +165,7 @@ class FedNesterov(FedAvg):
 
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
+        self.obtain_server_metrics_callback = obtain_server_metrics_callback
 
     def aggregate_fit(
         self,
@@ -192,12 +195,18 @@ class FedNesterov(FedAvg):
             results_cached = list(results)
             results = (val for val in results_cached)
 
+        metrics_aggregated: dict[str, Scalar] = {}
+
+        metrics_callback: ServerMetricCallback | None = None
+
         # Get the cumulative average of the results
+        old_parameters = (
+            parameters_to_ndarrays(self.parameters) if self.use_gradients else None
+        )
         fedavg_result = aggregate_cumulative_average(
             results,
-            old_parameters=(
-                parameters_to_ndarrays(self.parameters) if self.use_gradients else None
-            ),
+            old_parameters=old_parameters,
+            metrics_callback=metrics_callback,
         )
 
         # Return None if no results were aggregated
@@ -210,7 +219,11 @@ class FedNesterov(FedAvg):
         layerwise_l2_norms_fedavg_result: list[float] = []
         layerwise_l2_norms_model: list[float] = []
         # Loop over layer, apply the server optimizer and compute metrics
-        for i, x in enumerate(parameters_to_ndarrays_gen(self.parameters)):
+        for i, x in enumerate(
+            old_parameters
+            if self.use_gradients
+            else parameters_to_ndarrays_gen(self.parameters)  # type: ignore[reportArgumentType,arg-type]
+        ):
             # Layer i pseudo-gradient
             layer_pseudo_gradient = (
                 fedavg_result[i] if self.use_gradients else x - fedavg_result[i]
@@ -240,7 +253,6 @@ class FedNesterov(FedAvg):
             )
             layerwise_l2_norms_model.append(l2_norm([layer_fednestorov_result]))
 
-        metrics_aggregated: dict[str, Scalar] = {}
         if self.track_norms:
             metrics_aggregated |= {
                 "server/l2_norm_pseudo_gradient": np.sqrt(

@@ -63,6 +63,7 @@ from flower_llm.clients.llm_config_functions import (
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
+    apply_fake_gradient_update,
     get_list_of_parameters_names,
     get_trainable_params_dict,
     parameters_checker,
@@ -279,6 +280,7 @@ def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str | None,
     log_name: str | None = None,
+    force_cpu: bool = False,
 ) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -324,16 +326,17 @@ def _get_trainer_object(
     visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
     log(DEBUG, f"Visible devices: {visible_devices}")
     # The worker has been appointed a single GPU
-    if type(visible_devices) is int:
+    if type(visible_devices) is int and not force_cpu:
         device: DeviceGPU | DeviceCPU | None = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
     # The worker has been appointed all GPUs available
-    elif type(visible_devices) is tuple:
+    elif type(visible_devices) is tuple and not force_cpu:
         assert len(visible_devices) > 1
         device = None
     # The worker is in a CPU-only environment
     else:
-        assert visible_devices is None
+        if not force_cpu:
+            assert visible_devices is None
         device = DeviceCPU()
         log(DEBUG, f"Selecting device CPU, {device}")
     log(DEBUG, "Initializing dist with device...")
@@ -862,6 +865,7 @@ def llm_fit(
     client_state_struct = ClientState(**client_state[cid])
     # Get the number of local steps done by the current client
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+
     # Initialize training hyperparameters
     global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
@@ -892,6 +896,25 @@ def llm_fit(
         {},
         trainer,
     )
+
+    if config["fake_gradient_update"]:
+        apply_fake_gradient_update(trainer, initial_trainer_parameters, parameters)
+
+        new_model_parameters = get_parameters_from_state({}, trainer)
+
+        # Log the summed delta of the parameters
+        log(
+            DEBUG,
+            f"""L2 norm of fake_params delta: {
+                sum_of_squares([
+                    x - y
+                    for x, y in zip(
+                        initial_trainer_parameters, new_model_parameters, strict=True
+                    )
+                ])
+            }""",
+        )
+
     parameters_checker(initial_trainer_parameters, parameters, False)
 
     # log(DEBUG, f"Trainer config: {logged_cfg}")

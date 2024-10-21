@@ -73,12 +73,12 @@ else
 		echo "install_env.sh: flash-attn is already installed."
 	fi
 	#! Install `transformer-engine`
-	if ! poetry run pip list | grep "transformer_engine"; then
-		echo "install_env.sh: Installing transformer-engine..."
-		poetry run pip install -q --upgrade git+https://github.com/NVIDIA/TransformerEngine.git@stable
-	else
-		echo "install_env.sh: transformer-engine is already installed."
-	fi
+	# if ! poetry run pip list | grep "transformer_engine"; then
+	# 	echo "install_env.sh: Installing transformer-engine..."
+	# 	poetry run pip install -q --upgrade git+https://github.com/NVIDIA/TransformerEngine.git@stable
+	# else
+	# 	echo "install_env.sh: transformer-engine is already installed."
+	# fi
 	#! Final message
 	echo "install_env.sh: Environment is ready."
 fi

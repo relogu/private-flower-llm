@@ -118,8 +118,29 @@ def get_parameters_from_state(config: Config, trainer: Trainer) -> NDArrays:
     return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
 
 
+def apply_fake_gradient_update(
+    trainer: Trainer,
+    initial_trainer_parameters: NDArrays,
+    parameters: NDArrays,
+) -> None:
+    """Apply a fake gradient update to the trainer."""
+    client_to_server_pseudo_gradient = [
+        y - x for x, y in zip(parameters, initial_trainer_parameters, strict=True)
+    ]
+
+    set_trainer_grads_from_ndarrays(client_to_server_pseudo_gradient, trainer)
+
+    for optimizer in trainer.state.optimizers:
+        optimizer.step()
+    for optimizer in trainer.state.optimizers:
+        try:
+            optimizer.zero_grad(set_to_none=True)
+        except TypeError:
+            optimizer.zero_grad()
+
+
 def get_trainable_params_dict(
-    model: torch.nn.Module, sort_dict: bool = True
+    model: torch.nn.Module, sort_dict: bool = True, no_detach_and_clone: bool = False
 ) -> dict[str, torch.nn.Parameter] | dict[str, torch.Tensor]:
     """Get the trainable parameters of a model as a dictionary."""
     params_dict: dict[str, torch.nn.Parameter] | dict[str, torch.Tensor] = {}
@@ -151,13 +172,13 @@ def get_trainable_params_dict(
             # parameters that are "living" in that rank and will have zero-shaped
             # tensors for the others.
             params_dict = {
-                name: param.detach().clone()
+                name: param.detach().clone() if not no_detach_and_clone else param
                 for name, param in inner_model.named_parameters()
                 if param.requires_grad
             }
     else:
         params_dict = {
-            name: param.detach().clone()
+            name: param.detach().clone() if not no_detach_and_clone else param
             for name, param in model.named_parameters()
             if param.requires_grad
         }
@@ -237,6 +258,81 @@ def set_trainer_trainable_params_dict(
                         )
                     current_dtype = param.data.dtype
                     param.data = param_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
+    dist.barrier()
+
+
+def set_trainer_trainable_grads_dict(
+    trainer: Trainer,
+    grads_dict: OrderedDict[str, torch.Tensor],
+) -> None:
+    """Set the trainable grads of a model."""
+    # NOTE: This function is weird because the encapsulation done to support FSDP and
+    # DDP is weird. Since they are both likely to change, we MUST maintain this very
+    # well and implement as many checkers as we can.
+    if (
+        hasattr(trainer.state.model, "model")
+        and type(trainer.state.model.model) is FullyShardedDataParallel
+    ):
+        # Get the state dict of the model on rank 0 offloading to CPU
+        # NOTE: This assumes there's enough RAM on rank 0 to hold the model state dict
+        save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        with FullyShardedDataParallel.state_dict_type(
+            trainer.state.model.model, StateDictType.FULL_STATE_DICT, save_policy
+        ):
+            cpu_state = trainer.state.model.model.state_dict()
+            # If the state dict exists (only on rank 0), modify ion place the grads
+            # to those passed as argument
+            if cpu_state:
+                # Set the parameter grads only if they require gradients
+                for name, param in cpu_state.items():
+                    assert name in grads_dict, (
+                        f"Parameter {name} not found across list"
+                        " of parameters {parameters_dict.keys()}"
+                    )
+                    grads_from_dict = grads_dict[name]
+                    # Raise error if the shapes don't match
+                    if param.shape != grads_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{grads_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    # NOTE: We need to add the prefix "model." to the name of the
+                    # parameter to match the state dict
+                    cpu_state[name].grad = grads_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
+            # Broadcast the state dict across all ranks
+            # NOTE: This step is necessary as all the ranks must load the same state
+            # dict concurrently
+            list_of_objects = [cpu_state]
+            dist.broadcast_object_list(list_of_objects, src=0)
+            # Load the state dict back to the model
+            trainer.state.model.model.load_state_dict(list_of_objects[0])
+    else:
+        for name, param in trainer.state.model.named_parameters():
+            # Set the grads only if they require gradients
+            if param.requires_grad:
+                lookup_name = name.replace("model.", "").replace("module.", "")
+                if lookup_name not in grads_dict:
+                    log(
+                        WARN,
+                        "Parameter %s not found in the list of parameters"
+                        " and won't be set",
+                        name,
+                    )
+                else:
+                    grads_from_dict = grads_dict[lookup_name]
+                    # Raise error if the shapes don't match
+                    if param.shape != grads_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{grads_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    param.grad = grads_from_dict.to(
                         device=param.device, dtype=current_dtype
                     )
     dist.barrier()
@@ -336,6 +432,48 @@ def set_trainer_params_from_ndarrays(parameters: NDArrays, trainer: Trainer) -> 
             # If the ordered parameters failed, try to set the parameters as unordered
             parameters_dict = construct_parameters_dict(parameters_names, parameters)
             set_trainer_trainable_params_dict(trainer, parameters_dict)
+        else:
+            raise
+
+
+def set_trainer_grads_from_ndarrays(grads: NDArrays, trainer: Trainer) -> None:
+    """Set the grads of a trainer from a list of NDArrays.
+
+    This function attempts to set the grads of the trainer's model using
+    the provided NDArrays. It first tries to set the grads assuming they
+    are ordered. If this fails due to shape mismatches, it retries with the
+    grads unordered.
+
+    Parameters
+    ----------
+        grads (NDArrays): The list of NDArrays representing the model grads.
+        trainer (Trainer): The trainer object whose model grads are to be set.
+
+    Raises
+    ------
+        ValueError: If setting the parameters fails due to shape mismatches or other
+        issues.
+    """
+    # Get the unordered and ordered list of parameter names
+    parameters_names = get_list_of_parameters_names(
+        trainer.state.model, sort_dict=False
+    )
+    ordered_parameters_names = sorted(parameters_names)
+    # Try to set the parameter grads as if they are ordered
+    try:
+        grads_dict = construct_parameters_dict(ordered_parameters_names, grads)
+        set_trainer_trainable_grads_dict(trainer, grads_dict)
+    except ValueError as e:
+        if "Shapes don't match" in str(e):
+            log(
+                ERROR,
+                "Error trying to set the parameters as ordered, trying unordered",
+                exc_info=e,
+                stack_info=True,
+            )
+            # If the ordered parameters failed, try to set the parameters as unordered
+            grads_dict = construct_parameters_dict(parameters_names, grads)
+            set_trainer_trainable_grads_dict(trainer, grads_dict)
         else:
             raise
 

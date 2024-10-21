@@ -13,9 +13,12 @@ from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
 import numpy as np
 
+from flower_llm.strategy.metrics import ServerMetricCallback
+
 
 def aggregate_gradients(
     old_parameters: NDArrays,
+    metrics_callback: ServerMetricCallback | None,
     accumulator: tuple[NDArrays | None, int],
     current: tuple[NDArrays, int],
 ) -> tuple[NDArrays | None, int]:
@@ -54,6 +57,9 @@ def aggregate_gradients(
 
     # Compute the pseudo-gradients
     current_grads = [x - y for x, y in zip(old_parameters, current_params, strict=True)]
+
+    if metrics_callback is not None:
+        metrics_callback.add_per_client_metrics((current_grads, num_examples))
 
     # NOTE: Maybe be useless but let's help the Python GC figure out what to do
     del current_params
@@ -142,10 +148,15 @@ def aggregate_parameters(
 def aggregate_inplace(
     results: Iterable[tuple[NDArrays, int]],
     old_parameters: NDArrays | None,
+    metrics_callback: ServerMetricCallback | None,
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # Holds the parameters and the total number of samples
     accumulator: tuple[NDArrays | None, int] = (None, 0)
+
+    assert not (
+        metrics_callback is not None and old_parameters is None
+    ), "Metrics callback is not None but old parameters are None"
 
     # Choose the aggregation function
     aggregation_fn = (
@@ -154,6 +165,7 @@ def aggregate_inplace(
         else partial(
             aggregate_gradients,
             old_parameters,
+            metrics_callback,
         )
     )
 
@@ -166,6 +178,7 @@ def aggregate_inplace(
 def aggregate_cumulative_average(
     results: Iterable[tuple[ClientProxy, FitRes]],
     old_parameters: NDArrays | None,
+    metrics_callback: ServerMetricCallback | None,
 ) -> NDArrays | None:
     """Compute in-place weighted average, lazily and async."""
     # NOTE: Only one ndarray exists at a time
@@ -178,6 +191,7 @@ def aggregate_cumulative_average(
             for _, fit_res in results
         ),
         old_parameters=old_parameters,
+        metrics_callback=metrics_callback,
     )
 
 
@@ -198,7 +212,9 @@ def partially_aggregate(
         updated_agg = copy.deepcopy(new_results[0])
         total_num_examples = copy.deepcopy(new_results[1])
     else:
-        updated_agg = aggregate_inplace([current_agg, new_results], None)
+        updated_agg = aggregate_inplace(
+            [current_agg, new_results], None, metrics_callback=None
+        )
         assert updated_agg is not None
         total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
             new_results[1]
