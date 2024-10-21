@@ -110,6 +110,6 @@ echo "slurm_submit.gpu-vm: PROJECT_PATH=$PROJECT_PATH, LD_LIBRARY_PATH=$LD_LIBRA
 
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="optimizer_test_$DATETIME"
-export EXTERNAL_CONFIGS="pollen.resume_round=-1 fl.fake_gradient_update=true fl.reset_optimizer=false llm_config.eval_subset_num_batches=1 fl.n_total_clients=1 fl.n_clients_per_round=1"
+export RUN_UUID="an_optimizer_test"
+export EXTERNAL_CONFIGS="pollen.resume_round=-1 fl.fake_gradient_update=true fl.reset_optimizer=false llm_config.eval_subset_num_batches=1 fl.n_total_clients=1 fl.n_clients_per_round=1 fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0"
 bash $PROJECT_PATH/scripts/photon_llm_75M.sh
