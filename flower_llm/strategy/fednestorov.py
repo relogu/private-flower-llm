@@ -208,6 +208,12 @@ class FedNesterov(FedAvg):
             old_parameters=old_parameters,
             metrics_callback=metrics_callback,
         )
+        # Scale pseudo-gradient by the  square root of the number of clients
+        fedavg_result = (
+            [x * np.sqrt(self.min_fit_clients) for x in fedavg_result]
+            if fedavg_result is not None
+            else None
+        )
 
         # Return None if no results were aggregated
         if fedavg_result is None:
