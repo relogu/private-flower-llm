@@ -190,7 +190,8 @@ poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[
 SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes
-trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM
+trap 'kill $CLIENTAPP_PID $SUPERLINK_PID $SERVERAPP_PID' SIGINT SIGTERM
+
 #! Wait for the ServerApp to finish
 wait $SERVERAPP_PID
 #! Kill the ClientApp and Superlink

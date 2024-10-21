@@ -3,11 +3,14 @@ run_uuid: chiappe
 seed: 1337
 is_test: false
 pretrained_model_path: null
+wte_parameters_path: null
+cleanup_checkpoints: true
 
 centralized:
   store_init_model: false
   store_final_model: false
   stream_id: null
+  eval_only: false
 
 # Pollen specific settings
 pollen:

@@ -1,9 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 40
+#SBATCH -c 20
 #SBATCH -w mauao
-#SBATCH --gres=gpu:4
-#SBATCH --job-name=photon_75M
+#SBATCH --gres=gpu:2
+#SBATCH --job-name=photon-125M-2cpr-bs4
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #!SBATCH --time=01:30:00
@@ -11,6 +11,8 @@
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
+# Get the current date and time
+DATETIME=$(date '+%Y%m%d_%H%M%S')
 
 
 # Parse command-line options
@@ -70,11 +72,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="photon-75M-gbs2048-$DATETIME"
-export EXTERNAL_CONFIGS="fl.strategy_kwargs.server_learning_rate=1.0 fl.strategy_kwargs.server_momentum=0.0 fl.reset_optimizer=true pollen.resume_round=null"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset/streams@dataset.train.streams=64_clients dataset/streams@dataset.val.streams=64_clients fl.n_total_clients=64 fl.n_clients_per_round=4"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=512 pollen.fit_collaborative=false llm_config.model.attn_config.attn_impl=flash fl.reset_optimizer=true"
+BATCH_SIZE=4
+export RUN_UUID="photon-125M-2cpr10-bs$BATCH_SIZE-$DATETIME"
+# export RUN_UUID="cen-125M-long-bs$BATCH_SIZE-$DATETIME"
 # # bash $PROJECT_PATH/scripts/photon_llm_small.sh
 # # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
 # # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
@@ -82,9 +82,17 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=51
 # # export RUN_UUID="test-fed-75M-$DATETIME"
 # # export RUN_UUID="fed-75M-20240313_181750"
 # # export RUN_UUID="fed-75M-20240506_234900"
-bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+# bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
 # # export RUN_UUID="fed-125M-20240328_000428-restore-3"
-# # bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=5000ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=5000ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=100ba" 
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"    
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"      
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE centralized.stream_id=6"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false fl.n_clients_per_round=2 pollen.checkpoint=false fl.n_rounds=500 llm_config.local_steps=10ba llm_config.eval_subset_num_batches=10 llm_config.eval_interval=5000ba"
+# bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
+bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
 # # export RUN_UUID="fed-160M-20240507_114745"
 # # bash $HOME/projects/flower_llm/scripts/photon_llm_160M.sh
 # # bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh

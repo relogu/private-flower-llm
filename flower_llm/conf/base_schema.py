@@ -252,6 +252,8 @@ class BaseConfig(DictConfig):
         S3 communication configuration
     use_wandb: bool = MISSING
         Whether to use Wandb
+    cleanup_checkpoints: bool = MISSING
+        Whether to clean up all the checkpoints at the end
     wandb: Wandb
         Wandb configuration
     """
@@ -268,6 +270,7 @@ class BaseConfig(DictConfig):
     use_shm: bool = MISSING
     s3_comm_config: S3CommConfig = MISSING
     use_wandb: bool = MISSING
+    cleanup_checkpoints: bool = MISSING
     wandb: Wandb = MISSING
 
     # NOTE: MosaicML specific, do not include in the base schema
