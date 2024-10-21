@@ -81,7 +81,7 @@ MINIO_COMM_STACK_OPTIONS="use_s3_comm=true"                                     
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false"                                                # Don't use S3 communication stack
 MINIO_COMM_STACK_OPTIONS="$MINIO_COMM_STACK_OPTIONS s3_comm_config.bucket_name=checkpoints" # S3 bucket name
 #! Set Pollen and FL config
-N_LOCAL_STEPS=500
+N_LOCAL_STEPS=10
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR

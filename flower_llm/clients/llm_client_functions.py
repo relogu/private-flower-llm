@@ -898,7 +898,11 @@ def llm_fit(
     )
 
     if config["fake_gradient_update"]:
-        apply_fake_gradient_update(trainer, initial_trainer_parameters, parameters)
+        apply_fake_gradient_update(
+            trainer,
+            initial_trainer_parameters,
+            parameters,
+        )
 
         new_model_parameters = get_parameters_from_state({}, trainer)
 
@@ -919,6 +923,16 @@ def llm_fit(
             f"""L2 norm of delta from fake_params to server parameters: {
                 sum_of_squares([
                     x - y for x, y in zip(parameters, new_model_parameters, strict=True)
+                ])
+            }""",
+        )
+
+        log(
+            DEBUG,
+            f"""L2 norm of delta from initial_params to server parameters: {
+                sum_of_squares([
+                    x - y
+                    for x, y in zip(initial_trainer_parameters, parameters, strict=True)
                 ])
             }""",
         )
