@@ -3,7 +3,7 @@
 #SBATCH -c 10
 #SBATCH -w gpu-vm
 #!SBATCH --gres=gpu:1
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M

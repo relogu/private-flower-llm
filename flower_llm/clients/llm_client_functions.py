@@ -905,12 +905,20 @@ def llm_fit(
         # Log the summed delta of the parameters
         log(
             DEBUG,
-            f"""L2 norm of fake_params delta: {
+            f"""L2 norm of delta from fake_params to initial parameters: {
                 sum_of_squares([
                     x - y
                     for x, y in zip(
                         initial_trainer_parameters, new_model_parameters, strict=True
                     )
+                ])
+            }""",
+        )
+        log(
+            DEBUG,
+            f"""L2 norm of delta from fake_params to server parameters: {
+                sum_of_squares([
+                    x - y for x, y in zip(parameters, new_model_parameters, strict=True)
                 ])
             }""",
         )
