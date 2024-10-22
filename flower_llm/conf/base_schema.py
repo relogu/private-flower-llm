@@ -115,8 +115,8 @@ class FL(DictConfig):
         Whether to ignore failed rounds.
     accept_failures_cnt : int
         Number of acceptable failures.
-    eval_fl : bool
-        Whether to evaluate federated learning.
+    eval_fl : int
+        Period of federated evaluation.
     strategy_name : StrategyName
         The name of the strategy to use.
     strategy_kwargs : StrategyKWArgs
@@ -134,7 +134,7 @@ class FL(DictConfig):
 
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
-    eval_fl: bool = MISSING
+    eval_fl: int = MISSING
 
     strategy_name: StrategyName = MISSING
     strategy_kwargs: StrategyKWArgs = MISSING

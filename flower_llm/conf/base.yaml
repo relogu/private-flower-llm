@@ -39,7 +39,7 @@ fl:
 
   ignore_failed_rounds: false
   accept_failures_cnt: 0
-  eval_fl: true
+  eval_fl: 1
 
   strategy_name: NESTOROV
   strategy_kwargs:
