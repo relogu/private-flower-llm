@@ -120,6 +120,7 @@ def apply_fake_gradient_update(
     trainer: Trainer,
     initial_trainer_parameters: NDArrays,
     parameters: NDArrays,
+    n_steps: int,
 ) -> None:
     """Apply a fake gradient update to the trainer."""
     client_to_server_pseudo_gradient = [
@@ -128,7 +129,7 @@ def apply_fake_gradient_update(
 
     set_trainer_grads_from_ndarrays(client_to_server_pseudo_gradient, trainer)
     # 0.9^6 = 0.53 contribution to the previous momentum state
-    for _ in range(6):
+    for _ in range(n_steps):
         for optimizer in trainer.state.optimizers:
             optimizer.step()
     for optimizer in trainer.state.optimizers:

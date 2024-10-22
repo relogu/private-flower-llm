@@ -90,22 +90,37 @@ class StrategyKWArgs(dict[str, Any], DictConfig):  # type: ignore[reportIncompat
 
 @dataclass(config={"arbitrary_types_allowed": True})
 class FL(DictConfig):
-    """Federated learning configuration.
+    """
+    Federated learning configuration.
 
     Attributes
     ----------
-    n_total_clients: int = MISSING
-        Number of clients
-    n_clients_per_round: int = MISSING
-        Number of clients per round
-    n_rounds: int = MISSING
-        Number of rounds
-    reset_optimizer: bool = MISSING
-        Whether to reset the local optimizer
-    n_local_epochs: int = MISSING
-        Number of local epochs
-    n_local_steps: int = MISSING
-        Number of local steps
+    n_total_clients : int
+        Number of total clients.
+    n_clients_per_round : int
+        Number of clients per round.
+    n_rounds : int
+        Number of rounds.
+    reset_optimizer : bool
+        Whether to reset the local optimizer.
+    fake_gradient_update : bool
+        Whether to use fake gradient updates.
+    fake_gradient_update_steps : int
+        Number of steps for fake gradient updates.
+    n_local_epochs : int
+        Number of local epochs.
+    n_local_steps : int
+        Number of local steps.
+    ignore_failed_rounds : bool
+        Whether to ignore failed rounds.
+    accept_failures_cnt : int
+        Number of acceptable failures.
+    eval_fl : bool
+        Whether to evaluate federated learning.
+    strategy_name : StrategyName
+        The name of the strategy to use.
+    strategy_kwargs : StrategyKWArgs
+        Keyword arguments for the strategy.
     """
 
     n_total_clients: int = MISSING
@@ -113,6 +128,7 @@ class FL(DictConfig):
     n_rounds: int = MISSING
     reset_optimizer: bool = MISSING
     fake_gradient_update: bool = MISSING
+    fake_gradient_update_steps: int = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
 

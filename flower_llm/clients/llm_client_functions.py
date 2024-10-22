@@ -768,10 +768,14 @@ def llm_fit(
     )
 
     if config["fake_gradient_update"] and is_chkpt_loaded:
+        n_fake_gradient_steps = config["fake_gradient_update_steps"]
+        assert type(n_fake_gradient_steps) is int
+        assert n_fake_gradient_steps > 0
         apply_fake_gradient_update(
             trainer,
             initial_trainer_parameters,
             parameters,
+            n_fake_gradient_steps,
         )
 
         new_model_parameters = get_parameters_from_state({}, trainer)

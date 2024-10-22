@@ -117,6 +117,7 @@ def main(driver: Driver, context: Context) -> None:
             "collaborative": cfg.pollen.fit_collaborative,
             "reset_optimizer": cfg.fl.reset_optimizer,
             "fake_gradient_update": cfg.fl.fake_gradient_update,
+            "fake_gradient_update_steps": cfg.fl.fake_gradient_update_steps,
         }
 
     def pollen_evaluate_config(
