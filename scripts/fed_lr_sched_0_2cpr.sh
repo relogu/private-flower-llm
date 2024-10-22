@@ -36,7 +36,7 @@ LOCAL_STEPS=64
 CPR=2
 TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE * CPR)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE * CPR)))
-N_ROUNDS=$((TOTAL_STEPS / (LOCAL_BATCH_SIZE)))
+N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 export RUN_UUID="fed-lr-sched0-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
 
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=${TOTAL_STEPS}ba"
@@ -47,7 +47,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$LOCAL_BATCH_SIZE"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_momentum=0.0"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=true"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_clients_per_round=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.checkpoint=true"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_rounds=$N_ROUNDS"
