@@ -1457,7 +1457,7 @@ def delete_remote_object(object_name: str) -> None:
     # Parse the URI to extract the prefix to use as the key to delete the file
     _backend, _bucket_name, prefix = parse_uri(object_name)
     # Delete the object from the object store
-    object_store.client.delete_remote_object(
+    object_store.client.delete_object(
         Bucket=object_store.bucket,
         Key=object_store.get_key(prefix),
     )
