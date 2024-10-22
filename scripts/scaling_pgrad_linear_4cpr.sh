@@ -33,13 +33,13 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 LOCAL_BATCH_SIZE=32
 LOCAL_STEPS=64
-CPR=2
+CPR=4
 # FedLRSched0
 TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE * CPR)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE * CPR)))
-# FedLRSched1
-TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
-WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
+# # FedLRSched1
+# TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
+# WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 export RUN_UUID="fed-lr-sched0-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
 
@@ -63,6 +63,6 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEP
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=sqrt"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=linear"
 
 bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
