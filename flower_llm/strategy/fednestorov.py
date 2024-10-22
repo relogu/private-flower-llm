@@ -69,6 +69,7 @@ class FedNesterov(FedAvg):
         track_norms: bool = True,
         obtain_server_metrics_callback: type[ServerMetricCallback] | None = None,
         track_inplace_aggregation: bool = False,
+        scaling_fn: str | None = None,
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy.
 
@@ -120,6 +121,8 @@ class FedNesterov(FedAvg):
             Flag for tracking the norms of the aggregated updates. Defaults to True.
         track_inplace_aggregation: bool, optional
             Flag for tracking the difference between standard and in-place aggregation. Defaults to False.
+        scaling_fn: str | None, optional
+            Scaling function to be used for the aggregated pseudo gradients. It can be None (no scaling applied), 'linear' will apply linear scaling with the number of clients per round, 'sqrt' scaling linearly with the square root of the number of clients per round. Defaults to None.
         """
         super().__init__(
             fraction_fit=fraction_fit,
@@ -135,6 +138,16 @@ class FedNesterov(FedAvg):
             fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
         )
+
+        if scaling_fn is not None:
+            assert scaling_fn in {
+                "linear",
+                "sqrt",
+            }, "Scaling function must be either 'linear' or 'sqrt'."
+        self.scaling_fn = lambda x: (
+            1 if scaling_fn is None else (x if scaling_fn == "linear" else np.sqrt(x))
+        )
+
         if saving_path is None:
             saving_path = Path(Path.cwd())
         self.saving_path = saving_path
@@ -209,8 +222,9 @@ class FedNesterov(FedAvg):
             metrics_callback=metrics_callback,
         )
         # Scale pseudo-gradient by the  square root of the number of clients
+        scaling_factor = self.scaling_fn(self.min_fit_clients)
         fedavg_result = (
-            [x * np.sqrt(self.min_fit_clients) for x in fedavg_result]
+            [x * scaling_factor for x in fedavg_result]
             if fedavg_result is not None
             else None
         )
