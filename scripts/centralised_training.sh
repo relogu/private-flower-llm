@@ -117,8 +117,8 @@ export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"            # Enable
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"        # Local evaluation interval
 export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1" # Evaluate the entire validation set
 # export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                             # Compiles the model with default parameters
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
-export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config"                                # Removes FSDP
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"                    # Clears OptimizerMonitor (not supported when using DeepSpeed)
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                           # Clears LRMonitor
 # export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                       # Clears MemoryMonitor

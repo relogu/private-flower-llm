@@ -60,4 +60,4 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
 
-bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
+bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
