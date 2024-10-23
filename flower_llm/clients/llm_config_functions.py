@@ -259,7 +259,7 @@ def set_client_load_path(
             log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
-    return skip_iteration, False
+    return skip_iteration, True
 
 
 def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
