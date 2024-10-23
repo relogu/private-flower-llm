@@ -37,9 +37,8 @@ CPR=8
 TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
-EVAL_FREQ=$((N_ROUNDS / 64))
+EVAL_FREQ=$((N_ROUNDS / 10))
 export RUN_UUID="fed-lr-sched0-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
-export RUN_UUID="fed-lr-sched0-8cpr64-bs32-20241023_165202"
 
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=${TOTAL_STEPS}ba"
@@ -62,8 +61,5 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
-
-# Resume options
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS  pollen.resume_round=-1"
 
 bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
