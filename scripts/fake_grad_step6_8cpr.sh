@@ -37,9 +37,9 @@ CPR=8
 # FedLRSched0
 TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE * CPR)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE * CPR)))
-# FedLRSched1
-TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
-WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
+# # FedLRSched1
+# TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
+# WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 EVAL_FREQ=$((N_ROUNDS / 10))
 export RUN_UUID="fed-lr-sched0-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
@@ -66,9 +66,9 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEP
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.fake_gradient_update=true fl.fake_gradient_update_steps=6"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
-# Linear scaling
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=linear"
-# Square root scaling
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=sqrt"
+# # Linear scaling
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=linear"
+# # Square root scaling
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++fl.strategy_kwargs.scaling_fn=sqrt"
 
 bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
