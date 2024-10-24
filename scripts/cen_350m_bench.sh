@@ -31,16 +31,11 @@ while true; do
 done
 echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
-LOCAL_BATCH_SIZE=256
-LOCAL_STEPS=64
-CPR=8
-# TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE / CPR)))
-# WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE / CPR)))
-TOTAL_STEPS=$((15360 * 512 / (LOCAL_BATCH_SIZE)))
-WARMUP_STEPS=$((100 * 512 / (LOCAL_BATCH_SIZE)))
-N_ROUNDS=$((TOTAL_STEPS / LOCAL_STEPS))
-EVAL_FREQ=$((TOTAL_STEPS / 128))
-export RUN_UUID="cen-lr-sched1-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+BATCH_SIZE=256
+TOTAL_STEPS=15360
+WARMUP_STEPS=100
+EVAL_FREQ=100
+export RUN_UUID="cen-bench-350M-bs$BATCH_SIZE-$DATETIME"
 
 export EXTERNAL_CONFIGS=""
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=${TOTAL_STEPS}ba"
@@ -48,7 +43,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=${TOTAL_ST
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=${WARMUP_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=3.0e-4"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$LOCAL_BATCH_SIZE"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_train_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.precision=amp_bf16"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=NO_SHARD" # DDP
@@ -57,17 +52,13 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strat
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_momentum=0.0"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_clients_per_round=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.checkpoint=true"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_rounds=$N_ROUNDS"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.local_steps=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_eval_batch_size=256"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_subset_num_batches=100"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.device_eval_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${EVAL_FREQ}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${EVAL_FREQ}ba"
 
 bash $HOME/projects/flower_llm/scripts/centralised_training.sh 350M
