@@ -61,6 +61,9 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS use_s3_comm=false"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.precision=amp_bf16"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ~llm_config.fsdp_config"
 
 # Resume options
 # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS  pollen.resume_round=-1"
