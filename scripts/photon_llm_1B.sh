@@ -141,13 +141,13 @@ POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_interval=250ba"              # Loc
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.eval_subset_num_batches=-1"       # Evaluate the entire validation set
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config"                                  # Use DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.compile_config={}"                           # Compile the model at Trainer initialization
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                         # Fastest precision context when using DDP
-POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto"         # Automatic microbatch size for evaluation
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"                 # Evaluation batch size
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"                 # DisTrO single device batch size (one client simulates one device)
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"             # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
-POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"          # Automatic microbatch size
+# POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.precision=amp_fp16"                 # Fastest precision context when using DDP
+POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.device_eval_microbatch_size=auto" # Automatic microbatch size for evaluation
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_eval_batch_size=128"         # Evaluation batch size
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.global_train_batch_size=64"         # DisTrO single device batch size (one client simulates one device)
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=8"     # 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
+POLLEN_CONFIG="$POLLEN_CONFIG llm_config.device_train_microbatch_size=auto"  # Automatic microbatch size
 
 #! Model parameters
 # POLLEN_CONFIG="$POLLEN_CONFIG llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
