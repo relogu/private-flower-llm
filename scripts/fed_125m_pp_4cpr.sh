@@ -68,6 +68,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEP
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
 =======
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=8"
@@ -78,6 +79,9 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
 =======
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=8"
 >>>>>>> 918cf78 (exp)
+=======
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+>>>>>>> 70c14ab (correct partial participation experiments)
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
 
 # Resume options
