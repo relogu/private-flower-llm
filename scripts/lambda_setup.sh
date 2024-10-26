@@ -7,7 +7,7 @@ sudo apt-get update
 #! Installing the essentials
 sudo apt-get install -y build-essential zlib1g-dev libedit-dev \
 	libssl-dev liblzma-dev libffi-dev libbz2-dev \
-	libreadline-dev libsqlite3-dev
+	libreadline-dev libsqlite3-dev bc
 #! Check the output of `nvcc -V`
 NVCC_OUTPUT=$(nvcc -V)
 if [[ $NVCC_OUTPUT == *"release 12.4"* ]]; then
