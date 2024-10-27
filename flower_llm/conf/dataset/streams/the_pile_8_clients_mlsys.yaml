@@ -326,6 +326,7 @@
       download_retry: null
       download_timeout: null
       validate_hash: null
+<<<<<<< HEAD
       keep_zip: null
 <<<<<<< HEAD
 =======
@@ -412,3 +413,6 @@
       validate_hash: null
       keep_zip: null
 >>>>>>> 80485c5 (Add new Pile configuration)
+=======
+      keep_zip: null
+>>>>>>> fa131ce (Make CC client 0)

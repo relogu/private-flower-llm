@@ -2,6 +2,9 @@
 - client_streams:
     stream_0:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> fa131ce (Make CC client 0)
       remote: c8/Pile-CC_0
       local: c8/Pile-CC_0
       proportion: null
@@ -86,8 +89,11 @@
       keep_zip: null
 - client_streams:
     stream_0:
+<<<<<<< HEAD
 =======
 >>>>>>> 80485c5 (Add new Pile configuration)
+=======
+>>>>>>> fa131ce (Make CC client 0)
       remote: c8/Wikipedia (en)_0
       local: c8/Wikipedia (en)_0
       proportion: null
@@ -338,6 +344,7 @@
       download_timeout: null
       validate_hash: null
 <<<<<<< HEAD
+<<<<<<< HEAD
       keep_zip: null
 =======
       keep_zip: null
@@ -426,3 +433,6 @@
       validate_hash: null
       keep_zip: null
 >>>>>>> 80485c5 (Add new Pile configuration)
+=======
+      keep_zip: null
+>>>>>>> fa131ce (Make CC client 0)
