@@ -38,7 +38,7 @@ TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 EVAL_FREQ=2
-export RUN_UUID="fed-niid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+export RUN_UUID="fed-steps-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
 
 export EXTERNAL_CONFIGS=""
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset=fed-the-pile"
@@ -61,7 +61,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.checkpoint=true"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_rounds=$N_ROUNDS"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.local_steps=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_eval_batch_size=256"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_subset_num_batches=25"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_subset_num_batches=100"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.device_eval_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
