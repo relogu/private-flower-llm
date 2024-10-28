@@ -1,0 +1,36 @@
+#!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
+#SBATCH -c 48
+#SBATCH -w ruapehu
+#SBATCH --gres=gpu:0
+#!SBATCH --job-name=dataset_countings
+#SBATCH --tasks-per-node=1
+#SBATCH --output=%x-%j.out
+#!SBATCH --time=02:00:00
+#!SBATCH --dependency=afterany:3040
+
+# Default project path
+PROJECT_PATH="$HOME/projects/flower_llm"
+
+
+# Parse command-line options
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
+  echo "slurm_submit.ruapehu: Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "slurm_submit.ruapehu: PROJECT_PATH=$PROJECT_PATH"
+
+bash /nfs-share/ls985/projects/flower_llm/scripts/tokenizers_training1.sh

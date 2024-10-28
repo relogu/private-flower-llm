@@ -6,36 +6,39 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import gc
-from logging import DEBUG, INFO
-from pathlib import Path
+from logging import INFO
+import os
+from typing import cast
 
-import hydra
 import numpy as np
 import torch
 from composer import Trainer
-from flwr.common import log
+from flwr.common import log, NDArray
 from omegaconf import OmegaConf
+from llmfoundry.callbacks import EvalGauntlet
 
-from flower_llm.conf import base_schema
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
     get_parameters_from_state,
 )
 from flower_llm.clients.llm_config_functions import validate_config
+from flower_llm.server.s3_utils import load_pretrained_model_from_path
 from flower_llm.utils import (
-    construct_parameters_dict,
-    load_model_parameters_from_file,
-    set_trainer_trainable_params_dict,
+    get_wte_parameters_from_trainer,
+    set_wte_parameters_to_trainer,
 )
 
 
-base_schema.register_config(name="base_schema")
-
-
-@hydra.main(config_path="conf/", config_name="base", version_base=None)
-def main(_cfg: BaseConfig) -> Trainer:
+def main() -> Trainer:
     """Implement the main training loop for LLMFoundry models."""
+    # Get the environmental variable for the dump folder
+    save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+    # Raise an error if the environmental variable is not set
+    if not save_path:
+        raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+    # Load the configuration from the config file
+    _cfg = cast(BaseConfig, OmegaConf.load(save_path + "/config.yaml"))
     # Resolve all interpolation variables as early as possible
     OmegaConf.resolve(_cfg)
     OmegaConf.set_struct(_cfg, False)
@@ -53,29 +56,51 @@ def main(_cfg: BaseConfig) -> Trainer:
         "Creating trainer object using stream_id: %s...",
         _cfg.centralized.stream_id,
     )
-    trainer, eval_first, _, parameters_names = _get_trainer_object(
+    trainer, eval_first, _ = _get_trainer_object(
         _cfg=cfg, cid=_cfg.centralized.stream_id, log_name="_centralised"
     )
     torch.cuda.empty_cache()
     gc.collect()
 
+    wte_parameters: NDArray | None = None
+    if _cfg.wte_parameters_path:
+        load_pretrained_model_from_path(
+            trainer=trainer,
+            pretrained_model_path=_cfg.wte_parameters_path,
+            run_uuid=_cfg.run_uuid,
+            s3_comm_config=_cfg.s3_comm_config,
+        )
+        wte_parameters = get_wte_parameters_from_trainer(trainer)
+
     if _cfg.pretrained_model_path:
-        log(
-            DEBUG,
-            "Loading pretrained model from %s",
-            _cfg.pretrained_model_path,
+        load_pretrained_model_from_path(
+            trainer=trainer,
+            pretrained_model_path=_cfg.pretrained_model_path,
+            run_uuid=_cfg.run_uuid,
+            s3_comm_config=_cfg.s3_comm_config,
         )
-        initial_parameters = load_model_parameters_from_file(
-            Path(_cfg.pretrained_model_path)
-        )
-        initial_parameters_dict = construct_parameters_dict(
-            parameters_names, initial_parameters
-        )
-        set_trainer_trainable_params_dict(trainer, initial_parameters_dict)
+
+    if wte_parameters is not None:
+        set_wte_parameters_to_trainer(trainer, wte_parameters)
 
     # Eval first if requested
-    if eval_first and trainer.state.timestamp.batch.value == 0:
+    if eval_first:
         trainer.eval()
+        eval_gauntlet_callback: EvalGauntlet | None = None
+        for callback in trainer.state.callbacks:
+            if isinstance(callback, EvalGauntlet):
+                eval_gauntlet_callback = callback
+        if eval_gauntlet_callback is not None:
+            assert isinstance(eval_gauntlet_callback, EvalGauntlet)
+            composite_scores = eval_gauntlet_callback.eval_after_all(
+                trainer.state,
+                trainer.logger,
+            )
+            log(
+                INFO,
+                "Evaluated model with the Gauntlet before training: %s",
+                composite_scores,
+            )
 
     # Dump model parameters to file
     if _cfg.centralized.store_init_model:
@@ -85,10 +110,11 @@ def main(_cfg: BaseConfig) -> Trainer:
         n_steps = trainer.state.timestamp.batch.value
         # Dump the compressed model parameters to file
         with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
-            np.savez_compressed(f, *model_parameters)
+            np.savez(f, *model_parameters)
 
-    log(INFO, "Starting training...")
-    trainer.fit()
+    if not _cfg.centralized.eval_only:
+        log(INFO, "Starting training...")
+        trainer.fit()
 
     # Dump model parameters to file
     if _cfg.centralized.store_final_model:
@@ -98,7 +124,7 @@ def main(_cfg: BaseConfig) -> Trainer:
         n_steps = trainer.state.timestamp.batch.value
         # Dump the compressed model parameters to file
         with open(f"{_cfg.run_uuid}-{n_steps}-checkpoint.npz", "wb") as f:
-            np.savez_compressed(f, *model_parameters)
+            np.savez(f, *model_parameters)
 
     log(INFO, "Done.")
     return trainer

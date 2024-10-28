@@ -3,15 +3,14 @@
 import atexit
 import copy
 import gc
-from itertools import groupby
+import json
 import logging
-import operator
 import os
-import re
+from pathlib import Path
 import time
 import warnings
 from collections import OrderedDict
-from logging import DEBUG, ERROR, WARN
+from logging import DEBUG, ERROR, INFO, WARN
 from typing import Any, cast
 
 import streaming
@@ -20,9 +19,9 @@ from composer import Callback, Evaluator, Trainer
 from composer.devices import DeviceGPU, DeviceCPU
 from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_schedule
 from composer.utils import dist, reproducibility, get_device
-from composer.utils.file_helpers import validate_given_remote_path
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays, Scalar
+from flwr.common.recordset_compat import ConfigsRecord
 from llmfoundry.data.dataloader import build_dataloader
 
 from llmfoundry.utils.builders import (
@@ -43,10 +42,6 @@ from llmfoundry.utils.config_utils import (
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
 
-from composer.loggers import RemoteUploaderDownloader
-from composer.utils import S3ObjectStore
-from composer.utils.file_helpers import list_remote_objects
-
 import numpy as np
 from flower_llm.clients.llm_config_functions import (
     adapt_train_batch_size_to_num_devices,
@@ -55,15 +50,16 @@ from flower_llm.clients.llm_config_functions import (
     set_client_tensorboard_logger,
     set_client_wandb_logger,
     set_dataset_default_params,
+    set_icl_tasks_root_dir,
     validate_config,
     set_n_workers_dataloaders,
 )
 from flower_llm.utils import (
-    construct_parameters_dict,
+    apply_fake_gradient_update,
     get_list_of_parameters_names,
     get_trainable_params_dict,
     parameters_checker,
-    set_trainer_trainable_params_dict,
+    set_trainer_params_from_ndarrays,
     sum_of_squares,
     get_parameters_from_state,
 )
@@ -71,127 +67,12 @@ from dataclasses import asdict
 import ast
 from flower_llm.utils import ClientState
 
+# NOTE: We need this if we want to compile the model because the attention
+# implementation in the MPT code is dispatched using a dictionary that raises:
+# `AssertionError: Dict types must use ConstDictVariable.`
+import torch._dynamo
 
-def copy_old_checkpoints_to_new_run(
-    remote_up_down: RemoteUploaderDownloader,
-    bucket_uri: str,
-    run_uuid: str,
-    restore_run_uuid: str,
-    restore_run_round: int,
-    restore_run_step: int,
-    n_total_clients: int | None,
-) -> None:
-    """Copy old checkpoints to the new run folder.
-
-    Parameters
-    ----------
-        remote_up_down (RemoteUploaderDownloader): The remote uploader and downloader.
-        bucket_uri (str): The bucket URI.
-        run_uuid (str): The run UUID.
-        restore_run_uuid (str): The restore run UUID.
-        restore_run_round (int): The restore run round.
-        restore_run_step (int): The restore run step.
-        n_total_clients (int): The total number of clients.
-
-    Returns
-    -------
-        None
-
-    Raises
-    ------
-        NotImplementedError: If the backend is not an S3ObjectStore.
-        ValueError: If the old run folder or the new run folder is not found.
-    """
-    backend = remote_up_down.remote_backend
-    if not isinstance(backend, S3ObjectStore):
-        raise NotImplementedError(
-            "Support for resuming from non-S3 backends is not yet implemented."
-        )
-
-    new_run_folder = bucket_uri + f"/{run_uuid}"
-    old_run_folder = bucket_uri + f"/{restore_run_uuid}"
-    if (old_run_val := validate_given_remote_path(old_run_folder)) and (
-        _new_run_val := validate_given_remote_path(new_run_folder)
-    ):
-        state_bin = restore_run_uuid + f"/server/{restore_run_round}/state.bin"
-
-        momentum_vec = (
-            old_run_folder + f"/server/{restore_run_round}/current_momentum_vector.npz"
-        )
-
-        parameters_no_ext = (
-            old_run_folder + f"/server/{restore_run_round}/current_server_parameters"
-        )
-        parameters = (
-            parameters_no_ext.replace(bucket_uri + "/", "") + ".bin"
-            if validate_given_remote_path(parameters_no_ext + ".bin")
-            else (parameters_no_ext.replace(bucket_uri + "/", "") + ".npz")
-        )
-
-        remote_objects = list_remote_objects(old_run_folder)
-
-        # Extract the client and the batches
-        # NOTE: (?:\d+) means a do-not-capture group
-        # As such we allow any number of epochs without extracting
-        # The number of epochs
-        client_path_batches = sorted(
-            [
-                (
-                    path,
-                    int(reg.group(1)),
-                    int(reg.group(2)),
-                )
-                for path in remote_objects
-                if (reg := re.search(r"client_(\d+)/ep(?:\d+)-ba(\d+)", path))
-                is not None
-            ],
-            key=operator.itemgetter(1, 2),
-        )
-
-        # For each client, choose the latest checkpoint
-        # That is consistent with the step of the resume round
-        # groupby acts like an sql groupby
-        client_paths = [
-            list(filter(lambda x: x[2] <= restore_run_step, group))[-1][0]
-            for _, group in groupby(client_path_batches, key=operator.itemgetter(1))
-        ]
-
-        if (
-            n_total_clients is not None
-            and (found_clients := len(client_paths)) != n_total_clients
-        ):
-            raise ValueError(
-                f"Found {found_clients} clients in the old run folder {old_run_folder},"
-                f" but expected {n_total_clients}."
-            )
-
-        paths_to_copy = [state_bin, parameters]
-
-        if validate_given_remote_path(momentum_vec):
-            paths_to_copy.append(momentum_vec.replace(bucket_uri + "/", ""))
-        else:
-            log(
-                DEBUG,
-                f"Could not find momentum vector to copy from {momentum_vec}",
-            )
-
-        paths_to_copy.extend(client_paths)
-
-        for path in paths_to_copy:
-            copy_source = {"Bucket": backend.bucket, "Key": path}
-            target_key = path.replace(restore_run_uuid, run_uuid)
-            log(DEBUG, "Copying %s to %s", path, target_key)
-            backend.client.copy(copy_source, backend.bucket, target_key)
-
-    else:
-        if not old_run_val:
-            raise ValueError(
-                f"Could not find the old run folder {old_run_folder} to copy"
-                " checkpoints."
-            )
-        raise ValueError(
-            f"Could not find the new run folder {new_run_folder} to copy checkpoints."
-        )
+torch._dynamo.config.suppress_errors = True  # type: ignore[reportAttributeAccessIssue]
 
 
 def set_trainer_timestamp(trainer: Trainer, timestamp: int) -> None:
@@ -260,7 +141,7 @@ def get_raw_model_parameters(
         for _, val in get_trainable_params_dict(model).items()
     ]
     if return_names:
-        return parameters_ndarrays, list(get_trainable_params_dict(model).keys())
+        return parameters_ndarrays, get_list_of_parameters_names(model=model)
     else:
         return parameters_ndarrays
 
@@ -269,7 +150,8 @@ def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str | None,
     log_name: str | None = None,
-) -> tuple[Trainer, bool, DictConfig, list[str]]:
+    force_cpu: bool = False,
+) -> tuple[Trainer, bool, DictConfig]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
@@ -314,16 +196,17 @@ def _get_trainer_object(
     visible_devices = ast.literal_eval(str(os.getenv("APPOINTED_CUDA_DEVICE", "null")))
     log(DEBUG, f"Visible devices: {visible_devices}")
     # The worker has been appointed a single GPU
-    if type(visible_devices) is int:
+    if type(visible_devices) is int and not force_cpu:
         device: DeviceGPU | DeviceCPU | None = DeviceGPU(device_id=int(visible_devices))
         log(DEBUG, f"Selecting device {visible_devices}, {device}")
     # The worker has been appointed all GPUs available
-    elif type(visible_devices) is tuple:
+    elif type(visible_devices) is tuple and not force_cpu:
         assert len(visible_devices) > 1
         device = None
     # The worker is in a CPU-only environment
     else:
-        assert visible_devices is None
+        if not force_cpu:
+            assert visible_devices is None
         device = DeviceCPU()
         log(DEBUG, f"Selecting device CPU, {device}")
     log(DEBUG, "Initializing dist with device...")
@@ -363,7 +246,10 @@ def _get_trainer_object(
     eval_loader_config: DictConfig | ListConfig | None = pop_config(
         _cfg, "eval_loader", must_exist=False, default_value=None
     )
-    icl_tasks_config: ListConfig | str | None = pop_config(
+    icl_tasks_config: DictConfig | str | None = pop_config(
+        _cfg, "icl_tasks_config", must_exist=False, default_value=None
+    )
+    icl_tasks_listconfig: ListConfig | str | None = pop_config(
         _cfg, "icl_tasks", must_exist=False, default_value=None
     )
     eval_gauntlet_config: DictConfig | str | None = pop_config(
@@ -385,6 +271,24 @@ def _get_trainer_object(
     icl_seq_len: int | None = pop_config(
         _cfg, "icl_seq_len", must_exist=False, default_value=None
     )
+    # Optional DeepSpeed configs
+    deepspeed_config_file: str | None = pop_config(
+        _cfg, "deepspeed_config_file", must_exist=False, default_value=None
+    )
+    deepspeed_config: dict[str, Any] | None = None
+    if deepspeed_config_file is not None:
+        # assert os.path.exists(deepspeed_config_file), (
+        assert Path(
+            deepspeed_config_file
+        ).exists(), (
+            "DeepSpeed config file not found. Please check the path to the DeepSpeed"
+        )
+        assert (
+            Path(deepspeed_config_file).suffix == ".json"
+        ), "DeepSpeed config file must be a JSON file."
+        with open(deepspeed_config_file, encoding="utf-8") as f:
+            deepspeed_config = json.load(f)
+    log(INFO, f"DeepSpeed config: {deepspeed_config}")
     # Optional logging, evaluation and callback configs
     log_name = f"_client_{cid}" if log_name is None else log_name
     set_client_wandb_logger(_cfg, log_name)
@@ -462,6 +366,9 @@ def _get_trainer_object(
     )
     device_train_microbatch_size: str | int = pop_config(
         _cfg, "device_train_microbatch_size", must_exist=False, default_value="auto"
+    )
+    device_eval_microbatch_size: str | int = pop_config(
+        _cfg, "device_eval_microbatch_size", must_exist=False, default_value="auto"
     )
     eval_subset_num_batches: int = pop_config(
         _cfg, "eval_subset_num_batches", must_exist=False, default_value=-1
@@ -620,6 +527,11 @@ def _get_trainer_object(
     # Train loader
     train_loader = None
     if train_loader_config is not None:
+        train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
+        assert isinstance(train_loader_config, dict), (
+            "Expected train_loader_config to be a dict,"
+            f" got {type(train_loader_config)}"
+        )
         train_loader = build_dataloader(
             train_loader_config,
             tokenizer,
@@ -633,8 +545,14 @@ def _get_trainer_object(
         is_multi_eval = isinstance(eval_loader_config, ListConfig)
         eval_configs = eval_loader_config if is_multi_eval else [eval_loader_config]
         for eval_config in eval_configs:
+            eval_config = OmegaConf.to_container(eval_config, resolve=True)  # type: ignore[reportAssignmentType]
+            assert isinstance(eval_config, dict), (
+                "Expected eval_config to be a dict," f" got {type(eval_config)}"
+            )
             eval_dataloader = build_dataloader(
-                eval_config, tokenizer, device_eval_batch_size
+                eval_config,  # type: ignore[reportArgumentType]
+                tokenizer,
+                device_eval_batch_size,
             )
             eval_loader = Evaluator(
                 label=(
@@ -644,38 +562,72 @@ def _get_trainer_object(
                 ),
                 dataloader=eval_dataloader,
                 metric_names=[],  # we will add these after model is created
+                device_eval_microbatch_size=device_eval_microbatch_size,
             )
             eval_loaders.append(eval_loader)
 
     eval_gauntlet_callback = None
 
-    if icl_tasks_config is not None:
+    if icl_tasks_listconfig is not None:
+        assert eval_gauntlet_config is not None
+        destination_dir: str | None = None
+        if not isinstance(eval_gauntlet_config, str):
+            assert isinstance(eval_gauntlet_config, DictConfig)
+            destination_dir = eval_gauntlet_config.pop("destination_dir", None)
+        if (
+            icl_tasks_config is not None
+            and isinstance(icl_tasks_config, DictConfig)
+            and icl_tasks_config.root_dir is not None
+            and isinstance(icl_tasks_listconfig, ListConfig)
+        ):
+            set_icl_tasks_root_dir(icl_tasks_listconfig, icl_tasks_config.root_dir)
+        icl_tasks_listconfig = OmegaConf.to_container(
+            icl_tasks_listconfig, resolve=True
+        )  # type: ignore[reportAssignmentType]
+        assert isinstance(icl_tasks_listconfig, list | str), (
+            "Expected icl_tasks_listconfig to be a list or a string,"
+            f" got {type(icl_tasks_listconfig)}"
+        )
+        eval_gauntlet_config = OmegaConf.to_container(
+            eval_gauntlet_config, resolve=True
+        )  # type: ignore[reportAssignmentType]
+        assert isinstance(eval_gauntlet_config, dict | str), (
+            "Expected eval_gauntlet_config to be a dict,"
+            f" got {type(eval_gauntlet_config)}"
+        )
         icl_evaluators, _, eval_gauntlet_callback = build_icl_data_and_gauntlet(
-            icl_tasks_config,
+            icl_tasks_listconfig,
             eval_gauntlet_config,
             tokenizer,
             device_eval_batch_size,
             icl_seq_len or max_seq_len,
             icl_subset_num_batches,
+            destination_dir=destination_dir,
         )
+        for icl_evaluator in icl_evaluators:
+            icl_evaluator.auto_microbatching = device_eval_microbatch_size == "auto"
         evaluators.extend(icl_evaluators)
 
     if eval_gauntlet_callback is not None:
         callbacks.append(eval_gauntlet_callback)
 
     # Model
+    model_config = dict(OmegaConf.to_container(model_config, resolve=True))  # type: ignore[reportAssignmentType]
+    assert isinstance(model_config, dict), (
+        "Expected model_config to be a dict," f" got {type(model_config)}"
+    )
     model = build_composer_model(
-        name=model_config.name,
+        name=model_config["name"],
         cfg=model_config,
         tokenizer=tokenizer,
         init_context=init_context,
         master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
-    parameters_names = get_list_of_parameters_names(model)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
     logged_cfg.update({"n_params": n_params})
+    log(INFO, f"Number of model parameters: {n_params:,}")
 
     # Optimizer
     optimizer_name: str = optimizer_config.pop("name")
@@ -692,6 +644,7 @@ def _get_trainer_object(
 
     # Build the Trainer
     trainer = Trainer(
+        deepspeed_config=deepspeed_config,
         run_name=run_name,
         seed=seed,
         model=model,
@@ -731,7 +684,7 @@ def _get_trainer_object(
         compile_config=compile_config,
         device=device,
     )
-    return trainer, eval_first, logged_cfg, parameters_names
+    return trainer, eval_first, logged_cfg
 
 
 def get_parameters(
@@ -769,19 +722,20 @@ def set_parameters_to_state(
 
 def llm_fit(
     parameters: NDArrays,
-    config: dict,
+    config: ConfigsRecord,
     cfg: DictConfig,
     cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
     # Retrieve the clients' states
     client_state: dict[int | str, dict[str, Any]] = ast.literal_eval(
-        config["client_state"]
+        str(config["client_state"])
     )
     # Extract current client's state
     client_state_struct = ClientState(**client_state[cid])
     # Get the number of local steps done by the current client
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+
     # Initialize training hyperparameters
     global_train_batch_size = int(cfg["global_train_batch_size"])
     start_time = time.time_ns()
@@ -789,10 +743,11 @@ def llm_fit(
     n_samples_trained = 0
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
-    skip_iteration = set_client_load_path(
+    server_steps_cumulative = cast(int, config["server_steps_cumulative"])
+    skip_iteration, is_chkpt_loaded = set_client_load_path(
         cfg,
         cid,
-        config["server_steps_cumulative"] + num_batches_trained,
+        server_steps_cumulative + num_batches_trained,
     )
     cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
@@ -805,15 +760,57 @@ def llm_fit(
     #     # Ignoring loading the model as we need to set it from the server
     #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
-    trainer, eval_first, _, parameters_names = _get_trainer_object(_cfg=cfg, cid=cid)
-
-    # Create the server parameters dictionary
-    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
+    trainer, eval_first, _ = _get_trainer_object(_cfg=cfg, cid=cid)
 
     initial_trainer_parameters = get_parameters_from_state(
         {},
         trainer,
     )
+
+    if config["fake_gradient_update"] and is_chkpt_loaded:
+        n_fake_gradient_steps = config["fake_gradient_update_steps"]
+        assert type(n_fake_gradient_steps) is int
+        assert n_fake_gradient_steps > 0
+        apply_fake_gradient_update(
+            trainer,
+            initial_trainer_parameters,
+            parameters,
+            n_fake_gradient_steps,
+        )
+
+        new_model_parameters = get_parameters_from_state({}, trainer)
+
+        # Log the summed delta of the parameters
+        log(
+            DEBUG,
+            f"""L2 norm of delta from fake_params to initial parameters: {
+                sum_of_squares([
+                    x - y
+                    for x, y in zip(
+                        initial_trainer_parameters, new_model_parameters, strict=True
+                    )
+                ])
+            }""",
+        )
+        log(
+            DEBUG,
+            f"""L2 norm of delta from fake_params to server parameters: {
+                sum_of_squares([
+                    x - y for x, y in zip(parameters, new_model_parameters, strict=True)
+                ])
+            }""",
+        )
+
+        log(
+            DEBUG,
+            f"""L2 norm of delta from initial_params to server parameters: {
+                sum_of_squares([
+                    x - y
+                    for x, y in zip(initial_trainer_parameters, parameters, strict=True)
+                ])
+            }""",
+        )
+
     parameters_checker(initial_trainer_parameters, parameters, False)
 
     # log(DEBUG, f"Trainer config: {logged_cfg}")
@@ -822,13 +819,13 @@ def llm_fit(
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the timestamp to the current time
-        set_trainer_timestamp(trainer, config["server_steps_cumulative"])
+        set_trainer_timestamp(trainer, server_steps_cumulative)
 
         # Set the parameters
         if parameters is not None and not skip_iteration:
             # log(DEBUG, "Initializing model...")
             start_time = time.time_ns()
-            set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+            set_trainer_params_from_ndarrays(parameters, trainer)
 
             current_trainer_parameters = get_parameters_from_state({}, trainer)
             parameters_checker(
@@ -846,6 +843,10 @@ def llm_fit(
             trainer.eval()
             train_metrics |= {
                 "client/fit_pre_eval_time": (time.time_ns() - start_time) * 1e-9
+            }
+            train_metrics |= {
+                f"PrePersonalization{k}": v.detach().cpu().item()  # type: ignore[attr-defined]
+                for k, v in trainer.state.eval_metric_values.items()
             }
         # log(DEBUG, "Starting training...")
         # Execute fit step for the appointed duration
@@ -936,7 +937,7 @@ def llm_fit(
 
 def llm_eval(
     parameters: NDArrays,
-    config: dict,
+    config: ConfigsRecord,
     cfg: DictConfig,
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
@@ -949,13 +950,10 @@ def llm_eval(
     cfg.load_path = None  # type: ignore[union-attr]
     cfg.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, _, _, parameters_names = _get_trainer_object(
+    trainer, _, _ = _get_trainer_object(
         _cfg=cfg,
-        cid=0,
+        cid=None,  # For doing "centralized" evaluation
     )
-
-    # Create the server parameters dictionary
-    server_parameters_dict = construct_parameters_dict(parameters_names, parameters)
 
     initial_trainer_parameters = get_parameters_from_state({}, trainer)
     parameters_checker(initial_trainer_parameters, parameters, False)
@@ -965,7 +963,7 @@ def llm_eval(
     # Set the parameters
     # log(DEBUG, "Initializing model...")
     start_time = time.time_ns()
-    set_trainer_trainable_params_dict(trainer, server_parameters_dict)
+    set_trainer_params_from_ndarrays(parameters, trainer)
 
     current_trainer_parameters = get_parameters_from_state({}, trainer)
     parameters_checker(current_trainer_parameters, initial_trainer_parameters, False)

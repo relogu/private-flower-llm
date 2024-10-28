@@ -7,7 +7,6 @@ import re
 from typing import Any
 
 import torch
-from composer.utils.file_helpers import list_remote_objects
 from composer.devices import DeviceGPU, DeviceCPU, Device
 from flwr.common.logger import log
 
@@ -15,6 +14,7 @@ from flwr.common.logger import log
 from omegaconf import DictConfig, ListConfig
 
 
+from flower_llm.server.s3_utils import list_objects
 from flower_llm.utils import (
     get_n_cpu_cores,
     get_n_cuda_devices,
@@ -37,6 +37,27 @@ class StreamDict:
     download_timeout: float | None = None
     validate_hash: str | None = None
     keep_zip: bool | None = None
+
+
+def set_icl_tasks_root_dir(icl_tasks_listconfig: ListConfig, root_dir: str) -> None:
+    """Update the dataset URI for each ICL task in the given ListConfig.
+
+    The update is performed by prepending the specified root directory.
+
+    Parameters
+    ----------
+        icl_tasks_listconfig : ListConfig
+            A ListConfig object containing ICL tasks, each with a `dataset_uri` attr.
+        root_dir : str
+            The root directory to prepend to each task's `dataset_uri`.
+
+    Returns
+    -------
+        None
+    """
+    for icl_task in icl_tasks_listconfig:
+        old_dataset_uri = icl_task.dataset_uri
+        icl_task.dataset_uri = root_dir + "/" + old_dataset_uri
 
 
 def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
@@ -121,7 +142,7 @@ def set_dataset_default_params(cfg: DictConfig) -> None:
     """Set the default parameters for the dataset."""
     # Set the `pre-download` value as 8*batch_size
     if cfg.train_loader.dataset.get("predownload", None) is None:
-        cfg.train_loader.dataset.predownload = 8 * cfg.global_train_batch_size
+        cfg.train_loader.dataset.predownload = 8 * cfg.device_train_batch_size
     if cfg.eval_loader.dataset.get("pre_download", None) is None:
         cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
     # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
@@ -153,7 +174,9 @@ def set_client_save_and_load_path(cfg: DictConfig, cid: int | str) -> None:
         log(DEBUG, "Set save folder: %s", cfg.save_folder)
 
 
-def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
+def set_client_load_path(
+    cfg: DictConfig, cid: int | str, n_steps: int
+) -> tuple[bool, bool]:
     """Set the save and load path given the server round and client id."""
     # Set client load path
     set_client_save_and_load_path(cfg, cid)
@@ -163,7 +186,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
     if cfg.save_folder is not None:  # type: ignore[union-attr]
         try:
             # Are there any checkpoints?
-            remote_objects = list_remote_objects(cfg.save_folder)
+            _is_remote, remote_objects = list_objects(cfg.save_folder)
             if not remote_objects:
                 log(
                     INFO,
@@ -171,7 +194,7 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                     cfg.save_folder,
                 )
                 assert cfg.load_path is None
-                return skip_iteration
+                return skip_iteration, False
             # NOTE: We always need to check all of the checkpoints
             # Given the epoch change
             # As such we extract the epoch number and number of batches
@@ -183,7 +206,11 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                         int(reg.group(2)),  # number of batches
                     )
                     for path in remote_objects
-                    if (reg := re.search(r"client_.*/ep(\d+)-ba(\d+)", path))
+                    if (
+                        reg := re.search(
+                            r"client_" + str(cid) + r"/ep(\d+)-ba(\d+)", path
+                        )
+                    )
                     is not None
                 ],
                 key=operator.itemgetter(1),
@@ -220,19 +247,20 @@ def set_client_load_path(cfg: DictConfig, cid: int | str, n_steps: int) -> bool:
                 )
                 # NOTE: Don't re-save the checkpoint when resuming mid-round
                 cfg.save_folder = None
-                return skip_iteration
+                return skip_iteration, True
             # Load the latest checkpoint
             log(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
             )
             epoch, batches = sorted_pairs[-1]
-            cfg.load_path = (
-                cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
-            )
-            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+            if batches < n_steps:
+                cfg.load_path = (
+                    cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+                )
+                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
-    return skip_iteration
+    return skip_iteration, True
 
 
 def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
@@ -248,11 +276,22 @@ def set_client_wandb_logger(cfg: DictConfig, log_name: str) -> None:
         # Set the new run name
         cfg.loggers.wandb.init_kwargs.name = new_run_name
 
+        # NOTE: This part won't catch any client-level modification to the config and
+        # use directly the one taken form the whole run
+        # Get the environmental variable for the dump folder
+        save_path = os.environ.get("POLLEN_SAVE_PATH", "")
+        # Raise an error if the environmental variable is not set
+        if not save_path:
+            raise ValueError("The environmental variable POLLEN_SAVE_PATH is not set.")
+        # Add configuration to the wandb config parameter
+        cfg.loggers.wandb["config_file"] = save_path + "/config.yaml"
+
 
 def set_client_tensorboard_logger(cfg: DictConfig, log_name: str) -> None:
     """Set the tensorboard logger for the client."""
     # Set the tensorboard run name
-    if cfg.loggers is not None and cfg.loggers.tensorboard is not None:
+    if cfg.loggers is not None and "tensorboard" in cfg.loggers:
+        assert cfg.loggers.tensorboard is not None, "Tensorboard logger is not set."
         # Add the client id to the parameters
         cfg.loggers.tensorboard.log_name = log_name
 
@@ -328,10 +367,11 @@ def validate_config(cfg: DictConfig) -> None:
             "to enable layers using fp8 precision.",
         )
 
-    if cfg.model.get("fc_type", "torch") == "te" or "te" in cfg.model.get(
-        "ffn_config", {}
-    ).get("ffn_type", "mptmlp"):
-        fsdp_config = cfg.get("fsdp_config", None)
+    fsdp_config = cfg.get("fsdp_config", None)
+    if (
+        cfg.model.get("fc_type", "torch") == "te"
+        or "te" in cfg.model.get("ffn_config", {}).get("ffn_type", "mptmlp")
+    ) and fsdp_config is not None:
         act_ckpt = fsdp_config.get("activation_checkpointing", False)
         act_ckpt_reentrant = fsdp_config.get("activation_checkpointing_reentrant", True)
         if fsdp_config is not None and act_ckpt is True and act_ckpt_reentrant is False:

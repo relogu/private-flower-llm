@@ -4,6 +4,7 @@ from typing import Any
 from pydantic.dataclasses import dataclass
 from omegaconf import DictConfig, MISSING
 from hydra.core.config_store import ConfigStore
+from enum import StrEnum, auto
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -18,11 +19,14 @@ class Centralized(DictConfig):
         Whether to store the final model
     stream_id: str | None = MISSING
         Stream id to pass to the data configuration
+    eval_only: bool = MISSING
+        Whether to only execute the evaluation
     """
 
     store_init_model: bool = MISSING
     store_final_model: bool = MISSING
     stream_id: str | None = MISSING
+    eval_only: bool = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -35,8 +39,6 @@ class Pollen(DictConfig):
         Placement policy for the clients: "rr", "srr", "bu", "su", "lbu", "lb", "llb"
     n_nodes: int = MISSING
         Number of nodes in the cluster
-    server_address: str = MISSING
-        Address of the server
     saving_path: str = MISSING
         Path to save the models
     refresh_period: int = MISSING
@@ -60,7 +62,6 @@ class Pollen(DictConfig):
 
     placement_policy: str = MISSING
     n_nodes: int = MISSING
-    server_address: str = MISSING
     saving_path: str = MISSING
     refresh_period: int = MISSING
     fit_collaborative: bool = MISSING
@@ -72,45 +73,71 @@ class Pollen(DictConfig):
     resume_round: int | None = MISSING
 
 
+class StrategyName(StrEnum):
+    """Strategy type."""
+
+    NESTOROV = auto()
+    FEDMOM = auto()
+    FEDAVG = auto()
+    FEDYOGI = auto()
+    FEDADAM = auto()
+    NESTOROV_MATRIX = auto()
+
+
+class StrategyKWArgs(dict[str, Any], DictConfig):  # type: ignore[reportIncompatibleMethodOverride,misc]
+    """StrategyKWArgs configuration."""
+
+
 @dataclass(config={"arbitrary_types_allowed": True})
 class FL(DictConfig):
-    """Federated learning configuration.
+    """
+    Federated learning configuration.
 
     Attributes
     ----------
-    n_total_clients: int = MISSING
-        Number of clients
-    n_clients_per_round: int = MISSING
-        Number of clients per round
-    n_rounds: int = MISSING
-        Number of rounds
-    reset_optimizer: bool = MISSING
-        Whether to reset the local optimizer
-    n_local_epochs: int = MISSING
-        Number of local epochs
-    n_local_steps: int = MISSING
-        Number of local steps
-    rescale_global_model: bool = MISSING
-        Whether to rescale the norm of the global model
-        to match that of the average local model
-    rescale_momentum_vector: bool = MISSING
-        Whether to rescale the momentum vector
-    server_learning_rate: float = MISSING
-        Learning rate of the server
-    server_momentum: float = MISSING
-        Momentum of the server
+    n_total_clients : int
+        Number of total clients.
+    n_clients_per_round : int
+        Number of clients per round.
+    n_rounds : int
+        Number of rounds.
+    reset_optimizer : bool
+        Whether to reset the local optimizer.
+    fake_gradient_update : bool
+        Whether to use fake gradient updates.
+    fake_gradient_update_steps : int
+        Number of steps for fake gradient updates.
+    n_local_epochs : int
+        Number of local epochs.
+    n_local_steps : int
+        Number of local steps.
+    ignore_failed_rounds : bool
+        Whether to ignore failed rounds.
+    accept_failures_cnt : int
+        Number of acceptable failures.
+    eval_fl : int
+        Period of federated evaluation.
+    strategy_name : StrategyName
+        The name of the strategy to use.
+    strategy_kwargs : StrategyKWArgs
+        Keyword arguments for the strategy.
     """
 
     n_total_clients: int = MISSING
     n_clients_per_round: int = MISSING
     n_rounds: int = MISSING
     reset_optimizer: bool = MISSING
+    fake_gradient_update: bool = MISSING
+    fake_gradient_update_steps: int = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
-    rescale_global_model: bool = MISSING
-    rescale_momentum_vector: bool = MISSING
-    server_learning_rate: float = MISSING
-    server_momentum: float = MISSING
+
+    ignore_failed_rounds: bool = MISSING
+    accept_failures_cnt: int = MISSING
+    eval_fl: int = MISSING
+
+    strategy_name: StrategyName = MISSING
+    strategy_kwargs: StrategyKWArgs = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -176,6 +203,7 @@ class WandbSetup(DictConfig):
     id: str = MISSING
         ID of the run, {Config.run_uuid}
     allow_val_change: bool = MISSING
+        Allows changing the value of the config when resuming
     """
 
     project: str = MISSING
@@ -224,18 +252,24 @@ class BaseConfig(DictConfig):
         Whether to run in test mode
     pretrained_model_path: str = MISSING
         Path to the pretrained model
+    wte_parameters_path: str = MISSING
+        Path to the model from which to take the WTE parameters
     centralized: Centralized = MISSING
         Centralized configuration
     pollen: Pollen
         Pollen configuration
     fl: FL
         Federated learning configuration
+    use_shm: bool = MISSING
+        Whether to use SharedMemory communication
     use_s3_comm: bool = MISSING
         Whether to use S3 communication
     s3_comm_config: S3CommConfig
         S3 communication configuration
     use_wandb: bool = MISSING
         Whether to use Wandb
+    cleanup_checkpoints: bool = MISSING
+        Whether to clean up all the checkpoints at the end
     wandb: Wandb
         Wandb configuration
     """
@@ -244,12 +278,15 @@ class BaseConfig(DictConfig):
     seed: int = MISSING
     is_test: bool = MISSING
     pretrained_model_path: str | None = MISSING
+    wte_parameters_path: str | None = MISSING
     centralized: Centralized = MISSING
     pollen: Pollen = MISSING
     fl: FL = MISSING
     use_s3_comm: bool = MISSING
+    use_shm: bool = MISSING
     s3_comm_config: S3CommConfig = MISSING
     use_wandb: bool = MISSING
+    cleanup_checkpoints: bool = MISSING
     wandb: Wandb = MISSING
 
     # NOTE: MosaicML specific, do not include in the base schema

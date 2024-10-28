@@ -214,6 +214,13 @@ events.out.tfevents.*
 # Dataset shards and metadata
 *.mds*
 *.json
+!flower_llm/conf/deepspeed_config/*.json
 
 # Runs
 runs/
+
+# Exclude checkpoints folder
+flower_llm_checkpoints
+
+# Exclude tokenizers
+tokenizer_*

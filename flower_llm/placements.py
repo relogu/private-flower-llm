@@ -985,9 +985,9 @@ def sequential_get_models_scores(
     # Init return dict
     ret = {}
     # Loop over model names
-    for k in models:
+    for k, model in models.items():
         v = clients_stats[k]
-        ret.update(_get_model_score(fn, k, models[k], v))
+        ret.update(_get_model_score(fn, k, model, v))
     return ret
 
 

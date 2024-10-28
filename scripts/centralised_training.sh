@@ -64,28 +64,124 @@ if [ -z "$RUN_UUID" ]; then
 fi
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
-	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+	# export SAVE_PATH="s3://checkpoints/$RUN_UUID"
+	export SAVE_PATH="$PROJECT_PATH/$RUN_UUID"
+	mkdir -p "$SAVE_PATH"
 fi
 export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
-#! Set `LLM_OPTIONS` environment variable
-# export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4-c4 dataset/streams@dataset.train.streams=8_clients dataset/streams@dataset.val.streams=centralised"
-export LLM_OPTIONS="$LLM_OPTIONS dataset=c4 dataset/streams@dataset.train.streams=centralised dataset/streams@dataset.val.streams=centralised"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=100ba llm_config.save_interval=100ba llm_config.console_log_interval=100ba llm_config.save_folder=$SAVE_PATH"
-# export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=12500ba llm_config.scheduler.t_max=15000ba llm_config.scheduler.t_warmup=0ba llm_config.scheduler.alpha_f=1e-5 llm_config.optimizer.lr=3.0e-5 "  # Comment this out to use the default hyperparameters for the selceted model size
-echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
+
+#! Set dataset related configurations
+export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
+mkdir -p $DATASET_CACHE_DIR
+export LLM_OPTIONS="$LLM_OPTIONS dataset=fed-c4"                                     # Dataset name
+export LLM_OPTIONS="$LLM_OPTIONS dataset.train.root_local=$DATASET_CACHE_DIR/fed-c4" # Path of the local cache for the training dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset.val.root_local=$DATASET_CACHE_DIR/fed-c4"   # Path of the local cache for the evaluation dataset
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=8_clients"    # Stream configuration for the training dataset -- 8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=8_clients"      # Stream configuration for the training dataset --  8 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=32_clients"   # Stream configuration for the training dataset -- 32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=32_clients"     # Stream configuration for the training dataset --  32 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.train.streams=64_clients"   # Stream configuration for the training dataset -- 64 clients
+export LLM_OPTIONS="$LLM_OPTIONS dataset/streams@dataset.val.streams=64_clients"     # Stream configuration for the training dataset --  64 clients
+export LLM_OPTIONS="$LLM_OPTIONS centralized.stream_id=null"                         # ID of the stream to use only for centralized training (they are concatenated if null)
+
+#! Size specific optimization parameters (comment this out to use the default values)
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.max_duration=0ba"       # Number of totale training steps
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_max=0ba"    # Duration of the learning rate cosine scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.t_warmup=0ba" # Warmup steps for the learning rate scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.scheduler.alpha_f=0.1"  # Final learning rate multiplier for the cosine scheduler
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.optimizer.lr=6.0e-4"    # Learning rate
+
+#! Load a model from a checkpoint of type .pt (residing in the S3 bucket)
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=$CHECKPOINT_PATH"
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-760M-20240305_190707/ep0-ba17500-rank0.pt"  # Centralised 760M
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-1B-20240229_104204/ep0-ba25500-rank0.pt"  # Centralised 1B
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.load_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/centralised-7B-20240724_190529_centralised/ep0-ba63900-rank0.pt" # Centralised 7B
+
+#! Load a model from a checkpoint of type NDArrays
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=$CHECKPOINT_PATH"
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-2024505_100605/server/19/current_server_parameters.npz"  # Federated 350M  -- 1
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-20240505_100605/server/19/current_server_parameters.npz"  # Federated 350M  -- 2
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-350M-20240506_204125/server/51/current_server_parameters.npz"  # Federated 350M  -- 3
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_long_checkpoint.npz"  # Federated 1B long run
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_1B_short_checkpoint.npz"  # Federated 1B short run
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/flower_llm_checkpoints/fed-3B-20240702_141112/server/25/current_server_parameters.npz"  # Federated 3B
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=/nfs-share/ls985/projects/flower_llm/fed_7B_checkpoint.npz"  # Federated 7B
+# export LLM_OPTIONS="$LLM_OPTIONS pretrained_model_path=s3://checkpoints/matrix-125M-p-tle/server/10/current_server_parameters.npz" # Test
+
+#! General training parameters
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.save_interval=1000ba"       # Save interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.console_log_interval=100ba" # Console log interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=false"           # Disable evaluation first
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true"            # Enable evaluation first
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_interval=250ba"        # Local evaluation interval
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_subset_num_batches=-1" # Evaluate the entire validation set
+# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.compile_config={}"                             # Compiles the model with default parameters
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # Shard only the gradient operation -- most of the times convenient when GPUs are poorly connected
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.fsdp_config" # Removes FSDP
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.optimizer_monitor"                    # Clears OptimizerMonitor (not supported when using DeepSpeed)
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.lr_monitor"                           # Clears LRMonitor
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.memory_monitor"                       # Clears MemoryMonitor
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.runtime_estimator"                    # Clears RuntimeEstimator
+# export LLM_OPTIONS="$LLM_OPTIONS ~llm_config.callbacks.activation_monitor_full_model"        # Clears ActivationMonitorFullModel
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.device_eval_microbatch_size=auto" # Automatic microbatch size for evaluation
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_eval_batch_size=128"         # Evaluation batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=512"        # DisTrO 8 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=128"        # DisTrO 2 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=256"        # DisTrO 4 devices batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.global_train_batch_size=64"         # DisTrO single device batch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=8"     # DisTrO 4xA40 devices microbatch size -- w/ and w/o compilation -- no FSDP
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.device_train_microbatch_size=auto"  # Automatic microbatch size
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp16"                 # Standard Automatic Mixed Precision float16 context -- use with < Ampere GPUs
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_fp8 ++llm_config.model.fc_type=te" # Standard Automatic Mixed Precision float8 context -- use with >= Ampere GPUs
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.precision=amp_bf16" # Standard Automatic Mixed Precision brainfloat16 precision context -- use with >= Ampere GPUs
+
+#! Model parameters
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.n_heads=8 llm_config.model.n_layers=16 ++llm_config.model.attn_config.rope=true ++llm_config.model.attn_config.rope_impl=dail ++llm_config.model.attn_config.rope_theta=10000" # DisTrO model
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=torch"                                                                                                                                                   # Use PyTorch's attention implementation
+# export LLM_OPTIONS="$LLM_OPTIONS llm_config.model.attn_config.attn_impl=flash"                                                                                                                                                   # Use flash attention implementation
+
 #! Getting visible GPUs
-N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
+	echo "No NVIDIA devices found."
+	N_GPUS=0
+elif [[ $(nvidia-smi -L) == *'not found'* ]]; then
+	echo "nvidia-smi not present."
+	N_GPUS=0
+else
+	N_GPUS=$(nvidia-smi -L | wc -l)
+fi
+if [ "$N_GPUS" -eq 0 ]; then
+	echo "No GPUs found. Exiting."
+	CUDA_VISIBLE_DEVICES=""
+else
+	CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+fi
 echo "centralised_training.sh: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! Additional config
 export LLM_OPTIONS="$LLM_OPTIONS run_uuid=$RUN_UUID"
+
+#! Evaluation gauntlet configuration
+# export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=tasks_v0.3 eval_gauntlet_config=eval_gauntlet_v0.3 eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR" # Complete MosaicML Gauntlet
+export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=empty eval_gauntlet_config=empty" # Empty gauntlet
+
+#! DeepSpeed configuration file
+# export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file='/nfs-share/ls985/projects/flower_llm/flower_llm/conf/deepspeed_config/empty.json'"
+export LLM_OPTIONS="$LLM_OPTIONS ++llm_config.deepspeed_config_file=null"
+
+echo "centralised_training.sh: LLM_OPTIONS=$LLM_OPTIONS"
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
+
+#! Run Hydra resolver
+HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG $EXTERNAL_CONFIGS hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/hydra_resolver.log
+
 #! Launch centralised training script
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py $EXTERNAL_CONFIGS $LLM_CONFIG $LLM_OPTIONS $DATA_CONFIG is_test=false hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
+# TORCH_LOGS="+dynamo" TORCHDYNAMO_VERBOSE=1
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 RUN_UUID=$(uuidgen) poetry run composer --world_size $N_GPUS --node_rank 0 --master_addr 127.0.0.1 $PROJECT_PATH/flower_llm/centralised_train.py hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee $POLLEN_SAVE_PATH/centralised_train.log &
 #! Keep the pid and wait for it
 BACK_PID=$!
 wait $BACK_PID

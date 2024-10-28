@@ -1,0 +1,123 @@
+#!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
+#!SBATCH -c 192
+#!SBATCH -c 96
+#SBATCH -c 48
+#!SBATCH -c 10
+#SBATCH -w ruapehu
+#SBATCH --gres=gpu:2
+#!SBATCH --gres=gpu:1
+#!SBATCH --gres=gpu:0
+#!SBATCH --job-name=fed_llm_125M
+#!SBATCH --job-name=photon_llm_75M
+#!SBATCH --job-name=centralised_llm_125M
+#!SBATCH --job-name=centralised_llm_350M
+#!SBATCH --job-name=centralised_llm_760M
+#!SBATCH --job-name=diloco_75M
+#!SBATCH --job-name=eval-gauntlet
+#SBATCH --job-name=photon-125M-2cpr16-bs4
+#!SBATCH --job-name=gauntlet_fed_350M
+#!SBATCH --job-name=mosaicml_fed_125M
+#SBATCH --tasks-per-node=1
+#SBATCH --output=%x-%j.out
+#!SBATCH --time=02:00:00
+#!SBATCH --dependency=afterany:3040
+
+# Default project path
+PROJECT_PATH="$HOME/projects/flower_llm"
+# Get the current date and time
+DATETIME=$(date '+%Y%m%d_%H%M%S')
+
+
+# Parse command-line options
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
+  echo "slurm_submit.mauao: Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
+
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "16M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "75M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "160M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "420M"
+
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="cen-7B-eval-gauntlet-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "small"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "16M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "75M" "10ba"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "125M"
+# export RUN_UUID="centralised-350M-20240414_225031"
+# export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+
+# unset RUN_UUID
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "1B"
+
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "16M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "350M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "540M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
+
+BATCH_SIZE=4
+export RUN_UUID="photon-125M-2cpr16-fp-bs$BATCH_SIZE-$DATETIME"
+# export RUN_UUID="cen-125M-long-bs$BATCH_SIZE-$DATETIME"
+# # bash $PROJECT_PATH/scripts/photon_llm_small.sh
+# # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
+# # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
+# # DATETIME=$(date '+%Y%m%d_%H%M%S')
+# # export RUN_UUID="test-fed-75M-$DATETIME"
+# # export RUN_UUID="fed-75M-20240313_181750"
+# # export RUN_UUID="fed-75M-20240506_234900"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+# # export RUN_UUID="fed-125M-202405128_000428-restore-3"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=5120ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=5120ba"   
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=100ba" 
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"    
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"      
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE centralized.stream_id=6"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false fl.n_clients_per_round=2 pollen.checkpoint=false fl.n_rounds=320 llm_config.local_steps=16ba llm_config.eval_subset_num_batches=10 llm_config.eval_interval=5120ba fl.reset_optimizer=false llm_config.save_interval=16ba fl.n_total_clients=2"
+# bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
+bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="diloco-$DATETIME"
+# # export RUN_UUID="diloco-20240725_162438"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="mosaicml-fed-125M-lr-lr-lr-07-$DATETIME"
+# # export RUN_UUID="diloco-20240725_162438"
+# # export RUN_UUID="mosaicml-fed-125M-20240726_180943"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="diloco-75M-fedadam-0_00007-$DATETIME"
+# # export RUN_UUID="diloco-75M-20240814_090920"
+# bash $PROJECT_PATH/scripts/photon_llm_75M.sh

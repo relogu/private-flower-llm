@@ -5,7 +5,7 @@ PROJECT_PATH="$HOME/projects/flower_llm"
 
 # Parse command-line options
 if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
-	echo "convert_hf_dataset_to_mds.sh: Error parsing options" >&2
+	echo "Error parsing options" >&2
 	exit 1
 fi
 
@@ -27,109 +27,111 @@ while true; do
 	esac
 done
 
-#! Setting the helper
-if [[ $1 == "--help" ]] || [[ $1 == "-h" ]]; then
-	echo "Usage: bash convert_hf_dataset_to_mds.sh <splitS> <n_clients> <dataset> <dataset_subset> <data_root>."
-	echo -e "\t<split>: list containing a combination of 'small_val', 'small_train', 'val', 'train'. Default: 'val train'"
-	echo -e "\t<n_clients>: integer. Default: 8"
-	echo -e "\t<dataset>: 'c4' or 'pile'. Default: 'c4'"
-	echo -e "\t<dataset_subset>: 'en' or 'all'. Default: 'en'"
-	echo -e "\t<data_root>: path. Default: '/local/scratch'"
-	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh small 8 c4 en"
-	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 16 c4 en"
-	echo -e "\tExample: bash convert_hf_dataset_to_mds.sh full 32 c4 en"
-	exit 1
-fi
-#! Set/get the variables
-SPLIT="full"
-N_CLIENTS=8
-DATASET="c4"
-DATASET_SUBSET="en"
-MOSAICML_DATA_ROOT="/local/scratch"
-if [[ $# -eq 0 ]]; then
-	echo "convert_hf_dataset_to_mds.sh: Using default values for all input arguments."
-elif [[ $# -eq 1 ]]; then
-	SPLIT="$1"
-elif [[ $# -eq 2 ]]; then
-	SPLIT="$1"
-	N_CLIENTS="$2"
-elif [[ $# -eq 3 ]]; then
-	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
-elif [[ $# -eq 4 ]]; then
-	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
-	DATASET_SUBSET="$4"
-elif [[ $# -eq 5 ]]; then
-	SPLIT="$1"
-	N_CLIENTS="$2"
-	DATASET="$3"
-	DATASET_SUBSET="$4"
-	MOSAICML_DATA_ROOT="$5"
-else
-	echo "convert_hf_dataset_to_mds.sh: Invalid number of input arguments. Try 'bash convert_hf_dataset_to_mds.sh --help/-h' for more information."
-	exit 1
-fi
-mkdir -p "$MOSAICML_DATA_ROOT"
-if [[ $SPLIT == "full" ]]; then
-	SPLIT_NAME="val train"
-	echo "convert_hf_dataset_to_mds.sh: Default splits selected: $SPLIT_NAME."
-else
-	SPLIT_NAME="$SPLIT"
-	echo "convert_hf_dataset_to_mds.sh: The selected splits are $SPLIT_NAME."
-fi
-echo "convert_hf_dataset_to_mds.sh: PROJECT_PATH=$PROJECT_PATH"
+echo "PROJECT_PATH=$PROJECT_PATH"
 #! Moving to the project folder
 cd "$PROJECT_PATH" || exit
 #! Preparing environment
 if [[ $(hostname) == *'gpu-q'* ]]; then
-	echo "convert_hf_dataset_to_mds.sh: Assuming the script is executing in the CSD3."
+	echo "Assuming the script is executing in the CSD3."
 	#! Executing the environment preparation script
 	#! NOTE: Must use "." to execute, "sh" doesn't work
 	. "$PROJECT_PATH"/scripts/install_hpc_env.sh
-fi
-#! Activate Poetry environment
-POETRY_ENV_PATH=$(poetry env info --path)
-# shellcheck disable=SC1091
-. "$POETRY_ENV_PATH"/bin/activate
-#! Set the data root
-DATA_ROOT="$MOSAICML_DATA_ROOT/fed_$DATASET/c$N_CLIENTS"
-echo "convert_hf_dataset_to_mds.sh: Creating the partition data root directory: $DATA_ROOT"
-mkdir -p "$DATA_ROOT"
-#! Get info about CPU resources available
-if [ -z "${SLURM_CPUS_PER_TASK}" ]; then
-	NUM_CPUS=$(nproc --all)
-	export NUM_CPUS
 else
-	NUM_CPUS="$SLURM_CPUS_PER_TASK"
-	export NUM_CPUS
+	echo "Assuming the script is executing NOT in the CSD3."
+	#! Executing the environment preparation script
+	#! NOTE: Must use "." to execute, "sh" doesn't work
+	. "$PROJECT_PATH"/scripts/install_env.sh
 fi
-echo "convert_hf_dataset_to_mds.sh: Number of CPU cores available: $NUM_CPUS"
-#! Export the endpoint of the S3 object store
-# export S3_ENDPOINT_URL='http://mauao.cl.cam.ac.uk:9000'
-#! Using directly the IP to avoid name resolution issues
+#! Export the endpoint of the S3 object store, using directly the IP to avoid name resolution issues
 export S3_ENDPOINT_URL='http://128.232.115.0:9000'
+
 #! Execute the command
 poetry run python -m flower_llm.dataset.convert_dataset_hf \
-	--dataset "$DATASET" \
-	--data_subset "$DATASET_SUBSET" \
-	--splits "$SPLIT_NAME" \
-	--out_root "$DATA_ROOT" \
-	--compression zstd \
-	--concat_tokens 2048 \
-	--tokenizer EleutherAI/gpt-neox-20b \
-	--eos_text '<|endoftext|>' \
-	--num_workers "$NUM_CPUS" \
-	--num_clients "$N_CLIENTS"
-# --tokenizer_kwargs # add these if you want to pass additional kwargs to the tokenizer
-# --no_wrap # set this if you want to wrap long sequences
-# --bos_text # default
-# --local # default
-# --remote # default
-# --shuffle # default
-# --shuffle_seed # default
+	--path "allenai/c4" \
+	--name sr \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240919093538_v-50257_l-2048_d-allenai-c4_n-sr_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name la \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240919000759_v-50257_l-2048_d-allenai-c4_n-la_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name sw \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240918233908_v-50257_l-2048_d-allenai-c4_n-sw_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name it \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921115318_v-50257_l-2048_d-allenai-c4_n-it_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name de \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921120851_v-50257_l-2048_d-allenai-c4_n-de_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ru \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921181300_v-50257_l-2048_d-allenai-c4_n-ru_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name hi \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921172445_v-50257_l-2048_d-allenai-c4_n-hi_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name el \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921173321_v-50257_l-2048_d-allenai-c4_n-el_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ur \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921194442_v-50257_l-2048_d-allenai-c4_n-ur_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name es \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921200055_v-50257_l-2048_d-allenai-c4_n-es_s-train \
+	--num_clients 8
+
+#! Execute the command
+poetry run python -m flower_llm.dataset.convert_dataset_hf \
+	--path "allenai/c4" \
+	--name ms \
+	--splits validation train \
+	--tokenizer /nfs-share/ls985/projects/flower_llm/tokenizer_20240921222137_v-50257_l-2048_d-allenai-c4_n-ms_s-train \
+	--num_clients 8
 
 #! Remove the positional arguments
 eval set --

@@ -1,4 +1,4 @@
-"""TODO: Add description here."""
+"""NodeManager-Worker utility functions and data classes."""
 
 import copy
 from dataclasses import dataclass
@@ -6,13 +6,17 @@ import pickle
 from logging import ERROR
 from multiprocessing import resource_tracker as res_track
 from multiprocessing.shared_memory import SharedMemory
+from collections.abc import Sequence
+from typing import SupportsIndex
 
 import numpy as np
 from flwr.common import Config, NDArrays
 from flwr.common.logger import log
-from flwr.server.strategy.aggregate import aggregate
+from flwr.common.recordset_compat import ConfigsRecord
+from flwr.common.record.typeddict import TypedDict
 
-from flower_llm.utils import (
+from flower_llm.strategy.aggregation import (
+    aggregate_inplace,
     partially_aggregate,
     partially_aggregate_metrics,
     weighted_average,
@@ -24,6 +28,8 @@ POLLEN_N_SAMPLES_SHM = "_pollen_n_samples_shm"
 POLLEN_EVAL_LOSS_SHM = "_pollen_eval_loss_shm"
 POLLEN_METRICS_SHM = "_pollen_metrics_shm"
 
+ShapeLike = SupportsIndex | Sequence[SupportsIndex]
+
 
 @dataclass
 class WorkerResult:
@@ -34,14 +40,70 @@ class WorkerResult:
     device: str
 
 
+@dataclass
+class ModelParametersMetadata:
+    """Data type to store the metadata of the model parameters."""
+
+    total_num_bytes: int
+    array_bounds: list[tuple[int, int]]
+    shapes: list[ShapeLike]
+    dtypes: list[np.dtype]
+
+    @staticmethod
+    def from_ndarrays(parameters: NDArrays) -> "ModelParametersMetadata":
+        """Create a ModelParametersMetadata object from the NDArrays."""
+        total_num_bytes, array_bounds = get_ndarrays_size_and_bounds(parameters)
+        shapes = [x.shape for x in parameters]
+        dtypes = [x.dtype for x in parameters]
+        return ModelParametersMetadata(
+            total_num_bytes=total_num_bytes,
+            array_bounds=array_bounds,
+            shapes=shapes,  # type: ignore[arg-type]
+            dtypes=dtypes,
+        )
+
+    @staticmethod
+    def to_str(parameters_metadata: "ModelParametersMetadata") -> str:
+        """Return a string representation of the ModelParametersMetadata."""
+        return (
+            f"ModelParametersMetadata("
+            f"total_num_bytes={parameters_metadata.total_num_bytes}, "
+            f"array_bounds={parameters_metadata.array_bounds}, "
+            f"shapes={parameters_metadata.shapes}, "
+            f"dtypes={parameters_metadata.dtypes})"
+        )
+
+    @staticmethod
+    def from_str(parameters_metadata_str: str) -> "ModelParametersMetadata":
+        """Create a ModelParametersMetadata object from its string representation."""
+        # Remove the class name and parentheses
+        metadata_str = parameters_metadata_str[len("ModelParametersMetadata(") : -1]
+
+        # Split the string into key-value pairs
+        kv_pairs = metadata_str.split(", ")
+
+        # Create a dictionary from the key-value pairs
+        metadata_dict = {}
+        for kv in kv_pairs:
+            key, value = kv.split("=")
+            metadata_dict[key] = eval(value)
+
+        return ModelParametersMetadata(
+            total_num_bytes=metadata_dict["total_num_bytes"],
+            array_bounds=metadata_dict["array_bounds"],
+            shapes=metadata_dict["shapes"],
+            dtypes=metadata_dict["dtypes"],
+        )
+
+
 def aggregate_training_results(
     parameters: list[tuple[NDArrays, int]],
     samples: list[int],
     metrics: list[tuple[int, dict]],
-) -> tuple[NDArrays, int, dict]:
+) -> tuple[NDArrays | None, int, dict]:
     """Aggregate the training results."""
     return (
-        aggregate(parameters),
+        copy.deepcopy(aggregate_inplace(parameters, None, None)),
         sum(samples),
         weighted_average(metrics),
     )
@@ -112,7 +174,69 @@ def set_config_shm(
     shm.buf[:] = config_bytes
 
 
+def get_dict_configsrecord_shm(
+    config: TypedDict[str, ConfigsRecord],
+    create: bool = False,
+    name: str = POLLEN_CONFIG_SHM,
+) -> tuple[TypedDict[str, ConfigsRecord], SharedMemory]:
+    """Get a Shared Memory object and its backed config."""
+    if create and config is None:
+        raise ValueError("Cannot create config without config object.")
+    if create:
+        config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+        shm = SharedMemory(create=True, size=len(config_bytes), name=name)
+        config_sh = config
+    else:
+        shm = SharedMemory(name=name)
+        config_sh = pickle.loads(shm.buf)
+    return config_sh, shm
+
+
+def set_dict_configsrecord_shm(
+    config: TypedDict[str, ConfigsRecord],
+    shm: SharedMemory,
+) -> None:
+    """Set Shared Memory object and backed config."""
+    config_bytes = pickle.dumps(config, protocol=pickle.HIGHEST_PROTOCOL)
+    shm.buf[:] = config_bytes
+
+
 def get_parameters_shm(
+    parameters_metadata: ModelParametersMetadata,
+    create: bool = False,
+    name: str = POLLEN_PARAMETERS_SHM,
+) -> tuple[NDArrays, SharedMemory]:
+    """Allocate a Shared Memory object and backed arrays."""
+    if create:
+        shm = SharedMemory(
+            create=True, size=parameters_metadata.total_num_bytes, name=name
+        )
+        shm.buf[:] = b"\0" * shm.size
+    else:
+        shm = SharedMemory(name=name)
+    params_sh: NDArrays = [
+        np.ndarray(shape=shape, dtype=dtype, buffer=shm.buf[bounds[0] : bounds[1]])
+        for shape, dtype, bounds in zip(
+            parameters_metadata.shapes,
+            parameters_metadata.dtypes,
+            parameters_metadata.array_bounds,
+            strict=False,
+        )
+    ]
+    return params_sh, shm
+
+
+def is_shm_existing(name: str) -> bool:
+    """Check if the Shared Memory object with the given name exists."""
+    try:
+        shm = SharedMemory(name=name, create=False)
+        shm.close()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def old_get_parameters_shm(
     parameters: NDArrays,
     create: bool = False,
     name: str = POLLEN_PARAMETERS_SHM,

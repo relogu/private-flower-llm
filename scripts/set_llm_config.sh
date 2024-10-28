@@ -35,43 +35,63 @@ fi
 #! Get info about GPU resources available
 GPU_TYPE=$(nvidia-smi -L)
 
-# NOTE: Add defaults
+#! Defaults - MPT models
+LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
+LLM_CONFIG_MPT_16M="llm_config=mpt-16m"
+LLM_CONFIG_MPT_75M="llm_config=mpt-75m"
+LLM_CONFIG_MPT_160M="llm_config=mpt-160m"
+LLM_CONFIG_MPT_125M="llm_config=mpt-125m"
+LLM_CONFIG_MPT_350M="llm_config=mpt-350m"
+LLM_CONFIG_MPT_420M="llm_config=mpt-420m"
+LLM_CONFIG_MPT_540M="llm_config=mpt-540m"
+LLM_CONFIG_MPT_760M="llm_config=mpt-760m"
+LLM_CONFIG_MPT_1B="llm_config=mpt-1b"
+LLM_CONFIG_MPT_3B="llm_config=mpt-3b"
+LLM_CONFIG_MPT_7B="llm_config=mpt-7b"
+LLM_CONFIG_MPT_13B="llm_config=mpt-13b"
+LLM_CONFIG_MPT_30B="llm_config=mpt-30b"
+LLM_CONFIG_MPT_70B="llm_config=mpt-70b"
+
+#! Defaults - HF models
+LLM_CONFIG_GPT2_SMALL="llm_config=gpt2-small"
+LLM_CONFIG_GPT2_NEO_125M="llm_config=gpt2-neo-125m"
+
 #! Set `llm_config` names
 if [[ $GPU_TYPE == *'A40'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A40-equipped machines."
 	#! NOTE: We're assuming 'amp_bf16' is used
 	#! From: https://images.nvidia.com/content/Solutions/data-center/a40/nvidia-a40-datasheet.pdf
 	FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=1497e11"
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=8 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=auto llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
-	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
-	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
-	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=8"
+	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=8"
+	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=8"
+	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=8"
 	echo "Selected GPU config: A40"
 elif [[ $GPU_TYPE == *'A100'* ]]; then
 	echo "set_llm_config.sh: Assuming we are running on A100-equipped machines."
 	#! Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad bug
 	FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=312e12"
 	#! NOTE: We didn't investigate the performance at inference
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=512 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=64 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=auto llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
@@ -84,18 +104,18 @@ elif [[ $GPU_TYPE == *'H100'* ]]; then
 	#! Already hardcoded in the MosaicML's callback, but if passed, we avoid a very bad bug
 	FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=312e12"
 	#! NOTE: We didn't investigate the performance at inference
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=512 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=64 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=auto llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_75M="llm_config=mpt-75m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_160M="llm_config=mpt-160m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_420M="llm_config=mpt-420m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=64"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
-	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
+	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=8"
 	LLM_CONFIG_MPT_13B="llm_config=mpt-13b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
@@ -105,12 +125,12 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
 	#! NOTE: We're assiming 'amp_bf16' is used
 	#! From: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/datasheets/L-40/product-brief-L40.pdf
 	FLOP_COUNT="llm_config.callbacks.speed_monitor.gpu_flops_available=18105e10"
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=256 llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
-	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=64 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=32 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=16 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=4 llm_config.device_eval_batch_size=32"
-	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=2 llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu llm_config.model.init_device=meta llm_config.model.loss_fn=fused_crossentropy llm_config.model.attn_config.attn_impl=flash llm_config.precision=amp_bf16 llm_config.device_train_microbatch_size=auto llm_config.eval_subset_num_batches=-1 llm_config.device_eval_batch_size=64"
+	LLM_CONFIG_MPT_16M="llm_config=mpt-16m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_125M="llm_config=mpt-125m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_350M="llm_config=mpt-350m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_540M="llm_config=mpt-540m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
+	LLM_CONFIG_MPT_760M="llm_config=mpt-760m llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=32"
 	LLM_CONFIG_MPT_1B="llm_config=mpt-1b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_3B="llm_config=mpt-3b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_7B="llm_config=mpt-7b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
@@ -118,9 +138,6 @@ elif [[ $GPU_TYPE == *'L40'* ]]; then
 	LLM_CONFIG_MPT_30B="llm_config=mpt-30b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	LLM_CONFIG_MPT_70B="llm_config=mpt-70b llm_config.device_train_microbatch_size=auto llm_config.device_eval_batch_size=16"
 	echo "Selected GPU config: L40"
-elif [[ $GPU_TYPE == *'failed'* ]]; then
-	LLM_CONFIG_MPT_SMALL_CPU="llm_config=mpt-small-cpu"
-	echo "nvidia-smi failed"
 else
 	echo "set_llm_config.sh: Unknown GPU type: $GPU_TYPE. Using defaults..."
 fi
@@ -155,13 +172,17 @@ elif [[ $1 == "30B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_30B"
 elif [[ $1 == "70B" ]]; then
 	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_MPT_70B"
+elif [[ $1 == "gpt2-small" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_GPT2_SMALL"
+elif [[ $1 == "gpt2-neo-125m" ]]; then
+	export LLM_CONFIG="$FLOP_COUNT $LLM_CONFIG_GPT2_NEO_125M"
 else
 	echo "set_llm_config.sh: Invalid input argument: $1"
-	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 13B, 30B, 70B"
+	echo "set_llm_config.sh: Valid input arguments are: small, 16M, 75M, 125M, 160M, 350M, 420M, 540M, 760M, 1B, 3B, 7B, 13B, 30B, 70B, gpt2-small, gpt2-neo-125m"
 	exit 1
 fi
 
-echo "set_llm_config.sh: Selected LLM config: $1"
+echo "set_llm_config.sh: Selected LLM config: $1 ($LLM_CONFIG)"
 printf "set_llm_config.sh: arguments=%s, first argument=%s\n" "$@" "$1"
 
 #! Remove the positional arguments

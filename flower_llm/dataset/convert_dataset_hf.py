@@ -1,107 +1,193 @@
-# Copyright 2022 MosaicML LLM Foundry authors
-# SPDX-License-Identifier: Apache-2.0
+"""
+Convert Hugging Face Dataset to MDS Format.
 
-"""Streaming dataset conversion scripts for C4 and The Pile."""
+This module provides functionality to download a dataset from the Hugging Face Hub,
+convert it into MDS (Multi-Document Summarization) format, and optionally concatenate
+and tokenize the dataset. The resulting MDS files can be saved to a specified remote
+bucket, with support for multiple clients.
+
+Functions
+---------
+- parse_args() -> Namespace
+    Parse command-line arguments for converting a dataset into MDS format.
+- main(args: Namespace) -> None
+    Convert a dataset from the Hugging Face Hub into MDS format with optional
+    tokenization and concatenation.
+
+Usage
+-----
+To use this script, run it from the command line with the appropriate arguments:
+    python convert_dataset_hf.py --path <dataset_path> --name <config_name> \
+        --splits <split1> <split2> --compression <compression_method> \
+        --concat_tokens <num_tokens> --tokenizer <tokenizer_path> \
+        --tokenizer_kwargs <tokenizer_kwargs> --bos_text <bos_text> \
+        --eos_text <eos_text> --no_wrap --num_workers <num_workers> \
+        --num_clients <num_clients> --remote_bucket <remote_bucket> \
+        --pad_text <pad_text>
+
+Example
+-------
+    python convert_dataset_hf.py --path allenai/c4 --name en --splits train validation \
+        --compression zstd --concat_tokens 2048 --tokenizer path/to/tokenizer \
+        --tokenizer_kwargs '{}' --bos_text "<s>" --eos_text "</s>" --no_wrap \
+        --num_workers 4 --num_clients 1 --remote_bucket s3://mybucket \
+        --pad_text "<s>"
+
+Dependencies
+------------
+- json
+- argparse
+- logging
+- tempfile
+- flwr.common.logger
+- llmfoundry.utils.builders
+- streaming
+- tqdm
+- flower_llm.dataset.constants
+- flower_llm.dataset.utils
+"""
 
 import json
-import os
-import platform
 from argparse import ArgumentParser, Namespace
-from collections.abc import Generator, Iterable
-from dataclasses import dataclass
-from enum import Enum
 from logging import INFO
-from pathlib import Path
-from typing import Any
+from tempfile import TemporaryDirectory
 
-import psutil
 from flwr.common.logger import log
-from llmfoundry.data import ConcatTokensDataset, NoConcatDataset
 from llmfoundry.utils.builders import build_tokenizer
 from streaming import MDSWriter
-from torch.utils.data import DataLoader, Dataset, IterableDataset
+import torch
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
-
-import datasets as hf_datasets
-
-from flower_llm.dataset.text_data import StreamingTextDataset
 
 
-class ConcatMode(Enum):
-    """Describe concatenation modes."""
-
-    NO_CONCAT = "NO_CONCAT"
-    CONCAT_TOKENS = "CONCAT_TOKENS"
+from flower_llm.dataset.constants import (
+    CONSTANTS,
+    ConcatMode,
+    DataSplitConstants,
+    DatasetConstants,
+)
+from flower_llm.dataset.utils import (
+    build_dataloader,
+    build_hf_dataset,
+    generate_samples_from_dataloader,
+)
 
 
 def parse_args() -> Namespace:
-    """Parse command line arguments."""
+    """
+    Parse command-line arguments for converting a dataset into MDS format.
+
+    This function sets up an argument parser to receive various parameters for getting
+    a dataset from the Hugging Face Hub, converting it into MDS format, and optionally
+    concatenating and tokenizing the dataset. It parses the command-line arguments and
+    returns them as a Namespace object.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    Namespace
+        An object containing the parsed command-line arguments:
+        - path (str): Path or name of the dataset (e.g., "allenai/c4").
+        - name (str | None): Name of the dataset configuration (e.g., "all" or "en").
+        - splits (set[str] | None): Set of dataset splits to process (e.g., "train" or
+         "validation").
+        - compression (str): Compression method for the output MDS dataset. Default is
+         "zstd".
+        - concat_tokens (int | None): Number of tokens to concatenate. Default is 2048.
+        - tokenizer (str): Path or name of the tokenizer to use.
+        - tokenizer_kwargs (dict): Additional keyword arguments for the tokenizer.
+        - bos_text (str): Text representing the Beginning of Sequence token. Default is
+         an empty string.
+        - eos_text (str): Text representing the End of Sequence token. Default is the
+         string '</s>'.
+        - pad_text (str): Text representing the pad token. Default is the string '<s>'.
+        - no_wrap (bool): Whether to disable wrapping of tokens. Default is False.
+        - num_workers (int | None): Number of worker processes to use for data loading.
+         Default is None.
+        - num_clients (int): Number of clients to compose the federated dataset. Default
+         is 1.
+        - client (int): Client id to elaborate. Default is None.
+        - remote_bucket (str): Name of the remote bucket to upload the files to. Default
+         is "s3://iclr2025datasets".
+         pad_token
+
+    Raises
+    ------
+    SystemExit
+        If required arguments are not provided or if there is an error in parsing
+        arguments.
+
+    Example
+    -------
+    >>> args = parse_args()
+    >>> print(args.path)
+    >>> print(args.name)
+    >>> print(args.splits)
+    >>> print(args.compression)
+    >>> print(args.concat_tokens)
+    >>> print(args.tokenizer)
+    >>> print(args.tokenizer_kwargs)
+    >>> print(args.bos_text)
+    >>> print(args.eos_text)
+    >>> print(args.pad_text)
+    >>> print(args.no_wrap)
+    >>> print(args.num_workers)
+    >>> print(args.num_clients)
+    >>> print(args.client)
+    >>> print(args.remote_bucket)
+    """
     parser = ArgumentParser(
         description=(
-            "Convert dataset into MDS format, optionally concatenating and tokenizing"
+            "Convert dataset into MDS format, optionally concatenating and tokenizing."
         )
     )
-    parser.add_argument("--dataset", type=str, required=True)
+    # Parameters for downloading the dataset from HF Hub
     parser.add_argument(
-        "--data_subset", type=str, default=None, help='E.g. "all" or "en"'
+        "--path", type=str, required=True, help='E.g. "allenai/c4" or ""'
     )
+    parser.add_argument("--name", type=str, default=None, help='E.g. "all" or "en"')
     parser.add_argument(
-        "--splits",
-        nargs="+",
-        default=["train", "train_small", "val", "val_small", "val_xsmall"],
+        "--splits", nargs="+", default=None, help='E.g. "train" or "validation"'
     )
-    parser.add_argument("--out_root", type=str, required=True)
-    parser.add_argument("--compression", type=str, default=None)
-
+    # Parameters to creating the output MDS dataset
+    parser.add_argument("--compression", type=str, default="zstd")
+    # Parameters for the tokenization and (potentially) concatenation
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument(
         "--concat_tokens",
         type=int,
         help="Convert text to tokens and concatenate up to this many tokens",
+        default=2048,
     )
-
-    parser.add_argument("--tokenizer", type=str, required=False, default=None)
+    parser.add_argument("--tokenizer", type=str, required=True)
     parser.add_argument("--tokenizer_kwargs", type=str, required=False)
     parser.add_argument("--bos_text", type=str, required=False, default=None)
-    parser.add_argument("--eos_text", type=str, required=False, default=None)
+    parser.add_argument("--eos_text", type=str, required=False, default="</s>")
+    parser.add_argument("--pad_text", type=str, required=False, default="<s>")
     parser.add_argument("--no_wrap", default=False, action="store_true")
     parser.add_argument("--num_workers", type=int, required=False, default=None)
+    # Number of clients to compose the federated dataset (this is done at a
+    # dataset/configuration/split level)
     parser.add_argument("--num_clients", type=int, required=False, default=1)
-
+    parser.add_argument("--client", type=int, required=False, default=None)
     # Arguments to use our S3-stored dataset when concatenating tokens
     parser.add_argument(
-        "--local",
+        "--remote_bucket",
         type=str,
-        default="/local/scratch/tmp",
-        help="Local path to centralized dataset",
+        default="s3://iclr2025datasets",
+        help="Name of the remote bucket to upload the files to",
     )
-    parser.add_argument(
-        "--remote",
-        type=str,
-        default="s3://c4-dataset",
-        help="Remote path to centralized dataset",
-    )
-    parser.add_argument("--shuffle", default=False, action="store_true")
-    parser.add_argument("--shuffle_seed", type=int, default=17)
 
+    # Parse arguments
     parsed = parser.parse_args()
 
+    # Parse tokenizer_kwargs
     if parsed.tokenizer_kwargs is not None:
         parsed.tokenizer_kwargs = json.loads(parsed.tokenizer_kwargs)
     else:
         parsed.tokenizer_kwargs = {}
-
-    if (
-        Path.is_dir(Path(parsed.out_root))
-        and len(set(os.listdir(Path(parsed.out_root))).intersection(set(parsed.splits)))
-        > 0
-    ):
-        raise ValueError(
-            f"--out_root={Path(parsed.out_root)} contains"
-            f"{os.listdir(Path(parsed.out_root))} which"
-            f"cannot overlap with the requested splits {parsed.splits}."
-        )
 
     # Make sure we have needed concat options
     if (
@@ -111,472 +197,210 @@ def parse_args() -> Namespace:
     ):
         parser.error("When setting --concat_tokens, you must specify a --tokenizer")
 
-    # now that we have validated them, change BOS/EOS to strings
+    # Change BOS/EOS/pad to strings if they are None
     if parsed.bos_text is None:
         parsed.bos_text = ""
     if parsed.eos_text is None:
         parsed.eos_text = ""
+    if parsed.pad_text is None:
+        parsed.pad_text = ""
+    # Add BOS/EOS/pad tokens to tokenizer_kwargs
+    parsed.tokenizer_kwargs["bos_token"] = parsed.bos_text
+    parsed.tokenizer_kwargs["eos_token"] = parsed.eos_text
+    parsed.tokenizer_kwargs["pad_token"] = parsed.pad_text
+
+    # Parse splits
+    if parsed.splits is not None:
+        parsed.splits = set(parsed.splits)
+        log(INFO, f"Converting splits: {parsed.splits}")
     return parsed
 
 
-@dataclass
-class DataSplitConstants:
-    """Describe constants for a dataset split."""
+def main(args: Namespace) -> None:
+    """
+    Convert a dataset from the Hugging Face Hub into MDS format.
 
-    hf_split: str
-    folder_split: str
-    raw_samples: int
-    truncated_samples: int | None
-    denominator: int | None = None
+    This function processes specified splits of a Hugging Face dataset, tokenizes and
+    concatenates the data, and converts it into MDS format. The resulting MDS files are
+    saved to a specified remote bucket, with support for multiple clients.
 
-
-@dataclass
-class DatasetConstants:
-    """Describe constants for a dataset."""
-
-    chars_per_sample: int
-    chars_per_token: int
-    splits: dict
-
-    def __iter__(self) -> Generator[Any, Any, None]:
-        """Iterate over splits."""
-        yield from self.splits.values()
-
-
-class TrainSmallConstants(DataSplitConstants):
-    """Describe constants for the small train dataset split."""
-
-    def __init__(
-        self,
-        hf_split: str = "train",
-        folder_split: str = "train_small",
-        raw_samples: int = 1000000,
-        truncated_samples: int = 100000,
-    ) -> None:
-        super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
-
-
-class ValSmallConstants(DataSplitConstants):
-    """Describe constants for the small val dataset split."""
-
-    def __init__(
-        self,
-        hf_split: str = "validation",
-        folder_split: str = "val_small",
-        raw_samples: int = 10000,
-        truncated_samples: int = 10000,
-    ) -> None:
-        super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
-
-
-class ValXSmallConstants(DataSplitConstants):
-    """Describe constants for the small x val dataset split."""
-
-    def __init__(
-        self,
-        hf_split: str = "validation",
-        folder_split: str = "val_xsmall",
-        raw_samples: int = 3000,
-        truncated_samples: int = 3000,
-    ) -> None:
-        super().__init__(hf_split, folder_split, raw_samples, truncated_samples)
-
-
-# Set the constants for the Pile dataset
-pile_constants = DatasetConstants(
-    chars_per_sample=6212,  # Computed over validation set
-    chars_per_token=4,  # OpenAI estimate
-    splits={},
-)
-pile_constants.splits["train"] = DataSplitConstants(
-    hf_split="train",
-    folder_split="train",
-    raw_samples=210607728,
-    truncated_samples=None,
-)
-pile_constants.splits["train_small"] = DataSplitConstants(
-    hf_split="train",
-    folder_split="train_small",
-    raw_samples=1000000,
-    truncated_samples=100000,
-)
-pile_constants.splits["val"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val",
-    raw_samples=214670,
-    truncated_samples=None,
-)
-pile_constants.splits["val_small"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val_small",
-    raw_samples=10000,
-    truncated_samples=10000,
-)
-pile_constants.splits["val_xsmall"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val_xsmall",
-    raw_samples=3000,
-    truncated_samples=3000,
-)
-# Set the constants for the C4 dataset
-c4_constants = DatasetConstants(
-    chars_per_sample=2163,  # Computed over validation set
-    chars_per_token=4,  # OpenAI estimate
-    splits={},
-)
-c4_constants.splits["train"] = DataSplitConstants(
-    hf_split="train",
-    folder_split="train",
-    raw_samples=364868892,
-    truncated_samples=None,
-    denominator=85336729,
-)
-c4_constants.splits["train_small"] = DataSplitConstants(
-    hf_split="train",
-    folder_split="train_small",
-    raw_samples=1000000,
-    truncated_samples=100000,
-)
-c4_constants.splits["val"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val",
-    raw_samples=364608,
-    truncated_samples=None,
-    denominator=85039,
-)
-c4_constants.splits["val_small"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val_small",
-    raw_samples=10000,
-    truncated_samples=10000,
-)
-c4_constants.splits["val_xsmall"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val_xsmall",
-    raw_samples=3000,
-    truncated_samples=3000,
-)
-c4_constants.splits["val_xxsmall"] = DataSplitConstants(
-    hf_split="validation",
-    folder_split="val_xxsmall",
-    raw_samples=100,
-    truncated_samples=100,
-)
-# Put the constants into a dict for easy lookup
-CONSTANTS = {"c4": c4_constants, "the_pile": pile_constants}
-
-
-def build_hf_dataset(
-    dataset_name: str,
-    split: str,
-    mode: ConcatMode,
-    max_length: int | None = None,
-    bos_text: str = "",
-    eos_text: str = "",
-    no_wrap: bool = False,
-    tokenizer: PreTrainedTokenizerBase | None = None,
-    data_subset: str | None = None,
-) -> IterableDataset:
-    """Build an IterableDataset over the HF C4 or pile source data.
-
-    Args:
-        dataset_name (str): Dataset name
-        split (str): Split name.
-        mode (ConcatMode): NO_CONCAT, or CONCAT_TOKENS
-        max_length (int): The length of concatenated tokens
-        bos_text (str): text to insert at the beginning of each sequence
-        eos_text (str): text to insert at the end of each sequence
-        no_wrap (bool): if concatenating, whether to wrap text across `max_length`
-        boundaries
-        tokenizer (PreTrainedTokenizerBase): if mode is CONCAT_TOKENS, the tokenizer to
-        use
-        data_subset (str): Referred to as "name" in HuggingFace datasets.load_dataset.
-            Typically "all" (The Pile) or "en" (c4).
+    Parameters
+    ----------
+    args : Namespace
+        The arguments for the function, expected to have the following attributes:
+        - path (str): Path or name of the dataset.
+        - name (str | None): Name of the dataset configuration.
+        - splits (set[str]): Set of dataset splits to process.
+        - compression (str): Compression method for the output MDS dataset.
+        - concat_tokens (int): Number of tokens to concatenate.
+        - tokenizer (str): Path or name of the tokenizer to use.
+        - tokenizer_kwargs (dict): Additional keyword arguments for the tokenizer.
+        - bos_text (str): Text representing the Beginning of Sequence token.
+        - eos_text (str): Text representing the End of Sequence token.
+        - pad_text (str): Text representing the pad token.
+        - no_wrap (bool): Whether to disable wrapping of tokens.
+        - num_workers (int | None): Number of worker processes to use for data loading.
+        - num_clients (int): Number of clients to compose the federated dataset.
+        - client (int): Client id to elaborate.
+        - remote_bucket (str): Name of the remote bucket to upload the files to.
 
     Returns
     -------
-        An IterableDataset.
-    """
-    hf_dataset = hf_datasets.load_dataset(  # type: ignore[attr-defined]
-        path=dataset_name, name=data_subset, split=split, streaming=True
-    )
-    if mode == ConcatMode.NO_CONCAT:
-        dataset = NoConcatDataset(hf_dataset)  # type: ignore[reportArgumentType]
-    else:
-        if not isinstance(tokenizer, PreTrainedTokenizerBase):
-            raise ValueError(f"{tokenizer=} must be of type PreTrainedTokenizerBase")
-        if max_length is None:
-            raise ValueError("max_length must be set.")
-        if bos_text and eos_text:
-            test_tokens = tokenizer("test")
-            if (
-                test_tokens["input_ids"][0] != tokenizer.bos_token_id  # type: ignore[reportIndexIssue]
-                and test_tokens["input_ids"][-1] != tokenizer.eos_token_id  # type: ignore[reportIndexIssue]
-            ):
-                tok_error_msg = "This tokenizer does not insert an EOS nor BOS token. "
-                tok_error_msg += (
-                    "Concatenating with this tokenizer will result in sequences being "
-                )
-                tok_error_msg += "attached without a separating token."
-                "Please use another tokenizer, "
-                tok_error_msg += (
-                    "such as facebook/opt-125m, or specify EOS/BOS text with e.g. "
-                )
-                tok_error_msg += "--bos_text=<|endoftext|>."
-                raise ValueError(tok_error_msg)
-        dataset = ConcatTokensDataset(
-            hf_dataset=hf_dataset,  # type: ignore[reportArgumentType]
-            tokenizer=tokenizer,
-            max_length=max_length,
-            bos_text=bos_text,
-            eos_text=eos_text,
-            no_wrap=no_wrap,
-        )
-    return dataset
+    None
 
-
-def _est_progress_denominator(
-    total_samples: int,
-    chars_per_sample: int,
-    chars_per_token: int,
-    mode: ConcatMode,
-    max_length: int,
-) -> int | float | None:
-    est_tokens_per_sample = chars_per_sample / chars_per_token
-    if mode == ConcatMode.NO_CONCAT:
-        return total_samples
-    elif mode == ConcatMode.CONCAT_TOKENS:
-        return (total_samples * est_tokens_per_sample) / max_length
-    return None
-
-
-def build_dataloader(
-    dataset: Dataset, batch_size: int, num_workers: int | None
-) -> DataLoader:
-    """Return a DataLoader for a dataset."""
-    if num_workers is None:
-        # Multiple workers is only supported on linux machines
-        current_platform = platform.platform().lower()
-        if "linux" in current_platform or "macos" in current_platform:
-            num_workers = max(1, psutil.cpu_count())
-        else:
-            num_workers = 0
-
-    # If using multiple workers, configure each worker to prefetch as many samples as
-    # it can, up to the aggregate device batch size
-    # If not using workers, the torch DataLoader expects the default value for
-    # prefetch_factor, which non-intuitively must be 2.
-    prefetch_factor = max(1, 2 * batch_size // num_workers) if num_workers > 0 else 2
-
-    return DataLoader(
-        dataset=dataset,
-        sampler=None,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        prefetch_factor=prefetch_factor,
-    )
-
-
-def generate_samples(
-    loader: DataLoader, truncate_num_samples: int | None = None
-) -> Iterable[dict[str, bytes]]:
-    """Build a Generator over samples of a dataloader.
-
-    Args:
-       loader (DataLoader):
-        A dataloader emitting batches like
-        {key: [sample0_bytes, sample1_bytes, sample2_bytes, ...]}
-       truncate_num_samples (Optional[int]): An optional # of samples to stop at.
-
-    Yields
-    ------
-        Sample dicts.
-    """
-    n_samples = 0
-    for batch in loader:
-        keys = list(batch.keys())
-        current_bs = len(batch[keys[0]])
-        for idx in range(current_bs):
-            if truncate_num_samples is not None and n_samples == truncate_num_samples:
-                return
-            n_samples += 1
-            yield {k: v[idx] for k, v in batch.items()}
-
-
-def main(args: Namespace) -> None:
-    """Create C4/pile streaming dataset.
-
-    Args:
-        args (Namespace): Command line arguments.
+    Example
+    -------
+    >>> from argparse import Namespace
+    >>> args = Namespace(
+    ...     path="allenai/c4",
+    ...     name="en",
+    ...     splits={"train", "validation"},
+    ...     compression="zstd",
+    ...     concat_tokens=2048,
+    ...     tokenizer="path/to/tokenizer",
+    ...     tokenizer_kwargs={},
+    ...     bos_text="<s>",
+    ...     pad_text="<s>",
+    ...     eos_text="</s>",
+    ...     no_wrap=False,
+    ...     num_workers=4,
+    ...     num_clients=1,
+    ...     client=None,
+    ...     remote_bucket="s3://mybucket"
+    ... )
+    >>> main(args)
     """
     log(INFO, "Arguments received: %s", args)
+    torch.multiprocessing.set_sharing_strategy("file_system")
+    # Create temporary directory
+    temp_dir = TemporaryDirectory()
     # Retrieve constants for the dataset
-    try:
-        dataset_constants = CONSTANTS[args.dataset]
-    except KeyError as e:
-        raise ValueError(
-            f'Constants for dataset "{args.dataset}" not found. Currently only'
-            '"the_pile" and "c4" are supported.'
-        ) from e
-    # Elaborate over whether to concatenate tokens or not
-    if args.concat_tokens is not None:
-        mode = ConcatMode.CONCAT_TOKENS
-        tokenizer = build_tokenizer(args.tokenizer, args.tokenizer_kwargs)
-        # We will enforce length because it suppress warnings about sequences too long
-        # for the model
-        tokenizer.model_max_length = int(1e30)
-        columns = {"tokens": "bytes"}
-    else:
-        mode = ConcatMode.NO_CONCAT
-        tokenizer = None
-        columns = {"text": "str"}
+    dataset_constants: DatasetConstants | None = None
+    if "c4" in args.path:
+        dataset_constants = CONSTANTS[f"c4_{args.name}"]
+    assert dataset_constants is not None, (
+        "Dataset constants not found for "
+        f"{args.path}-{args.name}. "
+        f"Available constants: {CONSTANTS}"
+    )
+    # Set the mode to concatenate tokens
+    mode = ConcatMode.CONCAT_TOKENS
+    # Build tokenizer
+    tokenizer = build_tokenizer(args.tokenizer, args.tokenizer_kwargs)
+    vocab_size = len(tokenizer.get_vocab())
+    # We will enforce length because it suppress warnings about sequences too long
+    # for the model
+    tokenizer.model_max_length = int(1e30)
+    # Set the columns for the MDS file
+    columns = {"tokens": "ndarray:int32"}
     # Loop over passed splits
     for split_name in args.splits:
+        # Create temporary directory for caching the dataset
+        temp_dir = TemporaryDirectory()
         # Retrieving info about the current split
-        try:
-            split = dataset_constants.splits[split_name]
-        except KeyError as e:
-            raise KeyError(f"Constants not defined for split {split_name}.") from e
-        hf_split = split.hf_split
-        folder_split = split.folder_split
-        expected_num_samples = split.raw_samples
-        truncate_num_samples = split.truncated_samples
-        # Only generate the splits requested
-        if folder_split not in args.splits:
-            continue
+        split_constants: DataSplitConstants | None = None
+        if "c4" in args.path:
+            split_constants = dataset_constants.splits[split_name]
+        assert split_constants is not None, (
+            "Dataset split constants not found for "
+            f"{args.path}-{args.name}-{split_name}. "
+            f"Available constants for {args.path}-{args.name}: {dataset_constants}"
+        )
+        truncate_num_samples = split_constants.truncated_samples
         # Create the dataset given the parameters
         # NOTE: We can't know how many samples we will get from the dataset
-        if mode == ConcatMode.NO_CONCAT:
-            dataset = build_hf_dataset(
-                dataset_name=args.dataset,  # type: ignore[reportAssignmentType]
-                data_subset=args.data_subset,
-                split=hf_split,
-                mode=mode,
-                max_length=args.concat_tokens,
-                bos_text=args.bos_text,
-                eos_text=args.eos_text,
-                no_wrap=args.no_wrap,
-                tokenizer=tokenizer,
-            )
-        else:
-            assert tokenizer is not None
-            # Build dataset potentially with streams
-            dataset = StreamingTextDataset(
-                tokenizer=tokenizer,
-                streams=None,
-                batch_size=None,
-                local=args.local,
-                remote=args.remote,
-                split=split_name,
-                shuffle=args.shuffle,
-                max_seq_len=args.concat_tokens,
-                shuffle_seed=args.shuffle_seed,
-                cache_limit=None,
-            )
-            # Substituting the dataset.__getitem__ method with its parent's method
-            dataset.__getitem__ = super(dataset.__class__, dataset).__getitem__  # type: ignore[reportAttributeAccessIssue]
-        # Build a batched dataloader for streaming the HF dataset in batches
+        dataset = build_hf_dataset(
+            path=args.path,
+            name=args.name,
+            split=split_constants.split,
+            mode=mode,
+            max_length=args.concat_tokens,
+            bos_text=args.bos_text,
+            eos_text=args.eos_text,
+            no_wrap=args.no_wrap,
+            tokenizer=tokenizer,
+            temp_dir=temp_dir,
+        )
+
+        # Build a batched dataloader for streaming the HF dataset in batches so that we
+        # can actually take advantage of multiprocessing
         loader = build_dataloader(
             dataset=dataset, batch_size=512, num_workers=args.num_workers
         )
-        # Build a generator that yields samples from the batched dataloader
-        samples = generate_samples(loader, truncate_num_samples=truncate_num_samples)
-        if split.denominator is not None:
-            denominator = split.denominator
-        else:
-            denominator = 0
-            for _ in tqdm(samples, desc=folder_split):
-                denominator += 1
-            # Build a batched dataloader for streaming the HF dataset in batches
-            loader = build_dataloader(
-                dataset=dataset, batch_size=512, num_workers=args.num_workers
-            )
-            # Build a generator that yields samples from the batched dataloader
-            samples = generate_samples(
-                loader, truncate_num_samples=truncate_num_samples
-            )
-        log(INFO, f"Number of samples in {folder_split} is {denominator}.")
+        # Build a generator that yields samples from the batched dataloader, truncating
+        # if needed
+        samples = generate_samples_from_dataloader(
+            loader, truncate_num_samples=truncate_num_samples
+        )
 
-        # Estimating the total number of samples
-        if "small" in split_name:
-            if expected_num_samples is not None:
-                denominator = (
-                    truncate_num_samples
-                    if truncate_num_samples is not None
-                    else _est_progress_denominator(
-                        total_samples=expected_num_samples,
-                        chars_per_sample=dataset_constants.chars_per_sample,
-                        chars_per_token=dataset_constants.chars_per_token,
-                        mode=mode,
-                        max_length=args.concat_tokens,
-                    )
-                )
-            else:
-                raise ValueError(
-                    "Expected number of samples must be set for partitioning to work."
-                )
-            log(INFO, f"Estimated number of total samples is {denominator}.")
-        else:
-            log(
-                INFO,
-                "Counting the number of samples w/ the current settings for split %s.",
-                split_name,
-            )
-            if split.denominator is not None:
-                denominator = split.denominator
-            else:
-                denominator = 0
-                for _ in tqdm(samples, desc=folder_split):
-                    denominator += 1
-                # Re-build a batched dataloader for streaming the HF dataset in batches
-                loader = build_dataloader(
-                    dataset=dataset, batch_size=512, num_workers=args.num_workers
-                )
-                # Re-build a generator that yields samples from the batched dataloader
-                samples = generate_samples(
-                    loader, truncate_num_samples=truncate_num_samples
-                )
-            log(INFO, f"Number of samples in {folder_split} is {denominator}.")
-        # Estimate the number of samples for the current client
-        # NOTE: The last client will get the remainder of the samples
-        expected_samples_per_client = denominator // args.num_clients
-        log(INFO, f"Expected samples per client {expected_samples_per_client}.")
-        remainder = int(denominator % args.num_clients)
-        log(INFO, f"Remainder is {remainder}.")
-
-        # Write samples
-        log(INFO, f"Converting {folder_split} to MDS format...")
+        # In case of tokenized text, we need to count the number of samples
+        total_num_samples = 0
+        for _ in tqdm(
+            samples,
+            desc=f"Counting tokens for {args.path}-{args.name}-{split_name}",
+        ):
+            total_num_samples += 1
+        # Re-generate samples iterator
+        samples = generate_samples_from_dataloader(
+            loader, truncate_num_samples=truncate_num_samples
+        )
         log(
             INFO,
-            "Note: the progress bar is based on the dataset length before"
-            " tokenization, and may finish at a value before 100%.",
+            "Number of samples in %s-%s-%s is %s, using tokenizer %s.",
+            args.path,
+            args.name,
+            split_name,
+            total_num_samples,
+            tokenizer,
+        )
+
+        # Estimate the number of samples for the current client
+        # NOTE: The last client will get the remainder of the samples
+        expected_samples_per_client = total_num_samples // args.num_clients
+        remainder = int(total_num_samples % args.num_clients)
+        log(
+            INFO,
+            "Expected samples per client %s. "
+            "A remainder of %s will be appended to the last client.",
+            expected_samples_per_client,
+            remainder,
+        )
+
+        # Write samples
+        log(
+            INFO,
+            "Converting %s-%s-%s to MDS format...",
+            args.path,
+            args.name,
+            split_name,
         )
         # Loop over the number of clients
         for i in range(args.num_clients):
+            # Create temporary directory for the client
+            client_temp_dir = TemporaryDirectory()
+            # Define the remote path for the client
+            remote_path = (
+                f"{args.remote_bucket}/{vocab_size}"
+                f"/{str(args.path).replace('/', '_')}"
+                f"/{args.name}/client_{i}/{split_constants.split}"
+            )
             # Add the remainder to the last client
             if i == args.num_clients - 1:
                 expected_samples_per_client += remainder
-            # Set the output path given the client id
-            out_path = (
-                Path(args.out_root) / f"client_{i}" / folder_split
-                if args.num_clients > 1
-                else Path(args.out_root) / folder_split
-            )
-            log(
-                INFO,
-                "Writing client %s with %s expected samples on folder %s.",
-                i,
-                expected_samples_per_client,
-                out_path,
-            )
             with MDSWriter(
                 columns=columns,
-                out=str(out_path),
+                out=(client_temp_dir.name, remote_path),
                 compression=args.compression,
             ) as out:
                 for j, sample in enumerate(
-                    tqdm(samples, desc=folder_split, total=expected_samples_per_client)
+                    tqdm(
+                        samples,
+                        desc=f"client_{i}_{args.path}_{args.name}_{split_name}",
+                        total=expected_samples_per_client,
+                    )
                 ):
+                    if args.client and i != args.client:
+                        continue
                     # Writing the sample to the MDS file
                     out.write(sample)
                     # Break if we have reached the expected number of samples

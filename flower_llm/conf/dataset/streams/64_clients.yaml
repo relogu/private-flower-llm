@@ -1,8 +1,8 @@
 ---
 - client_streams:
     stream_0:
-      remote: c64/client_0
-      local: c64/client_0
+      remote: c128/client_0
+      local: c128/client_0
       proportion: null
       repeat: null
       choose: null
@@ -12,8 +12,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_1
-      local: c64/client_1
+      remote: c128/client_1
+      local: c128/client_1
       proportion: null
       repeat: null
       choose: null
@@ -23,8 +23,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_2
-      local: c64/client_2
+      remote: c128/client_2
+      local: c128/client_2
       proportion: null
       repeat: null
       choose: null
@@ -34,8 +34,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_3
-      local: c64/client_3
+      remote: c128/client_3
+      local: c128/client_3
       proportion: null
       repeat: null
       choose: null
@@ -45,8 +45,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_4
-      local: c64/client_4
+      remote: c128/client_4
+      local: c128/client_4
       proportion: null
       repeat: null
       choose: null
@@ -56,8 +56,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_5
-      local: c64/client_5
+      remote: c128/client_5
+      local: c128/client_5
       proportion: null
       repeat: null
       choose: null
@@ -67,8 +67,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_6
-      local: c64/client_6
+      remote: c128/client_6
+      local: c128/client_6
       proportion: null
       repeat: null
       choose: null
@@ -78,8 +78,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_7
-      local: c64/client_7
+      remote: c128/client_7
+      local: c128/client_7
       proportion: null
       repeat: null
       choose: null
@@ -89,8 +89,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_8
-      local: c64/client_8
+      remote: c128/client_8
+      local: c128/client_8
       proportion: null
       repeat: null
       choose: null
@@ -100,8 +100,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_9
-      local: c64/client_9
+      remote: c128/client_9
+      local: c128/client_9
       proportion: null
       repeat: null
       choose: null
@@ -111,8 +111,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_10
-      local: c64/client_10
+      remote: c128/client_10
+      local: c128/client_10
       proportion: null
       repeat: null
       choose: null
@@ -122,8 +122,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_11
-      local: c64/client_11
+      remote: c128/client_11
+      local: c128/client_11
       proportion: null
       repeat: null
       choose: null
@@ -133,8 +133,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_12
-      local: c64/client_12
+      remote: c128/client_12
+      local: c128/client_12
       proportion: null
       repeat: null
       choose: null
@@ -144,8 +144,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_13
-      local: c64/client_13
+      remote: c128/client_13
+      local: c128/client_13
       proportion: null
       repeat: null
       choose: null
@@ -155,8 +155,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_14
-      local: c64/client_14
+      remote: c128/client_14
+      local: c128/client_14
       proportion: null
       repeat: null
       choose: null
@@ -166,8 +166,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_15
-      local: c64/client_15
+      remote: c128/client_15
+      local: c128/client_15
       proportion: null
       repeat: null
       choose: null
@@ -177,8 +177,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_16
-      local: c64/client_16
+      remote: c128/client_16
+      local: c128/client_16
       proportion: null
       repeat: null
       choose: null
@@ -188,8 +188,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_17
-      local: c64/client_17
+      remote: c128/client_17
+      local: c128/client_17
       proportion: null
       repeat: null
       choose: null
@@ -199,8 +199,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_18
-      local: c64/client_18
+      remote: c128/client_18
+      local: c128/client_18
       proportion: null
       repeat: null
       choose: null
@@ -210,8 +210,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_19
-      local: c64/client_19
+      remote: c128/client_19
+      local: c128/client_19
       proportion: null
       repeat: null
       choose: null
@@ -221,8 +221,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_20
-      local: c64/client_20
+      remote: c128/client_20
+      local: c128/client_20
       proportion: null
       repeat: null
       choose: null
@@ -232,8 +232,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_21
-      local: c64/client_21
+      remote: c128/client_21
+      local: c128/client_21
       proportion: null
       repeat: null
       choose: null
@@ -243,8 +243,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_22
-      local: c64/client_22
+      remote: c128/client_22
+      local: c128/client_22
       proportion: null
       repeat: null
       choose: null
@@ -254,8 +254,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_23
-      local: c64/client_23
+      remote: c128/client_23
+      local: c128/client_23
       proportion: null
       repeat: null
       choose: null
@@ -265,8 +265,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_24
-      local: c64/client_24
+      remote: c128/client_24
+      local: c128/client_24
       proportion: null
       repeat: null
       choose: null
@@ -276,8 +276,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_25
-      local: c64/client_25
+      remote: c128/client_25
+      local: c128/client_25
       proportion: null
       repeat: null
       choose: null
@@ -287,8 +287,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_26
-      local: c64/client_26
+      remote: c128/client_26
+      local: c128/client_26
       proportion: null
       repeat: null
       choose: null
@@ -298,8 +298,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_27
-      local: c64/client_27
+      remote: c128/client_27
+      local: c128/client_27
       proportion: null
       repeat: null
       choose: null
@@ -309,8 +309,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_28
-      local: c64/client_28
+      remote: c128/client_28
+      local: c128/client_28
       proportion: null
       repeat: null
       choose: null
@@ -320,8 +320,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_29
-      local: c64/client_29
+      remote: c128/client_29
+      local: c128/client_29
       proportion: null
       repeat: null
       choose: null
@@ -331,8 +331,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_30
-      local: c64/client_30
+      remote: c128/client_30
+      local: c128/client_30
       proportion: null
       repeat: null
       choose: null
@@ -342,8 +342,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_31
-      local: c64/client_31
+      remote: c128/client_31
+      local: c128/client_31
       proportion: null
       repeat: null
       choose: null
@@ -353,8 +353,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_32
-      local: c64/client_32
+      remote: c128/client_32
+      local: c128/client_32
       proportion: null
       repeat: null
       choose: null
@@ -364,8 +364,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_33
-      local: c64/client_33
+      remote: c128/client_33
+      local: c128/client_33
       proportion: null
       repeat: null
       choose: null
@@ -375,8 +375,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_34
-      local: c64/client_34
+      remote: c128/client_34
+      local: c128/client_34
       proportion: null
       repeat: null
       choose: null
@@ -386,8 +386,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_35
-      local: c64/client_35
+      remote: c128/client_35
+      local: c128/client_35
       proportion: null
       repeat: null
       choose: null
@@ -397,8 +397,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_36
-      local: c64/client_36
+      remote: c128/client_36
+      local: c128/client_36
       proportion: null
       repeat: null
       choose: null
@@ -408,8 +408,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_37
-      local: c64/client_37
+      remote: c128/client_37
+      local: c128/client_37
       proportion: null
       repeat: null
       choose: null
@@ -419,8 +419,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_38
-      local: c64/client_38
+      remote: c128/client_38
+      local: c128/client_38
       proportion: null
       repeat: null
       choose: null
@@ -430,8 +430,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_39
-      local: c64/client_39
+      remote: c128/client_39
+      local: c128/client_39
       proportion: null
       repeat: null
       choose: null
@@ -441,8 +441,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_40
-      local: c64/client_40
+      remote: c128/client_40
+      local: c128/client_40
       proportion: null
       repeat: null
       choose: null
@@ -452,8 +452,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_41
-      local: c64/client_41
+      remote: c128/client_41
+      local: c128/client_41
       proportion: null
       repeat: null
       choose: null
@@ -463,8 +463,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_42
-      local: c64/client_42
+      remote: c128/client_42
+      local: c128/client_42
       proportion: null
       repeat: null
       choose: null
@@ -474,8 +474,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_43
-      local: c64/client_43
+      remote: c128/client_43
+      local: c128/client_43
       proportion: null
       repeat: null
       choose: null
@@ -485,8 +485,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_44
-      local: c64/client_44
+      remote: c128/client_44
+      local: c128/client_44
       proportion: null
       repeat: null
       choose: null
@@ -496,8 +496,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_45
-      local: c64/client_45
+      remote: c128/client_45
+      local: c128/client_45
       proportion: null
       repeat: null
       choose: null
@@ -507,8 +507,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_46
-      local: c64/client_46
+      remote: c128/client_46
+      local: c128/client_46
       proportion: null
       repeat: null
       choose: null
@@ -518,8 +518,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_47
-      local: c64/client_47
+      remote: c128/client_47
+      local: c128/client_47
       proportion: null
       repeat: null
       choose: null
@@ -529,8 +529,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_48
-      local: c64/client_48
+      remote: c128/client_48
+      local: c128/client_48
       proportion: null
       repeat: null
       choose: null
@@ -540,8 +540,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_49
-      local: c64/client_49
+      remote: c128/client_49
+      local: c128/client_49
       proportion: null
       repeat: null
       choose: null
@@ -551,8 +551,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_50
-      local: c64/client_50
+      remote: c128/client_50
+      local: c128/client_50
       proportion: null
       repeat: null
       choose: null
@@ -562,8 +562,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_51
-      local: c64/client_51
+      remote: c128/client_51
+      local: c128/client_51
       proportion: null
       repeat: null
       choose: null
@@ -573,8 +573,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_52
-      local: c64/client_52
+      remote: c128/client_52
+      local: c128/client_52
       proportion: null
       repeat: null
       choose: null
@@ -584,8 +584,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_53
-      local: c64/client_53
+      remote: c128/client_53
+      local: c128/client_53
       proportion: null
       repeat: null
       choose: null
@@ -595,8 +595,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_54
-      local: c64/client_54
+      remote: c128/client_54
+      local: c128/client_54
       proportion: null
       repeat: null
       choose: null
@@ -606,8 +606,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_55
-      local: c64/client_55
+      remote: c128/client_55
+      local: c128/client_55
       proportion: null
       repeat: null
       choose: null
@@ -617,8 +617,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_56
-      local: c64/client_56
+      remote: c128/client_56
+      local: c128/client_56
       proportion: null
       repeat: null
       choose: null
@@ -628,8 +628,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_57
-      local: c64/client_57
+      remote: c128/client_57
+      local: c128/client_57
       proportion: null
       repeat: null
       choose: null
@@ -639,8 +639,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_58
-      local: c64/client_58
+      remote: c128/client_58
+      local: c128/client_58
       proportion: null
       repeat: null
       choose: null
@@ -650,8 +650,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_59
-      local: c64/client_59
+      remote: c128/client_59
+      local: c128/client_59
       proportion: null
       repeat: null
       choose: null
@@ -661,8 +661,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_60
-      local: c64/client_60
+      remote: c128/client_60
+      local: c128/client_60
       proportion: null
       repeat: null
       choose: null
@@ -672,8 +672,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_61
-      local: c64/client_61
+      remote: c128/client_61
+      local: c128/client_61
       proportion: null
       repeat: null
       choose: null
@@ -683,8 +683,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_62
-      local: c64/client_62
+      remote: c128/client_62
+      local: c128/client_62
       proportion: null
       repeat: null
       choose: null
@@ -694,8 +694,8 @@
       keep_zip: null
 - client_streams:
     stream_0:
-      remote: c64/client_63
-      local: c64/client_63
+      remote: c128/client_63
+      local: c128/client_63
       proportion: null
       repeat: null
       choose: null

@@ -12,13 +12,14 @@ from collections.abc import Callable
 from logging import DEBUG, INFO
 from typing import Any
 
-import flwr as fl
 import hydra
 import psutil
 import streaming
 import transformers
+from flwr.client import NumPyClient
 from flwr.common.logger import log
 from flwr.common.typing import Config, NDArrays, Scalar
+from flwr.common.recordset_compat import ConfigsRecord
 from omegaconf import DictConfig, OmegaConf
 
 from flower_llm.clients.llm_client_functions import (
@@ -35,7 +36,7 @@ from flower_llm.utils import (
 )
 
 
-class VirtualLLMClient(fl.client.NumPyClient):
+class VirtualLLMClient(NumPyClient):
     """Implement the most lightweight Flower Client."""
 
     def __init__(
@@ -79,18 +80,18 @@ class VirtualLLMClient(fl.client.NumPyClient):
         cfg: DictConfig = copy.deepcopy(self.cfg)
         return get_parameters(config, cfg)
 
-    def fit(
-        self, parameters: NDArrays, config: dict
+    def fit(  # type: ignore[reportIncompatibleMethodOverride, override]
+        self, parameters: NDArrays, config: ConfigsRecord
     ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
         """Implement the fit step."""
         # log(INFO, f'VirtualLLMClient.fit :: {config}')
         cfg: DictConfig = copy.deepcopy(self.cfg)
         return llm_fit(parameters, config, cfg, self.cid)
 
-    def evaluate(
+    def evaluate(  # type: ignore[reportIncompatibleMethodOverride, override]
         self,
         parameters: NDArrays,
-        config: dict,
+        config: ConfigsRecord,
     ) -> tuple[float, int, dict[str, Scalar]]:
         """Implement the evaluation step."""
         # log(INFO, f'VirtualLLMClient.evaluate :: {config}')
@@ -169,7 +170,7 @@ def main(cfg: DictConfig) -> None:
         )
         # Test virtual client's fit function
         parameters, num_examples, metrics = virtual_llm_client.fit(
-            parameters=parameters, config={}
+            parameters=parameters, config=ConfigsRecord({})
         )
         log(INFO, f"VirtualLLMClient.fit :: parameters' length is {len(parameters)}")
         log(
@@ -243,7 +244,7 @@ def main(cfg: DictConfig) -> None:
         )
         # Test virtual client's evaluate function
         loss, num_examples, metrics = virtual_llm_client.evaluate(
-            parameters=parameters, config={}
+            parameters=parameters, config=ConfigsRecord({})
         )
         log(INFO, f"VirtualLLMClient.evaluate :: evaluation loss is {loss}")
         log(

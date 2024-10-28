@@ -61,25 +61,40 @@ fi
 export POLLEN_SAVE_PATH="$PROJECT_PATH/runs/$RUN_UUID/$DATETIME"
 mkdir -p "$POLLEN_SAVE_PATH"
 #! Getting visible GPUs
-N_GPUS=$(nvidia-smi -L | wc -l)
-CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+if [[ $(nvidia-smi -L) == *'No devices'* ]]; then
+	echo "No NVIDIA devices found."
+	N_GPUS=0
+elif [[ $(nvidia-smi -L) == *'not found'* ]]; then
+	echo "nvidia-smi not present."
+	N_GPUS=0
+else
+	N_GPUS=$(nvidia-smi -L | wc -l)
+fi
+if [ "$N_GPUS" -eq 0 ]; then
+	echo "No GPUs found. Exiting."
+	CUDA_VISIBLE_DEVICES=""
+else
+	CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((N_GPUS - 1)))
+fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 N_LOCAL_STEPS=10
-POLLEN_CONFIG="pollen.server_address='[::]:50749' run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=50 fl.n_rounds=176" # pollen.cpu_only=true"
 POLLEN_CONFIG="$POLLEN_CONFIG pollen.checkpoint=false pollen.saving_path=$SAVE_PATH llm_config.save_folder=$SAVE_PATH llm_config.save_overwrite=true pollen.n_nodes=1 pollen.resume_round=-1 pollen.fit_collaborative=false pollen.restore_run_uuid=null "
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.scheduler.t_max=1000ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=6.0e-4"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${N_LOCAL_STEPS}ba llm_config.console_log_interval=${N_LOCAL_STEPS}ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
 #! Additional settings specific for the current testing
 TESTING_OPTIONS=""
+
 #! Set `TMPDIR` that is used for storing the temporary files for caching the dataset (not the dataset cache though)
-export TMPDIR="/tmp/flower_llm/$RUN_UUID/$DATETIME"
+export TMPDIR="/local/scratch/flower_llm/$RUN_UUID"
 mkdir -p "$TMPDIR"
+
 #! Test VirtualLLMClient
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
-RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.clients.virtual_llm_client "$LLM_CONFIG" "$POLLEN_CONFIG" "$MINIO_COMM_STACK_OPTIONS" "$TESTING_OPTIONS" is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/virtual_llm_client.log
+RUN_UUID=chiappe APPOINTED_CUDA_DEVICE=$CUDA_VISIBLE_DEVICES CUDA_LAUNCH_BLOCKING=1 HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.clients.virtual_llm_client $LLM_CONFIG $POLLEN_CONFIG $MINIO_COMM_STACK_OPTIONS $TESTING_OPTIONS is_test=true hydra/job_logging=none hydra/hydra_logging=none 2>&1 | tee "$POLLEN_SAVE_PATH"/virtual_llm_client.log
 #! Keep the pid of the NodeManager
 BACK_PID=$!
 # Enable CTRL+C to stop all background processes

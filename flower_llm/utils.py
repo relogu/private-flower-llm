@@ -3,22 +3,20 @@
 They assure compatibility with the Flower and wandb APIs.
 """
 
-import ast
-import copy
 from dataclasses import dataclass
 import fcntl
 import gc
 import os
 import pickle
-import re
 import resource
 import shutil
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
-from functools import reduce
-from logging import DEBUG, ERROR, INFO
+from logging import DEBUG, ERROR, WARN
 from pathlib import Path
 from typing import Any, Literal, cast
+
+from composer.loggers import RemoteUploaderDownloader
 
 import numpy as np
 import psutil
@@ -28,14 +26,10 @@ import torch
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel
 from torch.distributed.fsdp.api import FullStateDictConfig, StateDictType
 from composer import Trainer
-from composer.loggers import RemoteUploaderDownloader
 from composer.utils import dist
-from flwr.common import Config, FitRes, NDArrays, log, parameters_to_ndarrays
-from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate
+from flwr.common import Config, NDArrays, log, parameters_to_ndarrays, NDArray
 from torch import device as device_type
-from typing_extensions import Self
-from composer.utils.file_helpers import list_remote_objects
+from typing import Self
 
 import wandb
 
@@ -122,8 +116,31 @@ def get_parameters_from_state(config: Config, trainer: Trainer) -> NDArrays:
     return [val.detach().to("cpu").numpy() for _, val in model_parameters_dict.items()]
 
 
+def apply_fake_gradient_update(
+    trainer: Trainer,
+    initial_trainer_parameters: NDArrays,
+    parameters: NDArrays,
+    n_steps: int,
+) -> None:
+    """Apply a fake gradient update to the trainer."""
+    client_to_server_pseudo_gradient = [
+        y - x for x, y in zip(parameters, initial_trainer_parameters, strict=True)
+    ]
+
+    set_trainer_grads_from_ndarrays(client_to_server_pseudo_gradient, trainer)
+    # 0.9^6 = 0.53 contribution to the previous momentum state
+    for _ in range(n_steps):
+        for optimizer in trainer.state.optimizers:
+            optimizer.step()
+    for optimizer in trainer.state.optimizers:
+        try:
+            optimizer.zero_grad(set_to_none=True)
+        except TypeError:
+            optimizer.zero_grad()
+
+
 def get_trainable_params_dict(
-    model: torch.nn.Module, sort_dict: bool = True
+    model: torch.nn.Module, sort_dict: bool = True, no_detach_and_clone: bool = False
 ) -> dict[str, torch.nn.Parameter] | dict[str, torch.Tensor]:
     """Get the trainable parameters of a model as a dictionary."""
     params_dict: dict[str, torch.nn.Parameter] | dict[str, torch.Tensor] = {}
@@ -155,24 +172,17 @@ def get_trainable_params_dict(
             # parameters that are "living" in that rank and will have zero-shaped
             # tensors for the others.
             params_dict = {
-                name: param.detach().clone()
+                name: param.detach().clone() if not no_detach_and_clone else param
                 for name, param in inner_model.named_parameters()
                 if param.requires_grad
             }
     else:
         params_dict = {
-            name: param.detach().clone()
+            name: param.detach().clone() if not no_detach_and_clone else param
             for name, param in model.named_parameters()
             if param.requires_grad
         }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
     dist.barrier()
     return params_dict
@@ -202,9 +212,23 @@ def set_trainer_trainable_params_dict(
             if cpu_state:
                 # Set the parameters only if they require gradients
                 for name, param in cpu_state.items():
+                    assert name in parameters_dict, (
+                        f"Parameter {name} not found across list"
+                        " of parameters {parameters_dict.keys()}"
+                    )
+                    param_from_dict = parameters_dict[name]
+                    # Raise error if the shapes don't match
+                    if param.shape != param_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{param_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
                     # NOTE: We need to add the prefix "model." to the name of the
                     # parameter to match the state dict
-                    cpu_state[name] = parameters_dict["model." + name].to(param.device)
+                    cpu_state[name] = param_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
             # Broadcast the state dict across all ranks
             # NOTE: This step is necessary as all the ranks must load the same state
             # dict concurrently
@@ -216,14 +240,101 @@ def set_trainer_trainable_params_dict(
         for name, param in trainer.state.model.named_parameters():
             # Set the parameters only if they require gradients
             if param.requires_grad:
-                # DDP
-                if name.startswith("module."):
-                    param.data = parameters_dict[name.replace("module.", "")].to(
-                        param.device
+                lookup_name = name.replace("model.", "").replace("module.", "")
+                if lookup_name not in parameters_dict:
+                    log(
+                        WARN,
+                        "Parameter %s not found in the list of parameters"
+                        " and won't be set",
+                        name,
                     )
-                # Single GPU
                 else:
-                    param.data = parameters_dict[name].to(param.device)
+                    param_from_dict = parameters_dict[lookup_name]
+                    # Raise error if the shapes don't match
+                    if param.shape != param_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{param_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    param.data = param_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
+    dist.barrier()
+
+
+def set_trainer_trainable_grads_dict(
+    trainer: Trainer,
+    grads_dict: OrderedDict[str, torch.Tensor],
+) -> None:
+    """Set the trainable grads of a model."""
+    # NOTE: This function is weird because the encapsulation done to support FSDP and
+    # DDP is weird. Since they are both likely to change, we MUST maintain this very
+    # well and implement as many checkers as we can.
+    if (
+        hasattr(trainer.state.model, "model")
+        and type(trainer.state.model.model) is FullyShardedDataParallel
+    ):
+        # Get the state dict of the model on rank 0 offloading to CPU
+        # NOTE: This assumes there's enough RAM on rank 0 to hold the model state dict
+        save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        with FullyShardedDataParallel.state_dict_type(
+            trainer.state.model.model, StateDictType.FULL_STATE_DICT, save_policy
+        ):
+            cpu_state = trainer.state.model.model.state_dict()
+            # If the state dict exists (only on rank 0), modify ion place the grads
+            # to those passed as argument
+            if cpu_state:
+                # Set the parameter grads only if they require gradients
+                for name, param in cpu_state.items():
+                    assert name in grads_dict, (
+                        f"Parameter {name} not found across list"
+                        " of parameters {parameters_dict.keys()}"
+                    )
+                    grads_from_dict = grads_dict[name]
+                    # Raise error if the shapes don't match
+                    if param.shape != grads_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{grads_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    # NOTE: We need to add the prefix "model." to the name of the
+                    # parameter to match the state dict
+                    cpu_state[name].grad = grads_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
+            # Broadcast the state dict across all ranks
+            # NOTE: This step is necessary as all the ranks must load the same state
+            # dict concurrently
+            list_of_objects = [cpu_state]
+            dist.broadcast_object_list(list_of_objects, src=0)
+            # Load the state dict back to the model
+            trainer.state.model.model.load_state_dict(list_of_objects[0])
+    else:
+        for name, param in trainer.state.model.named_parameters():
+            # Set the grads only if they require gradients
+            if param.requires_grad:
+                lookup_name = name.replace("model.", "").replace("module.", "")
+                if lookup_name not in grads_dict:
+                    log(
+                        WARN,
+                        "Parameter %s not found in the list of parameters"
+                        " and won't be set",
+                        name,
+                    )
+                else:
+                    grads_from_dict = grads_dict[lookup_name]
+                    # Raise error if the shapes don't match
+                    if param.shape != grads_from_dict.shape:
+                        raise ValueError(
+                            f"Shapes don't match: {param.shape} != "
+                            f"{grads_from_dict.shape}"
+                        )
+                    current_dtype = param.data.dtype
+                    param.grad = grads_from_dict.to(
+                        device=param.device, dtype=current_dtype
+                    )
     dist.barrier()
 
 
@@ -281,29 +392,155 @@ def set_trainable_params_dict(
     dist.barrier()
 
 
+def set_trainer_params_from_ndarrays(parameters: NDArrays, trainer: Trainer) -> None:
+    """Set the parameters of a trainer from a list of NDArrays.
+
+    This function attempts to set the parameters of the trainer's model using
+    the provided NDArrays. It first tries to set the parameters assuming they
+    are ordered. If this fails due to shape mismatches, it retries with the
+    parameters unordered.
+
+    Parameters
+    ----------
+        parameters (NDArrays): The list of NDArrays representing the model parameters.
+        trainer (Trainer): The trainer object whose model parameters are to be set.
+
+    Raises
+    ------
+        ValueError: If setting the parameters fails due to shape mismatches or other
+        issues.
+    """
+    # Get the unordered and ordered list of parameter names
+    parameters_names = get_list_of_parameters_names(
+        trainer.state.model, sort_dict=False
+    )
+    ordered_parameters_names = sorted(parameters_names)
+    # Try to set the parameters a s if they are ordered
+    try:
+        parameters_dict = construct_parameters_dict(
+            ordered_parameters_names, parameters
+        )
+        set_trainer_trainable_params_dict(trainer, parameters_dict)
+    except ValueError as e:
+        if "Shapes don't match" in str(e):
+            log(
+                ERROR,
+                "Error trying to set the parameters as ordered, trying unordered",
+                exc_info=e,
+                stack_info=True,
+            )
+            # If the ordered parameters failed, try to set the parameters as unordered
+            parameters_dict = construct_parameters_dict(parameters_names, parameters)
+            set_trainer_trainable_params_dict(trainer, parameters_dict)
+        else:
+            raise
+
+
+def set_trainer_grads_from_ndarrays(grads: NDArrays, trainer: Trainer) -> None:
+    """Set the grads of a trainer from a list of NDArrays.
+
+    This function attempts to set the grads of the trainer's model using
+    the provided NDArrays. It first tries to set the grads assuming they
+    are ordered. If this fails due to shape mismatches, it retries with the
+    grads unordered.
+
+    Parameters
+    ----------
+        grads (NDArrays): The list of NDArrays representing the model grads.
+        trainer (Trainer): The trainer object whose model grads are to be set.
+
+    Raises
+    ------
+        ValueError: If setting the parameters fails due to shape mismatches or other
+        issues.
+    """
+    # Get the unordered and ordered list of parameter names
+    parameters_names = get_list_of_parameters_names(
+        trainer.state.model, sort_dict=False
+    )
+    ordered_parameters_names = sorted(parameters_names)
+    # Try to set the parameter grads as if they are ordered
+    try:
+        grads_dict = construct_parameters_dict(ordered_parameters_names, grads)
+        set_trainer_trainable_grads_dict(trainer, grads_dict)
+    except ValueError as e:
+        if "Shapes don't match" in str(e):
+            log(
+                ERROR,
+                "Error trying to set the parameters as ordered, trying unordered",
+                exc_info=e,
+                stack_info=True,
+            )
+            # If the ordered parameters failed, try to set the parameters as unordered
+            grads_dict = construct_parameters_dict(parameters_names, grads)
+            set_trainer_trainable_grads_dict(trainer, grads_dict)
+        else:
+            raise
+
+
+def get_wte_parameters_from_trainer(trainer: Trainer) -> NDArray:
+    """Get the parameters of the WTE layer of a model from a trainer."""
+    # Get the parameter names of the model
+    model_parameter_names = get_list_of_parameters_names(trainer.state.model)
+    # Get the WTE parameters
+    wte_parameters_dict = {
+        name: param
+        for name, param in zip(
+            model_parameter_names, get_parameters_from_state({}, trainer), strict=False
+        )
+        if "wte" in name
+    }
+    # Return the WTE parameters
+    wte_parameters = list(wte_parameters_dict.values())
+    assert len(wte_parameters) > 0, "There are no WTE parameters"
+    assert len(wte_parameters) == 1, "WTE parameters are not unique"
+    return wte_parameters[0]
+
+
+def set_wte_parameters_to_trainer(trainer: Trainer, wte_parameters: NDArray) -> None:
+    """Set the parameters of the WTE layer of a model to a trainer."""
+    # Get the parameter names of the model
+    model_parameter_names = get_list_of_parameters_names(trainer.state.model)
+    # Get the WTE parameters
+    model_parameters: list[NDArray] = [
+        param if "wte" not in name else wte_parameters
+        for name, param in zip(
+            model_parameter_names, get_parameters_from_state({}, trainer), strict=False
+        )
+    ]
+    # Set the WTE parameters
+    set_trainer_params_from_ndarrays(model_parameters, trainer)
+
+
 def get_list_of_parameters_names(
     model: torch.nn.Module, sort_dict: bool = True
 ) -> list[str]:
     """Return the list of parameters names."""
+    # Get named parameters dictionary of the model
     params_dict = {
         name: param for name, param in model.named_parameters() if param.requires_grad
     }
-    # TODO: Fix this when back compatibility issues are gone
-    if len(params_dict) >= 290:  # noqa: PLR2004
-        log(
-            DEBUG,
-            "Model parameters length is %s and the dict won't be sorted",
-            len(params_dict),
-        )
-    if sort_dict and len(params_dict) < 290:  # noqa: PLR2004
+    # Trim some annoying prefixes
+    params_dict = {k.replace("model.", ""): v for k, v in params_dict.items()}
+    params_dict = {k.replace("module.", ""): v for k, v in params_dict.items()}
+    params_dict = {k.replace("_fsdp_wrapped_", ""): v for k, v in params_dict.items()}
+    params_dict = {
+        k.replace("_checkpoint_wrapped_", ""): v for k, v in params_dict.items()
+    }
+    # Sort the dictionary if requested
+    if sort_dict:
         params_dict = dict(sorted(params_dict.items()))
+    # Return the list of parameter names
     return list(params_dict.keys())
 
 
 def construct_parameters_dict(
-    parameters_names: list[str], parameters: NDArrays
+    parameters_names: list[str], parameters: NDArrays, transformer_only: bool = True
 ) -> OrderedDict[str, torch.Tensor]:
     """Construct a dictionary of parameters."""
+    # Remove any non-transformer parameters from parameters_names
+    if transformer_only:
+        parameters_names = [name for name in parameters_names if "transformer" in name]
     zipped_lists = zip(parameters_names, parameters, strict=True)
     return OrderedDict({k: torch.as_tensor(v) for k, v in zipped_lists})
 
@@ -339,7 +576,7 @@ def upload_file_to_s3(
 
 def load_model_parameters_from_file(file_path: Path) -> NDArrays:
     """Load model parameters from a file."""
-    if file_path.suffix == ".npz":
+    if file_path.suffix in {".npz", ".npzc"}:
         with np.load(file_path) as data:
             return [data[key] for key in data.files]
     elif file_path.suffix == ".bin":
@@ -351,87 +588,18 @@ def load_model_parameters_from_file(file_path: Path) -> NDArrays:
 
 def dump_model_parameters_to_file(file_path: Path, model_parameters: NDArrays) -> None:
     """Load model parameters from a file."""
-    if file_path.suffix == ".npz":
+    # NOTE: Very slow for big models b/c compression. Good benchmark available here: https://stackoverflow.com/questions/30329726/fastest-save-and-load-options-for-a-numpy-array
+    if file_path.suffix == ".npzc":
         with open(file_path, "wb") as file:
             np.savez_compressed(file, *model_parameters)
     elif file_path.suffix == ".bin":
         with open(file_path, "wb") as file:
             pickle.dump(model_parameters, file)
+    elif file_path.suffix == ".npz":
+        with open(file_path, "wb") as file:
+            np.savez(file, *model_parameters)
     else:
         raise ValueError(f"Unsupported file format: {file_path.suffix}")
-
-
-def weighted_average(
-    metrics: list[tuple[int, dict]],
-) -> dict:
-    """Compute a weighted average over pre-defined metrics.
-
-    Parameters
-    ----------
-    metrics : List[Tuple[int, Dict]]
-        The metrics to aggregate.
-
-    Returns
-    -------
-    Dict
-        The weighted average over pre-defined metrics.
-    """
-    client_state_accumulator: dict[int | str, dict[str, Any]] = {}
-    total_num_examples = sum(num_examples for num_examples, _ in metrics)
-    weighted_metrics: dict = defaultdict(float)
-
-    for num_examples, metric in metrics:
-        if metric is not None:
-            cid = metric.pop("cid", None)
-            client_state = metric.pop("client_state", None)
-            client_state_acc = metric.pop("client_state_acc", None)
-            for key, value in metric.items():
-                if not isinstance(value, str):
-                    weighted_metrics[key] += num_examples * value
-            if cid is not None and client_state is not None:
-                client_state_accumulator[cid] = ast.literal_eval(client_state)
-            if client_state_acc is not None:
-                client_state_accumulator |= ast.literal_eval(client_state_acc)
-
-    ret_dict = {
-        key: value / total_num_examples for key, value in weighted_metrics.items()
-    }
-    if client_state_accumulator:
-        ret_dict |= {"client_state_acc": str(client_state_accumulator)}
-
-    return ret_dict
-
-
-def partially_aggregate(
-    current_agg: tuple[NDArrays, int], new_results: tuple[NDArrays, int]
-) -> tuple[NDArrays, int]:
-    """Aggregate partially parameters."""
-    updated_agg = None
-    # Assuming that the partially aggregate is empty when n_samples is 0
-    if current_agg[1] == 0:
-        updated_agg = copy.deepcopy(new_results[0])
-        total_num_examples = copy.deepcopy(new_results[1])
-    else:
-        updated_agg = aggregate([current_agg, new_results])
-        total_num_examples = copy.deepcopy(current_agg[1]) + copy.deepcopy(
-            new_results[1]
-        )
-    return updated_agg, total_num_examples
-
-
-def partially_aggregate_metrics(
-    current_agg: tuple[int, Config], new_results: tuple[int, Config]
-) -> tuple[int, Config]:
-    """Aggregate partially parameters."""
-    updated_agg = None
-    # Assuming that the partially aggregate is empty when n_samples is 0
-    if current_agg[0] == 0:
-        total_num_examples = copy.deepcopy(new_results[0])
-        updated_agg = copy.deepcopy(new_results[1])
-    else:
-        total_num_examples = current_agg[0] + copy.deepcopy(new_results[0])
-        updated_agg = weighted_average([current_agg, new_results])
-    return total_num_examples, updated_agg
 
 
 # Client ####
@@ -484,7 +652,7 @@ def wandb_init(
     if wandb_enabled:
         # Add server suffix to the name of the run
         name = kwargs.pop("name", "")
-        assert type(name) is str
+        assert type(name) is str, f"Name must be a string, not {type(name)}"
         name += "_server"
         return wandb.init(*args, **kwargs, name=name)  # type: ignore[arg-type,misc]
 
@@ -567,34 +735,6 @@ def l2_norm(arrays: NDArrays) -> float:
         The L2 norm of the list of arrays.
     """
     return float(np.sqrt(sum_of_squares(arrays)))
-
-
-def aggregate_inplace(results: list[tuple[ClientProxy, FitRes]]) -> NDArrays:
-    """Compute in-place weighted average."""
-    # Count total examples
-    num_examples_total = sum(fit_res.num_examples for _, fit_res in results)
-
-    # Compute scaling factors for each result
-    scaling_factors = [
-        fit_res.num_examples / num_examples_total for _, fit_res in results
-    ]
-
-    # Let's do in-place aggregation
-    # get first result, then add up each other
-    params = [
-        scaling_factors[0] * x for x in parameters_to_ndarrays(results[0][1].parameters)
-    ]
-    for i, (_, fit_res) in enumerate(results[1:]):
-        res = (
-            scaling_factors[i + 1] * x
-            for x in parameters_to_ndarrays(fit_res.parameters)
-        )
-        params = [
-            reduce(np.add, layer_updates)
-            for layer_updates in zip(params, res, strict=False)
-        ]
-
-    return params
 
 
 def get_device() -> device_type:
@@ -1164,7 +1304,9 @@ def get_file_names_from_file_number(fds: list[int]) -> list[str]:
     """Return a list of file names given a list of file descriptor numbers."""
     names = []
     for fd in fds:
-        names.append(str(Path.readlink(Path("/proc/self/fd/%d" % fd))))
+        # Convert fd to a double
+        fd_double = float(fd)
+        names.append(str(Path.readlink(Path(f"/proc/self/fd/{fd_double}"))))
     return names
 
 
@@ -1195,26 +1337,59 @@ class IntentionalClientDropoutError(Exception):
     """Exception raised when a client is dropped out of the tree."""
 
 
-def obtain_sorted_runs(server_path: str) -> list[int]:
-    """Obtain the sorted runs from the server path.
+def create_remote_up_down(
+    bucket_name: str,
+    prefix: str,
+    run_uuid: str,
+    num_attempts: int,
+    client_config: dict[str, Any],
+    num_concurrent_uploads: int = 1,
+    upload_staging_folder: str | None = None,  # Don't touch, it's /tmp by default
+    use_procs: bool = True,
+) -> RemoteUploaderDownloader:
+    """Create the remote uploader/downloader.
 
     Parameters
     ----------
-    server_path : str
-        The path to the server.
+    bucket_name : str
+        The name of the bucket.
+    run_uuid : str
+        The UUID of the run.
+    num_attempts : int
+        The number of attempts.
+    client_config : dict[str, Any]
+        The configuration of the client.
+    num_concurrent_uploads : int, optional
+        The number of concurrent uploads, by default 1.
+    upload_staging_folder : str | None, optional
+        The upload staging folder, dont't touch, by default None.
+    use_procs : bool, optional
+        Whether to use processes, by default True. Don't touch.
 
     Returns
     -------
-    List[int]
-        The sorted runs.
+    RemoteUploaderDownloader
+        The remote uploader/downloader.
     """
-    remote_objects = list_remote_objects(server_path)
-    log(INFO, "Found files %s", remote_objects)
-    # Take only the unique indices
-    return sorted(
-        {
-            int(reg.group(1))
-            for path in remote_objects
-            if (reg := re.search(r"server/(\d+)/.*$", path)) is not None
-        }
+    bucket_uri = f"s3://{bucket_name}"
+    remote_up_down = RemoteUploaderDownloader(
+        bucket_uri=bucket_uri,
+        backend_kwargs={
+            "bucket": bucket_name,
+            "prefix": prefix,  # Don't touch
+            "region_name": None,  # Not necessary
+            "endpoint_url": None,  # Will be read from env var
+            "aws_access_key_id": None,  # Will be read from config file
+            "aws_secret_access_key": None,  # Will be read from config file
+            "aws_session_token": None,  # Will be automatically generated
+            "client_config": client_config,  # And using defaults
+            "transfer_config": None,  # Using defaults
+        },
+        file_path_format_string="{remote_file_name}",  # Don't touch
+        num_concurrent_uploads=num_concurrent_uploads,
+        upload_staging_folder=upload_staging_folder,  # Don't touch, default: /tmp
+        use_procs=use_procs,  # Don't touch
+        num_attempts=num_attempts,
     )
+    remote_up_down.init(run_name=run_uuid)  # Don't touch
+    return remote_up_down

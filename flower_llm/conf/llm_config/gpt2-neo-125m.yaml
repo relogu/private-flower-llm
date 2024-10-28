@@ -1,0 +1,123 @@
+---
+# Pretrain a gpt2 style model
+# this is NOT a finetuning run
+name: null
+
+data_local: ./my-copy-c4
+data_remote: null  # If blank, files must be present in data_local
+max_seq_len: 2048
+global_seed: 17
+autoresume: false
+
+# Run Name
+run_name: ${run_uuid}  # If left blank, will be read from env var $RUN_NAME
+
+# Evaluation gauntlet
+eval_gauntlet: ${eval_gauntlet_config.eval_gauntlet}
+icl_tasks_config: ${icl_tasks_config}
+icl_tasks: ${icl_tasks_config.icl_tasks}
+
+# Model
+model:
+  name: hf_causal_lm
+  pretrained_model_name_or_path: EleutherAI/gpt-neo-125M
+  # config_overrides:
+  #  # WARNING: if setting `pretrained: true`, `max_position_embeddings` must match the
+  #  # `max_position_embeddings` used during pre-training
+  #   n_positions: ${llm_config.max_seq_len}
+  allow_embedding_resizing: true
+  use_flash_attention_2: false
+  init_device: meta
+  pretrained: false  # false: only use the architecture; true: initialize with pretrained weights
+
+# Tokenizer
+tokenizer:
+  # name: gpt2
+  name: EleutherAI/gpt-neox-20b
+  kwargs:
+    model_max_length: ${llm_config.max_seq_len}
+
+# Dataloaders
+train_loader:
+  name: text
+  dataset: ${dataset.train}
+  drop_last: true
+  num_workers: 8
+
+eval_loader:
+  name: text
+  dataset: ${dataset.val}
+  drop_last: false
+  num_workers: 8
+
+# Optimization
+scheduler:
+  name: cosine_with_warmup
+  t_warmup: 100ba
+  alpha_f: 0.1
+  t_max: ${llm_config.max_duration}
+
+optimizer:
+  name: decoupled_adamw
+  lr: 6.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-08
+  weight_decay: 0.0
+
+algorithms:
+  gradient_clipping:
+    clipping_type: norm
+    clipping_threshold: 1.0
+
+local_steps: 500ba
+
+max_duration: 4800ba  # ~ 2.5B tokens
+eval_interval: 500ba
+eval_first: false
+eval_subset_num_batches: -1
+global_train_batch_size: 256
+
+# System
+seed: ${llm_config.global_seed}
+device_eval_batch_size: 4
+# device_train_microbatch_size: auto
+device_train_microbatch_size: 4
+precision: amp_bf16
+
+# FSDP
+fsdp_config:
+  sharding_strategy: FULL_SHARD
+  mixed_precision: PURE
+  activation_checkpointing: false
+  activation_checkpointing_reentrant: false
+  activation_cpu_offload: false
+  limit_all_gathers: true
+
+# Logging
+progress_bar: false
+log_to_console: true
+console_log_interval: 1ba
+
+callbacks:
+  # speed_monitor:
+    # window_size: 20
+    # gpu_flops_available: null
+  lr_monitor: {}
+  memory_monitor: {}
+  runtime_estimator: {}
+  activation_monitor_full_model: {interval: 10ba}
+  optimizer_monitor: {interval: 10ba, only_global: true}
+
+loggers:
+  wandb:
+    init_kwargs: ${wandb.setup}
+  tensorboard: {flush_interval: 10}
+
+# Checkpoint to local filesystem or remote object store
+save_interval: 500ba
+save_num_checkpoints_to_keep: 1  # Important, this cleans up checkpoints saved to DISK
+save_folder: ./{run_name}/checkpoints
+save_overwrite: false
+
+# Load from local filesystem or remote object store
+load_path: null

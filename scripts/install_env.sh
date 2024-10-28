@@ -49,35 +49,40 @@ fi
 # shellcheck disable=SC1091
 . "$POETRY_ENV_PATH"/bin/activate
 # Adding CUDA paths to environment variables
-export PATH=/usr/local/cuda-12.1/bin${PATH:+:${PATH}}
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+export PATH=/usr/local/cuda-12.4/bin${PATH:+:${PATH}}
+export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
-if ! command -v nvcc &>/dev/null; then
-	if [[ $1 != "no_cuda" ]]; then
-		echo "nvcc could not be found"
-		exit 1
-	fi
+if [[ $1 == "no_cuda" ]]; then
+	echo "install_env.sh: skipping any GPU-related setting."
 else
 	#! Check the output of `nvcc -V`
 	NVCC_OUTPUT=$(nvcc -V)
-	if [[ $NVCC_OUTPUT == *"release 12.1"* ]]; then
-		echo "install_env.sh: CUDA 12.1 is detected."
+	if [[ $NVCC_OUTPUT == *"release 12.4"* ]]; then
+		echo "install_env.sh: CUDA 12.4 is detected."
 	else
 
-		echo "install_env.sh: CUDA 12.1 not detected. Please install CUDA 12.1. Exiting..."
+		echo "install_env.sh: CUDA 12.4 not detected. Please install CUDA 12.4. Exiting..."
 		exit 1
 
 	fi
 	#! Install `flash-attn`
 	if ! poetry run pip list | grep "flash-attn"; then
 		echo "install_env.sh: Installing flash-attn..."
-		poetry run pip install -q flash-attn==2.5.8 --no-build-isolation
+		poetry run pip install -q flash-attn==2.6.3 --no-build-isolation
 	else
 		echo "install_env.sh: flash-attn is already installed."
 	fi
+	#! Install `transformer-engine`
+	# if ! poetry run pip list | grep "transformer_engine"; then
+	# 	echo "install_env.sh: Installing transformer-engine..."
+	# 	poetry run pip install -q --upgrade git+https://github.com/NVIDIA/TransformerEngine.git@stable
+	# else
+	# 	echo "install_env.sh: transformer-engine is already installed."
+	# fi
 	#! Final message
 	echo "install_env.sh: Environment is ready."
 fi
 
-# TODO: Set 'TMPDIR' env var to depend on the run_uid and username
-# TODO: Set 'TRITON_CACHE_DIR' not to be in an NFS filesystem
+# Set TRITON_CACHE_DIR to be system dependent, as such must be under '/home/<username>'
+TRITON_CACHE_DIR="/home/$(whoami)/.triton_cache"
+export TRITON_CACHE_DIR

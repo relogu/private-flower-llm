@@ -1,25 +1,18 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 40
+#SBATCH -c 80
 #SBATCH -w mauao
-#SBATCH --gres=gpu:4
-#!SBATCH --job-name=fed_llm_75M
-#!SBATCH --job-name=fed_llm_125M
-#!SBATCH --job-name=fed_llm_160M
-#!SBATCH --job-name=fed_llm_1B
-#!SBATCH --job-name=centralised_llm_75M
-#!SBATCH --job-name=centralised_llm_125M
-#!SBATCH --job-name=centralised_llm_160M
-#!SBATCH --job-name=centralised_llm_350M
-#!SBATCH --job-name=centralised_llm_760M
-#SBATCH --job-name=llm_test
+#SBATCH --gres=gpu:8
+#SBATCH --job-name=acent_sqrt_2cpr
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
-#!SBATCH --time=01:00:00
-#!SBATCH --dependency=afterany:3872
+#!SBATCH --time=12:00:00
+#SBATCH --dependency=afterany:13391
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
+# Get the current date and time
+DATETIME=$(date '+%Y%m%d_%H%M%S')
 
 
 # Parse command-line options
@@ -49,8 +42,9 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "160M"
 # bash $PROJECT_PATH/scripts/test_virtual_llm_client.sh "420M"
 
-DATETIME=$(date '+%Y%m%d_%H%M%S')
-export RUN_UUID="test-7B-$DATETIME"
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-hf-flower-llm-$DATETIME"
+# export RUN_UUID="eval-gauntlet-$DATETIME"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "small"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "16M"
 # bash $PROJECT_PATH/scripts/centralised_training.sh "75M"
@@ -61,12 +55,14 @@ export RUN_UUID="test-7B-$DATETIME"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
 # bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
-bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "gpt2-small"
 
 # unset RUN_UUID
-# bash "$PROJECT_PATH"/scripts/test_pollen_llm.sh "small"
-# bash "$PROJECT_PATH"/scripts/test_pollen_llm.sh "125M"
-# bash "$PROJECT_PATH"/scripts/test_pollen_llm.sh "1B"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "1B"
 
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "small"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "16M"
@@ -76,20 +72,29 @@ bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
 # bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
 
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-fed-small-$DATETIME"
-# bash $PROJECT_PATH/scripts/pollen_llm_small.sh
-# bash $PROJECT_PATH/scripts/pollen_llm_16M.sh
-# export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
-# DATETIME=$(date '+%Y%m%d_%H%M%S')
-# export RUN_UUID="test-fed-75M-$DATETIME"
-# export RUN_UUID="fed-75M-20240313_181750"
-# export RUN_UUID="fed-75M-20240506_234900"
-# bash $HOME/projects/flower_llm/scripts/pollen_llm_75M.sh
-# export RUN_UUID="fed-125M-20240328_000428-restore-3"
-# bash $HOME/projects/flower_llm/scripts/pollen_llm_125M.sh
-# export RUN_UUID="fed-160M-20240507_114745"
-# bash $HOME/projects/flower_llm/scripts/pollen_llm_160M.sh
-# bash $HOME/projects/flower_llm/scripts/pollen_llm_350M.sh
-# bash $HOME/projects/flower_llm/scripts/pollen_llm_1B.sh
-
+# BATCH_SIZE=4
+# export RUN_UUID="photon-125M-2cpr10-bs$BATCH_SIZE-$DATETIME"
+# # export RUN_UUID="cen-125M-long-bs$BATCH_SIZE-$DATETIME"
+# # # bash $PROJECT_PATH/scripts/photon_llm_small.sh
+# # # bash $PROJECT_PATH/scripts/photon_llm_16M.sh
+# # # export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
+# # # DATETIME=$(date '+%Y%m%d_%H%M%S')
+# # # export RUN_UUID="test-fed-75M-$DATETIME"
+# # # export RUN_UUID="fed-75M-20240313_181750"
+# # # export RUN_UUID="fed-75M-20240506_234900"
+# # bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+# # # export RUN_UUID="fed-125M-20240328_000428-restore-3"
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=5000ba"   
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=5000ba"   
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=100ba" 
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.alpha_f=0.1"    
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"      
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE centralized.stream_id=6"
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false fl.n_clients_per_round=2 pollen.checkpoint=false fl.n_rounds=500 llm_config.local_steps=10ba llm_config.eval_subset_num_batches=10 llm_config.eval_interval=5000ba"
+# # bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
+# # export RUN_UUID="fed-160M-20240507_114745"
+# # bash $HOME/projects/flower_llm/scripts/photon_llm_160M.sh
+# # bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
+# # bash $HOME/projects/flower_llm/scripts/photon_llm_1B.sh
+bash $HOME/projects/flower_llm/scripts/cen_lr_sched_0_2cpr_sqrlin.sh

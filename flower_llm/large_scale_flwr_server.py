@@ -18,7 +18,8 @@ from flwr.server.server import _handle_finished_future_after_fit  # noqa: PLC270
 from flwr.server.server import FitResultsAndFailures, Server, fit_client
 from flwr.server.strategy import FedAvg
 
-from flower_llm.utils import aggregate, aggregate_inplace, chunks_idx
+from flower_llm.strategy.aggregation import aggregate_inplace
+from flower_llm.utils import chunks_idx
 
 
 class LargeScaleServer(Server):
@@ -96,7 +97,7 @@ def fit_clients(
         )
         for start_idx, end_idx in indices:
             submitted_fs = {
-                executor.submit(fit_client, client_proxy, ins, timeout)
+                executor.submit(fit_client, client_proxy, ins, timeout, server_round)
                 for client_proxy, ins in client_instructions[start_idx:end_idx]
             }
             # Partial aggregation
@@ -128,6 +129,7 @@ def fit_clients(
                     tmp_results.append(
                         aggregate_inplace(
                             results,  # type: ignore[arg-type]
+                            None,
                         )
                     )
                 # Clear lists
@@ -169,6 +171,7 @@ def fit_clients(
             tmp_results.append(
                 aggregate_inplace(
                     results,  # type: ignore[arg-type]
+                    None,
                 )
             )
         # Clear lists
@@ -180,7 +183,9 @@ def fit_clients(
 
     metrics_aggregated = {}
     if tmp_results:
-        parameters_aggregated = ndarrays_to_parameters(aggregate(tmp_results))
+        aggregate_ndarrays = aggregate_inplace(tmp_results, None)
+        assert aggregate_ndarrays is not None
+        parameters_aggregated = ndarrays_to_parameters(aggregate_ndarrays)
     if strategy.fit_metrics_aggregation_fn:
         metrics_aggregated = strategy.fit_metrics_aggregation_fn(tmp_metrics)
 
