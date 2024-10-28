@@ -61,9 +61,9 @@ seaborn = "^0.13.0"
 jupyter-server = "^2.7.3"
 ipywidgets = "^8.1.1"
 ipython = "^8.17.2"
-torch = {url = "https://download.pytorch.org/whl/cu121/torch-2.3.0%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=0a12aa9aa6bc442dff8823ac8b48d991fd0771562eaa38593f9c8196d65f7007"}
-torchaudio = {url = "https://download.pytorch.org/whl/cu121/torchaudio-2.3.0%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=38b49393f8c322dcaa29d19e5acbf5a0b1978cf1b719445ab670f1fb486e3aa6"}
-torchvision = {url = "https://download.pytorch.org/whl/cu121/torchvision-0.18.0%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=13e1b48dc5ce41ccb8100ab3dd26fdf31d8f1e904ecf2865ac524493013d0df5"}
+torch = {url = "https://download.pytorch.org/whl/cpu/torch-2.3.0-cp310-none-macosx_11_0_arm64.whl#sha256=758ef938de87a2653bba74b91f703458c15569f1562bf4b6c63c62d9c5a0c1f5"}
+torchaudio = {url = "https://download.pytorch.org/whl/cpu/torchaudio-2.3.0-cp310-cp310-macosx_11_0_arm64.whl#sha256=342108da83aa19a457c9a128b1206fadb603753b51cca022b9f585aac2f4754c"}
+torchvision = {url = "https://download.pytorch.org/whl/cpu/torchvision-0.18.0-cp310-cp310-macosx_11_0_arm64.whl#sha256=dd61628a3d189c6852a12dc5ed4cd2eece66d2d67f35a866cb16f1dcb06c8c62"}
 mosaicml = { git = "https://github.com/relogu/composer.git", tag = "dodo_v0.2.0", extras = ["libcloud,wandb,mlflow,oci,gcs,tensorboard"] }
 accelerate = ">=0.25,<0.26"
 mosaicml-streaming = { git = "https://github.com/relogu/streaming.git", tag = "dodo_v0.2.0" }
@@ -76,7 +76,7 @@ mosaicml-cli = ">=0.3,<1"
 onnx = "1.14.0"
 onnxruntime = "1.15.1"
 cmake = ">=3.25.0,<=3.26.3"  # required for triton-pre-mlir below
-triton-pre-mlir = { git = "https://github.com/vchiley/triton.git", branch = "triton_pre_mlir_sm90", subdirectory = "python" }
+# triton-pre-mlir = { git = "https://github.com/vchiley/triton.git", branch = "triton_pre_mlir_sm90", subdirectory = "python" }
 boto3 = ">=1.21.45,<2"
 huggingface-hub = ">=0.17.0,<1.0"
 beautifulsoup4 = ">=4.12.2,<5"  # required for model download utils
@@ -95,6 +95,7 @@ watchdog = "3.0.0"
 apache-libcloud = "^3.8.0"
 tensorboard = "^2.16.2"
 pydantic = "<2.0.0"
+jupyterlab = "^4.2.2"
 
 [tool.poetry.dev-dependencies]
 isort = "==5.13.2"
