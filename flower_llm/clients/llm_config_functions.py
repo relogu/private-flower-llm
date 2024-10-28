@@ -253,10 +253,11 @@ def set_client_load_path(
                 INFO, "Looking for the latest checkpoint to load in %s", cfg.save_folder
             )
             epoch, batches = sorted_pairs[-1]
-            cfg.load_path = (
-                cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
-            )
-            log(INFO, "Set checkpoint to load: %s", cfg.load_path)
+            if batches < n_steps:
+                cfg.load_path = (
+                    cfg.save_folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+                )
+                log(INFO, "Set checkpoint to load: %s", cfg.load_path)
         except Exception as e:
             log(WARNING, "The `load_path` wasn't set.", exc_info=e, stack_info=True)
     return skip_iteration, True

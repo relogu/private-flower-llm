@@ -20,6 +20,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_2:
       remote: c8/Pile-CC_2
       local: c8/Pile-CC_2
@@ -61,6 +62,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_6:
       remote: c8/Pile-CC_6
       local: c8/Pile-CC_6
@@ -102,6 +104,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_2:
       remote: c8/Wikipedia (en)_2
       local: c8/Wikipedia (en)_2
@@ -143,6 +146,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_6:
       remote: c8/Wikipedia (en)_6
       local: c8/Wikipedia (en)_6
@@ -184,6 +188,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_2:
       remote: c8/ArXiv_2
       local: c8/ArXiv_2
@@ -225,6 +230,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_6:
       remote: c8/ArXiv_6
       local: c8/ArXiv_6
@@ -266,6 +272,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_2:
       remote: c8/Gutenberg (PG-19)_2
       local: c8/Gutenberg (PG-19)_2
@@ -307,6 +314,7 @@
       download_timeout: null
       validate_hash: null
       keep_zip: null
+- client_streams:
     stream_6:
       remote: c8/Gutenberg (PG-19)_6
       local: c8/Gutenberg (PG-19)_6
