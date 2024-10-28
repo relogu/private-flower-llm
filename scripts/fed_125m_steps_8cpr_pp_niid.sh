@@ -40,10 +40,14 @@ WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 EVAL_FREQ=2
 <<<<<<< HEAD
+<<<<<<< HEAD
 export RUN_UUID="fed-ppniid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
 =======
 export RUN_UUID="fed-niid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
 >>>>>>> d6dddf4 (Add partial participation configs)
+=======
+export RUN_UUID="fed-ppniid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+>>>>>>> f5b4885 (Change string for pp niid experiments)
 
 export EXTERNAL_CONFIGS=""
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset=fed-the-pile"
