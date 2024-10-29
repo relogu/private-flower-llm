@@ -31,11 +31,11 @@ while true; do
 done
 echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
-BATCH_SIZE=1024
+BATCH_SIZE=256
 TOTAL_STEPS=63900
 WARMUP_STEPS=100
 EVAL_FREQ=100
-export RUN_UUID="cen-bench-7B-bs$BATCH_SIZE-$DATETIME"
+export RUN_UUID="cen-bench-7B-fsdp-fs-4-2-bs$BATCH_SIZE-$DATETIME"
 
 export EXTERNAL_CONFIGS=""
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=${TOTAL_STEPS}ba"
@@ -46,8 +46,10 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=2.0e-4"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_train_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.precision=amp_bf16"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=NO_SHARD" # DDP
-# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # FSDP (full shard)
+# export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=NO_SHARD" # DDP
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # FSDP (full shard)data_parallel_shard_degree
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.fsdp_config.data_parallel_shard_degree=4" # FSDP (full shard)
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.fsdp_config.data_parallel_replicate_degree=2" # FSDP (full shard)
 # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # FSDP (shard grad op)
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_momentum=0.0"
@@ -60,5 +62,6 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEP
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${EVAL_FREQ}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${EVAL_FREQ}ba"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_first=false"
 
 bash $HOME/projects/flower_llm/scripts/centralised_training.sh 7B
