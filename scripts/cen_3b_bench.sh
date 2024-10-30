@@ -63,4 +63,8 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${EVAL_FREQ}
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${EVAL_FREQ}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_first=false"
 
+export NCCL_P2P_DISABLE=0
+export NCCL_IB_DISABLE=0
+export NCCL_DEBUG="INFO"
+
 bash $HOME/projects/flower_llm/scripts/centralised_training.sh 3B
