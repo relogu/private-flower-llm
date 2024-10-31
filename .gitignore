@@ -224,3 +224,6 @@ flower_llm_checkpoints
 
 # Exclude tokenizers
 tokenizer_*
+
+# Keep .pkl from wandb for plotting
+!/notebooks/*.pkl
