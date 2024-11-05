@@ -57,7 +57,11 @@ def main() -> Trainer:
         _cfg.centralized.stream_id,
     )
     trainer, eval_first, _ = _get_trainer_object(
-        _cfg=cfg, cid=_cfg.centralized.stream_id, log_name="_centralised"
+        _cfg=cfg,
+        cid=_cfg.centralized.stream_id,
+        log_name="_centralised",
+        use_unigram_metrics=cfg.fl.use_unigram_metrics,
+        s3_comm_config=_cfg.s3_comm_config,
     )
     torch.cuda.empty_cache()
     gc.collect()
