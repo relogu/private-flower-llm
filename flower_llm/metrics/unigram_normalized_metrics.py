@@ -25,14 +25,14 @@ class UnigramNormalizedLanguageCrossEntropy(Metric):
 
     def __init__(
         self,
-        lookup_probabilities: Tensor,
+        unigram_probabilities: Tensor,
         dist_sync_on_step: bool = False,
         ignore_index: int = -100,
     ) -> None:
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
         self.ignore_index = ignore_index
-        self.lookup_probabilities = lookup_probabilities
+        self.lookup_probabilities = unigram_probabilities
         self.loss_fn = torch.nn.CrossEntropyLoss(
             ignore_index=ignore_index, reduction="sum"
         )
@@ -60,11 +60,11 @@ class UnigramNormalizedLanguageCrossEntropy(Metric):
 
         losses = self.loss_fn(logits, target)
 
-        probabilities = self.lookup_probabilities.to(target.device)[target].unsqueeze(
-            2
-        )  # [B,S,1]
+        self.lookup_probabilities = self.lookup_probabilities.to(target.device)
 
-        unigram_cross_entropy = -torch.log(probabilities).squeeze(2)  # [B,S]
+        probabilities = self.lookup_probabilities[target].unsqueeze(2)  # [B,S,1]
+
+        unigram_cross_entropy = torch.log(probabilities).squeeze(2)  # [B,S]
 
         total_items = (target != self.ignore_index).sum()
         self.total_items += total_items
