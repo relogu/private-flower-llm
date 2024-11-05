@@ -32,8 +32,7 @@ fl:
   n_clients_per_round: 8
   n_rounds: 200
   reset_optimizer: true
-  fake_gradient_update: false
-  fake_gradient_update_steps: 1
+  use_unigram_metrics: false
   n_local_epochs: 1
   n_local_steps: 0
 

@@ -1,6 +1,7 @@
 """Provides functionality for manipulating MosaicML configs."""
 
 import ast
+import json
 import os
 from logging import DEBUG, INFO, WARN, WARNING
 import re
@@ -8,10 +9,16 @@ from typing import Any
 
 import torch
 from composer.devices import DeviceGPU, DeviceCPU, Device
+from flower_llm.conf.base_schema import S3CommConfig
+from flower_llm.utils import (
+    download_file_from_s3,
+    merge_freq_dicts,
+    create_remote_up_down,
+)
 from flwr.common.logger import log
 
 
-from omegaconf import DictConfig, ListConfig
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 
 from flower_llm.server.s3_utils import list_objects
@@ -21,6 +28,10 @@ from flower_llm.utils import (
 )
 from dataclasses import dataclass, asdict
 import operator
+
+
+# Constant for the frequency dictionary name
+FREQ_DICT_NAME = "1_gram.json"
 
 
 @dataclass
@@ -60,7 +71,10 @@ def set_icl_tasks_root_dir(icl_tasks_listconfig: ListConfig, root_dir: str) -> N
         icl_task.dataset_uri = root_dir + "/" + old_dataset_uri
 
 
-def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
+def client_set_data_config(
+    cid: int | str | None,
+    cfg: DictConfig,
+) -> None:
     """Set the client data configuration for the client.
 
     Parameters
@@ -129,6 +143,7 @@ def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
             stream.remote = (
                 stream.remote.rstrip("/") if stream.remote else stream.remote
             )
+
         # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
         # Assign the streams to the appropriate loaders
@@ -442,3 +457,64 @@ def set_n_workers_dataloaders(
         cfg.train_loader.num_workers = min(n_workers, cap)
     if cfg.eval_loader.num_workers == "auto":
         cfg.eval_loader.num_workers = min(n_workers, cap)
+
+
+def get_stream_freq_dict_for_client(
+    client_streams: dict[str, dict[str, Any]],
+    s3_comm_config: S3CommConfig | None,
+) -> dict[int, tuple[int, str]]:
+    """Get the token frequencies for a single client's streams.
+
+    Parameters
+    ----------
+    client_streams : dict[str, dict[str, Any]]
+        The client streams.
+    s3_comm_config : S3CommConfig | None
+        The S3 communication configuration.
+    """
+    actual_streams = {key: StreamDict(**value) for key, value in client_streams.items()}
+    # Stores the merged frequency dictionary across streams
+    stream_freq_dict: dict[int, tuple[int, str]] = {}
+
+    for stream in actual_streams.values():
+        assert stream.local is not None, "Local path is not set."
+        assert stream.split is not None, "Split is not set."
+        local_file_name = os.path.join(  # noqa: PTH118
+            stream.local, stream.split, FREQ_DICT_NAME
+        )
+        if not os.path.exists(local_file_name):  # noqa: PTH110
+            assert stream.remote is not None, "Remote path is not set."
+            assert s3_comm_config is not None, "S3 communication config is not set."
+
+            root_remote = stream.remote.split("/")[0]
+            bucket_name = root_remote.replace("s3://", "")
+
+            remote_up_down = create_remote_up_down(
+                bucket_name=bucket_name,
+                prefix="",
+                run_uuid=None,
+                num_attempts=s3_comm_config.num_attempts,
+                client_config=OmegaConf.to_container(
+                    s3_comm_config.backend_kwargs.client_config
+                ),  # type: ignore[reportArgumentType, arg-type]
+            )
+            remote_path = os.path.join(  # noqa: PTH118
+                stream.remote, stream.split, FREQ_DICT_NAME
+            )
+            download_file_from_s3(remote_up_down, remote_path, local_file_name)
+
+        with open(local_file_name, encoding="utf-8") as f:
+            loaded_map: dict = json.load(f).items()
+        log(
+            DEBUG,
+            "Loaded 1_gram.json for %s, len: %s",
+            local_file_name,
+            len(loaded_map),
+        )
+        freq_map: dict[int, tuple[int, str]]
+        try:
+            freq_map = {ast.literal_eval(k)[0]: v for k, v in loaded_map}
+        except TypeError:
+            freq_map = {ast.literal_eval(k): v for k, v in loaded_map}
+        stream_freq_dict = merge_freq_dicts(stream_freq_dict, freq_map)
+    return stream_freq_dict
