@@ -200,7 +200,6 @@ history.json
 # Results from Pollen's rebuttal
 gpu_results
 notebooks/*.txt
-notebooks/*.pkl
 
 checkpoints
 
@@ -227,3 +226,6 @@ tokenizer_*
 
 # Keep .pkl from wandb for plotting
 !/notebooks/*.pkl
+
+# Keep .pdf from plotting
+!/notebooks/*.pdf
