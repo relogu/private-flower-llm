@@ -2,6 +2,7 @@
 
 import atexit
 import copy
+from functools import partial
 import gc
 import json
 import logging
@@ -39,13 +40,20 @@ from llmfoundry.utils.config_utils import (
     process_init_device,
     update_batch_size_info,
 )
+from llmfoundry.registry import metrics
+from flower_llm.metrics.unigram_normalized_metrics import (
+    UnigramNormalizedLanguageCrossEntropy,
+    UnigramNormalizedLanguagePerplexity,
+)
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
+
 
 import numpy as np
 from flower_llm.clients.llm_config_functions import (
     adapt_train_batch_size_to_num_devices,
     client_set_data_config,
+    get_stream_freq_dict_for_client,
     set_client_load_path,
     set_client_tensorboard_logger,
     set_client_wandb_logger,
@@ -54,10 +62,11 @@ from flower_llm.clients.llm_config_functions import (
     validate_config,
     set_n_workers_dataloaders,
 )
+from flower_llm.conf.base_schema import S3CommConfig
 from flower_llm.utils import (
-    apply_fake_gradient_update,
     get_list_of_parameters_names,
     get_trainable_params_dict,
+    get_unigram_probabilities_tensor,
     parameters_checker,
     set_trainer_params_from_ndarrays,
     sum_of_squares,
@@ -151,7 +160,13 @@ def _get_trainer_object(
     cid: int | str | None,
     log_name: str | None = None,
     force_cpu: bool = False,
-) -> tuple[Trainer, bool, DictConfig]:
+    use_unigram_metrics: bool = False,
+    s3_comm_config: S3CommConfig | None = None,
+) -> tuple[
+    Trainer,
+    bool,
+    DictConfig,
+]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
         action="ignore",
@@ -223,6 +238,7 @@ def _get_trainer_object(
     # Mandatory model training configs
     set_n_workers_dataloaders(cfg=_cfg, device=device)
     client_set_data_config(cfg=_cfg, cid=cid)
+
     # Apply dataset defaults
     set_dataset_default_params(_cfg)
     model_config: DictConfig = pop_config(_cfg, "model", must_exist=True)
@@ -526,8 +542,36 @@ def _get_trainer_object(
 
     # Train loader
     train_loader = None
+    train_streams: dict[str, dict[str, Any]] | None = None
     if train_loader_config is not None:
         train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
+        train_streams = train_loader_config.dataset.streams
+        if use_unigram_metrics:
+            assert train_streams is not None, "Train streams must be provided."
+            train_stream_freq_dict = get_stream_freq_dict_for_client(
+                train_streams,
+                s3_comm_config,
+            )
+            unigram_probabilities = get_unigram_probabilities_tensor(
+                train_stream_freq_dict
+            )
+
+            metrics.register(
+                "unigram_normalized_language_cross_entropy",
+                func=partial(
+                    UnigramNormalizedLanguageCrossEntropy,
+                    unigram_probabilities=unigram_probabilities,
+                ),  # type: ignore[reportArgumentType]
+            )
+
+            metrics.register(
+                "unigram_normalized_language_perplexity",
+                func=partial(
+                    UnigramNormalizedLanguagePerplexity,
+                    unigram_probabilities=unigram_probabilities,
+                ),  # type: ignore[reportArgumentType]
+            )
+
         assert isinstance(train_loader_config, dict), (
             "Expected train_loader_config to be a dict,"
             f" got {type(train_loader_config)}"
@@ -616,6 +660,17 @@ def _get_trainer_object(
     assert isinstance(model_config, dict), (
         "Expected model_config to be a dict," f" got {type(model_config)}"
     )
+
+    if use_unigram_metrics:
+        if "additional_train_metrics" not in model_config:
+            model_config["additional_train_metrics"] = []
+        model_config["additional_train_metrics"].extend(
+            [
+                "unigram_normalized_language_cross_entropy",
+                "unigram_normalized_language_perplexity",
+            ]
+        )
+
     model = build_composer_model(
         name=model_config["name"],
         cfg=model_config,
@@ -735,6 +790,10 @@ def llm_fit(
     client_state_struct = ClientState(**client_state[cid])
     # Get the number of local steps done by the current client
     num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
+    use_unigram_metrics = cfg.get("use_unigram_metrics", False)
+    s3_comm_config: S3CommConfig = S3CommConfig(
+        **ast.literal_eval(str(cfg["s3_comm_config"]))
+    )
 
     # Initialize training hyperparameters
     global_train_batch_size = int(cfg["global_train_batch_size"])
@@ -744,7 +803,7 @@ def llm_fit(
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     server_steps_cumulative = cast(int, config["server_steps_cumulative"])
-    skip_iteration, is_chkpt_loaded = set_client_load_path(
+    skip_iteration, _ = set_client_load_path(
         cfg,
         cid,
         server_steps_cumulative + num_batches_trained,
@@ -760,56 +819,21 @@ def llm_fit(
     #     # Ignoring loading the model as we need to set it from the server
     #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
-    trainer, eval_first, _ = _get_trainer_object(_cfg=cfg, cid=cid)
+    (
+        trainer,
+        eval_first,
+        _,
+    ) = _get_trainer_object(
+        _cfg=cfg,
+        cid=cid,
+        use_unigram_metrics=use_unigram_metrics,
+        s3_comm_config=s3_comm_config,
+    )
 
     initial_trainer_parameters = get_parameters_from_state(
         {},
         trainer,
     )
-
-    if config["fake_gradient_update"] and is_chkpt_loaded:
-        n_fake_gradient_steps = config["fake_gradient_update_steps"]
-        assert type(n_fake_gradient_steps) is int
-        assert n_fake_gradient_steps > 0
-        apply_fake_gradient_update(
-            trainer,
-            initial_trainer_parameters,
-            parameters,
-            n_fake_gradient_steps,
-        )
-
-        new_model_parameters = get_parameters_from_state({}, trainer)
-
-        # Log the summed delta of the parameters
-        log(
-            DEBUG,
-            f"""L2 norm of delta from fake_params to initial parameters: {
-                sum_of_squares([
-                    x - y
-                    for x, y in zip(
-                        initial_trainer_parameters, new_model_parameters, strict=True
-                    )
-                ])
-            }""",
-        )
-        log(
-            DEBUG,
-            f"""L2 norm of delta from fake_params to server parameters: {
-                sum_of_squares([
-                    x - y for x, y in zip(parameters, new_model_parameters, strict=True)
-                ])
-            }""",
-        )
-
-        log(
-            DEBUG,
-            f"""L2 norm of delta from initial_params to server parameters: {
-                sum_of_squares([
-                    x - y
-                    for x, y in zip(initial_trainer_parameters, parameters, strict=True)
-                ])
-            }""",
-        )
 
     parameters_checker(initial_trainer_parameters, parameters, False)
 

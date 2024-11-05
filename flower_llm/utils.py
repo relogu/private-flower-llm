@@ -1340,7 +1340,7 @@ class IntentionalClientDropoutError(Exception):
 def create_remote_up_down(
     bucket_name: str,
     prefix: str,
-    run_uuid: str,
+    run_uuid: str | None,
     num_attempts: int,
     client_config: dict[str, Any],
     num_concurrent_uploads: int = 1,
@@ -1353,7 +1353,7 @@ def create_remote_up_down(
     ----------
     bucket_name : str
         The name of the bucket.
-    run_uuid : str
+    run_uuid : str | None
         The UUID of the run.
     num_attempts : int
         The number of attempts.
@@ -1393,3 +1393,52 @@ def create_remote_up_down(
     )
     remote_up_down.init(run_name=run_uuid)  # Don't touch
     return remote_up_down
+
+
+def merge_freq_dicts(
+    a: dict[int, tuple[int, str]], b: dict[int, tuple[int, str]]
+) -> dict[int, tuple[int, str]]:
+    """Merge two frequency dictionaries.
+
+    Parameters
+    ----------
+    a : dict[int, tuple[int, str]]
+        The first frequency dictionary.
+    b : dict[int, tuple[int, str]]
+        The second frequency dictionary.
+
+    Returns
+    -------
+    dict[int, tuple[int, str]]
+        The merged frequency dictionary.
+    """
+    return a | {
+        k: ((a.get(k, (0, None))[0] + v[0], v[1]) if k in a else v)
+        for k, v in b.items()
+    }
+
+
+def get_unigram_probabilities_tensor(
+    stream_freq_dict: dict[int, tuple[int, str]],
+) -> torch.Tensor:
+    """Get the unigram probabilities tensor.
+
+    Parameters
+    ----------
+    stream_freq_dict : dict[int, tuple[int, str]]
+        The frequency dictionary.
+
+    Returns
+    -------
+    torch.Tensor
+        The unigram probabilities tensor.
+    """
+    total_tokens = float(sum(v[0] for v in stream_freq_dict.values()))
+    probabilities = {k: v[0] / total_tokens for k, v in stream_freq_dict.items()}
+    # Get the max token id
+    max_token_id = max(stream_freq_dict.keys())
+    # Convert to dense tensor
+    probabilities_tensor = torch.zeros(max_token_id + 1)
+    for k, v in probabilities.items():
+        probabilities_tensor[k] = v
+    return probabilities_tensor

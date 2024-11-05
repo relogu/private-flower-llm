@@ -103,10 +103,8 @@ class FL(DictConfig):
         Number of rounds.
     reset_optimizer : bool
         Whether to reset the local optimizer.
-    fake_gradient_update : bool
-        Whether to use fake gradient updates.
-    fake_gradient_update_steps : int
-        Number of steps for fake gradient updates.
+    use_unigram_metrics : bool
+        Whether to use unigram metrics.
     n_local_epochs : int
         Number of local epochs.
     n_local_steps : int
@@ -127,11 +125,9 @@ class FL(DictConfig):
     n_clients_per_round: int = MISSING
     n_rounds: int = MISSING
     reset_optimizer: bool = MISSING
-    fake_gradient_update: bool = MISSING
-    fake_gradient_update_steps: int = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
-
+    use_unigram_metrics: bool = MISSING
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
     eval_fl: int = MISSING
