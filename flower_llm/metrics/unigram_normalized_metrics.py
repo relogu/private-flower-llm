@@ -60,7 +60,9 @@ class UnigramNormalizedLanguageCrossEntropy(Metric):
 
         losses = self.loss_fn(logits, target)
 
-        probabilities = self.lookup_probabilities[target].unsqueeze(2)  # [B,S,1]
+        probabilities = self.lookup_probabilities.to(target.device)[target].unsqueeze(
+            2
+        )  # [B,S,1]
 
         unigram_cross_entropy = -torch.log(probabilities).squeeze(2)  # [B,S]
 
@@ -83,3 +85,12 @@ class UnigramNormalizedLanguageCrossEntropy(Metric):
         """
         # Return average loss over entire dataset
         return self.sum_loss / self.total_items
+
+
+class UnigramNormalizedLanguagePerplexity(UnigramNormalizedLanguageCrossEntropy):
+    """Implements unigram-normalized perplexity."""
+
+    def compute(self) -> Tensor:
+        """Return torch.exp() of the UnigramNormalizedLanguageCrossEntropy."""
+        avg_loss = super().compute()
+        return torch.exp(avg_loss)
