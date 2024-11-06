@@ -188,6 +188,56 @@ def get_trainable_params_dict(
     return params_dict
 
 
+def freeze_blocks(
+    model: torch.nn.Module,
+    frozen_layers: list[str] | None,
+    unfrozen_layers: list[str] | None,
+) -> None:
+    """Freeze the blocks of a model given a list of block indices."""
+    if hasattr(model, "model") and type(model.model) is FullyShardedDataParallel:
+        assert model.model is not None
+        inner_model = model.model
+        # NOTE: This doesn't work in the case in use_orig_params is True if the FSDP
+        # configuration as the tensors returned are flattened breaking some assumptions
+        # of the rest of the codebase
+        with FullyShardedDataParallel.summon_full_params(
+            inner_model,
+            recurse=True,
+            # Writing back is not compatible with rank 0 only
+            writeback=True,
+            rank0_only=False,
+            # Prevent moving to CPU device
+            offload_to_cpu=False,
+            with_grads=False,
+        ):
+            # NOTE: !!! THIS REQUIRES INVESTIGATION AS IT DOESN'T WORK AS EXPECTED !!!
+            # NOTE: This parameter dict using the above parameters, i.e.,
+            # (recurse=True, writeback=True, rank0_only=False, offload_to_cpu=False,
+            # with_grads=False,), won't be complete in any rank if the model i sharded.
+            # Each rank will have zero-size tensors for those layers that are not
+            # "living" in there and the flattened/unflatten complete tensors for those
+            # blocks living there.
+            # NOTE: If the FSDP configuration use the original parameters
+            # (use_orig_params=true), then the tensors in rank 0 have the correct
+            # original shape. In the other ranks they are flattened anyway.
+            for name, param in inner_model.named_parameters():
+                if param.requires_grad and (
+                    (frozen_layers is not None and name in frozen_layers)
+                    or (unfrozen_layers is not None and name not in unfrozen_layers)
+                ):
+                    param.requires_grad = False
+                    log(DEBUG, "Freezing layer %s", name)
+    else:
+        for name, param in model.named_parameters():
+            if param.requires_grad and (
+                (frozen_layers is not None and name in frozen_layers)
+                or (unfrozen_layers is not None and name not in unfrozen_layers)
+            ):
+                param.requires_grad = False
+                log(DEBUG, "Freezing layer %s", name)
+    dist.barrier()
+
+
 def set_trainer_trainable_params_dict(
     trainer: Trainer,
     parameters_dict: OrderedDict[str, torch.Tensor],

@@ -95,30 +95,42 @@ class FL(DictConfig):
 
     Attributes
     ----------
-    n_total_clients : int
-        Number of total clients.
-    n_clients_per_round : int
-        Number of clients per round.
-    n_rounds : int
-        Number of rounds.
-    reset_optimizer : bool
-        Whether to reset the local optimizer.
-    use_unigram_metrics : bool
-        Whether to use unigram metrics.
-    n_local_epochs : int
-        Number of local epochs.
-    n_local_steps : int
-        Number of local steps.
-    ignore_failed_rounds : bool
-        Whether to ignore failed rounds.
-    accept_failures_cnt : int
-        Number of acceptable failures.
-    eval_fl : int
-        Period of federated evaluation.
-    strategy_name : StrategyName
-        The name of the strategy to use.
-    strategy_kwargs : StrategyKWArgs
-        Keyword arguments for the strategy.
+    n_total_clients: int = MISSING
+        Total number of clients
+    n_clients_per_round: int = MISSING
+        Number of clients per round
+    n_rounds: int = MISSING
+        Number of rounds
+    reset_optimizer: bool = MISSING
+        Whether to reset the optimizer
+    n_local_epochs: int = MISSING
+        Number of local epochs
+    n_local_steps: int = MISSING
+        Number of local steps
+    use_unigram_metrics: bool = MISSING
+        Whether to use unigram metrics
+    random_layers: list[str] = MISSING
+        List of random layers
+    random_init_freq: int = MISSING
+        Random initialization frequency
+    truly_random_init: bool = MISSING
+        Whether to truly random initialization
+    personalized_layers: list[str] = MISSING
+        List of personalized layers
+    frozen_layers: list[str] | None = MISSING
+        List of frozen layers
+    unfrozen_layers: list[str] | None = MISSING
+        List of unfrozen layers
+    ignore_failed_rounds: bool = MISSING
+        Whether to ignore failed rounds
+    accept_failures_cnt: int = MISSING
+        Number of acceptable failures
+    eval_fl: int = MISSING
+        Eval freq
+    strategy_name: StrategyName = MISSING
+        Strategy name
+    strategy_kwargs: StrategyKWArgs = MISSING
+        Strategy kwargs
     """
 
     n_total_clients: int = MISSING
@@ -128,6 +140,13 @@ class FL(DictConfig):
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
     use_unigram_metrics: bool = MISSING
+    random_layers: list[str] = MISSING
+    random_init_freq: int = MISSING
+    truly_random_init: bool = MISSING
+    personalized_layers: list[str] = MISSING
+    frozen_layers: list[str] | None = MISSING
+    unfrozen_layers: list[str] | None = MISSING
+
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
     eval_fl: int = MISSING

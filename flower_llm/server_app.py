@@ -120,6 +120,9 @@ def main(driver: Driver, context: Context) -> None:
             "s3_comm_config": str(
                 OmegaConf.to_container(cfg.s3_comm_config, resolve=True)
             ),
+            "random_layers": cfg.llm_config.random_layers,
+            "random_init_freq": cfg.llm_config.random_init_freq,
+            "personalized_layers": cfg.llm_config.personalized_layers,
         }
 
     def pollen_evaluate_config(

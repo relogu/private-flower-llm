@@ -2,12 +2,12 @@
 
 import atexit
 import copy
-from functools import partial
 import gc
 import json
 import logging
 import os
 from pathlib import Path
+import random
 import time
 import warnings
 from collections import OrderedDict
@@ -22,6 +22,7 @@ from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_s
 from composer.utils import dist, reproducibility, get_device
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays, Scalar
+from flwr.common import parameters_to_ndarrays
 from flwr.common.recordset_compat import ConfigsRecord
 from llmfoundry.data.dataloader import build_dataloader
 
@@ -42,8 +43,10 @@ from llmfoundry.utils.config_utils import (
 )
 from llmfoundry.registry import metrics
 from flower_llm.metrics.unigram_normalized_metrics import (
+    PureUnigramCrossEntropy,
     UnigramNormalizedLanguageCrossEntropy,
     UnigramNormalizedLanguagePerplexity,
+    create_wrapped_subclass,
 )
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from streaming.base.shared.memory import SharedMemory, shared_memory_list
@@ -62,8 +65,10 @@ from flower_llm.clients.llm_config_functions import (
     validate_config,
     set_n_workers_dataloaders,
 )
-from flower_llm.conf.base_schema import S3CommConfig
+from flower_llm.conf.base_schema import BaseConfig, S3CommConfig
+from flower_llm.server.init_utils import get_initial_parameters
 from flower_llm.utils import (
+    freeze_blocks,
     get_list_of_parameters_names,
     get_trainable_params_dict,
     get_unigram_probabilities_tensor,
@@ -155,6 +160,97 @@ def get_raw_model_parameters(
         return parameters_ndarrays
 
 
+def randomize_layers(
+    parameters: NDArrays,
+    dummy_config: DictConfig,
+    names: list[str],
+    random_layers: list[str],
+    truly_random_init: bool,
+) -> None:
+    """Randomize the layers of the model.
+
+    Args
+    ----------
+    dummy_config : DictConfig
+        The dummy configuration to be used for the model.
+    parameters : NDArrays
+        The parameters of the model.
+    names : list[str]
+        The names of the parameters.
+    random_layers : list[str]
+        The layers to be randomized.
+    truly_random_init : bool
+        Whether to use a truly random initialization.
+
+    Returns
+    -------
+    None
+    """
+    new_dummy_config = copy.deepcopy(dummy_config)
+    if truly_random_init:
+        new_seed = random.randint(0, 2**32 - 1)
+        new_dummy_config.global_seed = new_seed
+        new_dummy_config.seed = new_seed
+        reproducibility.seed_all(new_seed)
+        log(DEBUG, f"Randomizing layers with seed {new_seed}")
+
+    tmp_dummy_config: BaseConfig = cast(
+        BaseConfig,
+        DictConfig(
+            {
+                "pretrained_model_path": None,
+                "llm_config": new_dummy_config,
+            }
+        ),
+    )
+
+    random_parameters = parameters_to_ndarrays(get_initial_parameters(tmp_dummy_config))
+
+    indices = [names.index(key) for key in random_layers]
+    for i in indices:
+        parameters[i] = random_parameters[i]
+
+    log(DEBUG, f"Randomized layers: {random_layers} with indices: {indices}")
+
+
+def personalize_layers(
+    parameters: NDArrays,
+    initial_trainer_parameters: NDArrays,
+    personalized_layers: list[str],
+    names: list[str],
+    unfrozen_names: list[str],
+) -> None:
+    """Personalize the layers of the model.
+
+    Args
+    ----------
+    parameters : NDArrays
+        The parameters of the model.
+    initial_trainer_parameters : NDArrays
+        The initial parameters of the model.
+    personalized_layers : list[str]
+        The layers to be personalized.
+    names : list[str]
+        The names of the parameters.
+    unfrozen_names : list[str]
+        The names of the unfrozen parameters.
+
+    Returns
+    -------
+    None
+    """
+    og_indices = [names.index(key) for key in personalized_layers]
+    indices = [unfrozen_names.index(key) for key in personalized_layers]
+    log(
+        DEBUG,
+        f"Personalized: {personalized_layers}, pre-freeze_indices: {og_indices}",
+    )
+    # Set the server parameters to the initial trainer parameters
+    # for the given indices
+    for i, j in zip(og_indices, indices, strict=True):
+        parameters[i] = initial_trainer_parameters[j]
+
+
 def _get_trainer_object(
     _cfg: DictConfig,
     cid: int | str | None,
@@ -162,10 +258,14 @@ def _get_trainer_object(
     force_cpu: bool = False,
     use_unigram_metrics: bool = False,
     s3_comm_config: S3CommConfig | None = None,
+    frozen_layers: list[str] | None = None,
+    unfrozen_layers: list[str] | None = None,
 ) -> tuple[
     Trainer,
     bool,
     DictConfig,
+    list[str],
+    list[str],
 ]:
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -544,32 +644,47 @@ def _get_trainer_object(
     train_loader = None
     train_streams: dict[str, dict[str, Any]] | None = None
     if train_loader_config is not None:
-        train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
         train_streams = train_loader_config.dataset.streams
+        train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
+
         if use_unigram_metrics:
             assert train_streams is not None, "Train streams must be provided."
+
             train_stream_freq_dict = get_stream_freq_dict_for_client(
                 train_streams,
                 s3_comm_config,
+                run_name,
+                cid,
+                allow_failures=cid is None,
             )
             unigram_probabilities = get_unigram_probabilities_tensor(
                 train_stream_freq_dict
             )
 
+            log(DEBUG, f"Unigram probabilities: {unigram_probabilities}")
+
+            metrics.register(
+                "pure_unigram_cross_entropy",
+                func=create_wrapped_subclass(
+                    base_class=PureUnigramCrossEntropy,
+                    unigram_probabilities=unigram_probabilities,
+                ),
+            )
+
             metrics.register(
                 "unigram_normalized_language_cross_entropy",
-                func=partial(
-                    UnigramNormalizedLanguageCrossEntropy,
+                func=create_wrapped_subclass(
+                    base_class=UnigramNormalizedLanguageCrossEntropy,
                     unigram_probabilities=unigram_probabilities,
-                ),  # type: ignore[reportArgumentType]
+                ),
             )
 
             metrics.register(
                 "unigram_normalized_language_perplexity",
-                func=partial(
-                    UnigramNormalizedLanguagePerplexity,
+                func=create_wrapped_subclass(
+                    base_class=UnigramNormalizedLanguagePerplexity,
                     unigram_probabilities=unigram_probabilities,
-                ),  # type: ignore[reportArgumentType]
+                ),
             )
 
         assert isinstance(train_loader_config, dict), (
@@ -668,6 +783,7 @@ def _get_trainer_object(
             [
                 "unigram_normalized_language_cross_entropy",
                 "unigram_normalized_language_perplexity",
+                "pure_unigram_cross_entropy",
             ]
         )
 
@@ -678,6 +794,13 @@ def _get_trainer_object(
         init_context=init_context,
         master_weights_dtype=model_config.get("master_weights_dtype", None),
     )
+
+    names = get_list_of_parameters_names(model=model)
+
+    if frozen_layers is not None or unfrozen_layers is not None:
+        freeze_blocks(model, frozen_layers, unfrozen_layers)
+
+    unfrozen_names = get_list_of_parameters_names(model=model)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
@@ -739,7 +862,7 @@ def _get_trainer_object(
         compile_config=compile_config,
         device=device,
     )
-    return trainer, eval_first, logged_cfg
+    return trainer, eval_first, logged_cfg, names, unfrozen_names
 
 
 def get_parameters(
@@ -778,7 +901,7 @@ def set_parameters_to_state(
 def llm_fit(
     parameters: NDArrays,
     config: ConfigsRecord,
-    cfg: DictConfig,
+    llm_config: DictConfig,
     cid: int | str,
 ) -> tuple[NDArrays, int, dict[str, Scalar] | dict[Any, Any]]:
     """Implement the fit step using MosaicML codebase."""
@@ -788,15 +911,40 @@ def llm_fit(
     )
     # Extract current client's state
     client_state_struct = ClientState(**client_state[cid])
+
     # Get the number of local steps done by the current client
-    num_batches_trained = int(str(cfg["local_steps"]).replace("ba", ""))
-    use_unigram_metrics = cfg.get("use_unigram_metrics", False)
-    s3_comm_config: S3CommConfig = S3CommConfig(
-        **ast.literal_eval(str(cfg["s3_comm_config"]))
+    num_batches_trained = int(str(llm_config["local_steps"]).replace("ba", ""))
+    use_unigram_metrics: bool = bool(config.get("use_unigram_metrics", False))
+
+    s3_comm_config: S3CommConfig = cast(
+        S3CommConfig,
+        OmegaConf.create(ast.literal_eval(str(config.get("s3_comm_config", "{}")))),
     )
 
+    personalized_layers: list[str] = cast(
+        list[str],
+        ast.literal_eval(cast(str, config.get("personalized_layers", str([])))),
+    )
+
+    random_layers: list[str] = ast.literal_eval(
+        config.get("random_layers", str([]))  # type: ignore[reportArgumentType, arg-type]
+    )
+    random_init_freq: int = cast(int, config.get("random_init_freq", 0))
+    truly_random_init: bool = cast(bool, config.get("truly_random_init", False))
+
+    frozen_layers: list[str] | None = ast.literal_eval(
+        cast(str, config.get("frozen_layers", str(None)))
+    )
+    unfrozen_layers: list[str] | None = ast.literal_eval(
+        cast(str, config.get("unfrozen_layers", str(None)))
+    )
+
+    assert not (
+        frozen_layers is not None and unfrozen_layers is not None
+    ), "Cannot specify both frozen and unfrozen layers"
+
     # Initialize training hyperparameters
-    global_train_batch_size = int(cfg["global_train_batch_size"])
+    global_train_batch_size = int(llm_config["global_train_batch_size"])
     start_time = time.time_ns()
     model_parameters = []
     n_samples_trained = 0
@@ -804,36 +952,64 @@ def llm_fit(
     # Set the loading path
     server_steps_cumulative = cast(int, config["server_steps_cumulative"])
     skip_iteration, _ = set_client_load_path(
-        cfg,
+        llm_config,
         cid,
         server_steps_cumulative + num_batches_trained,
     )
-    cfg.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
+    llm_config.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
         # Ignoring the optimizer state if loading a checkpoint
-        cfg.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
+        llm_config.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
         # Ignoring the optimizer state when saving a checkpoint
-        cfg.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
+        llm_config.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
     # NOTE: The following, when re-loading from a checkpoint, returns a weird error
     # if not skip_iteration:
     #     # Ignoring loading the model as we need to set it from the server
     #     cfg.load_ignore_keys += ["*model*"]
     # Extract configs to build the trainer
+
+    dummy_config = copy.deepcopy(llm_config)
     (
         trainer,
         eval_first,
         _,
+        names,
+        unfrozen_names,
     ) = _get_trainer_object(
-        _cfg=cfg,
+        _cfg=llm_config,
         cid=cid,
         use_unigram_metrics=use_unigram_metrics,
         s3_comm_config=s3_comm_config,
+        frozen_layers=frozen_layers,
+        unfrozen_layers=unfrozen_layers,
     )
 
     initial_trainer_parameters = get_parameters_from_state(
         {},
         trainer,
     )
+
+    if personalized_layers:
+        personalize_layers(
+            parameters=parameters,
+            initial_trainer_parameters=initial_trainer_parameters,
+            personalized_layers=personalized_layers,
+            names=names,
+            unfrozen_names=unfrozen_names,
+        )
+
+    if (
+        random_layers
+        and random_init_freq > 0
+        and client_state_struct.local_steps_cumulative % random_init_freq == 0
+    ):
+        randomize_layers(
+            parameters=parameters,
+            dummy_config=dummy_config,
+            names=names,
+            random_layers=random_layers,
+            truly_random_init=truly_random_init,
+        )
 
     parameters_checker(initial_trainer_parameters, parameters, False)
 
@@ -876,7 +1052,7 @@ def llm_fit(
         # Execute fit step for the appointed duration
         try:
             start_time = time.time_ns()
-            trainer.fit(duration=0 if skip_iteration else cfg["local_steps"])
+            trainer.fit(duration=0 if skip_iteration else llm_config["local_steps"])
             train_metrics |= {"client/fit_time": (time.time_ns() - start_time) * 1e-9}
         except Exception as e:
             log(ERROR, "llm_fit::trainer.fit", exc_info=e, stack_info=True)
@@ -962,21 +1138,29 @@ def llm_fit(
 def llm_eval(
     parameters: NDArrays,
     config: ConfigsRecord,
-    cfg: DictConfig,
+    llm_config: DictConfig,
 ) -> tuple[float, int, dict[str, Scalar]]:
     """Implement the fit step using MosaicML codebase."""
     start_time = time.time_ns()
     num_samples = 0
     eval_metrics: dict[str, Scalar] = {}
     # NOTE: Exclude unnecessary checkpointing and loggers for eval
-    cfg.autoresume = False  # type: ignore[union-attr]
-    cfg.save_folder = None  # type: ignore[union-attr]
-    cfg.load_path = None  # type: ignore[union-attr]
-    cfg.loggers = None  # type: ignore[union-attr]
+    llm_config.autoresume = False  # type: ignore[union-attr]
+    llm_config.save_folder = None  # type: ignore[union-attr]
+    llm_config.load_path = None  # type: ignore[union-attr]
+    llm_config.loggers = None  # type: ignore[union-attr]
     # Extract configs to build the trainer
-    trainer, _, _ = _get_trainer_object(
-        _cfg=cfg,
+
+    use_unigram_metrics: bool = bool(config.get("use_unigram_metrics", False))
+    s3_comm_config: S3CommConfig = cast(
+        S3CommConfig,
+        OmegaConf.create(ast.literal_eval(str(config.get("s3_comm_config", {})))),  # type: ignore[reportArgumentType,arg-type]
+    )
+    trainer, _, _, _, _ = _get_trainer_object(
+        _cfg=llm_config,
         cid=None,  # For doing "centralized" evaluation
+        use_unigram_metrics=use_unigram_metrics,
+        s3_comm_config=s3_comm_config,
     )
 
     initial_trainer_parameters = get_parameters_from_state({}, trainer)

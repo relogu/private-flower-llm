@@ -1,0 +1,1514 @@
+#!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
+#!SBATCH -c 192
+#!SBATCH -c 96
+#SBATCH -c 48
+#SBATCH -w ruapehu
+#SBATCH --gres=gpu:2
+#!SBATCH --gres=gpu:1
+#!SBATCH --gres=gpu:0
+#!SBATCH --job-name=fed_llm_125M
+#!SBATCH --job-name=photon_llm_75M
+#!SBATCH --job-name=centralised_llm_125M
+#!SBATCH --job-name=centralised_llm_350M
+#!SBATCH --job-name=centralised_llm_760M
+#!SBATCH --job-name=persT-125M-p
+#!SBATCH --job-name=pers-350M-p
+#!SBATCH --job-name=pers-350M-p
+#!SBATCH --job-name=matrix-125M
+#!SBATCH --job-name=matrix-125M-p-r
+#!SBATCH --job-name=matrix-2c-125M-p
+#!SBATCH --job-name=matrix-125M-mc4
+#!SBATCH --job-name=matrix-125M-mc4-c4-adapM
+#!SBATCH --job-name=GF-125M-p
+#!SBATCH --job-name=full-125M-mc4
+#!SBATCH --job-name=centB-125M-mc4
+#!SBATCH --job-name=centUB-125M-mc4
+#!SBATCH --job-name=centT03-125M-mc4
+#!SBATCH --job-name=centT07-125M-mc4
+#!SBATCH --job-name=matrix-350M-p
+#!SBATCH --job-name=centUB-125M-p
+#!SBATCH --job-name=centB-125M
+#!SBATCH --job-name=centB-350M-p
+#!SBATCH --job-name=centB-350M-p
+#!SBATCH --job-name=centUB-350M-p
+#!SBATCH --job-name=GDG_125M_balanced
+#!SBATCH --job-name=GDG_350M_balanced
+#!SBATCH --job-name=GBUNTU-125M-mc4
+#SBATCH --job-name=GDEM-125M-mc4
+#SBATCH --tasks-per-node=1
+#SBATCH --output=%x-%j.out
+#SBATCH --time=10:59:00
+#!SBATCH --begin=now+5hours
+#!SBATCH --begin=now+10hours
+#!SBATCH --begin=now+15hours
+#!SBATCH --begin=now+20hours
+#SBATCH --dependency=afterany:12646
+
+# Default project path
+PROJECT_PATH="$HOME/projects/flower_llm"
+
+
+# Parse command-line options
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
+  echo "slurm_submit.mauao: Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
+
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "16M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "75M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "160M"
+# bash "$PROJECT_PATH"/scripts/test_virtual_llm_client.sh "420M"
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-deepspeed-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "small"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "16M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "75M" "10ba"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "125M"
+# export RUN_UUID="centralised-350M-20240414_225031"
+# export LLM_OPTIONS="llm_config.load_path=/nfs-share/ls985/projects/flower_llm/centralised-350M-20240424_084956/latest-rank0.pt"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "760M"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "1B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "3B"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "7B"
+
+# unset RUN_UUID
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_photon_llm.sh "1B"
+
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "small"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "16M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "125M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "350M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "540M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "760M"
+# bash "$PROJECT_PATH"/scripts/test_node_manager_llm.sh "1B"
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-fed-small-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/photon_llm_small.sh
+# bash "$PROJECT_PATH"/scripts/photon_llm_16M.sh
+# export SAVE_PATH="s3://checkpoints/fed-75M-20240303_233700"
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="test-fed-75M-$DATETIME"
+# export RUN_UUID="fed-75M-20240313_181750"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_75M.sh
+# export RUN_UUID="fed-125M-20240328_000428-restore-3"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
+# bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
+# bash $HOME/projects/flower_llm/scripts/photon_llm_1B.sh
+# bash $HOME/projects/flower_llm/scripts/photon_llm_7B.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="matrix-125M-p-tle"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
+
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="matrix-125M-20240823-tle"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_c4.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="full-125M-mc4-20240912-tle"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_full_mc4.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="matrix-350M-p-20240825_231845"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_350M_matrix.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centB-125M-p-20240904_113154"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "125M"
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centB-350M-p-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "350M"
+
+# Unbalanced
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centB-125M-mc4-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centUB-125M-mc4-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centT03-125M-mc4-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centT07-125M-mc4-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+
+# C4 balanced
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="centB-125M-$DATETIME"
+# bash "$PROJECT_PATH"/scripts/centralised_training.sh "125M"
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="matrix_2c-125M-p-20240907_171653"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="persT-125M-p-$DATETIME"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_pers.sh
+
+# DATETIME=$(date '+%Y%m%d_%H%M%S')
+# export RUN_UUID="pers-350M-p-20240825_232233"
+# bash $HOME/projects/flower_llm/scripts/photon_llm_350M_pers.sh
+
+
+
+
+
+
+
+
+
+export TASKS=""
+export EVAL_GAUNT=""
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=6.0e-4
+# export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
+# export RUN_UUID="GF-persU-125M-p-20240821_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4 
+# export RESTORE_RUN_UUID="full-125M-p-tle"
+# export RUN_UUID="GF_full-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID="matrix-125M-p-tle"
+# export RUN_UUID="GF-matrix-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
+# export RUN_UUID="GF-centB-125M-p-20240919"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
+# export RUN_UUID="GF-centUB-125M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=3.0e-4
+# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+# export RUN_UUID="GF-pers-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=22
+# export TOTAL_ROUNDS=23
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4 
+# export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
+# export RUN_UUID="GF_full-350M-p-20240825_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
+# export RUN_UUID="GF-matrix-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
+# export RUN_UUID="GF-centB-350M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
+# export RUN_UUID="GF-centUB-350M-p-20240922"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_balanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=4500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+
+
+# Math SUBSET
+
+export TASKS=""
+export EVAL_GAUNT=""
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=6.0e-4
+# export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
+# export RUN_UUID="GDG-pers-125M-p-20240821_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4 
+# export RESTORE_RUN_UUID="full-125M-p-tle"
+# export RUN_UUID="GDG_full-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID="matrix-125M-p-tle"
+# export RUN_UUID="GDG-matrix-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
+# export RUN_UUID="GDG-centB-125M-p-20240919"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
+# export RUN_UUID="GDG-centUB-125M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=3.0e-4
+# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+# export RUN_UUID="GDG-pers-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=22
+# export TOTAL_ROUNDS=23
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4 
+# export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
+# export RUN_UUID="GDG_full-350M-p-20240825_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
+# export RUN_UUID="GDG-matrix-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
+# export RUN_UUID="GDG-centB-350M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
+# export RUN_UUID="GDG-centUB-350M-p-20240922"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=4500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# Ubuntu subset
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=6.0e-4
+# export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
+# export RUN_UUID="GBUN-pers-125M-p-20240821_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4 
+# export RESTORE_RUN_UUID="full-125M-p-tle"
+# export RUN_UUID="GBUN_full-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID="matrix-125M-p-tle"
+# export RUN_UUID="GBUN-matrix-125M-p-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
+# export RUN_UUID="GBUN-centB-125M-p-20240919"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=6.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
+# export RUN_UUID="GBUN-centUB-125M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=3.0e-4
+# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+# export RUN_UUID="GBUN-pers-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=22
+# export TOTAL_ROUNDS=23
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4 
+# export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
+# export RUN_UUID="GBUN_full-350M-p-20240825_tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
+# export RUN_UUID="GBUN-matrix-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
+# export RUN_UUID="GBUN-centB-350M-p-20240921"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
+# export RUN_UUID="GBUN-centUB-350M-p-20240922"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_ubuntu"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=4500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# MC4 Adapt
+
+export TASKS=""
+export EVAL_GAUNT=""
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
+# export RUN_UUID="GFr8-pers-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="GFr10_full-125M-mc4-20240912-tle"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
+# export RUN_UUID="GFr10-matrix-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
+# export RUN_UUID="GF-centB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
+# export RUN_UUID="GF-centUB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+# export RUN_UUID="GF-centT03-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_1_clients_balanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+### SW section
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
+# export RUN_UUID="GSr8-pers-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="GSr10_full-125M-mc4-20240912-tle"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
+# export RUN_UUID="GSr10-matrix-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
+# export RUN_UUID="GS-centB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
+# export RUN_UUID="GS-centUB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+# export RUN_UUID="GS-centT03-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_sw"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+
+
+# DE_RANDOM section
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
+# export RUN_UUID="GDEr8-pers-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="GDEr10_full-125M-mc4-20240912-tle"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
+# export RUN_UUID="GDEr10-matrix-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
+# export RUN_UUID="GDE-centB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
+# export RUN_UUID="GDE-centUB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+# export RUN_UUID="GDE-centT03-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+# # DE_START_MATRIX section
+
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="GDEMr10_full-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
+# export RUN_UUID="GDEMr10_matrix-125M-mc4-202409"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
+# export RUN_UUID="GDEM-centB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
+# export RUN_UUID="GDEM-centUB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+# export RUN_UUID="GDEM-centT03-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_de_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# Act adaptations
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=6.0e-4
+# export RESTORE_RUN_UUID="act500-125M-pile-tle"
+# export RUN_UUID="GDg-act500-125M-pile-tle"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_math"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=5
+# export TOTAL_ROUNDS=6
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=-1
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+# # EL_RANDOM section
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
+# export RUN_UUID="GELr8-pers-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="GELr10_full-125M-mc4-20240912-tle"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
+# export RUN_UUID="GELr10-matrix-125M-mc4"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
+# export RUN_UUID="GEL-centB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
+# export RUN_UUID="GEL-centUB-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=3000
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export START_LR=4.5e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+# export RUN_UUID="GEL-centT03-125M-mc4-20240918"
+# export DATASET="fed-mc4"
+# export STREAM="fed_mc4_el_250"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=2500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=100
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+
+
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4U-20240924_114340"
+# export RUN_UUID="GSWr8-pers-125M-mc4U-20240924_114340"
+# export DATASET="iclr_datasets"
+# export STREAM="iclr_sw_50"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix_unique.sh
+
+# export MODEL_SIZE="125M_MC4"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4U-20240924_114340"
+# export RUN_UUID="GDEr8-pers-125M-mc4U-20240924_114340"
+# export DATASET="iclr_datasets"
+# export STREAM="iclr_de_50"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=200
+# export EVAL_INTERVAL=200
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix_unique.sh
+
+
+
+# export PREFIX="BP" 
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GFgg-act500-350M-pile-gr"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_central_eval.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF-centB-350M-p-20240921"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_central_eval.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GFM-centB-350M-p-20240921"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_central_eval.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GFM-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_central_eval.sh
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GFM_full-350M-p-20240825_tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_125M_central_eval.sh

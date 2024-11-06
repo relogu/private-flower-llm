@@ -32,7 +32,7 @@ fl:
   n_clients_per_round: 8
   n_rounds: 200
   reset_optimizer: true
-  use_unigram_metrics: false
+  use_unigram_metrics: true
   n_local_epochs: 1
   n_local_steps: 0
 

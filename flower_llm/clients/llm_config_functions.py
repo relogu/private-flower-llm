@@ -5,6 +5,7 @@ import json
 import os
 from logging import DEBUG, INFO, WARN, WARNING
 import re
+import tempfile
 from typing import Any
 
 import torch
@@ -32,6 +33,7 @@ import operator
 
 # Constant for the frequency dictionary name
 FREQ_DICT_NAME = "1_gram.json"
+FREQ_DICT_CACHE_NAME = "_freq_dict.json"
 
 
 @dataclass
@@ -462,6 +464,9 @@ def set_n_workers_dataloaders(
 def get_stream_freq_dict_for_client(
     client_streams: dict[str, dict[str, Any]],
     s3_comm_config: S3CommConfig | None,
+    run_uuid: str | None,
+    cid: int | str | None,
+    allow_failures: bool = False,
 ) -> dict[int, tuple[int, str]]:
     """Get the token frequencies for a single client's streams.
 
@@ -471,50 +476,84 @@ def get_stream_freq_dict_for_client(
         The client streams.
     s3_comm_config : S3CommConfig | None
         The S3 communication configuration.
+    run_uuid : str | None
+        The run UUID.
     """
     actual_streams = {key: StreamDict(**value) for key, value in client_streams.items()}
     # Stores the merged frequency dictionary across streams
     stream_freq_dict: dict[int, tuple[int, str]] = {}
+    tmp_dir = tempfile.gettempdir()
 
-    for stream in actual_streams.values():
-        assert stream.local is not None, "Local path is not set."
-        assert stream.split is not None, "Split is not set."
-        local_file_name = os.path.join(  # noqa: PTH118
-            stream.local, stream.split, FREQ_DICT_NAME
-        )
-        if not os.path.exists(local_file_name):  # noqa: PTH110
-            assert stream.remote is not None, "Remote path is not set."
-            assert s3_comm_config is not None, "S3 communication config is not set."
+    cached_file_name = os.path.join(  # noqa: PTH118
+        tmp_dir, str(cid) + FREQ_DICT_CACHE_NAME
+    )
 
-            root_remote = stream.remote.split("/")[0]
-            bucket_name = root_remote.replace("s3://", "")
+    failed_cnt = 0
 
-            remote_up_down = create_remote_up_down(
-                bucket_name=bucket_name,
-                prefix="",
-                run_uuid=None,
-                num_attempts=s3_comm_config.num_attempts,
-                client_config=OmegaConf.to_container(
-                    s3_comm_config.backend_kwargs.client_config
-                ),  # type: ignore[reportArgumentType, arg-type]
+    if os.path.exists(cached_file_name):  # noqa: PTH110
+        for stream in actual_streams.values():
+            assert stream.local is not None, "Local path is not set."
+            assert stream.split is not None, "Split is not set."
+            local_file_name = os.path.join(  # noqa: PTH118
+                stream.local, stream.split, FREQ_DICT_NAME
             )
-            remote_path = os.path.join(  # noqa: PTH118
-                stream.remote, stream.split, FREQ_DICT_NAME
-            )
-            download_file_from_s3(remote_up_down, remote_path, local_file_name)
+            if not os.path.exists(local_file_name):  # noqa: PTH110
+                assert stream.remote is not None, "Remote path is not set."
+                assert s3_comm_config is not None, "S3 communication config is not set."
+                assert run_uuid is not None, "Run UUID is not set."
+                stream_remote_post_processed = stream.remote.replace("s3://", "")
 
-        with open(local_file_name, encoding="utf-8") as f:
-            loaded_map: dict = json.load(f).items()
+                root_remote, *rest = stream_remote_post_processed.split("/")
+
+                remote_up_down = create_remote_up_down(
+                    bucket_name=root_remote,
+                    prefix="",
+                    run_uuid=run_uuid,
+                    num_attempts=s3_comm_config.num_attempts,
+                    client_config=OmegaConf.to_container(
+                        s3_comm_config.backend_kwargs.client_config
+                    ),  # type: ignore[reportArgumentType, arg-type]
+                )
+                remote_path = os.path.join(  # noqa: PTH118
+                    os.path.join(*rest),  # noqa: PTH118
+                    stream.split,
+                    FREQ_DICT_NAME,
+                )
+                try:
+                    download_file_from_s3(remote_up_down, remote_path, local_file_name)
+                except FileNotFoundError as _:
+                    if not allow_failures:
+                        raise
+            try:
+                with open(local_file_name, encoding="utf-8") as f:
+                    loaded_map: dict = json.load(f).items()
+
+                freq_map: dict[int, tuple[int, str]]
+                try:
+                    freq_map = {ast.literal_eval(k)[0]: v for k, v in loaded_map}
+                except TypeError:
+                    freq_map = {ast.literal_eval(k): v for k, v in loaded_map}
+                stream_freq_dict = merge_freq_dicts(stream_freq_dict, freq_map)
+            except FileNotFoundError as _:
+                if not allow_failures:
+                    raise
+                failed_cnt += 1
         log(
             DEBUG,
-            "Loaded 1_gram.json for %s, len: %s",
-            local_file_name,
-            len(loaded_map),
+            "Loaded stream_freq_dict, len: %s, failures %s",
+            len(stream_freq_dict),
+            failed_cnt,
         )
-        freq_map: dict[int, tuple[int, str]]
-        try:
-            freq_map = {ast.literal_eval(k)[0]: v for k, v in loaded_map}
-        except TypeError:
-            freq_map = {ast.literal_eval(k): v for k, v in loaded_map}
-        stream_freq_dict = merge_freq_dicts(stream_freq_dict, freq_map)
+        with open(cached_file_name, "w", encoding="utf-8") as f:
+            json.dump(stream_freq_dict, f, indent=4)
+    else:
+        with open(cached_file_name, encoding="utf-8") as f:
+            stream_freq_dict = {k: (v[0], v[1]) for k, v in json.load(f).items()}
+        log(
+            DEBUG,
+            "Loaded stream_freq_dict from cache %s, len: %s",
+            cached_file_name,
+            len(stream_freq_dict),
+        )
+
     return stream_freq_dict
