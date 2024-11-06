@@ -139,6 +139,7 @@ class FL(DictConfig):
     n_rounds: int = MISSING
     reset_optimizer: bool = MISSING
     reset_dataset_state: bool = MISSING
+    resize_vocab: int | None = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
     use_unigram_metrics: bool = MISSING
