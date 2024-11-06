@@ -103,6 +103,7 @@ class FL(DictConfig):
         Number of rounds
     reset_optimizer: bool = MISSING
         Whether to reset the optimizer
+    reset_dataset_state: bool = MISSING
     n_local_epochs: int = MISSING
         Number of local epochs
     n_local_steps: int = MISSING
@@ -137,6 +138,7 @@ class FL(DictConfig):
     n_clients_per_round: int = MISSING
     n_rounds: int = MISSING
     reset_optimizer: bool = MISSING
+    reset_dataset_state: bool = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
     use_unigram_metrics: bool = MISSING

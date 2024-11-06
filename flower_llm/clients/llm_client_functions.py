@@ -962,6 +962,11 @@ def llm_fit(
         llm_config.load_ignore_keys += ["*optim*"]  # type: ignore[union-attr]
         # Ignoring the optimizer state when saving a checkpoint
         llm_config.save_ignore_keys = ["*optim*"]  # type: ignore[union-attr]
+
+    if config.get("reset_dataset_state", False):
+        # Ignoring the dataset state if loading a checkpoint
+        llm_config.load_ignore_keys += ["*dataset_state*"]
+
     # NOTE: The following, when re-loading from a checkpoint, returns a weird error
     # if not skip_iteration:
     #     # Ignoring loading the model as we need to set it from the server
