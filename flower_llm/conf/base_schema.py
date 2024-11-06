@@ -101,6 +101,8 @@ class FL(DictConfig):
         Number of clients per round
     n_rounds: int = MISSING
         Number of rounds
+    reset_checkpoint: bool = MISSING
+        Whether to reset the checkpoint
     reset_optimizer: bool = MISSING
         Whether to reset the optimizer
     reset_dataset_state: bool = MISSING
@@ -140,6 +142,7 @@ class FL(DictConfig):
     n_total_clients: int = MISSING
     n_clients_per_round: int = MISSING
     n_rounds: int = MISSING
+    reset_checkpoint: bool = MISSING
     reset_optimizer: bool = MISSING
     reset_dataset_state: bool = MISSING
     resize_vocab: int | None = MISSING

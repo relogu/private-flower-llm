@@ -115,6 +115,7 @@ def main(driver: Driver, context: Context) -> None:
             "n_local_steps": cfg.fl.n_local_steps,
             "n_local_epochs": cfg.fl.n_local_epochs,
             "collaborative": cfg.pollen.fit_collaborative,
+            "reset_checkpoint": cfg.fl.reset_checkpoint,
             "reset_optimizer": cfg.fl.reset_optimizer,
             "reset_dataset_state": cfg.fl.reset_dataset_state,
             "reset_timestamp": cfg.fl.reset_timestamp,

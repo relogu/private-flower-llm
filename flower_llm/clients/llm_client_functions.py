@@ -945,11 +945,12 @@ def llm_fit(
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     server_steps_cumulative = cast(int, config["server_steps_cumulative"])
-    skip_iteration, _ = set_client_load_path(
-        llm_config,
-        cid,
-        server_steps_cumulative + num_batches_trained,
-    )
+    if not config.get("reset_checkpoint", False):
+        skip_iteration, _ = set_client_load_path(
+            llm_config,
+            cid,
+            server_steps_cumulative + num_batches_trained,
+        )
     llm_config.load_ignore_keys = ["*scheduler*"]  # type: ignore[union-attr]
     if config["reset_optimizer"]:
         # Ignoring the optimizer state if loading a checkpoint

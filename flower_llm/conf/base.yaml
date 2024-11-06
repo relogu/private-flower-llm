@@ -31,6 +31,7 @@ fl:
   n_total_clients: 8
   n_clients_per_round: 8
   n_rounds: 200
+  reset_checkpoint: false
   reset_optimizer: true
   reset_dataset_state: false
   resize_vocab: null
