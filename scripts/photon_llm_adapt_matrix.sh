@@ -119,14 +119,6 @@ if [ -z "$START_LR" ]; then
 	export START_LR=6.0e-4
 fi
 
-if [ -z "$TASKS" ]; then
-	export TASKS=tasks_v0.3
-fi
-
-if [ -z "$EVAL_GAUNT" ]; then
-	export EVAL_GAUNT=eval_gauntlet_v0.3
-fi
-
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
@@ -151,7 +143,7 @@ else
 fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 #! S3 communication stack settings
-MINIO_COMM_STACK_OPTIONS="use_s3_comm=true s3_comm_config.bucket_name=checkpoints"
+MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 
 POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=100 pollen.fit_collaborative=true"
@@ -167,13 +159,13 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=$RESUME_ROUND pollen.restore_r
 export COMPOSER_FAIL_ON_VOCAB_MISMATCH=0
 export ALLOW_EMBEDDING_RESIZING=0
 
-POLLEN_CONFIG="$POLLEN_CONFIG fl.eval_fl=99999 fl.reset_dataset_state=true fl.reset_timestamp=true fl.reset_checkpoint=true fl.resize_vocab=$RESIZE_VOCAB fl.n_clients_per_round=1 fl.n_total_clients=1  fl.n_rounds=$TOTAL_ROUNDS fl.random_init_freq=1 fl.personalized_layers=$PERSONALIZED_KEYS fl.random_layers=$RANDOM_KEYS" # fl.unfrozen_layers=[model.transformer.wte.weight,model.transformer.wpe.weight]
+POLLEN_CONFIG="$POLLEN_CONFIG fl.eval_fl=null fl.reset_dataset_state=true fl.reset_timestamp=true fl.reset_checkpoint=true fl.resize_vocab=$RESIZE_VOCAB fl.use_unigram_metrics=true fl.n_clients_per_round=1 fl.n_total_clients=1  fl.n_rounds=$TOTAL_ROUNDS fl.random_init_freq=1 fl.personalized_layers=$PERSONALIZED_KEYS fl.random_layers=$RANDOM_KEYS" # fl.unfrozen_layers=[model.transformer.wte.weight,model.transformer.wpe.weight]
 #  fl.personalized_keys=[model.transformer.wte.weight,model.transformer.wpe.weight]                                                                            # FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDAVG"
 export LLM_OPTIONS="$LLM_OPTIONS +llm_config.model.allow_embedding_resizing=false +llm_config.model.fail_on_vocab_mismatch=false llm_config.model.vocab_size=$VOCAB_SIZE llm_config.max_duration=${N_LOCAL_STEPS}ba llm_config.scheduler.t_max=${N_LOCAL_STEPS}ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=$START_LR" # MosaicML (+200ba) - 125M
-export LLM_OPTIONS="$LLM_OPTIONS icl_tasks_config=$TASKS eval_gauntlet_config=$EVAL_GAUNT eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"
+export LLM_OPTIONS="$LLM_OPTIONS eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${SAVE_INTERVAL}ba llm_config.console_log_interval=100ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=${EVAL_INTERVAL}ba llm_config.eval_subset_num_batches=${EVAL_SUBSET_NUM_BATCHES} llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=${EVAL_INTERVAL}ba llm_config.eval_subset_num_batches=${EVAL_SUBSET_NUM_BATCHES} llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP ++llm_config.device_eval_microbatch_size=auto" # Automatic microbatch size for evaluation"
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 

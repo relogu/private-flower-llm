@@ -6,8 +6,8 @@ common: &dataset_defaults
   validate_hash: null
   keep_zip: false
   epoch_size: 163225
-  predownload: 128  # NOTE: 8*64, change in the composer library
-  cache_limit: 1gb
+  predownload: null  # NOTE: 8*64, change in the composer library
+  cache_limit: 20gb
   partition_algo: relaxed
   num_canonical_nodes: null
   shuffle: false  # Epoch size takes care of it

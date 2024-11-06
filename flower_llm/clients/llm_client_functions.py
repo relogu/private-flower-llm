@@ -22,7 +22,7 @@ from composer.profiler import JSONTraceHandler, Profiler, TraceHandler, cyclic_s
 from composer.utils import dist, reproducibility, get_device
 from flwr.common.logger import log
 from flwr.common.typing import NDArrays, Scalar
-from flwr.common import parameters_to_ndarrays
+from flwr.common import parameters_to_ndarrays, ndarrays_to_parameters, Parameters
 from flwr.common.recordset_compat import ConfigsRecord
 from llmfoundry.data.dataloader import build_dataloader
 
@@ -66,12 +66,12 @@ from flower_llm.clients.llm_config_functions import (
     set_n_workers_dataloaders,
 )
 from flower_llm.conf.base_schema import BaseConfig, S3CommConfig
-from flower_llm.server.init_utils import get_initial_parameters
 from flower_llm.utils import (
     freeze_blocks,
     get_list_of_parameters_names,
     get_trainable_params_dict,
     get_unigram_probabilities_tensor,
+    load_model_parameters_from_file,
     parameters_checker,
     set_trainer_params_from_ndarrays,
     sum_of_squares,
@@ -109,6 +109,62 @@ def print_trainable_parameters(model: torch.nn.Module) -> None:
         f"trainable params: {trainable_params} || all params: {all_param} || "
         f"trainable params (%): {100 * trainable_params / all_param}",
     )
+
+
+def get_initial_parameters(cfg: BaseConfig) -> Parameters:
+    """Retrieve the initial parameters for the federated learning server model.
+
+    This function returns the initial parameters of the model using the configuration.
+    If a pretrained model path is specified in the configuration (`cfg`), it loads its
+    parameters from the specified file. Otherwise, it returns random parameters
+    based on the provided large language model (LLM) configuration. Also, it logs
+    the shapes and names of the initial parameters for debugging purposes.
+
+    Parameters
+    ----------
+    cfg : BaseConfig
+        The configuration object containing the pretrained model path and LLM config.
+
+    Returns
+    -------
+    'Parameters'
+        The initial parameters of the model, either loaded from a pretrained model or
+        initialized randomly based on the LLM configuration.
+    """
+    if cfg.pretrained_model_path:
+        log(
+            DEBUG,
+            "FL server is loading pretrained model from %s",
+            cfg.pretrained_model_path,
+        )
+        return ndarrays_to_parameters(
+            load_model_parameters_from_file(Path(cfg.pretrained_model_path))
+        )
+    else:
+        log(
+            DEBUG,
+            "FL server initializes model with random parameters.",
+        )
+        _llm_config = cfg.llm_config
+        OmegaConf.resolve(_llm_config)
+        OmegaConf.set_struct(_llm_config, False)
+        initial_parameters_ndarrays: NDArrays
+        names: list[str]
+        (initial_parameters_ndarrays, names) = cast(
+            tuple[NDArrays, list[str]],
+            get_raw_model_parameters(copy.deepcopy(_llm_config), True, True),
+        )
+        for i, (param, name) in enumerate(
+            zip(initial_parameters_ndarrays, names, strict=True)
+        ):
+            log(
+                DEBUG,
+                "Initial parameter, component %s, name %s, shape %s",
+                i,
+                name,
+                param.shape,
+            )
+        return ndarrays_to_parameters(initial_parameters_ndarrays)
 
 
 def get_raw_model_parameters(
@@ -931,8 +987,8 @@ def llm_fit(
     random_layers: list[str] = ast.literal_eval(
         config.get("random_layers", str([]))  # type: ignore[reportArgumentType, arg-type]
     )
-    random_init_freq: int = cast(int, config.get("random_init_freq", 0))
-    truly_random_init: bool = cast(bool, config.get("truly_random_init", False))
+    random_init_freq: int = int(config.get("random_init_freq", 0))  # type: ignore[reportArgumentType, arg-type]
+    truly_random_init: bool = bool(config.get("truly_random_init", False))
 
     frozen_layers: list[str] | None = ast.literal_eval(
         cast(str, config.get("frozen_layers", str(None)))
@@ -953,6 +1009,8 @@ def llm_fit(
     train_metrics: dict[str, Scalar] = {}
     # Set the loading path
     server_steps_cumulative = cast(int, config["server_steps_cumulative"])
+
+    skip_iteration = False
     if not config.get("reset_checkpoint", False):
         skip_iteration, _ = set_client_load_path(
             llm_config,

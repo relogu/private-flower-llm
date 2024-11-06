@@ -58,6 +58,12 @@ class Pollen(DictConfig):
     resume_round: int | None = MISSING
         Round to resume from, None implies start anew
         negative indices are counted from the last round
+    restore_cent_run_uuid: str = MISSING
+        Run UUID to restore the centralized model
+    restore_cent_run_batches: int = MISSING
+        Number of batches to restore from the centralized model
+    copy_client_checkpoints: bool = MISSING
+        Whether to copy the client checkpoints
     """
 
     placement_policy: str = MISSING
@@ -71,6 +77,9 @@ class Pollen(DictConfig):
     checkpoint: bool = MISSING
     restore_run_uuid: str | None = MISSING
     resume_round: int | None = MISSING
+    restore_cent_run_uuid: str | None = MISSING
+    restore_cent_run_batches: int | None = MISSING
+    copy_client_checkpoints: bool = MISSING
 
 
 class StrategyName(StrEnum):
@@ -131,8 +140,8 @@ class FL(DictConfig):
         Whether to ignore failed rounds
     accept_failures_cnt: int = MISSING
         Number of acceptable failures
-    eval_fl: int = MISSING
-        Eval freq
+    eval_fl: int | None = MISSING
+        Eval freq, None means never including first round
     strategy_name: StrategyName = MISSING
         Strategy name
     strategy_kwargs: StrategyKWArgs = MISSING
@@ -145,6 +154,7 @@ class FL(DictConfig):
     reset_checkpoint: bool = MISSING
     reset_optimizer: bool = MISSING
     reset_dataset_state: bool = MISSING
+    reset_timestamp: bool = MISSING
     resize_vocab: int | None = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
@@ -158,7 +168,7 @@ class FL(DictConfig):
 
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
-    eval_fl: int = MISSING
+    eval_fl: int | None = MISSING
 
     strategy_name: StrategyName = MISSING
     strategy_kwargs: StrategyKWArgs = MISSING

@@ -2,6 +2,7 @@
 
 import ast
 from dataclasses import asdict
+import inspect
 from itertools import groupby
 from logging import DEBUG, INFO, WARNING
 from pathlib import Path
@@ -338,6 +339,7 @@ def import_checkpoints(
         restore_run_step=cfg.pollen.resume_round
         * int(cfg.llm_config.local_steps.replace("ba", "")),
         n_total_clients=cfg.fl.n_total_clients,
+        copy_client_checkpoints=cfg.pollen.copy_client_checkpoints,
     )
 
 
@@ -679,7 +681,18 @@ def download_server_checkpoint(
         saved_client_state = {
             cid: {"local_steps_cumulative": 0} for cid in range(cfg.fl.n_total_clients)
         }
-    client_state = {k: ClientState(**v) for k, v in saved_client_state.items()}
+    # NOTE: We maintain partial compatibility across ClientState implementations
+    # by only loading the attributes we actually need
+    # this decision should be revisited at a late time
+
+    # Automatically deduce the existing args from the ClientState class
+    client_state_args = inspect.signature(ClientState.__init__).parameters.keys()
+
+    # Filter and create client_state dictionary in one line
+    client_state = {
+        k: ClientState(**{attr: v[attr] for attr in v if attr in client_state_args})
+        for k, v in saved_client_state.items()
+    }
     time_offset = 0.0
     if "time_offset" in server_state:
         time_offset = server_state["time_offset"]
@@ -730,7 +743,7 @@ def download_server_checkpoint(
         # Download the parameters
         download_file_from_s3(remote_up_down, remote_file_name, local_file_name)
         second_momentum_vector = load_model_parameters_from_file(local_file_name)
-    log(INFO, "Checkpoint loaded")
+    log(INFO, "Server checkpoint loaded")
     return (
         parameters,
         history,
@@ -1471,6 +1484,7 @@ def copy_old_checkpoints_to_new_run(
     restore_run_round: int,
     restore_run_step: int,
     n_total_clients: int | None,
+    copy_client_checkpoints: bool = True,
 ) -> None:
     """Copy old checkpoints to the new run folder.
 
@@ -1548,7 +1562,8 @@ def copy_old_checkpoints_to_new_run(
         ]
 
         if (
-            n_total_clients is not None
+            copy_client_checkpoints
+            and n_total_clients is not None
             and (found_clients := len(client_paths)) != n_total_clients
         ):
             raise ValueError(
@@ -1566,7 +1581,8 @@ def copy_old_checkpoints_to_new_run(
                 f"Could not find momentum vector to copy from {momentum_vec}",
             )
 
-        paths_to_copy.extend(client_paths)
+        if copy_client_checkpoints:
+            paths_to_copy.extend(client_paths)
 
         for path in paths_to_copy:
             copy_source = {"Bucket": backend.bucket, "Key": path}

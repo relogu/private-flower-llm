@@ -3,14 +3,12 @@
 import copy
 from logging import DEBUG, INFO
 import operator
-from pathlib import Path
 import re
-from typing import cast
 import numpy as np
 
 from flower_llm.clients.llm_client_functions import (
     _get_trainer_object,
-    get_raw_model_parameters,
+    get_initial_parameters,
 )
 from flower_llm.server.s3_utils import (
     download_server_checkpoint,
@@ -20,7 +18,6 @@ from flower_llm.server.s3_utils import (
 from flower_llm.utils import (
     ClientState,
     get_parameters_from_state,
-    load_model_parameters_from_file,
 )
 from flwr.common import (
     ndarrays_to_parameters,
@@ -31,7 +28,6 @@ from flwr.common import (
 )
 
 
-from omegaconf import OmegaConf
 import os
 from composer.loggers import RemoteUploaderDownloader
 from composer.utils.file_helpers import list_remote_objects
@@ -39,62 +35,6 @@ from composer.utils.file_helpers import list_remote_objects
 
 from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.wandb_history import WandbHistory
-
-
-def get_initial_parameters(cfg: BaseConfig) -> Parameters:
-    """Retrieve the initial parameters for the federated learning server model.
-
-    This function returns the initial parameters of the model using the configuration.
-    If a pretrained model path is specified in the configuration (`cfg`), it loads its
-    parameters from the specified file. Otherwise, it returns random parameters
-    based on the provided large language model (LLM) configuration. Also, it logs
-    the shapes and names of the initial parameters for debugging purposes.
-
-    Parameters
-    ----------
-    cfg : BaseConfig
-        The configuration object containing the pretrained model path and LLM config.
-
-    Returns
-    -------
-    'Parameters'
-        The initial parameters of the model, either loaded from a pretrained model or
-        initialized randomly based on the LLM configuration.
-    """
-    if cfg.pretrained_model_path:
-        log(
-            DEBUG,
-            "FL server is loading pretrained model from %s",
-            cfg.pretrained_model_path,
-        )
-        return ndarrays_to_parameters(
-            load_model_parameters_from_file(Path(cfg.pretrained_model_path))
-        )
-    else:
-        log(
-            DEBUG,
-            "FL server initializes model with random parameters.",
-        )
-        _llm_config = cfg.llm_config
-        OmegaConf.resolve(_llm_config)
-        OmegaConf.set_struct(_llm_config, False)
-        initial_parameters_ndarrays: NDArrays
-        names: list[str]
-        (initial_parameters_ndarrays, names) = cast(
-            tuple[NDArrays, list[str]],
-            get_raw_model_parameters(copy.deepcopy(_llm_config), True, True),
-        )
-        for i, (param, name) in enumerate(
-            zip(initial_parameters_ndarrays, names, strict=True)
-        ):
-            log(
-                DEBUG,
-                "Initial parameter, component %s, name %s, shape %s",
-                i,
-                name,
-                param.shape,
-            )
-        return ndarrays_to_parameters(initial_parameters_ndarrays)
 
 
 def get_centralized_run_parameters(dummy_config: BaseConfig) -> Parameters:

@@ -490,7 +490,7 @@ def get_stream_freq_dict_for_client(
 
     failed_cnt = 0
 
-    if os.path.exists(cached_file_name):  # noqa: PTH110
+    if not os.path.exists(cached_file_name):  # noqa: PTH110
         for stream in actual_streams.values():
             assert stream.local is not None, "Local path is not set."
             assert stream.split is not None, "Split is not set."
@@ -530,9 +530,9 @@ def get_stream_freq_dict_for_client(
 
                 freq_map: dict[int, tuple[int, str]]
                 try:
-                    freq_map = {ast.literal_eval(k)[0]: v for k, v in loaded_map}
+                    freq_map = {int(ast.literal_eval(k)[0]): v for k, v in loaded_map}
                 except TypeError:
-                    freq_map = {ast.literal_eval(k): v for k, v in loaded_map}
+                    freq_map = {int(ast.literal_eval(k)): v for k, v in loaded_map}
                 stream_freq_dict = merge_freq_dicts(stream_freq_dict, freq_map)
             except FileNotFoundError as _:
                 if not allow_failures:
@@ -548,7 +548,7 @@ def get_stream_freq_dict_for_client(
             json.dump(stream_freq_dict, f, indent=4)
     else:
         with open(cached_file_name, encoding="utf-8") as f:
-            stream_freq_dict = {k: (v[0], v[1]) for k, v in json.load(f).items()}
+            stream_freq_dict = {int(k): (v[0], v[1]) for k, v in json.load(f).items()}
         log(
             DEBUG,
             "Loaded stream_freq_dict from cache %s, len: %s",

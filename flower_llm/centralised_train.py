@@ -56,7 +56,7 @@ def main() -> Trainer:
         "Creating trainer object using stream_id: %s...",
         _cfg.centralized.stream_id,
     )
-    trainer, eval_first, _ = _get_trainer_object(
+    trainer, eval_first, *_ = _get_trainer_object(
         _cfg=cfg,
         cid=_cfg.centralized.stream_id,
         log_name="_centralised",

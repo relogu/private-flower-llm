@@ -24,6 +24,9 @@ pollen:
   checkpoint: false
   # Set to null to only restore from the current run
   restore_run_uuid: null
+  restore_cent_run_uuid: null
+  restore_cent_run_batches: null
+  copy_client_checkpoints: true
   resume_round: -1
   saving_path: null
 
@@ -34,6 +37,7 @@ fl:
   reset_checkpoint: false
   reset_optimizer: true
   reset_dataset_state: false
+  reset_timestamp: false
   resize_vocab: null
   use_unigram_metrics: false
   n_local_epochs: 1

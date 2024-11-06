@@ -2,9 +2,9 @@
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
 #!SBATCH -c 192
 #!SBATCH -c 96
-#SBATCH -c 48
-#SBATCH -w ruapehu
-#SBATCH --gres=gpu:2
+#SBATCH -c 40
+#SBATCH -w mauao
+#SBATCH --gres=gpu:4
 #!SBATCH --gres=gpu:1
 #!SBATCH --gres=gpu:0
 #!SBATCH --job-name=fed_llm_125M
@@ -35,10 +35,10 @@
 #!SBATCH --job-name=GDG_125M_balanced
 #!SBATCH --job-name=GDG_350M_balanced
 #!SBATCH --job-name=GBUNTU-125M-mc4
-#SBATCH --job-name=GDEM-125M-mc4
+#SBATCH --job-name=UB-GF-pers-125M-p
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
-#SBATCH --time=10:59:00
+#SBATCH --time=11:55:00
 #!SBATCH --begin=now+5hours
 #!SBATCH --begin=now+10hours
 #!SBATCH --begin=now+15hours
@@ -193,28 +193,29 @@ export TASKS=""
 export EVAL_GAUNT=""
 
 
-# export MODEL_SIZE="125M"
-# export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
-# export START_LR=6.0e-4
-# export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
-# export RUN_UUID="GF-persU-125M-p-20240821_tle"
-# export DATASET="fed-the-pile"
-# export STREAM="the_pile_1_clients_balanced"
-# export N_LOCAL_STEPS=1200
-# export RESUME_ROUND=10
-# export TOTAL_ROUNDS=11
-# export VOCAB_SIZE=50368
-# export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
-# export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
-# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+export START_LR=6.0e-4
+export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
+export RUN_UUID="UB-GF-pers-125M-p-20240821_tle"
+export DATASET="fed-the-pile-adapt"
+export STREAM="the_pile_1_clients_unbalanced"
+export N_LOCAL_STEPS=1200
+export RESUME_ROUND=10
+export TOTAL_ROUNDS=11
+export VOCAB_SIZE=50368
+export RESIZE_VOCAB=50368
+export SAVE_INTERVAL=200
+export EVAL_INTERVAL=200
+export EVAL_SUBSET_NUM_BATCHES=500
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
+
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4 
 # export RESTORE_RUN_UUID="full-125M-p-tle"
 # export RUN_UUID="GF_full-125M-p-tle"
@@ -225,14 +226,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID="matrix-125M-p-tle"
 # export RUN_UUID="GF-matrix-125M-p-tle"
@@ -243,14 +244,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
@@ -263,14 +264,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
@@ -283,9 +284,9 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -293,7 +294,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=3.0e-4
 # export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
 # export RUN_UUID="GF-pers-350M-p-20240825"
@@ -306,13 +307,13 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4 
 # export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
 # export RUN_UUID="GF_full-350M-p-20240825_tle"
@@ -325,12 +326,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
 # export RUN_UUID="GF-matrix-350M-p-20240825"
@@ -343,13 +344,13 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
@@ -364,12 +365,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
@@ -384,7 +385,7 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -399,7 +400,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=6.0e-4
 # export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
 # export RUN_UUID="GDG-pers-125M-p-20240821_tle"
@@ -410,15 +411,15 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4 
 # export RESTORE_RUN_UUID="full-125M-p-tle"
 # export RUN_UUID="GDG_full-125M-p-tle"
@@ -429,14 +430,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID="matrix-125M-p-tle"
 # export RUN_UUID="GDG-matrix-125M-p-tle"
@@ -447,14 +448,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
@@ -467,14 +468,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
@@ -487,9 +488,9 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -499,7 +500,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=3.0e-4
 # export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
 # export RUN_UUID="GDG-pers-350M-p-20240825"
@@ -512,13 +513,13 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4 
 # export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
 # export RUN_UUID="GDG_full-350M-p-20240825_tle"
@@ -531,12 +532,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
 # export RUN_UUID="GDG-matrix-350M-p-20240825"
@@ -549,12 +550,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
@@ -569,12 +570,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
@@ -589,7 +590,7 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # Ubuntu subset
@@ -597,7 +598,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=6.0e-4
 # export RESTORE_RUN_UUID="pers-125M-p-20240821_tle"
 # export RUN_UUID="GBUN-pers-125M-p-20240821_tle"
@@ -608,15 +609,15 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4 
 # export RESTORE_RUN_UUID="full-125M-p-tle"
 # export RUN_UUID="GBUN_full-125M-p-tle"
@@ -627,14 +628,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID="matrix-125M-p-tle"
 # export RUN_UUID="GBUN-matrix-125M-p-tle"
@@ -645,14 +646,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-p-20240919_190940"
@@ -665,14 +666,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=6.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-p-20240921_040950"
@@ -685,9 +686,9 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -697,7 +698,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=3.0e-4
 # export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
 # export RUN_UUID="GBUN-pers-350M-p-20240825"
@@ -710,13 +711,13 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4 
 # export RESTORE_RUN_UUID="full-350M-p-20240825_tle"
 # export RUN_UUID="GBUN_full-350M-p-20240825_tle"
@@ -729,12 +730,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
 # export RUN_UUID="GBUN-matrix-350M-p-20240825"
@@ -747,12 +748,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-350M-p-20240921_082028"
@@ -767,12 +768,12 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=3.0e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
@@ -787,7 +788,7 @@ export EVAL_GAUNT=""
 # export RESIZE_VOCAB=50368
 # export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -798,7 +799,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
 # export RUN_UUID="GFr8-pers-125M-mc4"
@@ -809,7 +810,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -817,7 +818,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GFr10_full-125M-mc4-20240912-tle"
@@ -828,14 +829,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GFr10-matrix-125M-mc4"
@@ -846,14 +847,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
@@ -866,14 +867,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
@@ -886,14 +887,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
@@ -906,7 +907,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -916,7 +917,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
 # export RUN_UUID="GSr8-pers-125M-mc4"
@@ -927,7 +928,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -935,7 +936,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GSr10_full-125M-mc4-20240912-tle"
@@ -946,14 +947,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GSr10-matrix-125M-mc4"
@@ -964,14 +965,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
@@ -984,14 +985,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
@@ -1004,14 +1005,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
@@ -1024,7 +1025,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -1038,7 +1039,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
 # export RUN_UUID="GDEr8-pers-125M-mc4"
@@ -1057,7 +1058,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GDEr10_full-125M-mc4-20240912-tle"
@@ -1075,7 +1076,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GDEr10-matrix-125M-mc4"
@@ -1093,7 +1094,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
@@ -1113,7 +1114,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
@@ -1133,7 +1134,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
@@ -1259,7 +1260,7 @@ export EVAL_GAUNT=""
 # Act adaptations
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=6.0e-4
 # export RESTORE_RUN_UUID="act500-125M-pile-tle"
 # export RUN_UUID="GDg-act500-125M-pile-tle"
@@ -1270,9 +1271,9 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=6
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
-# export EVAL_SUBSET_NUM_BATCHES=-1
+# export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
@@ -1282,7 +1283,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
 # export RUN_UUID="GELr8-pers-125M-mc4"
@@ -1293,7 +1294,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -1301,7 +1302,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GELr10_full-125M-mc4-20240912-tle"
@@ -1312,14 +1313,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GELr10-matrix-125M-mc4"
@@ -1330,14 +1331,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
@@ -1350,14 +1351,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
@@ -1370,14 +1371,14 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]      
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
@@ -1390,7 +1391,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=100
+# export SAVE_INTERVAL=200
 # export EVAL_INTERVAL=200
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -1400,7 +1401,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4U-20240924_114340"
 # export RUN_UUID="GSWr8-pers-125M-mc4U-20240924_114340"
@@ -1418,7 +1419,7 @@ export EVAL_GAUNT=""
 
 # export MODEL_SIZE="125M_MC4"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[model.transformer.wte.weight,model.transformer.wpe.weight]              
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
 # export RESTORE_RUN_UUID="pers-125M-mc4U-20240924_114340"
 # export RUN_UUID="GDEr8-pers-125M-mc4U-20240924_114340"
