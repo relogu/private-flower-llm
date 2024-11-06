@@ -32,9 +32,16 @@ fl:
   n_clients_per_round: 8
   n_rounds: 200
   reset_optimizer: true
-  use_unigram_metrics: true
+  use_unigram_metrics: false
   n_local_epochs: 1
   n_local_steps: 0
+
+  random_layers: []
+  random_init_freq: 0
+  truly_random_init: false
+  personalized_layers: []
+  frozen_layers: null
+  unfrozen_layers: null
 
   ignore_failed_rounds: false
   accept_failures_cnt: 0
