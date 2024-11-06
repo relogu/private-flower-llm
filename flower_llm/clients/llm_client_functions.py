@@ -968,6 +968,11 @@ def llm_fit(
     # Extract configs to build the trainer
 
     dummy_config = copy.deepcopy(llm_config)
+    if (
+        vocab_size := ast.literal_eval(config.get("resize_vocab", str(None)))  # type: ignore[reportArgumentType]
+    ) is not None:
+        llm_config.model.vocab_size = vocab_size
+
     (
         trainer,
         eval_first,

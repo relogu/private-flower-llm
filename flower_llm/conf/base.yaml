@@ -32,6 +32,8 @@ fl:
   n_clients_per_round: 8
   n_rounds: 200
   reset_optimizer: true
+  reset_dataset_state: false
+  resize_vocab: null
   use_unigram_metrics: false
   n_local_epochs: 1
   n_local_steps: 0

@@ -104,6 +104,9 @@ class FL(DictConfig):
     reset_optimizer: bool = MISSING
         Whether to reset the optimizer
     reset_dataset_state: bool = MISSING
+        Whether to reset the dataset state
+    resize_vocab: int | None = MISSING
+        Resize the vocabulary
     n_local_epochs: int = MISSING
         Number of local epochs
     n_local_steps: int = MISSING
