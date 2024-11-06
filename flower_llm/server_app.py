@@ -117,6 +117,7 @@ def main(driver: Driver, context: Context) -> None:
             "collaborative": cfg.pollen.fit_collaborative,
             "reset_optimizer": cfg.fl.reset_optimizer,
             "reset_dataset_state": cfg.fl.reset_dataset_state,
+            "reset_timestamp": cfg.fl.reset_timestamp,
             "use_unigram_metrics": cfg.fl.use_unigram_metrics,
             "s3_comm_config": str(
                 OmegaConf.to_container(cfg.s3_comm_config, resolve=True)

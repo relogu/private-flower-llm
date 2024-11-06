@@ -1024,7 +1024,10 @@ def llm_fit(
     # NOTE: Skipping a few steps if the checkpoint already exists
     if not skip_iteration:
         # Set the timestamp to the current time
-        set_trainer_timestamp(trainer, server_steps_cumulative)
+        set_trainer_timestamp(
+            trainer,
+            server_steps_cumulative if not config.get("reset_timestamp", False) else 0,
+        )
 
         # Set the parameters
         if parameters is not None and not skip_iteration:
