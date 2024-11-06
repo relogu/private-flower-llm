@@ -66,6 +66,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEP
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
 
 # Resume options

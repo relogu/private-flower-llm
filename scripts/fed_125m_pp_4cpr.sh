@@ -65,7 +65,23 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.device_eval_microbatch_s
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+=======
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=8"
+>>>>>>> 918cf78 (exp)
+=======
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+>>>>>>> 70c14ab (correct partial participation experiments)
+=======
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=8"
+>>>>>>> 918cf78 (exp)
+=======
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+>>>>>>> 70c14ab (correct partial participation experiments)
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
 
 # Resume options
