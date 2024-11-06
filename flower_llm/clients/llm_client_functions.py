@@ -260,6 +260,7 @@ def _get_trainer_object(
     s3_comm_config: S3CommConfig | None = None,
     frozen_layers: list[str] | None = None,
     unfrozen_layers: list[str] | None = None,
+    no_data_loading: bool = False,
 ) -> tuple[
     Trainer,
     bool,
@@ -337,7 +338,8 @@ def _get_trainer_object(
 
     # Mandatory model training configs
     set_n_workers_dataloaders(cfg=_cfg, device=device)
-    client_set_data_config(cfg=_cfg, cid=cid)
+    if not no_data_loading:
+        client_set_data_config(cfg=_cfg, cid=cid)
 
     # Apply dataset defaults
     set_dataset_default_params(_cfg)
@@ -643,7 +645,7 @@ def _get_trainer_object(
     # Train loader
     train_loader = None
     train_streams: dict[str, dict[str, Any]] | None = None
-    if train_loader_config is not None:
+    if train_loader_config is not None and not no_data_loading:
         train_streams = train_loader_config.dataset.streams
         train_loader_config = OmegaConf.to_container(train_loader_config, resolve=True)  # type: ignore[assignment,reportAssignmentType]
 
@@ -698,9 +700,9 @@ def _get_trainer_object(
         )
 
     # Evaluators and eval loaders
-    evaluators = []
-    eval_loaders = []
-    if eval_loader_config is not None:
+    evaluators: list[Evaluator] = []
+    eval_loaders: list[Evaluator] = []
+    if eval_loader_config is not None and not no_data_loading:
         is_multi_eval = isinstance(eval_loader_config, ListConfig)
         eval_configs = eval_loader_config if is_multi_eval else [eval_loader_config]
         for eval_config in eval_configs:
@@ -727,7 +729,7 @@ def _get_trainer_object(
 
     eval_gauntlet_callback = None
 
-    if icl_tasks_listconfig is not None:
+    if icl_tasks_listconfig is not None and not no_data_loading:
         assert eval_gauntlet_config is not None
         destination_dir: str | None = None
         if not isinstance(eval_gauntlet_config, str):
@@ -771,7 +773,7 @@ def _get_trainer_object(
         callbacks.append(eval_gauntlet_callback)
 
     # Model
-    model_config = dict(OmegaConf.to_container(model_config, resolve=True))  # type: ignore[reportAssignmentType]
+    model_config = dict(OmegaConf.to_container(model_config, resolve=True))  # type: ignore[reportAssignmentType,arg-type,assignment]
     assert isinstance(model_config, dict), (
         "Expected model_config to be a dict," f" got {type(model_config)}"
     )

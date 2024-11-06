@@ -2,11 +2,14 @@
 
 import copy
 from logging import DEBUG, INFO
+import operator
 from pathlib import Path
+import re
 from typing import cast
 import numpy as np
 
 from flower_llm.clients.llm_client_functions import (
+    _get_trainer_object,
     get_raw_model_parameters,
 )
 from flower_llm.server.s3_utils import (
@@ -16,6 +19,7 @@ from flower_llm.server.s3_utils import (
 )
 from flower_llm.utils import (
     ClientState,
+    get_parameters_from_state,
     load_model_parameters_from_file,
 )
 from flwr.common import (
@@ -26,8 +30,11 @@ from flwr.common import (
     log,
 )
 
+
 from omegaconf import OmegaConf
+import os
 from composer.loggers import RemoteUploaderDownloader
+from composer.utils.file_helpers import list_remote_objects
 
 
 from flower_llm.conf.base_schema import BaseConfig
@@ -90,8 +97,72 @@ def get_initial_parameters(cfg: BaseConfig) -> Parameters:
         return ndarrays_to_parameters(initial_parameters_ndarrays)
 
 
+def get_centralized_run_parameters(dummy_config: BaseConfig) -> Parameters:
+    """Retrieve the parameters from a centralized run.
+
+    Args
+    ----------
+    dummy_config : BaseConfig
+        The configuration object containing the settings for the federated learning
+        server.
+    remote_up_down : RemoteUploaderDownloader
+        The object to upload/download files from/to the S3 Object Store.
+
+    Returns
+    -------
+    Params
+        The parameters from the centralized run.
+    """
+    dummy_config = copy.deepcopy(dummy_config)
+    desired_steps = dummy_config.pollen.restore_cent_run_batches
+    folder = f"s3://checkpoints/{dummy_config.pollen.restore_cent_run_uuid}"
+    remote_objects = list_remote_objects(folder)
+    log(INFO, f"Restoring from centralized run, found {remote_objects}")
+    sorted_pairs = sorted(
+        [
+            (
+                int(reg.group(1)),  # epoch number
+                int(reg.group(2)),  # number of batches
+            )
+            for path in remote_objects
+            if (reg := re.search(r"/ep(\d+)-ba(\d+)", path)) is not None
+        ],
+        key=operator.itemgetter(1),
+    )
+    path_to_check = next(
+        (
+            (epoch, batches)
+            for epoch, batches in sorted_pairs
+            if batches == desired_steps
+        ),
+        None,
+    )
+    if path_to_check is None:
+        raise ValueError(f"Could not find a checkpoint with {desired_steps} batches")
+    epoch, batches = path_to_check
+
+    dummy_config.load_path = folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+    dummy_config.load_ignore_keys = [
+        "*scheduler*",
+        "*optim*",
+        "*dataset_state*",
+    ]
+    os.environ["APPOINTED_CUDA_DEVICE"] = str(None)
+    dummy_config.save_folder = None
+    dummy_config.device_train_microbatch_size = 1
+    trainer, *_ = _get_trainer_object(dummy_config, cid=None, no_data_loading=True)
+    return ndarrays_to_parameters(
+        get_parameters_from_state(
+            {},
+            trainer,
+        )
+    )
+
+
 def initialize_round(
-    cfg: BaseConfig, remote_up_down: RemoteUploaderDownloader | None
+    cfg: BaseConfig,
+    remote_up_down: RemoteUploaderDownloader | None,
+    parameters: Parameters | None = None,
 ) -> tuple[
     Parameters,
     WandbHistory,
@@ -111,7 +182,7 @@ def initialize_round(
     round, time offset, cumulative server steps, and initializing the momentum vector
     for optimization algorithms.
 
-    Parameters
+    Args
     ----------
     cfg : BaseConfig
         The configuration object containing settings for federated learning and system
@@ -119,6 +190,8 @@ def initialize_round(
     remote_up_down : RemoteUploaderDownloader | None
         An optional uploader/downloader object for interacting with remote storage,
         required if checkpointing or S3 communication is enabled.
+    parameters: Parameters | None
+        Optional initial parameters to use, e.g from a centralized run.
 
     Returns
     -------
@@ -143,9 +216,10 @@ def initialize_round(
     client_state: dict[str | int, ClientState] = {
         cid: ClientState(0) for cid in range(cfg.fl.n_total_clients)
     }
-    # Initialize parameters
-    log(INFO, "Initializing global parameters")
-    parameters = get_initial_parameters(cfg)
+    if parameters is None:
+        # Initialize parameters only if not provided
+        log(INFO, "Initializing global parameters")
+        parameters = get_initial_parameters(cfg)
     momentum_vector: NDArrays = [
         np.zeros_like(x) for x in parameters_to_ndarrays(parameters)
     ]

@@ -1,5 +1,6 @@
 """Implementation of the Flower's ServerApp for orchestrating federate learning."""
 
+import copy
 from logging import DEBUG, INFO
 import os
 import timeit
@@ -12,7 +13,11 @@ import warnings
 from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
 from flower_llm.server.evaluate_utils import evaluate_round
 from flower_llm.server.fit_utils import fit_round
-from flower_llm.server.init_utils import initialize_round, resume_from_round
+from flower_llm.server.init_utils import (
+    get_centralized_run_parameters,
+    initialize_round,
+    resume_from_round,
+)
 from flower_llm.server.s3_utils import (
     delete_clients_checkpoints,
     delete_rounds,
@@ -198,6 +203,21 @@ def main(driver: Driver, context: Context) -> None:
                     range(n_total_clients), n_clients_per_round
                 )
             sampled_clients = []
+        elif cfg.pollen.restore_cent_run_uuid is not None:
+            assert (
+                remote_up_down is not None
+            ), "Cannot restore without a RemoteUploaderDownloader object"
+            parameters = get_centralized_run_parameters(copy.deepcopy(cfg))
+            (
+                parameters,
+                history,
+                start_round,
+                time_offset,
+                server_steps_cumulative,
+                client_state,
+                momentum_vector,
+                second_momentum_vector,
+            ) = initialize_round(cfg, remote_up_down, parameters=parameters)
         else:
             (
                 parameters,
