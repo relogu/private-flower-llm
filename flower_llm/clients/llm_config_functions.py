@@ -93,7 +93,8 @@ def client_set_data_config(
     """
     # Retrieve the train config to construct the dataset for the train loader
     dataset_config: DictConfig
-    for split in ["train", "val"]:
+    for loop_split in ["train", "val"]:
+        split = loop_split
         if split == "train":
             dataset_config = cfg.train_loader.dataset
         elif split == "val":
@@ -149,9 +150,9 @@ def client_set_data_config(
         # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
         # Assign the streams to the appropriate loaders
-        if split == "train":
+        if loop_split == "train":
             cfg.train_loader.dataset.streams = streams_dict
-        elif split == "val":
+        elif loop_split == "val":
             cfg.eval_loader.dataset.streams = streams_dict
 
 
