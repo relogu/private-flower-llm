@@ -2,9 +2,9 @@
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
 #!SBATCH -c 192
 #!SBATCH -c 96
-#SBATCH -c 60
-#SBATCH -w mauao
-#SBATCH --gres=gpu:8
+#SBATCH -c 20
+#SBATCH -w ruapehu
+#SBATCH --gres=gpu:1
 #!SBATCH --gres=gpu:1
 #!SBATCH --gres=gpu:0
 #!SBATCH --job-name=fed_llm_125M
@@ -35,7 +35,7 @@
 #!SBATCH --job-name=GDG_125M_balanced
 #!SBATCH --job-name=GDG_350M_balanced
 #!SBATCH --job-name=GBUNTU-125M-mc4
-#SBATCH --job-name=UB-GF-pers-125M-p
+#SBATCH --job-name=UB-GF-pers-350M-p
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --time=11:55:00
@@ -184,11 +184,6 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 
 
-
-
-
-
-
 export TASKS=""
 export EVAL_GAUNT=""
 
@@ -290,23 +285,23 @@ export EVAL_GAUNT=""
 
 
 
-# export MODEL_SIZE="350M"
-# export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
-# export START_LR=3.0e-4
-# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
-# export RUN_UUID="P-GF-pers-350M-p-20240825"
-# export DATASET="fed-the-pile"
-# export STREAM="the_pile_1_clients_unbalanced"
-# export N_LOCAL_STEPS=2400
-# export RESUME_ROUND=22
-# export TOTAL_ROUNDS=23
-# export VOCAB_SIZE=50368
-# export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=500
-# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+export MODEL_SIZE="350M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+export START_LR=3.0e-4
+export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+export RUN_UUID="P-GF-pers-350M-p-20240825"
+export DATASET="fed-the-pile"
+export STREAM="the_pile_1_clients_unbalanced"
+export N_LOCAL_STEPS=2400
+export RESUME_ROUND=22
+export TOTAL_ROUNDS=23
+export VOCAB_SIZE=50368
+export RESIZE_VOCAB=50368
+export SAVE_INTERVAL=400
+export EVAL_INTERVAL=400
+export EVAL_SUBSET_NUM_BATCHES=500
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
