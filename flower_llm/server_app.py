@@ -279,12 +279,8 @@ def main(driver: Driver, context: Context) -> None:
             use_s3_comm=cfg.use_s3_comm,
             use_shm=cfg.use_shm,
         )
-        history.add_metrics_centralized(
-            server_round=start_round + 1,
-            metrics={
-                "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
-            },
-        )
+        time_to_broadcast = time.time_ns() - broadcast_time
+     
         if cfg.fl.eval_fl is not None:
             # Launch the evaluate process for the starting round
             sampled_clients = [0]
@@ -300,6 +296,12 @@ def main(driver: Driver, context: Context) -> None:
                 strategy=strategy,
                 history=history,
             )
+        history.add_metrics_centralized(
+            server_round=start_round + 1,
+            metrics={
+                "server/broadcast_pre_time": time_to_broadcast * 1e-9
+            },
+        )
         # Nullify assignments
         sampled_clients = []
 
