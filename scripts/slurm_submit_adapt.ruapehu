@@ -43,7 +43,7 @@
 #!SBATCH --begin=now+10hours
 #!SBATCH --begin=now+15hours
 #!SBATCH --begin=now+20hours
-#SBATCH --dependency=afterany:13975
+#SBATCH --dependency=afterany:13978
 
 # Default project path
 PROJECT_PATH="$HOME/projects/flower_llm"
@@ -285,23 +285,23 @@ export EVAL_GAUNT=""
 
 
 
-# export MODEL_SIZE="350M"
-# export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
-# export START_LR=3.0e-4
-# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
-# export RUN_UUID="P-GF-pers-350M-p-20240825"
-# export DATASET="fed-the-pile"
-# export STREAM="the_pile_1_clients_unbalanced"
-# export N_LOCAL_STEPS=2400
-# export RESUME_ROUND=22
-# export TOTAL_ROUNDS=23
-# export VOCAB_SIZE=50368
-# export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=400
-# export EVAL_INTERVAL=400
-# export EVAL_SUBSET_NUM_BATCHES=500
-# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+export MODEL_SIZE="350M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+export START_LR=3.0e-4
+export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+export RUN_UUID="P-2GF-pers-350M-p-20240825"
+export DATASET="fed-the-pile"
+export STREAM="the_pile_1_clients_unbalanced"
+export N_LOCAL_STEPS=2400
+export RESUME_ROUND=22
+export TOTAL_ROUNDS=23
+export VOCAB_SIZE=50368
+export RESIZE_VOCAB=50368
+export SAVE_INTERVAL=400
+export EVAL_INTERVAL=400
+export EVAL_SUBSET_NUM_BATCHES=500
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
@@ -322,23 +322,23 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-export MODEL_SIZE="350M"
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
-export START_LR=3.0e-4  
-export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
-export RUN_UUID="P-GF-matrix-350M-p-20240825"
-export DATASET="fed-the-pile"
-export STREAM="the_pile_1_clients_unbalanced"
-export N_LOCAL_STEPS=2400
-export RESUME_ROUND=27
-export TOTAL_ROUNDS=28
-export VOCAB_SIZE=50368
-export RESIZE_VOCAB=50368
-export SAVE_INTERVAL=400
-export EVAL_INTERVAL=400
-export EVAL_SUBSET_NUM_BATCHES=500
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
+# export RUN_UUID="P-GF-matrix-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_unbalanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=400
+# export EVAL_INTERVAL=400
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # export MODEL_SIZE="350M"
@@ -380,10 +380,6 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=500
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
-
-
-
-
 
 
 # Math SUBSET
