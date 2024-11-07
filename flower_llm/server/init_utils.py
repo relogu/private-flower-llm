@@ -81,16 +81,17 @@ def get_centralized_run_parameters(dummy_config: BaseConfig) -> Parameters:
         raise ValueError(f"Could not find a checkpoint with {desired_steps} batches")
     epoch, batches = path_to_check
 
-    dummy_config.load_path = folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
-    dummy_config.load_ignore_keys = [
+    dummy_config_llm = dummy_config.llm_config
+    dummy_config_llm.load_path = folder + f"/ep{epoch}-ba{batches}-" + "rank{rank}.pt"
+    dummy_config_llm.load_ignore_keys = [
         "*scheduler*",
         "*optim*",
         "*dataset_state*",
     ]
     os.environ["APPOINTED_CUDA_DEVICE"] = str(None)
-    dummy_config.save_folder = None
-    dummy_config.device_train_microbatch_size = 1
-    trainer, *_ = _get_trainer_object(dummy_config, cid=None, no_data_loading=True)
+    dummy_config_llm.save_folder = None
+    dummy_config_llm.device_train_microbatch_size = 1
+    trainer, *_ = _get_trainer_object(dummy_config_llm, cid=None, no_data_loading=True)
     return ndarrays_to_parameters(
         get_parameters_from_state(
             {},
