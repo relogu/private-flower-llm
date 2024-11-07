@@ -146,7 +146,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 
-POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=100 pollen.fit_collaborative=true"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=100 pollen.fit_collaborative=true use_wandb=true"
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR

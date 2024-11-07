@@ -158,7 +158,8 @@ def main(driver: Driver, context: Context) -> None:
         **cfg.wandb.setup,  # type: ignore[reportCallIssue]
         settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
         config=wandb_config,  # type: ignore[arg-type]
-    ) as _:
+    ) as wandb_run:
+        log(INFO, f"Wandb run initialized: {wandb_run}")
         # Create RemoteUploaderDownloader
         # TODO: We may want to have this as a function or a more dynamical object
         # that can change the bucket it's referring to
@@ -182,7 +183,10 @@ def main(driver: Driver, context: Context) -> None:
             import_checkpoints(cfg=cfg, remote_up_down=remote_up_down)
 
         # Resume experiment from a previously saved checkpoint
-        if cfg.pollen.resume_round is not None:
+        if (
+            cfg.pollen.resume_round is not None
+            and cfg.pollen.restore_cent_run_uuid is None
+        ):
             assert (
                 cfg.pollen.checkpoint is not None
             ), "Cannot resume if `cfg.pollen.checkpoint` is None"
@@ -279,12 +283,8 @@ def main(driver: Driver, context: Context) -> None:
             use_s3_comm=cfg.use_s3_comm,
             use_shm=cfg.use_shm,
         )
-        history.add_metrics_centralized(
-            server_round=start_round + 1,
-            metrics={
-                "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
-            },
-        )
+        time_to_broadcast = time.time_ns() - broadcast_time
+
         if cfg.fl.eval_fl is not None:
             # Launch the evaluate process for the starting round
             sampled_clients = [0]
@@ -300,6 +300,12 @@ def main(driver: Driver, context: Context) -> None:
                 strategy=strategy,
                 history=history,
             )
+
+        history.add_metrics_centralized(
+            server_round=start_round + 1,
+            metrics={"server/broadcast_pre_time": time_to_broadcast * 1e-9},
+        )
+
         # Nullify assignments
         sampled_clients = []
 

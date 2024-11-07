@@ -161,6 +161,7 @@ def initialize_round(
         # Initialize parameters only if not provided
         log(INFO, "Initializing global parameters")
         parameters = get_initial_parameters(cfg)
+
     momentum_vector: NDArrays = [
         np.zeros_like(x) for x in parameters_to_ndarrays(parameters)
     ]
