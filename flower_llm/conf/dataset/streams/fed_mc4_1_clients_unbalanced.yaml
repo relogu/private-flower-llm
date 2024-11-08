@@ -1,0 +1,642 @@
+---
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_0
+      proportion: null
+      remote: c8/en/client_0
+      repeat: null
+      validate_hash: null
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_1
+      proportion: null
+      remote: c8/en/client_1
+      repeat: null
+      validate_hash: null
+    stream_10:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_2
+      proportion: null
+      remote: c8/sr/client_2
+      repeat: null
+      validate_hash: null
+    stream_11:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_3
+      proportion: null
+      remote: c8/sr/client_3
+      repeat: null
+      validate_hash: null
+    stream_12:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_4
+      proportion: null
+      remote: c8/sr/client_4
+      repeat: null
+      validate_hash: null
+    stream_13:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_5
+      proportion: null
+      remote: c8/sr/client_5
+      repeat: null
+      validate_hash: null
+    stream_14:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_6
+      proportion: null
+      remote: c8/sr/client_6
+      repeat: null
+      validate_hash: null
+    stream_15:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_7
+      proportion: null
+      remote: c8/sr/client_7
+      repeat: null
+      validate_hash: null
+    stream_16:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_0
+      proportion: null
+      remote: c8/la/client_0
+      repeat: null
+      validate_hash: null
+    stream_17:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_1
+      proportion: null
+      remote: c8/la/client_1
+      repeat: null
+      validate_hash: null
+    stream_18:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_2
+      proportion: null
+      remote: c8/la/client_2
+      repeat: null
+      validate_hash: null
+    stream_19:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_3
+      proportion: null
+      remote: c8/la/client_3
+      repeat: null
+      validate_hash: null
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_2
+      proportion: null
+      remote: c8/en/client_2
+      repeat: null
+      validate_hash: null
+    stream_20:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_4
+      proportion: null
+      remote: c8/la/client_4
+      repeat: null
+      validate_hash: null
+    stream_21:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_5
+      proportion: null
+      remote: c8/la/client_5
+      repeat: null
+      validate_hash: null
+    stream_22:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_6
+      proportion: null
+      remote: c8/la/client_6
+      repeat: null
+      validate_hash: null
+    stream_23:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/la/client_7
+      proportion: null
+      remote: c8/la/client_7
+      repeat: null
+      validate_hash: null
+    stream_24:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_0
+      proportion: null
+      remote: c8/sw/client_0
+      repeat: null
+      validate_hash: null
+    stream_25:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_1
+      proportion: null
+      remote: c8/sw/client_1
+      repeat: null
+      validate_hash: null
+    stream_26:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_2
+      proportion: null
+      remote: c8/sw/client_2
+      repeat: null
+      validate_hash: null
+    stream_27:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_3
+      proportion: null
+      remote: c8/sw/client_3
+      repeat: null
+      validate_hash: null
+    stream_28:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_4
+      proportion: null
+      remote: c8/sw/client_4
+      repeat: null
+      validate_hash: null
+    stream_29:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_5
+      proportion: null
+      remote: c8/sw/client_5
+      repeat: null
+      validate_hash: null
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_3
+      proportion: null
+      remote: c8/en/client_3
+      repeat: null
+      validate_hash: null
+    stream_30:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_6
+      proportion: null
+      remote: c8/sw/client_6
+      repeat: null
+      validate_hash: null
+    stream_31:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sw/client_7
+      proportion: null
+      remote: c8/sw/client_7
+      repeat: null
+      validate_hash: null
+    stream_32:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_0
+      proportion: null
+      remote: c8/ur/client_0
+      repeat: null
+      validate_hash: null
+    stream_33:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_1
+      proportion: null
+      remote: c8/ur/client_1
+      repeat: null
+      validate_hash: null
+    stream_34:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_2
+      proportion: null
+      remote: c8/ur/client_2
+      repeat: null
+      validate_hash: null
+    stream_35:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_3
+      proportion: null
+      remote: c8/ur/client_3
+      repeat: null
+      validate_hash: null
+    stream_36:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_4
+      proportion: null
+      remote: c8/ur/client_4
+      repeat: null
+      validate_hash: null
+    stream_37:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_5
+      proportion: null
+      remote: c8/ur/client_5
+      repeat: null
+      validate_hash: null
+    stream_38:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_6
+      proportion: null
+      remote: c8/ur/client_6
+      repeat: null
+      validate_hash: null
+    stream_39:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ur/client_7
+      proportion: null
+      remote: c8/ur/client_7
+      repeat: null
+      validate_hash: null
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_4
+      proportion: null
+      remote: c8/en/client_4
+      repeat: null
+      validate_hash: null
+    stream_40:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_0
+      proportion: null
+      remote: c8/ms/client_0
+      repeat: null
+      validate_hash: null
+    stream_41:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_1
+      proportion: null
+      remote: c8/ms/client_1
+      repeat: null
+      validate_hash: null
+    stream_42:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_2
+      proportion: null
+      remote: c8/ms/client_2
+      repeat: null
+      validate_hash: null
+    stream_43:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_3
+      proportion: null
+      remote: c8/ms/client_3
+      repeat: null
+      validate_hash: null
+    stream_44:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_4
+      proportion: null
+      remote: c8/ms/client_4
+      repeat: null
+      validate_hash: null
+    stream_45:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_5
+      proportion: null
+      remote: c8/ms/client_5
+      repeat: null
+      validate_hash: null
+    stream_46:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_6
+      proportion: null
+      remote: c8/ms/client_6
+      repeat: null
+      validate_hash: null
+    stream_47:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ms/client_7
+      proportion: null
+      remote: c8/ms/client_7
+      repeat: null
+      validate_hash: null
+    stream_48:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_0
+      proportion: null
+      remote: c8/zh/client_0
+      repeat: null
+      validate_hash: null
+    stream_49:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_1
+      proportion: null
+      remote: c8/zh/client_1
+      repeat: null
+      validate_hash: null
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_5
+      proportion: null
+      remote: c8/en/client_5
+      repeat: null
+      validate_hash: null
+    stream_50:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_2
+      proportion: null
+      remote: c8/zh/client_2
+      repeat: null
+      validate_hash: null
+    stream_51:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_3
+      proportion: null
+      remote: c8/zh/client_3
+      repeat: null
+      validate_hash: null
+    stream_52:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_4
+      proportion: null
+      remote: c8/zh/client_4
+      repeat: null
+      validate_hash: null
+    stream_53:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_5
+      proportion: null
+      remote: c8/zh/client_5
+      repeat: null
+      validate_hash: null
+    stream_54:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_6
+      proportion: null
+      remote: c8/zh/client_6
+      repeat: null
+      validate_hash: null
+    stream_55:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/zh/client_7
+      proportion: null
+      remote: c8/zh/client_7
+      repeat: null
+      validate_hash: null
+    stream_56:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_0
+      proportion: null
+      remote: c8/it/client_0
+      repeat: null
+      validate_hash: null
+    stream_57:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_1
+      proportion: null
+      remote: c8/it/client_1
+      repeat: null
+      validate_hash: null
+    stream_58:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_2
+      proportion: null
+      remote: c8/it/client_2
+      repeat: null
+      validate_hash: null
+    stream_59:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_3
+      proportion: null
+      remote: c8/it/client_3
+      repeat: null
+      validate_hash: null
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_6
+      proportion: null
+      remote: c8/en/client_6
+      repeat: null
+      validate_hash: null
+    stream_60:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_4
+      proportion: null
+      remote: c8/it/client_4
+      repeat: null
+      validate_hash: null
+    stream_61:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_5
+      proportion: null
+      remote: c8/it/client_5
+      repeat: null
+      validate_hash: null
+    stream_62:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_6
+      proportion: null
+      remote: c8/it/client_6
+      repeat: null
+      validate_hash: null
+    stream_63:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/it/client_7
+      proportion: null
+      remote: c8/it/client_7
+      repeat: null
+      validate_hash: null
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/en/client_7
+      proportion: null
+      remote: c8/en/client_7
+      repeat: null
+      validate_hash: null
+    stream_8:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_0
+      proportion: null
+      remote: c8/sr/client_0
+      repeat: null
+      validate_hash: null
+    stream_9:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/sr/client_1
+      proportion: null
+      remote: c8/sr/client_1
+      repeat: null
+      validate_hash: null

@@ -425,19 +425,21 @@ def main(driver: Driver, context: Context) -> None:
                     "server/round_time": (time.time_ns() - start_round_time) * 1e-9
                 },
             )
-            # Remove old clients checkpoints from the S3 Object Store
-            delete_clients_checkpoints(
-                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
-            )
-            # Remove old server checkpoints from the S3 Object Store
-            delete_rounds(
-                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
-                state_keys=(
-                    "state.bin",
-                    "current_server_parameters",
-                    "current_momentum_vector",
-                ),
-            )
+            # Clean up checkpoints if asked to
+            if cfg.cleanup_checkpoints_per_round:
+                # Remove old clients checkpoints from the S3 Object Store
+                delete_clients_checkpoints(
+                    run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                )
+                # Remove old server checkpoints from the S3 Object Store
+                delete_rounds(
+                    run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                    state_keys=(
+                        "state.bin",
+                        "current_server_parameters",
+                        "current_momentum_vector",
+                    ),
+                )
 
         # Bookkeeping
         end_time = timeit.default_timer()

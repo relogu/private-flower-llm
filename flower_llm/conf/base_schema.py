@@ -304,6 +304,8 @@ class BaseConfig(DictConfig):
         Whether to use Wandb
     cleanup_checkpoints: bool = MISSING
         Whether to clean up all the checkpoints at the end
+    cleanup_checkpoints_per_round: bool = MISSING
+        Whether to clean up the checkpoints at the end of each round
     wandb: Wandb
         Wandb configuration
     """
@@ -321,6 +323,7 @@ class BaseConfig(DictConfig):
     s3_comm_config: S3CommConfig = MISSING
     use_wandb: bool = MISSING
     cleanup_checkpoints: bool = MISSING
+    cleanup_checkpoints_per_round: bool = MISSING
     wandb: Wandb = MISSING
 
     # NOTE: MosaicML specific, do not include in the base schema

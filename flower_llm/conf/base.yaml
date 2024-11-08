@@ -4,7 +4,8 @@ seed: 1337
 is_test: false
 pretrained_model_path: null
 wte_parameters_path: null
-cleanup_checkpoints: true
+cleanup_checkpoints: false
+cleanup_checkpoints_per_round: false
 
 centralized:
   store_init_model: false

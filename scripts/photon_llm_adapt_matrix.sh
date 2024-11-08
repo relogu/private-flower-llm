@@ -91,6 +91,10 @@ if [ -z "$DATASET" ]; then
 	export DATASET="fed-c4"
 fi
 
+if [-z "$TOKENIZER"]; then
+	export MODEL_SIZE="EleutherAI/gpt-neox-20b"
+fi
+
 if [ -z "$VOCAB_SIZE" ]; then
 	export VOCAB_SIZE=50368
 fi
@@ -165,7 +169,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDAVG"
 export LLM_OPTIONS="$LLM_OPTIONS +llm_config.model.allow_embedding_resizing=false +llm_config.model.fail_on_vocab_mismatch=false llm_config.model.vocab_size=$VOCAB_SIZE llm_config.max_duration=${N_LOCAL_STEPS}ba llm_config.scheduler.t_max=${N_LOCAL_STEPS}ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=$START_LR" # MosaicML (+200ba) - 125M
 export LLM_OPTIONS="$LLM_OPTIONS eval_gauntlet_config.destination_dir=$DATASET_CACHE_DIR/eval icl_tasks_config.root_dir=$DATASET_CACHE_DIR"
 POLLEN_CONFIG="$POLLEN_CONFIG llm_config.save_interval=${SAVE_INTERVAL}ba llm_config.console_log_interval=100ba llm_config.local_steps=${N_LOCAL_STEPS}ba"
-export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=${EVAL_INTERVAL}ba llm_config.eval_subset_num_batches=${EVAL_SUBSET_NUM_BATCHES} llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP ++llm_config.device_eval_microbatch_size=auto" # Automatic microbatch size for evaluation"
+export LLM_OPTIONS="$LLM_OPTIONS llm_config.eval_first=true llm_config.eval_interval=${EVAL_INTERVAL}ba llm_config.eval_subset_num_batches=${EVAL_SUBSET_NUM_BATCHES} llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP ++llm_config.device_eval_microbatch_size=auto llm_config.tokenizer.name=$TOKENIZER" # Automatic microbatch size for evaluation"
 # POLLEN_CONFIG="$POLLEN_CONFIG ~llm_config.fsdp_config" # Used DDP only
 # POLLEN_CONFIG="$POLLEN_CONFIG ++llm_config.fsdp_config.use_orig_params=false"
 
@@ -178,7 +182,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 
 #! Start a Superlink
 # GRPC_VERBOSITY=debug
-poetry run flower-superlink --insecure --driver-api-address '[::]:52762' --fleet-api-address '[::]:57792' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+poetry run flower-superlink --insecure --driver-api-address '[::]:53762' --fleet-api-address '[::]:58792' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
 SUPERLINK_PID=$!
 sleep 5
 
@@ -186,13 +190,13 @@ sleep 5
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:57792' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:58792' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 CLIENTAPP_PID=$!
 
 #! Launch ServerWithPollen as a ServerApp
 # GRPC_VERBOSITY=debug
-poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:52762' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:53762' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes
