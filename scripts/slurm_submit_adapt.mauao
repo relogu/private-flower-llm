@@ -291,6 +291,24 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
+export MODEL_SIZE="350M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]              
+export START_LR=3.0e-4
+export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+export RUN_UUID="P-GFM-pers-350M-p-20240825"
+export DATASET="fed-the-pile"
+export STREAM="the_pile_1_clients_unbalanced"
+export N_LOCAL_STEPS=2400
+export RESUME_ROUND=22
+export TOTAL_ROUNDS=23
+export VOCAB_SIZE=50368
+export RESIZE_VOCAB=50368
+export SAVE_INTERVAL=2400
+export EVAL_INTERVAL=2400
+export EVAL_SUBSET_NUM_BATCHES=50
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
@@ -310,23 +328,23 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-export MODEL_SIZE="350M"
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[]      
-export START_LR=1.5e-4  
-export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
-export RUN_UUID="P-GFMg-matrix-350M-p-20240825"
-export DATASET="fed-the-pile"
-export STREAM="the_pile_1_clients_unbalanced"
-export N_LOCAL_STEPS=2400
-export RESUME_ROUND=27
-export TOTAL_ROUNDS=28
-export VOCAB_SIZE=50368
-export RESIZE_VOCAB=50368
-export SAVE_INTERVAL=$N_LOCAL_STEPS
-export EVAL_INTERVAL=$N_LOCAL_STEPS
-export EVAL_SUBSET_NUM_BATCHES=50
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=1.5e-4  
+# export RESTORE_RUN_UUID="matrix-350M-p-20240825_231845"
+# export RUN_UUID="P-GFMg-matrix-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_unbalanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=27
+# export TOTAL_ROUNDS=28
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_SUBSET_NUM_BATCHES=50
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
