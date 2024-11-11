@@ -308,6 +308,24 @@ export EVAL_GAUNT=""
 
 
 
+export MODEL_SIZE="350M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+export START_LR=3.0e-4
+export RESTORE_RUN_UUID="pers-350M-p-U-20240825_3"
+export RUN_UUID="P-GF-pers-350M-p-U-20240825"
+export DATASET="fed-the-pile"
+export STREAM="the_pile_1_clients_unbalanced"
+export N_LOCAL_STEPS=2400
+export RESUME_ROUND=22
+export TOTAL_ROUNDS=23
+export VOCAB_SIZE=50368
+export RESIZE_VOCAB=50368
+export SAVE_INTERVAL=2400
+export EVAL_INTERVAL=2400
+export EVAL_SUBSET_NUM_BATCHES=50
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
@@ -561,7 +579,6 @@ export EVAL_GAUNT=""
 # export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
-
 
 
 
@@ -887,23 +904,23 @@ export TOKENIZER="google/mt5-base"
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-export MODEL_SIZE="125M"
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
-export START_LR=4.5e-4 
-export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
-export RUN_UUID="P-GFr10_full-125M-mc4-20240912-tle"
-export DATASET="fed-mc4-adapt"
-export STREAM="fed_mc4_1_clients_unbalanced"
-export N_LOCAL_STEPS=1200
-export RESUME_ROUND=10
-export TOTAL_ROUNDS=11
-export VOCAB_SIZE=250112
-export RESIZE_VOCAB=250112
-export SAVE_INTERVAL=$N_LOCAL_STEPS
-export EVAL_INTERVAL=$N_LOCAL_STEPS
-export EVAL_SUBSET_NUM_BATCHES=50
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
+# export START_LR=4.5e-4 
+# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+# export RUN_UUID="P-GFr10_full-125M-mc4-20240912-tle"
+# export DATASET="fed-mc4-adapt"
+# export STREAM="fed_mc4_1_clients_unbalanced"
+# export N_LOCAL_STEPS=1200
+# export RESUME_ROUND=10
+# export TOTAL_ROUNDS=11
+# export VOCAB_SIZE=250112
+# export RESIZE_VOCAB=250112
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_SUBSET_NUM_BATCHES=50
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
