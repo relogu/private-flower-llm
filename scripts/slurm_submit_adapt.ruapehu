@@ -2,7 +2,7 @@
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
 #!SBATCH -c 192
 #!SBATCH -c 96
-#SBATCH -c 20
+#SBATCH -c 40
 #SBATCH -w mauao
 #SBATCH --gres=gpu:4
 #!SBATCH --gres=gpu:1
@@ -147,22 +147,22 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="centB-125M-mc4-$DATETIME"
-# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M.sh "125M"
 
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="centUB-125M-mc4-$DATETIME"
-# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M.sh "125M"
 
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="centT03-125M-mc4-$DATETIME"
-# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M.sh "125M"
 
 
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
 # export RUN_UUID="centT07-125M-mc4-$DATETIME"
-# bash "$PROJECT_PATH"/scripts/centralised_training_125M_MC4.sh "125M_MC4"
+# bash "$PROJECT_PATH"/scripts/centralised_training_125M.sh "125M"
 
 # C4 balanced
 # DATETIME=$(date '+%Y%m%d_%H%M%S')
@@ -201,8 +201,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -221,8 +221,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -239,8 +239,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -260,8 +260,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -300,8 +300,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -440,25 +440,25 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-export MODEL_SIZE="350M"
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
-export START_LR=3.0e-4  
-export RESTORE_RUN_UUID=null
-export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
-export RUN_UUID="P-GF-centUB-350M-p-20240922"
-export DATASET="fed-the-pile"
-export STREAM="the_pile_1_clients_unbalanced"
-export N_LOCAL_STEPS=2400
-export RESUME_ROUND=null
-export RESTORE_RUN_CENT_BATCHES=4500
-export TOTAL_ROUNDS=1
-export VOCAB_SIZE=50368
-export RESIZE_VOCAB=50368
-export SAVE_INTERVAL=2400
-export EVAL_INTERVAL=2400
-export EVAL_SUBSET_NUM_BATCHES=50
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
+# export START_LR=3.0e-4  
+# export RESTORE_RUN_UUID=null
+# export RESTORE_RUN_CENT_UUID="centUB-350M-p-20240922_095350"
+# export RUN_UUID="P-GF-centUB-350M-p-20240922"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_unbalanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=null
+# export RESTORE_RUN_CENT_BATCHES=4500
+# export TOTAL_ROUNDS=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=2400
+# export EVAL_INTERVAL=2400
+# export EVAL_SUBSET_NUM_BATCHES=50
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 # Math SUBSET
@@ -479,8 +479,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -499,8 +499,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -517,8 +517,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -537,8 +537,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -557,8 +557,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -580,7 +580,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=23
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -599,7 +599,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=28
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -617,7 +617,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=28
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -637,7 +637,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -657,7 +657,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -678,8 +678,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -697,8 +697,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -715,8 +715,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -735,8 +735,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -755,8 +755,8 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -778,7 +778,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=23
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -797,7 +797,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=28
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -815,7 +815,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=28
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -835,7 +835,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -855,7 +855,7 @@ export EVAL_GAUNT=""
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_INTERVAL=400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
@@ -867,45 +867,45 @@ export EVAL_GAUNT=""
 # export EVAL_GAUNT=""
 export TOKENIZER="google/mt5-base"
 
-export MODEL_SIZE="125M"
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
-export START_LR=4.5e-4
-export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
-export RUN_UUID="P-GFr8-pers-125M-mc4"
-export TOKENIZER="google/mt5-base"
-export DATASET="fed-mc4-adapt"
-export STREAM="fed_mc4_1_clients_unbalanced"
-export N_LOCAL_STEPS=1200
-export RESUME_ROUND=8
-export TOTAL_ROUNDS=9
-export VOCAB_SIZE=250112
-export RESIZE_VOCAB=250112
-export SAVE_INTERVAL=2400
-export EVAL_INTERVAL=2400
-export EVAL_SUBSET_NUM_BATCHES=50
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
-
-
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
-# export START_LR=4.5e-4 
-# export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
-# export RUN_UUID="P-GFr10_full-125M-mc4-20240912-tle"
+# export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+# export START_LR=4.5e-4
+# export RESTORE_RUN_UUID="pers-125M-mc4-20240912-tle"
+# export RUN_UUID="P-GFr8-pers-125M-mc4"
+# export TOKENIZER="google/mt5-base"
 # export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_1_clients_unbalanced"
 # export N_LOCAL_STEPS=1200
-# export RESUME_ROUND=10
-# export TOTAL_ROUNDS=11
+# export RESUME_ROUND=8
+# export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=2400
+# export EVAL_INTERVAL=2400
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
+export START_LR=4.5e-4 
+export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
+export RUN_UUID="P-GFr10_full-125M-mc4-20240912-tle"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_1_clients_unbalanced"
+export N_LOCAL_STEPS=1200
+export RESUME_ROUND=10
+export TOTAL_ROUNDS=11
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export SAVE_INTERVAL=$N_LOCAL_STEPS
+export EVAL_INTERVAL=$N_LOCAL_STEPS
+export EVAL_SUBSET_NUM_BATCHES=50
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -918,12 +918,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -938,12 +938,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -958,12 +958,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -978,15 +978,15 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 ### SW section
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -999,13 +999,13 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
@@ -1018,12 +1018,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1036,12 +1036,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1056,12 +1056,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1076,12 +1076,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1096,8 +1096,8 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -1108,7 +1108,7 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # DE_RANDOM section
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -1121,13 +1121,13 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
@@ -1140,12 +1140,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1158,12 +1158,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1178,12 +1178,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1198,12 +1198,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1218,8 +1218,8 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -1230,7 +1230,7 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
@@ -1243,12 +1243,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
@@ -1261,13 +1261,13 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
@@ -1282,12 +1282,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
@@ -1302,13 +1302,13 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
@@ -1323,8 +1323,8 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -1342,8 +1342,8 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=6
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
@@ -1351,7 +1351,7 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # # EL_RANDOM section
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -1364,13 +1364,13 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4 
@@ -1383,12 +1383,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1401,12 +1401,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=11
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1421,12 +1421,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1441,12 +1441,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]      
 # export START_LR=4.5e-4  
@@ -1461,15 +1461,15 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=1
 # export VOCAB_SIZE=250112
 # export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -1482,12 +1482,12 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix_unique.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -1500,8 +1500,8 @@ bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 # export TOTAL_ROUNDS=9
 # export VOCAB_SIZE=50368
 # export RESIZE_VOCAB=50368
-# export SAVE_INTERVAL=200
-# export EVAL_INTERVAL=200
+# export SAVE_INTERVAL=$N_LOCAL_STEPS
+# export EVAL_INTERVAL=$N_LOCAL_STEPS
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix_unique.sh
 
