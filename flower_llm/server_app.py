@@ -185,7 +185,6 @@ def main(driver: Driver, context: Context) -> None:
         # Resume experiment from a previously saved checkpoint
         if (
             cfg.pollen.resume_round is not None
-            and cfg.pollen.restore_cent_run_uuid is None
         ):
             assert (
                 cfg.pollen.checkpoint is not None
