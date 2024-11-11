@@ -91,6 +91,10 @@ if [ -z "$DATASET" ]; then
 	export DATASET="fed-c4"
 fi
 
+if [ -z "$USE_WANDB" ]; then
+	export USE_WANDB=true
+fi
+
 if [-z "$TOKENIZER"]; then
 	export MODEL_SIZE="EleutherAI/gpt-neox-20b"
 fi
@@ -150,7 +154,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 MINIO_COMM_STACK_OPTIONS="use_s3_comm=false s3_comm_config.bucket_name=checkpoints"
 #! Set Pollen and FL config
 
-POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=100 pollen.fit_collaborative=true use_wandb=true"
+POLLEN_CONFIG="run_uuid=$RUN_UUID pollen.refresh_period=100 pollen.fit_collaborative=true use_wandb=$USE_WANDB"
 # NOTE: set dataset
 export DATASET_CACHE_DIR="/local/scratch/flower_llm/dataset_cache"
 mkdir -p $DATASET_CACHE_DIR
@@ -163,7 +167,7 @@ POLLEN_CONFIG="$POLLEN_CONFIG pollen.resume_round=$RESUME_ROUND pollen.restore_r
 export COMPOSER_FAIL_ON_VOCAB_MISMATCH=0
 export ALLOW_EMBEDDING_RESIZING=0
 
-POLLEN_CONFIG="$POLLEN_CONFIG use_wandb=false fl.eval_fl=null fl.reset_dataset_state=true fl.reset_timestamp=true fl.reset_checkpoint=true fl.resize_vocab=$RESIZE_VOCAB fl.use_unigram_metrics=true fl.n_clients_per_round=1 fl.n_total_clients=1  fl.n_rounds=$TOTAL_ROUNDS fl.random_init_freq=1 fl.personalized_layers=$PERSONALIZED_KEYS fl.random_layers=$RANDOM_KEYS" # fl.unfrozen_layers=[model.transformer.wte.weight,model.transformer.wpe.weight]
+POLLEN_CONFIG="$POLLEN_CONFIG fl.eval_fl=null fl.reset_dataset_state=true fl.reset_timestamp=true fl.reset_checkpoint=true fl.resize_vocab=$RESIZE_VOCAB fl.use_unigram_metrics=true fl.n_clients_per_round=1 fl.n_total_clients=1  fl.n_rounds=$TOTAL_ROUNDS fl.random_init_freq=1 fl.personalized_layers=$PERSONALIZED_KEYS fl.random_layers=$RANDOM_KEYS" # fl.unfrozen_layers=[model.transformer.wte.weight,model.transformer.wpe.weight]
 #  fl.personalized_keys=[model.transformer.wte.weight,model.transformer.wpe.weight]                                                                            # FL setting
 POLLEN_CONFIG="$POLLEN_CONFIG fl.strategy_name=FEDAVG"
 export LLM_OPTIONS="$LLM_OPTIONS +llm_config.model.allow_embedding_resizing=false +llm_config.model.fail_on_vocab_mismatch=false llm_config.model.vocab_size=$VOCAB_SIZE llm_config.max_duration=${N_LOCAL_STEPS}ba llm_config.scheduler.t_max=${N_LOCAL_STEPS}ba llm_config.scheduler.t_warmup=100ba llm_config.scheduler.alpha_f=0.1 llm_config.optimizer.lr=$START_LR" # MosaicML (+200ba) - 125M
