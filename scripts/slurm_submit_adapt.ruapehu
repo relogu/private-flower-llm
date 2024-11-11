@@ -35,7 +35,7 @@
 #!SBATCH --job-name=GDG_125M_balanced
 #!SBATCH --job-name=GDG_350M_balanced
 #!SBATCH --job-name=GBUNTU-125M-mc4
-#SBATCH --job-name=UB-GF-pers-350M-p
+#SBATCH --job-name=mc4
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --time=4:55:00
