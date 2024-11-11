@@ -95,8 +95,8 @@ if [ -z "$USE_WANDB" ]; then
 	export USE_WANDB=true
 fi
 
-if [-z "$TOKENIZER"]; then
-	export TOKENIZER=EleutherAI/gpt-neox-20b
+if [ -z "$TOKENIZER" ]; then
+	export TOKENIZER="EleutherAI/gpt-neox-20b"
 fi
 
 if [ -z "$VOCAB_SIZE" ]; then
