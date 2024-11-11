@@ -311,6 +311,7 @@ export EVAL_GAUNT=""
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
 export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
+export TOKENIZER=EleutherAI/gpt-neox-20b
 export START_LR=3.0e-4
 export RESTORE_RUN_UUID="pers-350M-p-U-20240825_3"
 export RUN_UUID="P-GF-pers-350M-p-U-20240825"
