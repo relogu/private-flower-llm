@@ -60,7 +60,7 @@ def main() -> Trainer:
         _cfg=cfg,
         cid=_cfg.centralized.stream_id,
         log_name="_centralised",
-        use_unigram_metrics=cfg.fl.use_unigram_metrics,
+        use_unigram_metrics=_cfg.fl.use_unigram_metrics,
         s3_comm_config=_cfg.s3_comm_config,
         split_eval=_cfg.centralized.split_eval,
     )

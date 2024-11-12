@@ -220,6 +220,10 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 export PREFIX="BP" 
 
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]
+
+pkill -f flower
 
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
@@ -236,6 +240,7 @@ export RESIZE_VOCAB=50368
 export EVAL_SUBSET_NUM_BATCHES=500
 bash $HOME/projects/flower_llm/scripts/cent_eval.sh
 
+pkill -f flower
 
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
@@ -252,6 +257,8 @@ export RESIZE_VOCAB=50368
 export EVAL_SUBSET_NUM_BATCHES=500
 bash $HOME/projects/flower_llm/scripts/cent_eval.sh
 
+pkill -f flower
+
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
 export RANDOM_KEYS=[]      
@@ -266,6 +273,8 @@ export VOCAB_SIZE=50368
 export RESIZE_VOCAB=50368
 export EVAL_SUBSET_NUM_BATCHES=500
 bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
 
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
@@ -282,6 +291,8 @@ export RESIZE_VOCAB=50368
 export EVAL_SUBSET_NUM_BATCHES=500
 bash $HOME/projects/flower_llm/scripts/cent_eval.sh
 
+pkill -f flower
+
 export MODEL_SIZE="350M"
 export PERSONALIZED_KEYS=[]
 export RANDOM_KEYS=[]      
@@ -296,3 +307,90 @@ export VOCAB_SIZE=50368
 export RESIZE_VOCAB=50368
 export EVAL_SUBSET_NUM_BATCHES=500
 bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFMg-matrix-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-pers-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM_full-350M-p-20240825_tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=3
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower

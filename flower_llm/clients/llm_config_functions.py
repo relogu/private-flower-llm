@@ -250,20 +250,31 @@ def set_dataset_default_params(cfg: DictConfig) -> None:
     # Set the `pre-download` value as 8*batch_size
     if cfg.train_loader.dataset.get("predownload", None) is None:
         cfg.train_loader.dataset.predownload = 8 * cfg.device_train_batch_size
-    if cfg.eval_loader.dataset.get("pre_download", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.predownload = 8 * cfg.device_eval_batch_size
+    elif cfg.eval_loader.dataset.get("pre_download", None) is None:
         cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
     # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
     # that we will always have just 1 real node (server)
     if cfg.train_loader.dataset.get("num_canonical_nodes", None) is None:
         cfg.train_loader.dataset.num_canonical_nodes = 64 * 1
-    if cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.num_canonical_nodes = 64 * 1
+    elif cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
         cfg.eval_loader.dataset.num_canonical_nodes = 64 * 1
     # Set the `shuffle_block_size` value as 8*batch_size
     if cfg.train_loader.dataset.get("shuffle_block_size", None) is None:
         cfg.train_loader.dataset.shuffle_block_size = max(
             4_000_000 // cfg.train_loader.dataset.num_canonical_nodes, 1 << 18
         )
-    if cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.shuffle_block_size = max(
+                4_000_000 // loader.dataset.num_canonical_nodes, 1 << 18
+            )
+    elif cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
         cfg.eval_loader.dataset.shuffle_block_size = max(
             4_000_000 // cfg.eval_loader.dataset.num_canonical_nodes, 1 << 18
         )

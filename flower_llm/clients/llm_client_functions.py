@@ -770,6 +770,7 @@ def _get_trainer_object(
             assert isinstance(eval_config, dict), (
                 "Expected eval_config to be a dict," f" got {type(eval_config)}"
             )
+            popped_label = eval_config.pop("label", None)
             eval_dataloader = build_dataloader(
                 eval_config,  # type: ignore[reportArgumentType]
                 tokenizer,
@@ -777,7 +778,7 @@ def _get_trainer_object(
             )
             eval_loader = Evaluator(
                 label=(
-                    f"eval/{eval_config.label}"  # type: ignore[union-attr]
+                    f"eval/{popped_label}"  # type: ignore[union-attr]
                     if is_multi_eval
                     else "eval"
                 ),
