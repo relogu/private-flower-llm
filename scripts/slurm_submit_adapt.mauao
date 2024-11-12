@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2090,SC2086,SC2089,SC1091
-#SBATCH -c 20
-#SBATCH -w ruapehu
-#SBATCH --gres=gpu:1
+#SBATCH -c 60
+#SBATCH -w mauao
+#SBATCH --gres=gpu:8
 #!SBATCH --job-name=fed_llm_75M
 #!SBATCH --job-name=fed_llm_125M
 #!SBATCH --job-name=fed_llm_160M
@@ -31,7 +31,7 @@
 #!SBATCH --job-name=GDMG_350M_balanced
 #!SBATCH --job-name=GSM-125M-mc4
 #!SBATCH --job-name=act500-125M-mc4
-#SBATCH --job-name=GFM-125M-A
+#SBATCH --job-name=mc4-GFM-125M
 #SBATCH --tasks-per-node=1
 #SBATCH --output=%x-%j.out
 #SBATCH --time=11:55:00
@@ -291,26 +291,26 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-export MODEL_SIZE="350M"
-export USE_WANDB=true
-export TOKENIZER=EleutherAI/gpt-neox-20b
-export PERSONALIZED_KEYS=[]
-export RANDOM_KEYS=[]              
-export START_LR=3.0e-4
-export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
-export RESTORE_RUN_CENT_UUID=null
-export RUN_UUID="P-GFM-pers-350M-p-20240825"
-export DATASET="fed-the-pile"
-export STREAM="the_pile_1_clients_unbalanced"
-export N_LOCAL_STEPS=2400
-export RESUME_ROUND=22
-export TOTAL_ROUNDS=23
-export VOCAB_SIZE=50368
-export RESIZE_VOCAB=50368
-export SAVE_INTERVAL=2400
-export EVAL_INTERVAL=2400
-export EVAL_SUBSET_NUM_BATCHES=50
-bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+# export MODEL_SIZE="350M"
+# export USE_WANDB=true
+# export TOKENIZER=EleutherAI/gpt-neox-20b
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]              
+# export START_LR=3.0e-4
+# export RESTORE_RUN_UUID="pers-350M-p-20240825_232233"
+# export RESTORE_RUN_CENT_UUID=null
+# export RUN_UUID="P-GFM-pers-350M-p-20240825"
+# export DATASET="fed-the-pile"
+# export STREAM="the_pile_1_clients_unbalanced"
+# export N_LOCAL_STEPS=2400
+# export RESUME_ROUND=22
+# export TOTAL_ROUNDS=23
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export SAVE_INTERVAL=2400
+# export EVAL_INTERVAL=2400
+# export EVAL_SUBSET_NUM_BATCHES=50
+# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 # export MODEL_SIZE="350M"
 # export PERSONALIZED_KEYS=[]
@@ -554,19 +554,20 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# MC4 Adat
+# MC4 Adapt
 
 export TASKS=""
 export EVAL_GAUNT=""
+export TOKENIZER="google/mt5-base"
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="P-GFMr10_full-125M-mc4"
-# export DATASET="fed-mc4"
-# export STREAM="fed_mc4_1_clients_balanced"
+# export DATASET="fed-mc4-adapt"
+# export STREAM="fed_mc4_1_clients_unbalanced"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
 # export TOTAL_ROUNDS=11
@@ -577,14 +578,14 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="P-GFMr10_matrix-125M-mc4-202409 12"
-# export DATASET="fed-mc4"
-# export STREAM="fed_mc4_1_clients_balanced"
+# export DATASET="fed-mc4-adapt"
+# export STREAM="fed_mc4_1_clients_unbalanced"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
 # export TOTAL_ROUNDS=11
@@ -596,15 +597,15 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
 # export RUN_UUID="P-GFM-centB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
-# export STREAM="fed_mc4_1_clients_balanced"
+# export DATASET="fed-mc4-adapt"
+# export STREAM="fed_mc4_1_clients_unbalanced"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
 # export RESTORE_RUN_CENT_BATCHES=2000
@@ -616,15 +617,15 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
 # export RUN_UUID="P-GFM-centUB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
-# export STREAM="fed_mc4_1_clients_balanced"
+# export DATASET="fed-mc4-adapt"
+# export STREAM="fed_mc4_1_clients_unbalanced"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
 # export RESTORE_RUN_CENT_BATCHES=3000
@@ -637,36 +638,36 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh`
 
 
-# export MODEL_SIZE="125M_MC4"
-# export PERSONALIZED_KEYS=[]
-# export RANDOM_KEYS=[]      
-# export START_LR=2.25e-4  
-# export RESTORE_RUN_UUID=null
-# export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
-# export RUN_UUID="P-GFM-centT03-125M-mc4-20240918"
-# export DATASET="fed-mc4"
-# export STREAM="fed_mc4_1_clients_balanced"
-# export N_LOCAL_STEPS=1200
-# export RESUME_ROUND=null
-# export RESTORE_RUN_CENT_BATCHES=2500
-# export TOTAL_ROUNDS=1
-# export VOCAB_SIZE=250112
-# export RESIZE_VOCAB=250112
-# export SAVE_INTERVAL=$N_LOCAL_STEPS
-# export EVAL_INTERVAL=$N_LOCAL_STEPS
-# export EVAL_SUBSET_NUM_BATCHES=50
-# bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4  
+export RESTORE_RUN_UUID=null
+export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
+export RUN_UUID="P-GFM-centT03-125M-mc4-20240918"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_1_clients_unbalanced"
+export N_LOCAL_STEPS=1200
+export RESUME_ROUND=null
+export RESTORE_RUN_CENT_BATCHES=2500
+export TOTAL_ROUNDS=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export SAVE_INTERVAL=$N_LOCAL_STEPS
+export EVAL_INTERVAL=$N_LOCAL_STEPS
+export EVAL_SUBSET_NUM_BATCHES=50
+bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
 ### SW Section
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GSMr10_full-125M-mc4"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
@@ -678,13 +679,13 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GSMr10_matrix-125M-mc4-202409"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
@@ -697,14 +698,14 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
 # export RUN_UUID="GSM-centB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -717,14 +718,14 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
 # export RUN_UUID="GSM-centUB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -738,14 +739,14 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
 # export RUN_UUID="GSM-centT03-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -950,13 +951,13 @@ export EVAL_GAUNT=""
 
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="full-125M-mc4-20240912-tle"
 # export RUN_UUID="GELMr10_full-125M-mc4"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_el_250"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
@@ -968,13 +969,13 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GELMr10_matrix-125M-mc4-202409"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_el_250"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10
@@ -987,14 +988,14 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centB-125M-mc4-20240918_101655"
 # export RUN_UUID="GELM-centB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_el_250"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -1007,14 +1008,14 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centUB-125M-mc4-20240918_151230"
 # export RUN_UUID="GELM-centUB-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_el_250"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -1028,14 +1029,14 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4  
 # export RESTORE_RUN_UUID=null
 # export RESTORE_RUN_CENT_UUID="centT03-125M-mc4-20240918_213225"
 # export RUN_UUID="GELM-centT03-125M-mc4-20240918"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_el_250"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=null
@@ -1049,7 +1050,7 @@ export EVAL_GAUNT=""
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix.sh
 
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[transformer.wte.weight,transformer.wpe.weight]              
 # export START_LR=4.5e-4
@@ -1067,13 +1068,13 @@ export EVAL_GAUNT=""
 # export EVAL_SUBSET_NUM_BATCHES=50
 # bash $HOME/projects/flower_llm/scripts/photon_llm_adapt_matrix_unique.sh
 
-# export MODEL_SIZE="125M_MC4"
+# export MODEL_SIZE="125M"
 # export PERSONALIZED_KEYS=[]
 # export RANDOM_KEYS=[]      
 # export START_LR=2.25e-4 
 # export RESTORE_RUN_UUID="matrix-125M-mc4-20240912-tle"
 # export RUN_UUID="GSMr10_matrix-125M-mc4-202409"
-# export DATASET="fed-mc4"
+# export DATASET="fed-mc4-adapt"
 # export STREAM="fed_mc4_sw"
 # export N_LOCAL_STEPS=1200
 # export RESUME_ROUND=10

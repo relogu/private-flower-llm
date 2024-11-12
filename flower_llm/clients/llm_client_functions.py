@@ -255,12 +255,10 @@ def randomize_layers(
 
     tmp_dummy_config: BaseConfig = cast(
         BaseConfig,
-        DictConfig(
-            {
-                "pretrained_model_path": None,
-                "llm_config": new_dummy_config,
-            }
-        ),
+        DictConfig({
+            "pretrained_model_path": None,
+            "llm_config": new_dummy_config,
+        }),
     )
 
     random_parameters = parameters_to_ndarrays(get_initial_parameters(tmp_dummy_config))
@@ -456,11 +454,9 @@ def _get_trainer_object(
     deepspeed_config: dict[str, Any] | None = None
     if deepspeed_config_file is not None:
         # assert os.path.exists(deepspeed_config_file), (
-        assert Path(
-            deepspeed_config_file
-        ).exists(), (
-            "DeepSpeed config file not found. Please check the path to the DeepSpeed"
-        )
+        assert (
+            Path(deepspeed_config_file).exists()
+        ), "DeepSpeed config file not found. Please check the path to the DeepSpeed"
         assert (
             Path(deepspeed_config_file).suffix == ".json"
         ), "DeepSpeed config file must be a JSON file."
@@ -770,6 +766,7 @@ def _get_trainer_object(
             assert isinstance(eval_config, dict), (
                 "Expected eval_config to be a dict," f" got {type(eval_config)}"
             )
+            popped_label = eval_config.pop("label", None)
             eval_dataloader = build_dataloader(
                 eval_config,  # type: ignore[reportArgumentType]
                 tokenizer,
@@ -777,7 +774,7 @@ def _get_trainer_object(
             )
             eval_loader = Evaluator(
                 label=(
-                    f"eval/{eval_config.label}"  # type: ignore[union-attr]
+                    f"eval/{popped_label}"  # type: ignore[union-attr]
                     if is_multi_eval
                     else "eval"
                 ),
@@ -841,13 +838,11 @@ def _get_trainer_object(
     if use_unigram_metrics:
         if "additional_train_metrics" not in model_config:
             model_config["additional_train_metrics"] = []
-        model_config["additional_train_metrics"].extend(
-            [
-                "unigram_normalized_language_cross_entropy",
-                "unigram_normalized_language_perplexity",
-                "pure_unigram_cross_entropy",
-            ]
-        )
+        model_config["additional_train_metrics"].extend([
+            "unigram_normalized_language_cross_entropy",
+            "unigram_normalized_language_perplexity",
+            "pure_unigram_cross_entropy",
+        ])
 
     model = build_composer_model(
         name=model_config["name"],
