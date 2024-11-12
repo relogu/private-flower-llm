@@ -12,6 +12,7 @@ centralized:
   store_final_model: false
   stream_id: null
   eval_only: false
+  split_eval: false
 
 # Pollen specific settings
 pollen:
