@@ -46,7 +46,7 @@ fl:
 
   random_layers: []
   random_init_freq: 0
-  truly_random_init: false
+  truly_random_init: true
   personalized_layers: []
   frozen_layers: null
   unfrozen_layers: null
@@ -54,6 +54,7 @@ fl:
   ignore_failed_rounds: false
   accept_failures_cnt: 0
   eval_fl: 1
+  split_eval: false
 
   strategy_name: NESTOROV
   strategy_kwargs:

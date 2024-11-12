@@ -7,7 +7,7 @@ common: &dataset_defaults
   keep_zip: false
   epoch_size: 163225
   predownload: null  # NOTE: 8*64, change in the composer library
-  cache_limit: null
+  cache_limit: 20gb
   partition_algo: relaxed
   num_canonical_nodes: null
   shuffle: false  # Shuffling happened at partitioning time

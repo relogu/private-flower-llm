@@ -222,6 +222,8 @@ def randomize_layers(
     names: list[str],
     random_layers: list[str],
     truly_random_init: bool,
+    cid: int = 0,
+    server_round: int = 1,
 ) -> None:
     """Randomize the layers of the model.
 
@@ -244,7 +246,8 @@ def randomize_layers(
     """
     new_dummy_config = copy.deepcopy(dummy_config)
     if truly_random_init:
-        new_seed = random.randint(0, 2**32 - 1)
+        for _ in range(server_round):
+            new_seed = random.randint(0, 2**32 - 1) ^ cid
         new_dummy_config.global_seed = new_seed
         new_dummy_config.seed = new_seed
         reproducibility.seed_all(new_seed)
@@ -252,10 +255,12 @@ def randomize_layers(
 
     tmp_dummy_config: BaseConfig = cast(
         BaseConfig,
-        DictConfig({
-            "pretrained_model_path": None,
-            "llm_config": new_dummy_config,
-        }),
+        DictConfig(
+            {
+                "pretrained_model_path": None,
+                "llm_config": new_dummy_config,
+            }
+        ),
     )
 
     random_parameters = parameters_to_ndarrays(get_initial_parameters(tmp_dummy_config))
@@ -315,6 +320,7 @@ def _get_trainer_object(
     frozen_layers: list[str] | None = None,
     unfrozen_layers: list[str] | None = None,
     no_data_loading: bool = False,
+    split_eval: bool = False,
 ) -> tuple[
     Trainer,
     bool,
@@ -393,7 +399,7 @@ def _get_trainer_object(
     # Mandatory model training configs
     set_n_workers_dataloaders(cfg=_cfg, device=device)
     if not no_data_loading:
-        client_set_data_config(cfg=_cfg, cid=cid)
+        client_set_data_config(cfg=_cfg, cid=cid, split_eval=split_eval)
 
     # Apply dataset defaults
     set_dataset_default_params(_cfg)
@@ -450,9 +456,11 @@ def _get_trainer_object(
     deepspeed_config: dict[str, Any] | None = None
     if deepspeed_config_file is not None:
         # assert os.path.exists(deepspeed_config_file), (
-        assert (
-            Path(deepspeed_config_file).exists()
-        ), "DeepSpeed config file not found. Please check the path to the DeepSpeed"
+        assert Path(
+            deepspeed_config_file
+        ).exists(), (
+            "DeepSpeed config file not found. Please check the path to the DeepSpeed"
+        )
         assert (
             Path(deepspeed_config_file).suffix == ".json"
         ), "DeepSpeed config file must be a JSON file."
@@ -833,11 +841,13 @@ def _get_trainer_object(
     if use_unigram_metrics:
         if "additional_train_metrics" not in model_config:
             model_config["additional_train_metrics"] = []
-        model_config["additional_train_metrics"].extend([
-            "unigram_normalized_language_cross_entropy",
-            "unigram_normalized_language_perplexity",
-            "pure_unigram_cross_entropy",
-        ])
+        model_config["additional_train_metrics"].extend(
+            [
+                "unigram_normalized_language_cross_entropy",
+                "unigram_normalized_language_perplexity",
+                "pure_unigram_cross_entropy",
+            ]
+        )
 
     model = build_composer_model(
         name=model_config["name"],
@@ -1074,6 +1084,8 @@ def llm_fit(
             names=names,
             random_layers=random_layers,
             truly_random_init=truly_random_init,
+            cid=int(cid),
+            server_round=int(config.get("server_round", 1)),  # type: ignore[reportArgumentType,arg-type]
         )
 
     parameters_checker(initial_trainer_parameters, parameters, False)

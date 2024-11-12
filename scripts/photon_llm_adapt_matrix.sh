@@ -127,6 +127,10 @@ if [ -z "$START_LR" ]; then
 	export START_LR=6.0e-4
 fi
 
+if [ -z "$RAND_INIT" ]; then
+	export RAND_INIT=false
+fi
+
 #! If SAVE_PATH hasn't been set, set it to the default value
 if [ -z "$SAVE_PATH" ]; then
 	export SAVE_PATH="s3://checkpoints/$RUN_UUID"
@@ -186,7 +190,7 @@ HYDRA_FULL_ERROR=1 poetry run python -m flower_llm.hydra_resolver $LLM_CONFIG $P
 
 #! Start a Superlink
 # GRPC_VERBOSITY=debug
-poetry run flower-superlink --insecure --driver-api-address '[::]:53762' --fleet-api-address '[::]:58792' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
+poetry run flower-superlink --insecure --driver-api-address '[::]:54762' --fleet-api-address '[::]:57792' 2>&1 | tee "$POLLEN_SAVE_PATH"/superlink.log &
 SUPERLINK_PID=$!
 sleep 5
 
@@ -194,13 +198,13 @@ sleep 5
 #! NOTE: Adding `NCCL_BLOCKING_WAIT=1` breaks the optimizer's checkpointing. We don't know why yet.
 # NCCL_DEBUG=INFO NCCL_NVB_DISABLE=1 NCCL_NVLS_ENABLE=0 # For running on Lambda Labs faulty machine
 # GRPC_VERBOSITY=debug
-CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:58792' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
+CUDA_LAUNCH_BLOCKING=1 poetry run flower-client-app flower_llm.client_app:app --insecure --superlink '[::]:57792' --persist-client 2>&1 | tee "$POLLEN_SAVE_PATH"/node_manager.log &
 #! Keep the pid of the NodeManager
 CLIENTAPP_PID=$!
 
 #! Launch ServerWithPollen as a ServerApp
 # GRPC_VERBOSITY=debug
-poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:53762' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
+poetry run flower-server-app flower_llm.server_app:app --insecure --superlink '[::]:54762' 2>&1 | tee "$POLLEN_SAVE_PATH"/server.log &
 SERVERAPP_PID=$!
 
 # Enable CTRL+C to stop all background processes

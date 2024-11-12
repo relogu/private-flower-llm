@@ -132,6 +132,8 @@ def main(driver: Driver, context: Context) -> None:
             "random_layers": str(cfg.fl.random_layers),
             "random_init_freq": str(cfg.fl.random_init_freq),
             "personalized_layers": str(cfg.fl.personalized_layers),
+            "truly_random_init": cfg.fl.truly_random_init,
+            "split_eval": cfg.fl.split_eval,
         }
 
     def pollen_evaluate_config(
@@ -147,6 +149,7 @@ def main(driver: Driver, context: Context) -> None:
             "s3_comm_config": str(
                 OmegaConf.to_container(cfg.s3_comm_config, resolve=True)
             ),
+            "split_eval": cfg.fl.split_eval,
         }
 
     strategy = dispatch_strategy(
@@ -183,9 +186,7 @@ def main(driver: Driver, context: Context) -> None:
             import_checkpoints(cfg=cfg, remote_up_down=remote_up_down)
 
         # Resume experiment from a previously saved checkpoint
-        if (
-            cfg.pollen.resume_round is not None
-        ):
+        if cfg.pollen.resume_round is not None:
             assert (
                 cfg.pollen.checkpoint is not None
             ), "Cannot resume if `cfg.pollen.checkpoint` is None"

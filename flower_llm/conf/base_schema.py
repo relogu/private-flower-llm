@@ -21,12 +21,15 @@ class Centralized(DictConfig):
         Stream id to pass to the data configuration
     eval_only: bool = MISSING
         Whether to only execute the evaluation
+    split_eval: bool = MISSING
+        Whether to report performance separately on each stream
     """
 
     store_init_model: bool = MISSING
     store_final_model: bool = MISSING
     stream_id: str | None = MISSING
     eval_only: bool = MISSING
+    split_eval: bool = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -142,6 +145,8 @@ class FL(DictConfig):
         Number of acceptable failures
     eval_fl: int | None = MISSING
         Eval freq, None means never including first round
+    split_eval: bool = MISSING
+        Whether to report performance separately on each stream
     strategy_name: StrategyName = MISSING
         Strategy name
     strategy_kwargs: StrategyKWArgs = MISSING
@@ -169,6 +174,7 @@ class FL(DictConfig):
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
     eval_fl: int | None = MISSING
+    split_eval: bool = MISSING
 
     strategy_name: StrategyName = MISSING
     strategy_kwargs: StrategyKWArgs = MISSING

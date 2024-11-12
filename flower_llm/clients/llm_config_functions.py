@@ -1,6 +1,7 @@
 """Provides functionality for manipulating MosaicML configs."""
 
 import ast
+import copy
 import json
 import os
 from logging import DEBUG, INFO, WARN, WARNING
@@ -73,9 +74,98 @@ def set_icl_tasks_root_dir(icl_tasks_listconfig: ListConfig, root_dir: str) -> N
         icl_task.dataset_uri = root_dir + "/" + old_dataset_uri
 
 
+def preprocess_stream_paths(dataset_config: DictConfig) -> tuple[str, str, str]:
+    """Preprocess the stream paths for the dataset.
+
+    Parameters
+    ----------
+    dataset_config : DictConfig
+        The dataset configuration.
+
+    Returns
+    -------
+    None
+    """
+    root_remote = dataset_config.pop("root_remote", "")
+    root_remote = root_remote + "/" if root_remote else root_remote
+    root_local = dataset_config.pop("root_local", "")
+    root_local = root_local + "/" if root_local else root_local
+    split = dataset_config.pop("split", "")
+    return root_remote, root_local, split
+
+
+def concatenate_streams(clients_streams: list[dict[str, Any]]) -> dict[str, Any]:
+    """Concatenate the streams for all clients.
+
+    Parameters
+    ----------
+    clients_streams : list[dict[str, Any]]
+        The clients streams.
+
+    Returns
+    -------
+    dict[str, Any]
+        The concatenated streams.
+    """
+    counter = 0
+    current_client_stream: dict[str, Any] = {}
+    for client_stream in clients_streams:
+        assert "client_streams" in client_stream
+        client_streams = client_stream["client_streams"]
+        assert isinstance(client_streams, DictConfig)
+        for stream in client_streams.values():
+            current_client_stream |= {f"stream_{counter}": stream}
+            counter += 1
+
+    return current_client_stream
+
+
+def get_actual_stream(
+    root_local: str, root_remote: str, split: str, current_client_stream: dict[str, Any]
+) -> dict[str, StreamDict]:
+    """Get the actual streams for the client.
+
+    Parameters
+    ----------
+    root_local : str
+        The root local path.
+    root_remote : str
+        The root remote path.
+    split : str
+        The split.
+    current_client_stream : dict[str, Any]
+        The current client stream.
+
+    Returns
+    -------
+    dict[str, StreamDict]
+        The actual streams.
+    """
+    # Set streams dictionary for the train loader
+    actual_streams = {
+        key: StreamDict(**value) for key, value in current_client_stream.items()
+    }
+    # Propagate the split and the remote and local paths to each stream
+    for stream in actual_streams.values():
+        # Set the split, remote, and local paths
+        stream.split = split or stream.split
+        if root_local:
+            stream.local = root_local + stream.local if stream.local else root_local
+        if root_remote:
+            stream.remote = (
+                root_remote + stream.remote if stream.remote else root_remote
+            )
+        # Remove potential trailing slashes
+        stream.local = stream.local.rstrip("/") if stream.local else stream.local
+        stream.remote = stream.remote.rstrip("/") if stream.remote else stream.remote
+
+    return actual_streams
+
+
 def client_set_data_config(
     cid: int | str | None,
     cfg: DictConfig,
+    split_eval: bool = False,
 ) -> None:
     """Set the client data configuration for the client.
 
@@ -85,6 +175,8 @@ def client_set_data_config(
         The client id.
     cfg : DictConfig
         The configuration object.
+    split_eval : bool
+        Whether to split the evaluation data.
 
     Returns
     -------
@@ -92,21 +184,13 @@ def client_set_data_config(
         The updated configuration object.
     """
     # Retrieve the train config to construct the dataset for the train loader
-    dataset_config: DictConfig
-    for loop_split in ["train", "val"]:
-        split = loop_split
-        if split == "train":
-            dataset_config = cfg.train_loader.dataset
-        elif split == "val":
-            dataset_config = cfg.eval_loader.dataset
-        else:
-            raise ValueError(f"Split {split} is not supported.")
+    train_split: tuple[str, DictConfig] = ("train", cfg.train_loader.dataset)
+    val_split: tuple[str, DictConfig] = ("val", cfg.eval_loader.dataset)
+    for loop_split, dataset_config in (
+        (train_split, val_split) if not split_eval else (train_split,)
+    ):
         # Get the root path for remote and local data
-        root_remote = dataset_config.pop("root_remote", "")
-        root_remote = root_remote + "/" if root_remote else root_remote
-        root_local = dataset_config.pop("root_local", "")
-        root_local = root_local + "/" if root_local else root_local
-        split = dataset_config.pop("split", "")
+        root_remote, root_local, split = preprocess_stream_paths(dataset_config)
         # Get the clients streams available
         clients_streams = dataset_config.streams
         # Extract the current client train stream -- it contains a dict of buckets
@@ -119,33 +203,11 @@ def client_set_data_config(
             ]
         else:
             # Concatenate all the streams
-            counter = 0
-            for client_stream in clients_streams:
-                assert "client_streams" in client_stream
-                client_streams = client_stream["client_streams"]
-                assert isinstance(client_streams, DictConfig)
-                for stream in client_streams.values():
-                    current_client_stream |= {f"stream_{counter}": stream}
-                    counter += 1
-        # Set streams dictionary for the train loader
-        actual_streams = {
-            key: StreamDict(**value) for key, value in current_client_stream.items()
-        }
-        # Propagate the split and the remote and local paths to each stream
-        for stream in actual_streams.values():
-            # Set the split, remote, and local paths
-            stream.split = split or stream.split
-            if root_local:
-                stream.local = root_local + stream.local if stream.local else root_local
-            if root_remote:
-                stream.remote = (
-                    root_remote + stream.remote if stream.remote else root_remote
-                )
-            # Remove potential trailing slashes
-            stream.local = stream.local.rstrip("/") if stream.local else stream.local
-            stream.remote = (
-                stream.remote.rstrip("/") if stream.remote else stream.remote
-            )
+            current_client_stream |= concatenate_streams(clients_streams)
+
+        actual_streams = get_actual_stream(
+            root_local, root_remote, split, current_client_stream
+        )
 
         # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
@@ -154,6 +216,33 @@ def client_set_data_config(
             cfg.train_loader.dataset.streams = streams_dict
         elif loop_split == "val":
             cfg.eval_loader.dataset.streams = streams_dict
+
+    if split_eval:
+        # Set the evaluation split to be the same as the training split
+        loop_split, dataset_config = val_split
+        clients_streams = dataset_config.streams
+        eval_loaders = []
+        root_remote, root_local, split = preprocess_stream_paths(dataset_config)
+        for inner_cid in range(len(clients_streams)):
+            current_client_stream = {}
+            current_client_stream |= clients_streams[
+                int(inner_cid) % len(clients_streams)
+            ]["client_streams"]
+
+            actual_streams = get_actual_stream(
+                root_local, root_remote, split, current_client_stream
+            )
+
+            streams_dict = {
+                name: asdict(stream) for name, stream in actual_streams.items()
+            }
+
+            client_eval_loader = copy.deepcopy(cfg.eval_loader)
+            client_eval_loader.dataset.streams = streams_dict
+            client_eval_loader.label = f"client_{inner_cid}"
+            eval_loaders.append(client_eval_loader)
+
+        cfg.eval_loader = ListConfig(eval_loaders)
 
 
 def set_dataset_default_params(cfg: DictConfig) -> None:
