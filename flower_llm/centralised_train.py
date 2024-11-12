@@ -62,6 +62,7 @@ def main() -> Trainer:
         log_name="_centralised",
         use_unigram_metrics=cfg.fl.use_unigram_metrics,
         s3_comm_config=_cfg.s3_comm_config,
+        split_eval=_cfg.centralized.split_eval,
     )
     torch.cuda.empty_cache()
     gc.collect()
