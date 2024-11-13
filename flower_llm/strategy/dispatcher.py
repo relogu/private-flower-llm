@@ -1,5 +1,6 @@
 """Dispatch strategy based on configuration."""
 
+import copy
 import sys
 
 from flower_llm.conf.base_schema import BaseConfig, StrategyName
@@ -10,6 +11,7 @@ from flower_llm.strategy.fednestorov import FedNesterov
 from flower_llm.strategy.fedmom import FedMom
 from flower_llm.strategy.fedyogi import FedYogi
 from flower_llm.strategy.fedadam import FedAdam
+from flower_llm.strategy.metrics import SimpleNoiseScale
 
 
 def dispatch_strategy(
@@ -43,6 +45,8 @@ def dispatch_strategy(
                 on_fit_config_fn=None,
                 on_evaluate_config_fn=None,
                 accept_failures=False,
+                obtain_server_metrics_callback=SimpleNoiseScale,
+                cfg=copy.deepcopy(cfg),
             )
         case StrategyName.FEDMOM:
             assert (

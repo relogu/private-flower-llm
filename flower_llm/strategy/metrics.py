@@ -13,7 +13,7 @@ class ServerMetricCallback:
     def __init__(self, metrics: dict[str, Any], conf: BaseConfig) -> None:
         """Initialize the ServerMetricCallback object."""
         self.metrics = metrics
-        self.config = BaseConfig
+        self.config: BaseConfig = conf
 
     def add_per_client_metrics(self, client_results: tuple[NDArrays, int]) -> None:
         """Add per-client metrics to the metrics dictionary."""
@@ -28,7 +28,7 @@ class SimpleNoiseScale(ServerMetricCallback):
     def __init__(self, history: WandbHistory, conf: BaseConfig) -> None:
         """Initialize the ServerMetricCallback object."""
         self.history = history
-        self.summed_grads_squares: list[int] | None = None
+        self.summed_grads_squares: list[float] | None = None
         self.b_small = conf.llm_config.global_train_batch_size
         self.b_big = self.b_small * conf.fl.n_clients_per_round
 
