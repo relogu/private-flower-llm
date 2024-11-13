@@ -91,6 +91,8 @@ def dispatch_strategy(
                 on_fit_config_fn=None,
                 on_evaluate_config_fn=None,
                 accept_failures=False,
+                obtain_server_metrics_callback=SimpleNoiseScale,
+                cfg=copy.deepcopy(cfg),
             )
         case StrategyName.FEDYOGI:
             return FedYogi(
