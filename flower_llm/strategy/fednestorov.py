@@ -346,5 +346,7 @@ class FedNesterov(FedAvg):
                 layer_by_layer_diff,
                 len(results_cached),
             )
+        if metrics_callback is not None:
+            metrics_callback.round_end(server_round, fedavg_result)
 
         return self.parameters, metrics_aggregated
