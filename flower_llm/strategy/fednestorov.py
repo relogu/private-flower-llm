@@ -327,12 +327,10 @@ class FedNesterov(FedAvg):
             )
 
         if self.track_inplace_aggregation:
-            normal_result = aggregate(
-                [
-                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                    for _, fit_res in results_cached
-                ]
-            )
+            normal_result = aggregate([
+                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                for _, fit_res in results_cached
+            ])
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
                 layer_by_layer_diff += sum_of_squares([x - y])
@@ -346,7 +344,10 @@ class FedNesterov(FedAvg):
                 layer_by_layer_diff,
                 len(results_cached),
             )
-        if metrics_callback is not None:
-            metrics_callback.round_end(server_round, fedavg_result)
+        if metrics_callback is not None and old_parameters is not None:
+            metrics_callback.round_end(
+                server_round,
+                [x - y for x, y in zip(old_parameters, fedavg_result, strict=True)],
+            )
 
         return self.parameters, metrics_aggregated
