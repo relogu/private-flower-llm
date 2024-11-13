@@ -1,0 +1,1359 @@
+---
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Wikipedia (en)_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Wikipedia (en)_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/ArXiv_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/ArXiv_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Gutenberg (PG-19)_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/HackerNews_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/HackerNews_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Central_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Central_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/FreeLaw_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/FreeLaw_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PhilPapers_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PhilPapers_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/DM Mathematics_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/DM Mathematics_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/DM Mathematics_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/DM Mathematics_1
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Enron Emails_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/Enron Emails_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/EuroParl_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/EuroParl_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/NIH ExPorter_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/NIH ExPorter_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_0
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_1
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_2
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_3
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_4
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_5
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_6
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Github_7
+      proportion: null
+      remote: s3://fed-the-pile/c8/Github_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_0
+      proportion: null
+      remote: s3://fed-c4/c128/client_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_1
+      proportion: null
+      remote: s3://fed-c4/c128/client_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_2
+      proportion: null
+      remote: s3://fed-c4/c128/client_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_3
+      proportion: null
+      remote: s3://fed-c4/c128/client_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_4
+      proportion: null
+      remote: s3://fed-c4/c128/client_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_5
+      proportion: null
+      remote: s3://fed-c4/c128/client_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_6
+      proportion: null
+      remote: s3://fed-c4/c128/client_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/Pile-CC_7
+      proportion: null
+      remote: s3://fed-c4/c128/client_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/PubMed Abstracts_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/PubMed Abstracts_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/StackExchange_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/StackExchange_7
+      repeat: null
+      validate_hash: null
+      split: val
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_0
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_0
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_1
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_1
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_2
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_2
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_3
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_3
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_4
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_4
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_5
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_5
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_6
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_6
+      repeat: null
+      validate_hash: null
+      split: val
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: iclr2025datasets/50259/the-pile/USPTO Backgrounds_7
+      proportion: null
+      remote: s3://iclr2025datasets/50259/the-pile/USPTO Backgrounds_7
+      repeat: null
+      validate_hash: null
+      split: val

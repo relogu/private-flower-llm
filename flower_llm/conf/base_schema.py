@@ -21,12 +21,15 @@ class Centralized(DictConfig):
         Stream id to pass to the data configuration
     eval_only: bool = MISSING
         Whether to only execute the evaluation
+    split_eval: bool = MISSING
+        Whether to report performance separately on each stream
     """
 
     store_init_model: bool = MISSING
     store_final_model: bool = MISSING
     stream_id: str | None = MISSING
     eval_only: bool = MISSING
+    split_eval: bool = MISSING
 
 
 @dataclass(config={"arbitrary_types_allowed": True})
@@ -58,6 +61,12 @@ class Pollen(DictConfig):
     resume_round: int | None = MISSING
         Round to resume from, None implies start anew
         negative indices are counted from the last round
+    restore_cent_run_uuid: str = MISSING
+        Run UUID to restore the centralized model
+    restore_cent_run_batches: int = MISSING
+        Number of batches to restore from the centralized model
+    copy_client_checkpoints: bool = MISSING
+        Whether to copy the client checkpoints
     """
 
     placement_policy: str = MISSING
@@ -71,6 +80,9 @@ class Pollen(DictConfig):
     checkpoint: bool = MISSING
     restore_run_uuid: str | None = MISSING
     resume_round: int | None = MISSING
+    restore_cent_run_uuid: str | None = MISSING
+    restore_cent_run_batches: int | None = MISSING
+    copy_client_checkpoints: bool = MISSING
 
 
 class StrategyName(StrEnum):
@@ -95,46 +107,74 @@ class FL(DictConfig):
 
     Attributes
     ----------
-    n_total_clients : int
-        Number of total clients.
-    n_clients_per_round : int
-        Number of clients per round.
-    n_rounds : int
-        Number of rounds.
-    reset_optimizer : bool
-        Whether to reset the local optimizer.
-    fake_gradient_update : bool
-        Whether to use fake gradient updates.
-    fake_gradient_update_steps : int
-        Number of steps for fake gradient updates.
-    n_local_epochs : int
-        Number of local epochs.
-    n_local_steps : int
-        Number of local steps.
-    ignore_failed_rounds : bool
-        Whether to ignore failed rounds.
-    accept_failures_cnt : int
-        Number of acceptable failures.
-    eval_fl : int
-        Period of federated evaluation.
-    strategy_name : StrategyName
-        The name of the strategy to use.
-    strategy_kwargs : StrategyKWArgs
-        Keyword arguments for the strategy.
+    n_total_clients: int = MISSING
+        Total number of clients
+    n_clients_per_round: int = MISSING
+        Number of clients per round
+    n_rounds: int = MISSING
+        Number of rounds
+    reset_checkpoint: bool = MISSING
+        Whether to reset the checkpoint
+    reset_optimizer: bool = MISSING
+        Whether to reset the optimizer
+    reset_dataset_state: bool = MISSING
+        Whether to reset the dataset state
+    resize_vocab: int | None = MISSING
+        Resize the vocabulary
+    n_local_epochs: int = MISSING
+        Number of local epochs
+    n_local_steps: int = MISSING
+        Number of local steps
+    use_unigram_metrics: bool = MISSING
+        Whether to use unigram metrics
+    random_layers: list[str] = MISSING
+        List of random layers
+    random_init_freq: int = MISSING
+        Random initialization frequency
+    truly_random_init: bool = MISSING
+        Whether to truly random initialization
+    personalized_layers: list[str] = MISSING
+        List of personalized layers
+    frozen_layers: list[str] | None = MISSING
+        List of frozen layers
+    unfrozen_layers: list[str] | None = MISSING
+        List of unfrozen layers
+    ignore_failed_rounds: bool = MISSING
+        Whether to ignore failed rounds
+    accept_failures_cnt: int = MISSING
+        Number of acceptable failures
+    eval_fl: int | None = MISSING
+        Eval freq, None means never including first round
+    split_eval: bool = MISSING
+        Whether to report performance separately on each stream
+    strategy_name: StrategyName = MISSING
+        Strategy name
+    strategy_kwargs: StrategyKWArgs = MISSING
+        Strategy kwargs
     """
 
     n_total_clients: int = MISSING
     n_clients_per_round: int = MISSING
     n_rounds: int = MISSING
+    reset_checkpoint: bool = MISSING
     reset_optimizer: bool = MISSING
-    fake_gradient_update: bool = MISSING
-    fake_gradient_update_steps: int = MISSING
+    reset_dataset_state: bool = MISSING
+    reset_timestamp: bool = MISSING
+    resize_vocab: int | None = MISSING
     n_local_epochs: int = MISSING
     n_local_steps: int = MISSING
+    use_unigram_metrics: bool = MISSING
+    random_layers: list[str] = MISSING
+    random_init_freq: int = MISSING
+    truly_random_init: bool = MISSING
+    personalized_layers: list[str] = MISSING
+    frozen_layers: list[str] | None = MISSING
+    unfrozen_layers: list[str] | None = MISSING
 
     ignore_failed_rounds: bool = MISSING
     accept_failures_cnt: int = MISSING
-    eval_fl: int = MISSING
+    eval_fl: int | None = MISSING
+    split_eval: bool = MISSING
 
     strategy_name: StrategyName = MISSING
     strategy_kwargs: StrategyKWArgs = MISSING
@@ -270,6 +310,8 @@ class BaseConfig(DictConfig):
         Whether to use Wandb
     cleanup_checkpoints: bool = MISSING
         Whether to clean up all the checkpoints at the end
+    cleanup_checkpoints_per_round: bool = MISSING
+        Whether to clean up the checkpoints at the end of each round
     wandb: Wandb
         Wandb configuration
     """
@@ -287,6 +329,7 @@ class BaseConfig(DictConfig):
     s3_comm_config: S3CommConfig = MISSING
     use_wandb: bool = MISSING
     cleanup_checkpoints: bool = MISSING
+    cleanup_checkpoints_per_round: bool = MISSING
     wandb: Wandb = MISSING
 
     # NOTE: MosaicML specific, do not include in the base schema

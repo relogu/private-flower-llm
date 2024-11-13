@@ -1,0 +1,420 @@
+#!/bin/bash
+# shellcheck disable=SC2090,SC2086,SC2089,SC1091
+#SBATCH -c 48
+#SBATCH -w ruapehu
+#SBATCH --gres=gpu:2
+#SBATCH --job-name=AEVAL_RUA
+#SBATCH --tasks-per-node=1
+#SBATCH --output=%x-%j.out
+#SBATCH --time=11:15:00
+#!SBATCH --begin=now+5hours
+#!SBATCH --begin=now+10hours
+#!SBATCH --begin=now+15hours
+#!SBATCH --begin=now+20hours
+#SBATCH --dependency=afterany:12696
+
+# Default project path
+PROJECT_PATH="$HOME/projects/flower_llm"
+
+
+# Parse command-line options
+if ! OPTIONS=$(getopt -o p: --long project_path: -n 'parse-options' -- "$@"); then
+  echo "slurm_submit.mauao: Error parsing options" >&2
+  exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while true; do
+  case "$1" in
+    -p | --project_path )
+      PROJECT_PATH="$2"; shift 2 ;;
+    -- )
+      shift; break ;;
+    * )
+      break ;;
+  esac
+done
+echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
+
+
+export PREFIX="E4"
+
+export TOKENIZER="google/mt5-base"
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-GF-centT03-125M-mc4-20240918"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-GF-centUB-125M-mc4-20240918"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-GF-centB-125M-mc4-20240918"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-3GFr10_full-125M-mc4-20240912-tle"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-3GFr10_full-125M-mc4-20240912-tle"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-GFr10-matrix-125M-mc4"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+export MODEL_SIZE="125M"
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]      
+export START_LR=2.25e-4 
+export RESTORE_RUN_CENT_UUID="P-GFr8-pers-125M-mc4"
+export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+export DATASET="fed-mc4-adapt"
+export STREAM="fed_mc4_11_clients"
+export RESTORE_RUN_CENT_BATCHES=1200
+export RESTORE_RUN_CENT_EPOCH=1
+export VOCAB_SIZE=250112
+export RESIZE_VOCAB=250112
+export EVAL_SUBSET_NUM_BATCHES=1000
+bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+ 
+# export PREFIX="SP" 
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF-centUB-125M-p-20240921"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export RESTORE_RUN_CENT_EPOCH=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF-centB-125M-p-20240919"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export RESTORE_RUN_CENT_EPOCH=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF-matrix-125M-p-tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export RESTORE_RUN_CENT_EPOCH=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF_full-125M-p-tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export RESTORE_RUN_CENT_EPOCH=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+
+# export MODEL_SIZE="125M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="GF-pers-125M-p-20240821_tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=1200
+# export RESTORE_RUN_CENT_EPOCH=1
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+
+export PREFIX="BP" 
+
+export PERSONALIZED_KEYS=[]
+export RANDOM_KEYS=[]
+
+pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GF-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GF-matrix-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-2GF-pers-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GF-centB-350M-p-20240921"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-2GF_full-350M-p-20240825_tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFMg-matrix-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-pers-350M-p-20240825"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM-centUB-350M-p-20240922"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower
+
+# export MODEL_SIZE="350M"
+# export PERSONALIZED_KEYS=[]
+# export RANDOM_KEYS=[]      
+# export START_LR=2.25e-4 
+# export RESTORE_RUN_CENT_UUID="P-GFM_full-350M-p-20240825_tle"
+# export RUN_UUID="$PREFIX-$RESTORE_RUN_CENT_UUID"
+# export DATASET="fed-the-pile-adapt"
+# export STREAM="the_pile_17_clients"
+# export RESTORE_RUN_CENT_BATCHES=2400
+# export RESTORE_RUN_CENT_EPOCH=0
+# export VOCAB_SIZE=50368
+# export RESIZE_VOCAB=50368
+# export EVAL_SUBSET_NUM_BATCHES=500
+# bash $HOME/projects/flower_llm/scripts/cent_eval.sh
+
+# pkill -f flower

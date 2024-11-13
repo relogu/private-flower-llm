@@ -56,8 +56,13 @@ def main() -> Trainer:
         "Creating trainer object using stream_id: %s...",
         _cfg.centralized.stream_id,
     )
-    trainer, eval_first, _ = _get_trainer_object(
-        _cfg=cfg, cid=_cfg.centralized.stream_id, log_name="_centralised"
+    trainer, eval_first, *_ = _get_trainer_object(
+        _cfg=cfg,
+        cid=_cfg.centralized.stream_id,
+        log_name="_centralised",
+        use_unigram_metrics=_cfg.fl.use_unigram_metrics,
+        s3_comm_config=_cfg.s3_comm_config,
+        split_eval=_cfg.centralized.split_eval,
     )
     torch.cuda.empty_cache()
     gc.collect()

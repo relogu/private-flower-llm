@@ -1,5 +1,6 @@
 """Implementation of the Flower's ServerApp for orchestrating federate learning."""
 
+import copy
 from logging import DEBUG, INFO
 import os
 import timeit
@@ -12,7 +13,11 @@ import warnings
 from flower_llm.server.broadcast_utils import broadcast_parameters_to_nodes
 from flower_llm.server.evaluate_utils import evaluate_round
 from flower_llm.server.fit_utils import fit_round
-from flower_llm.server.init_utils import initialize_round, resume_from_round
+from flower_llm.server.init_utils import (
+    get_centralized_run_parameters,
+    initialize_round,
+    resume_from_round,
+)
 from flower_llm.server.s3_utils import (
     delete_clients_checkpoints,
     delete_rounds,
@@ -115,9 +120,20 @@ def main(driver: Driver, context: Context) -> None:
             "n_local_steps": cfg.fl.n_local_steps,
             "n_local_epochs": cfg.fl.n_local_epochs,
             "collaborative": cfg.pollen.fit_collaborative,
+            "reset_checkpoint": cfg.fl.reset_checkpoint,
             "reset_optimizer": cfg.fl.reset_optimizer,
-            "fake_gradient_update": cfg.fl.fake_gradient_update,
-            "fake_gradient_update_steps": cfg.fl.fake_gradient_update_steps,
+            "reset_dataset_state": cfg.fl.reset_dataset_state,
+            "reset_timestamp": cfg.fl.reset_timestamp,
+            "use_unigram_metrics": cfg.fl.use_unigram_metrics,
+            "resize_vocab": str(cfg.fl.resize_vocab),
+            "s3_comm_config": str(
+                OmegaConf.to_container(cfg.s3_comm_config, resolve=True)
+            ),
+            "random_layers": str(cfg.fl.random_layers),
+            "random_init_freq": str(cfg.fl.random_init_freq),
+            "personalized_layers": str(cfg.fl.personalized_layers),
+            "truly_random_init": cfg.fl.truly_random_init,
+            "split_eval": cfg.fl.split_eval,
         }
 
     def pollen_evaluate_config(
@@ -128,6 +144,12 @@ def main(driver: Driver, context: Context) -> None:
             "server_round": server_round,
             "batch_size": cfg.llm_config.device_eval_batch_size,
             "collaborative": cfg.pollen.eval_collaborative,
+            "use_unigram_metrics": cfg.fl.use_unigram_metrics,
+            "resize_vocab": str(cfg.fl.resize_vocab),
+            "s3_comm_config": str(
+                OmegaConf.to_container(cfg.s3_comm_config, resolve=True)
+            ),
+            "split_eval": cfg.fl.split_eval,
         }
 
     strategy = dispatch_strategy(
@@ -139,7 +161,8 @@ def main(driver: Driver, context: Context) -> None:
         **cfg.wandb.setup,  # type: ignore[reportCallIssue]
         settings=wandb.Settings(start_method="thread"),  # type: ignore[arg-type]
         config=wandb_config,  # type: ignore[arg-type]
-    ) as _:
+    ) as wandb_run:
+        log(INFO, f"Wandb run initialized: {wandb_run}")
         # Create RemoteUploaderDownloader
         # TODO: We may want to have this as a function or a more dynamical object
         # that can change the bucket it's referring to
@@ -186,6 +209,21 @@ def main(driver: Driver, context: Context) -> None:
                     range(n_total_clients), n_clients_per_round
                 )
             sampled_clients = []
+        elif cfg.pollen.restore_cent_run_uuid is not None:
+            assert (
+                remote_up_down is not None
+            ), "Cannot restore without a RemoteUploaderDownloader object"
+            parameters = get_centralized_run_parameters(copy.deepcopy(cfg))
+            (
+                parameters,
+                history,
+                start_round,
+                time_offset,
+                server_steps_cumulative,
+                client_state,
+                momentum_vector,
+                second_momentum_vector,
+            ) = initialize_round(cfg, remote_up_down, parameters=parameters)
         else:
             (
                 parameters,
@@ -245,25 +283,26 @@ def main(driver: Driver, context: Context) -> None:
             use_s3_comm=cfg.use_s3_comm,
             use_shm=cfg.use_shm,
         )
+        time_to_broadcast = time.time_ns() - broadcast_time
+
+        if cfg.fl.eval_fl is not None:
+            # Launch the evaluate process for the starting round
+            sampled_clients = [0]
+            history = evaluate_round(
+                driver=driver,
+                sampled_clients=sampled_clients,
+                evaluate_config_fn=pollen_evaluate_config,
+                all_node_ids=all_node_ids,
+                current_round=start_round,
+                client_state=client_state,
+                server_steps_cumulative=server_steps_cumulative,
+                cfg=cfg,
+                strategy=strategy,
+                history=history,
+            )
         history.add_metrics_centralized(
             server_round=start_round + 1,
-            metrics={
-                "server/broadcast_pre_time": (time.time_ns() - broadcast_time) * 1e-9
-            },
-        )
-        # Launch the evaluate process for the starting round
-        sampled_clients = [0]
-        history = evaluate_round(
-            driver=driver,
-            sampled_clients=sampled_clients,
-            evaluate_config_fn=pollen_evaluate_config,
-            all_node_ids=all_node_ids,
-            current_round=start_round,
-            client_state=client_state,
-            server_steps_cumulative=server_steps_cumulative,
-            cfg=cfg,
-            strategy=strategy,
-            history=history,
+            metrics={"server/broadcast_pre_time": time_to_broadcast * 1e-9},
         )
         # Nullify assignments
         sampled_clients = []
@@ -342,7 +381,7 @@ def main(driver: Driver, context: Context) -> None:
                     * 1e-9
                 },
             )
-            if current_round % cfg.fl.eval_fl == 0:
+            if cfg.fl.eval_fl is not None and current_round % cfg.fl.eval_fl == 0:
                 # Launch the evaluate process
                 sampled_clients = [0]
                 history = evaluate_round(
@@ -384,19 +423,21 @@ def main(driver: Driver, context: Context) -> None:
                     "server/round_time": (time.time_ns() - start_round_time) * 1e-9
                 },
             )
-            # Remove old clients checkpoints from the S3 Object Store
-            delete_clients_checkpoints(
-                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
-            )
-            # Remove old server checkpoints from the S3 Object Store
-            delete_rounds(
-                run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
-                state_keys=(
-                    "state.bin",
-                    "current_server_parameters",
-                    "current_momentum_vector",
-                ),
-            )
+            # Clean up checkpoints if asked to
+            if cfg.cleanup_checkpoints_per_round:
+                # Remove old clients checkpoints from the S3 Object Store
+                delete_clients_checkpoints(
+                    run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                )
+                # Remove old server checkpoints from the S3 Object Store
+                delete_rounds(
+                    run_uuid_path=f"s3://checkpoints/{cfg.run_uuid}",
+                    state_keys=(
+                        "state.bin",
+                        "current_server_parameters",
+                        "current_momentum_vector",
+                    ),
+                )
 
         # Bookkeeping
         end_time = timeit.default_timer()

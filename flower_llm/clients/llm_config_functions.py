@@ -1,17 +1,26 @@
 """Provides functionality for manipulating MosaicML configs."""
 
 import ast
+import copy
+import json
 import os
 from logging import DEBUG, INFO, WARN, WARNING
 import re
+import tempfile
 from typing import Any
 
 import torch
 from composer.devices import DeviceGPU, DeviceCPU, Device
+from flower_llm.conf.base_schema import S3CommConfig
+from flower_llm.utils import (
+    download_file_from_s3,
+    merge_freq_dicts,
+    create_remote_up_down,
+)
 from flwr.common.logger import log
 
 
-from omegaconf import DictConfig, ListConfig
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 
 from flower_llm.server.s3_utils import list_objects
@@ -21,6 +30,11 @@ from flower_llm.utils import (
 )
 from dataclasses import dataclass, asdict
 import operator
+
+
+# Constant for the frequency dictionary name
+FREQ_DICT_NAME = "1_gram.json"
+FREQ_DICT_CACHE_NAME = "_freq_dict.json"
 
 
 @dataclass
@@ -60,7 +74,99 @@ def set_icl_tasks_root_dir(icl_tasks_listconfig: ListConfig, root_dir: str) -> N
         icl_task.dataset_uri = root_dir + "/" + old_dataset_uri
 
 
-def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
+def preprocess_stream_paths(dataset_config: DictConfig) -> tuple[str, str, str]:
+    """Preprocess the stream paths for the dataset.
+
+    Parameters
+    ----------
+    dataset_config : DictConfig
+        The dataset configuration.
+
+    Returns
+    -------
+    None
+    """
+    root_remote = dataset_config.pop("root_remote", "")
+    root_remote = root_remote + "/" if root_remote else root_remote
+    root_local = dataset_config.pop("root_local", "")
+    root_local = root_local + "/" if root_local else root_local
+    split = dataset_config.pop("split", "")
+    return root_remote, root_local, split
+
+
+def concatenate_streams(clients_streams: list[dict[str, Any]]) -> dict[str, Any]:
+    """Concatenate the streams for all clients.
+
+    Parameters
+    ----------
+    clients_streams : list[dict[str, Any]]
+        The clients streams.
+
+    Returns
+    -------
+    dict[str, Any]
+        The concatenated streams.
+    """
+    counter = 0
+    current_client_stream: dict[str, Any] = {}
+    for client_stream in clients_streams:
+        assert "client_streams" in client_stream
+        client_streams = client_stream["client_streams"]
+        assert isinstance(client_streams, DictConfig)
+        for stream in client_streams.values():
+            current_client_stream |= {f"stream_{counter}": stream}
+            counter += 1
+
+    return current_client_stream
+
+
+def get_actual_stream(
+    root_local: str, root_remote: str, split: str, current_client_stream: dict[str, Any]
+) -> dict[str, StreamDict]:
+    """Get the actual streams for the client.
+
+    Parameters
+    ----------
+    root_local : str
+        The root local path.
+    root_remote : str
+        The root remote path.
+    split : str
+        The split.
+    current_client_stream : dict[str, Any]
+        The current client stream.
+
+    Returns
+    -------
+    dict[str, StreamDict]
+        The actual streams.
+    """
+    # Set streams dictionary for the train loader
+    actual_streams = {
+        key: StreamDict(**value) for key, value in current_client_stream.items()
+    }
+    # Propagate the split and the remote and local paths to each stream
+    for stream in actual_streams.values():
+        # Set the split, remote, and local paths
+        stream.split = split or stream.split
+        if root_local:
+            stream.local = root_local + stream.local if stream.local else root_local
+        if root_remote:
+            stream.remote = (
+                root_remote + stream.remote if stream.remote else root_remote
+            )
+        # Remove potential trailing slashes
+        stream.local = stream.local.rstrip("/") if stream.local else stream.local
+        stream.remote = stream.remote.rstrip("/") if stream.remote else stream.remote
+
+    return actual_streams
+
+
+def client_set_data_config(
+    cid: int | str | None,
+    cfg: DictConfig,
+    split_eval: bool = False,
+) -> None:
     """Set the client data configuration for the client.
 
     Parameters
@@ -69,6 +175,8 @@ def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
         The client id.
     cfg : DictConfig
         The configuration object.
+    split_eval : bool
+        Whether to split the evaluation data.
 
     Returns
     -------
@@ -76,20 +184,13 @@ def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
         The updated configuration object.
     """
     # Retrieve the train config to construct the dataset for the train loader
-    dataset_config: DictConfig
-    for split in ["train", "val"]:
-        if split == "train":
-            dataset_config = cfg.train_loader.dataset
-        elif split == "val":
-            dataset_config = cfg.eval_loader.dataset
-        else:
-            raise ValueError(f"Split {split} is not supported.")
+    train_split: tuple[str, DictConfig] = ("train", cfg.train_loader.dataset)
+    val_split: tuple[str, DictConfig] = ("val", cfg.eval_loader.dataset)
+    for loop_split, dataset_config in (
+        (train_split, val_split) if not split_eval else (train_split,)
+    ):
         # Get the root path for remote and local data
-        root_remote = dataset_config.pop("root_remote", "")
-        root_remote = root_remote + "/" if root_remote else root_remote
-        root_local = dataset_config.pop("root_local", "")
-        root_local = root_local + "/" if root_local else root_local
-        split = dataset_config.pop("split", "")
+        root_remote, root_local, split = preprocess_stream_paths(dataset_config)
         # Get the clients streams available
         clients_streams = dataset_config.streams
         # Extract the current client train stream -- it contains a dict of buckets
@@ -102,40 +203,46 @@ def client_set_data_config(cid: int | str | None, cfg: DictConfig) -> None:
             ]
         else:
             # Concatenate all the streams
-            counter = 0
-            for client_stream in clients_streams:
-                assert "client_streams" in client_stream
-                client_streams = client_stream["client_streams"]
-                assert isinstance(client_streams, DictConfig)
-                for stream in client_streams.values():
-                    current_client_stream |= {f"stream_{counter}": stream}
-                    counter += 1
-        # Set streams dictionary for the train loader
-        actual_streams = {
-            key: StreamDict(**value) for key, value in current_client_stream.items()
-        }
-        # Propagate the split and the remote and local paths to each stream
-        for stream in actual_streams.values():
-            # Set the split, remote, and local paths
-            stream.split = split or stream.split
-            if root_local:
-                stream.local = root_local + stream.local if stream.local else root_local
-            if root_remote:
-                stream.remote = (
-                    root_remote + stream.remote if stream.remote else root_remote
-                )
-            # Remove potential trailing slashes
-            stream.local = stream.local.rstrip("/") if stream.local else stream.local
-            stream.remote = (
-                stream.remote.rstrip("/") if stream.remote else stream.remote
-            )
+            current_client_stream |= concatenate_streams(clients_streams)
+
+        actual_streams = get_actual_stream(
+            root_local, root_remote, split, current_client_stream
+        )
+
         # Convert the streams to dictionaries
         streams_dict = {name: asdict(stream) for name, stream in actual_streams.items()}
         # Assign the streams to the appropriate loaders
-        if split == "train":
+        if loop_split == "train":
             cfg.train_loader.dataset.streams = streams_dict
-        elif split == "val":
+        elif loop_split == "val":
             cfg.eval_loader.dataset.streams = streams_dict
+
+    if split_eval:
+        # Set the evaluation split to be the same as the training split
+        loop_split, dataset_config = val_split
+        clients_streams = dataset_config.streams
+        eval_loaders = []
+        root_remote, root_local, split = preprocess_stream_paths(dataset_config)
+        for inner_cid in range(len(clients_streams)):
+            current_client_stream = {}
+            current_client_stream |= clients_streams[
+                int(inner_cid) % len(clients_streams)
+            ]["client_streams"]
+
+            actual_streams = get_actual_stream(
+                root_local, root_remote, split, current_client_stream
+            )
+
+            streams_dict = {
+                name: asdict(stream) for name, stream in actual_streams.items()
+            }
+
+            client_eval_loader = copy.deepcopy(cfg.eval_loader)
+            client_eval_loader.dataset.streams = streams_dict
+            client_eval_loader.label = f"client_{inner_cid}"
+            eval_loaders.append(client_eval_loader)
+
+        cfg.eval_loader = ListConfig(eval_loaders)
 
 
 def set_dataset_default_params(cfg: DictConfig) -> None:
@@ -143,20 +250,31 @@ def set_dataset_default_params(cfg: DictConfig) -> None:
     # Set the `pre-download` value as 8*batch_size
     if cfg.train_loader.dataset.get("predownload", None) is None:
         cfg.train_loader.dataset.predownload = 8 * cfg.device_train_batch_size
-    if cfg.eval_loader.dataset.get("pre_download", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.predownload = 8 * cfg.device_eval_batch_size
+    elif cfg.eval_loader.dataset.get("pre_download", None) is None:
         cfg.eval_loader.dataset.predownload = 8 * cfg.device_eval_batch_size
     # NOTE: Set the `num_canonical_nodes` value as 64*`num_physical_nodes`, assuming
     # that we will always have just 1 real node (server)
     if cfg.train_loader.dataset.get("num_canonical_nodes", None) is None:
         cfg.train_loader.dataset.num_canonical_nodes = 64 * 1
-    if cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.num_canonical_nodes = 64 * 1
+    elif cfg.eval_loader.dataset.get("num_canonical_nodes", None) is None:
         cfg.eval_loader.dataset.num_canonical_nodes = 64 * 1
     # Set the `shuffle_block_size` value as 8*batch_size
     if cfg.train_loader.dataset.get("shuffle_block_size", None) is None:
         cfg.train_loader.dataset.shuffle_block_size = max(
             4_000_000 // cfg.train_loader.dataset.num_canonical_nodes, 1 << 18
         )
-    if cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
+    if isinstance(cfg.eval_loader, ListConfig):
+        for loader in cfg.eval_loader:
+            loader.dataset.shuffle_block_size = max(
+                4_000_000 // loader.dataset.num_canonical_nodes, 1 << 18
+            )
+    elif cfg.eval_loader.dataset.get("shuffle_block_size", None) is None:
         cfg.eval_loader.dataset.shuffle_block_size = max(
             4_000_000 // cfg.eval_loader.dataset.num_canonical_nodes, 1 << 18
         )
@@ -442,3 +560,101 @@ def set_n_workers_dataloaders(
         cfg.train_loader.num_workers = min(n_workers, cap)
     if cfg.eval_loader.num_workers == "auto":
         cfg.eval_loader.num_workers = min(n_workers, cap)
+
+
+def get_stream_freq_dict_for_client(
+    client_streams: dict[str, dict[str, Any]],
+    s3_comm_config: S3CommConfig | None,
+    run_uuid: str | None,
+    cid: int | str | None,
+    allow_failures: bool = False,
+) -> dict[int, tuple[int, str]]:
+    """Get the token frequencies for a single client's streams.
+
+    Parameters
+    ----------
+    client_streams : dict[str, dict[str, Any]]
+        The client streams.
+    s3_comm_config : S3CommConfig | None
+        The S3 communication configuration.
+    run_uuid : str | None
+        The run UUID.
+    """
+    actual_streams = {key: StreamDict(**value) for key, value in client_streams.items()}
+    # Stores the merged frequency dictionary across streams
+    stream_freq_dict: dict[int, tuple[int, str]] = {}
+    tmp_dir = tempfile.gettempdir()
+
+    cached_file_name = os.path.join(  # noqa: PTH118
+        tmp_dir, str(cid) + FREQ_DICT_CACHE_NAME
+    )
+
+    failed_cnt = 0
+
+    if not os.path.exists(cached_file_name):  # noqa: PTH110
+        for stream in actual_streams.values():
+            assert stream.local is not None, "Local path is not set."
+            assert stream.split is not None, "Split is not set."
+            local_file_name = os.path.join(  # noqa: PTH118
+                stream.local, stream.split, FREQ_DICT_NAME
+            )
+            if not os.path.exists(local_file_name):  # noqa: PTH110
+                assert stream.remote is not None, "Remote path is not set."
+                assert s3_comm_config is not None, "S3 communication config is not set."
+                assert run_uuid is not None, "Run UUID is not set."
+                stream_remote_post_processed = stream.remote.replace("s3://", "")
+
+                root_remote, *rest = stream_remote_post_processed.split("/")
+
+                remote_up_down = create_remote_up_down(
+                    bucket_name=root_remote,
+                    prefix="",
+                    run_uuid=run_uuid,
+                    num_attempts=s3_comm_config.num_attempts,
+                    client_config=OmegaConf.to_container(
+                        s3_comm_config.backend_kwargs.client_config
+                    ),  # type: ignore[reportArgumentType, arg-type]
+                )
+                remote_path = os.path.join(  # noqa: PTH118
+                    os.path.join(*rest),  # noqa: PTH118
+                    stream.split,
+                    FREQ_DICT_NAME,
+                )
+                try:
+                    download_file_from_s3(remote_up_down, remote_path, local_file_name)
+                except FileNotFoundError as _:
+                    if not allow_failures:
+                        raise
+            try:
+                with open(local_file_name, encoding="utf-8") as f:
+                    loaded_map: dict = json.load(f).items()
+
+                freq_map: dict[int, tuple[int, str]]
+                try:
+                    freq_map = {int(ast.literal_eval(k)[0]): v for k, v in loaded_map}
+                except TypeError:
+                    freq_map = {int(ast.literal_eval(k)): v for k, v in loaded_map}
+                stream_freq_dict = merge_freq_dicts(stream_freq_dict, freq_map)
+            except FileNotFoundError as _:
+                if not allow_failures:
+                    raise
+                failed_cnt += 1
+        log(
+            DEBUG,
+            "Loaded stream_freq_dict, len: %s, failures %s",
+            len(stream_freq_dict),
+            failed_cnt,
+        )
+        with open(cached_file_name, "w", encoding="utf-8") as f:
+            json.dump(stream_freq_dict, f, indent=4)
+    else:
+        with open(cached_file_name, encoding="utf-8") as f:
+            stream_freq_dict = {int(k): (v[0], v[1]) for k, v in json.load(f).items()}
+        log(
+            DEBUG,
+            "Loaded stream_freq_dict from cache %s, len: %s",
+            cached_file_name,
+            len(stream_freq_dict),
+        )
+
+    return stream_freq_dict

@@ -94,7 +94,7 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 # # bash $HOME/projects/flower_llm/scripts/centralised_training.sh 125M
 # bash $HOME/projects/flower_llm/scripts/photon_llm_125M.sh 125M
 # # export RUN_UUID="fed-160M-20240507_114745"
-# # bash $HOME/projects/flower_llm/scripts/photon_llm_160M.sh
+# # bash $HOME/projects/flower_llm/scripts/photon_llm_160M.sh\
 # # bash $HOME/projects/flower_llm/scripts/photon_llm_350M.sh
 # # bash $HOME/projects/flower_llm/scripts/photon_llm_1B.sh
 bash $HOME/projects/flower_llm/scripts/cen_lr_sched_0_2cpr_sqrlin.sh

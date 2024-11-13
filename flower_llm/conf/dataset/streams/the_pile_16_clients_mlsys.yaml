@@ -1,6 +1,10 @@
 ---
 - client_streams:
     stream_0:
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> fa131ce (Make CC client 0)
       remote: c8/Pile-CC_0
       local: c8/Pile-CC_0
       proportion: null
@@ -85,6 +89,11 @@
       keep_zip: null
 - client_streams:
     stream_0:
+<<<<<<< HEAD
+=======
+>>>>>>> 80485c5 (Add new Pile configuration)
+=======
+>>>>>>> fa131ce (Make CC client 0)
       remote: c8/Wikipedia (en)_0
       local: c8/Wikipedia (en)_0
       proportion: null
@@ -334,4 +343,96 @@
       download_retry: null
       download_timeout: null
       validate_hash: null
+<<<<<<< HEAD
+<<<<<<< HEAD
       keep_zip: null
+=======
+      keep_zip: null
+- client_streams:
+    stream_0:
+      remote: c8/Pile-CC_0
+      local: c8/Pile-CC_0
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_1:
+      remote: c8/Pile-CC_1
+      local: c8/Pile-CC_1
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_2:
+      remote: c8/Pile-CC_2
+      local: c8/Pile-CC_2
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_3:
+      remote: c8/Pile-CC_3
+      local: c8/Pile-CC_3
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_4:
+      remote: c8/Pile-CC_4
+      local: c8/Pile-CC_4
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_5:
+      remote: c8/Pile-CC_5
+      local: c8/Pile-CC_5
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+- client_streams:
+    stream_6:
+      remote: c8/Pile-CC_6
+      local: c8/Pile-CC_6
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+    stream_7:
+      remote: c8/Pile-CC_7
+      local: c8/Pile-CC_7
+      proportion: null
+      repeat: null
+      choose: null
+      download_retry: null
+      download_timeout: null
+      validate_hash: null
+      keep_zip: null
+>>>>>>> 80485c5 (Add new Pile configuration)
+=======
+      keep_zip: null
+>>>>>>> fa131ce (Make CC client 0)

@@ -25,6 +25,8 @@ from flwr.server.strategy.aggregate import aggregate
 from flwr.server.strategy import FedAvg
 import numpy as np
 
+
+from flower_llm.conf.base_schema import BaseConfig
 from flower_llm.strategy.aggregation import (
     aggregate_cumulative_average,
     parameters_to_ndarrays_gen,
@@ -70,6 +72,7 @@ class FedNesterov(FedAvg):
         obtain_server_metrics_callback: type[ServerMetricCallback] | None = None,
         track_inplace_aggregation: bool = False,
         scaling_fn: str | None = None,
+        cfg: BaseConfig | None = None,
     ) -> None:
         """Federated Averaging with Nestorov Momentum strategy.
 
@@ -179,6 +182,7 @@ class FedNesterov(FedAvg):
         self.track_norms = track_norms
         self.track_inplace_aggregation = track_inplace_aggregation
         self.obtain_server_metrics_callback = obtain_server_metrics_callback
+        self.cfg = cfg
 
     def aggregate_fit(
         self,
@@ -209,8 +213,16 @@ class FedNesterov(FedAvg):
             results = (val for val in results_cached)
 
         metrics_aggregated: dict[str, Scalar] = {}
+        assert self.cfg is not None
 
-        metrics_callback: ServerMetricCallback | None = None
+        metrics_callback: ServerMetricCallback | None = (
+            self.obtain_server_metrics_callback(
+                metrics_aggregated,
+                self.cfg,
+            )
+            if self.obtain_server_metrics_callback is not None
+            else None
+        )
 
         # Get the cumulative average of the results
         old_parameters = (
@@ -315,12 +327,10 @@ class FedNesterov(FedAvg):
             )
 
         if self.track_inplace_aggregation:
-            normal_result = aggregate(
-                [
-                    (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-                    for _, fit_res in results_cached
-                ]
-            )
+            normal_result = aggregate([
+                (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                for _, fit_res in results_cached
+            ])
             layer_by_layer_diff = 0.0
             for x, y in zip(normal_result, fedavg_result, strict=False):
                 layer_by_layer_diff += sum_of_squares([x - y])
@@ -333,6 +343,11 @@ class FedNesterov(FedAvg):
                 " fedavg_result)=%s, len_results: %s",
                 layer_by_layer_diff,
                 len(results_cached),
+            )
+        if metrics_callback is not None and old_parameters is not None:
+            metrics_callback.round_end(
+                server_round,
+                [x - y for x, y in zip(old_parameters, fedavg_result, strict=True)],
             )
 
         return self.parameters, metrics_aggregated

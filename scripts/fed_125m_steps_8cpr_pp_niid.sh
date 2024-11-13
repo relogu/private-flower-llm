@@ -33,19 +33,29 @@ echo "slurm_submit.mauao: PROJECT_PATH=$PROJECT_PATH"
 
 LOCAL_BATCH_SIZE=32
 LOCAL_STEPS=512
-CPR=2
-PARTICIPATION_RATIO=0.5
-# PARTICIPATION_RATIO=0.125
-N_TOTAL_CLIENTS=$(echo "scale=0; $CPR / $PARTICIPATION_RATIO" | bc)
-N_TOTAL_CLIENTS=$((N_TOTAL_CLIENTS + 0))
+CPR=8
+TOTAL_CLIENTS=16
 TOTAL_STEPS=$((5120 * 256 / (LOCAL_BATCH_SIZE)))
 WARMUP_STEPS=$((100 * 256 / (LOCAL_BATCH_SIZE)))
 N_ROUNDS=$((TOTAL_STEPS / (LOCAL_STEPS)))
 EVAL_FREQ=2
-PARTICIPATION_RATIO_UNDERSCORE=${PARTICIPATION_RATIO//./_}
-export RUN_UUID="fed-pp${PARTICIPATION_RATIO_UNDERSCORE}-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+<<<<<<< HEAD
+<<<<<<< HEAD
+export RUN_UUID="fed-ppniid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+=======
+export RUN_UUID="fed-niid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+>>>>>>> d6dddf4 (Add partial participation configs)
+=======
+export RUN_UUID="fed-ppniid-${CPR}cpr${LOCAL_STEPS}-bs$LOCAL_BATCH_SIZE-$DATETIME"
+>>>>>>> f5b4885 (Change string for pp niid experiments)
 
 export EXTERNAL_CONFIGS=""
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset=fed-the-pile"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset/streams@dataset.train.streams=the_pile_${TOTAL_CLIENTS}_clients_mlsys"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset/streams@dataset.val.streams=the_pile_${TOTAL_CLIENTS}_clients_mlsys"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset.train.root_local=/local/scratch/flower_llm/dataset_cache/fed-the-pile" 
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS dataset.val.root_local=/local/scratch/flower_llm/dataset_cache/fed-the-pile"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS "
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.max_duration=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_max=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.scheduler.t_warmup=${WARMUP_STEPS}ba"
@@ -54,19 +64,18 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=6.0e-4"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$LOCAL_BATCH_SIZE"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_momentum=0.0"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=true"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.fit_collaborative=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_clients_per_round=$CPR"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS pollen.checkpoint=true"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_rounds=$N_ROUNDS"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.local_steps=${LOCAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_eval_batch_size=256"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_subset_num_batches=100"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_subset_num_batches=25"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.device_eval_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${LOCAL_STEPS}ba"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$N_TOTAL_CLIENTS"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.n_total_clients=$TOTAL_CLIENTS"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.eval_fl=$EVAL_FREQ"
 
 # Resume options

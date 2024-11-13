@@ -4,13 +4,15 @@ seed: 1337
 is_test: false
 pretrained_model_path: null
 wte_parameters_path: null
-cleanup_checkpoints: true
+cleanup_checkpoints: false
+cleanup_checkpoints_per_round: false
 
 centralized:
   store_init_model: false
   store_final_model: false
   stream_id: null
   eval_only: false
+  split_eval: false
 
 # Pollen specific settings
 pollen:
@@ -24,6 +26,9 @@ pollen:
   checkpoint: false
   # Set to null to only restore from the current run
   restore_run_uuid: null
+  restore_cent_run_uuid: null
+  restore_cent_run_batches: null
+  copy_client_checkpoints: true
   resume_round: -1
   saving_path: null
 
@@ -31,15 +36,26 @@ fl:
   n_total_clients: 8
   n_clients_per_round: 8
   n_rounds: 200
+  reset_checkpoint: false
   reset_optimizer: true
-  fake_gradient_update: false
-  fake_gradient_update_steps: 1
+  reset_dataset_state: false
+  reset_timestamp: false
+  resize_vocab: null
+  use_unigram_metrics: false
   n_local_epochs: 1
   n_local_steps: 0
+
+  random_layers: []
+  random_init_freq: 0
+  truly_random_init: true
+  personalized_layers: []
+  frozen_layers: null
+  unfrozen_layers: null
 
   ignore_failed_rounds: false
   accept_failures_cnt: 0
   eval_fl: 1
+  split_eval: false
 
   strategy_name: NESTOROV
   strategy_kwargs:

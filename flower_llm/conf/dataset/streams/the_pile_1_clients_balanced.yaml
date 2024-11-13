@@ -1,0 +1,1282 @@
+---
+- client_streams:
+    stream_0:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_0
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_0
+      repeat: null
+      validate_hash: null
+    stream_1:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_1
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_1
+      repeat: null
+      validate_hash: null
+    stream_10:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_2
+      proportion: 0.0078125
+      remote: c8/ArXiv_2
+      repeat: null
+      validate_hash: null
+    stream_100:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_4
+      proportion: 0.0078125
+      remote: c8/Pile-CC_4
+      repeat: null
+      validate_hash: null
+    stream_101:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_5
+      proportion: 0.0078125
+      remote: c8/Pile-CC_5
+      repeat: null
+      validate_hash: null
+    stream_102:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_6
+      proportion: 0.0078125
+      remote: c8/Pile-CC_6
+      repeat: null
+      validate_hash: null
+    stream_103:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_7
+      proportion: 0.0078125
+      remote: c8/Pile-CC_7
+      repeat: null
+      validate_hash: null
+    stream_104:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_0
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_0
+      repeat: null
+      validate_hash: null
+    stream_105:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_1
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_1
+      repeat: null
+      validate_hash: null
+    stream_106:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_2
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_2
+      repeat: null
+      validate_hash: null
+    stream_107:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_3
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_3
+      repeat: null
+      validate_hash: null
+    stream_108:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_4
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_4
+      repeat: null
+      validate_hash: null
+    stream_109:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_5
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_5
+      repeat: null
+      validate_hash: null
+    stream_11:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_3
+      proportion: 0.0078125
+      remote: c8/ArXiv_3
+      repeat: null
+      validate_hash: null
+    stream_110:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_6
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_6
+      repeat: null
+      validate_hash: null
+    stream_111:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Abstracts_7
+      proportion: 0.0078125
+      remote: c8/PubMed Abstracts_7
+      repeat: null
+      validate_hash: null
+    stream_112:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_0
+      proportion: 0.0078125
+      remote: c8/StackExchange_0
+      repeat: null
+      validate_hash: null
+    stream_113:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_1
+      proportion: 0.0078125
+      remote: c8/StackExchange_1
+      repeat: null
+      validate_hash: null
+    stream_114:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_2
+      proportion: 0.0078125
+      remote: c8/StackExchange_2
+      repeat: null
+      validate_hash: null
+    stream_115:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_3
+      proportion: 0.0078125
+      remote: c8/StackExchange_3
+      repeat: null
+      validate_hash: null
+    stream_116:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_4
+      proportion: 0.0078125
+      remote: c8/StackExchange_4
+      repeat: null
+      validate_hash: null
+    stream_117:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_5
+      proportion: 0.0078125
+      remote: c8/StackExchange_5
+      repeat: null
+      validate_hash: null
+    stream_118:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_6
+      proportion: 0.0078125
+      remote: c8/StackExchange_6
+      repeat: null
+      validate_hash: null
+    stream_119:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/StackExchange_7
+      proportion: 0.0078125
+      remote: c8/StackExchange_7
+      repeat: null
+      validate_hash: null
+    stream_12:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_4
+      proportion: 0.0078125
+      remote: c8/ArXiv_4
+      repeat: null
+      validate_hash: null
+    stream_120:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_0
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_0
+      repeat: null
+      validate_hash: null
+    stream_121:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_1
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_1
+      repeat: null
+      validate_hash: null
+    stream_122:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_2
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_2
+      repeat: null
+      validate_hash: null
+    stream_123:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_3
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_3
+      repeat: null
+      validate_hash: null
+    stream_124:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_4
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_4
+      repeat: null
+      validate_hash: null
+    stream_125:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_5
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_5
+      repeat: null
+      validate_hash: null
+    stream_126:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_6
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_6
+      repeat: null
+      validate_hash: null
+    stream_127:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/USPTO Backgrounds_7
+      proportion: 0.0078125
+      remote: c8/USPTO Backgrounds_7
+      repeat: null
+      validate_hash: null
+    stream_13:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_5
+      proportion: 0.0078125
+      remote: c8/ArXiv_5
+      repeat: null
+      validate_hash: null
+    stream_14:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_6
+      proportion: 0.0078125
+      remote: c8/ArXiv_6
+      repeat: null
+      validate_hash: null
+    stream_15:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_7
+      proportion: 0.0078125
+      remote: c8/ArXiv_7
+      repeat: null
+      validate_hash: null
+    stream_16:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_0
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_0
+      repeat: null
+      validate_hash: null
+    stream_17:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_1
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_1
+      repeat: null
+      validate_hash: null
+    stream_18:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_2
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_2
+      repeat: null
+      validate_hash: null
+    stream_19:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_3
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_3
+      repeat: null
+      validate_hash: null
+    stream_2:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_2
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_2
+      repeat: null
+      validate_hash: null
+    stream_20:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_4
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_4
+      repeat: null
+      validate_hash: null
+    stream_21:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_5
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_5
+      repeat: null
+      validate_hash: null
+    stream_22:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_6
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_6
+      repeat: null
+      validate_hash: null
+    stream_23:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Gutenberg (PG-19)_7
+      proportion: 0.0078125
+      remote: c8/Gutenberg (PG-19)_7
+      repeat: null
+      validate_hash: null
+    stream_24:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_0
+      proportion: 0.0078125
+      remote: c8/HackerNews_0
+      repeat: null
+      validate_hash: null
+    stream_25:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_1
+      proportion: 0.0078125
+      remote: c8/HackerNews_1
+      repeat: null
+      validate_hash: null
+    stream_26:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_2
+      proportion: 0.0078125
+      remote: c8/HackerNews_2
+      repeat: null
+      validate_hash: null
+    stream_27:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_3
+      proportion: 0.0078125
+      remote: c8/HackerNews_3
+      repeat: null
+      validate_hash: null
+    stream_28:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_4
+      proportion: 0.0078125
+      remote: c8/HackerNews_4
+      repeat: null
+      validate_hash: null
+    stream_29:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_5
+      proportion: 0.0078125
+      remote: c8/HackerNews_5
+      repeat: null
+      validate_hash: null
+    stream_3:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_3
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_3
+      repeat: null
+      validate_hash: null
+    stream_30:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_6
+      proportion: 0.0078125
+      remote: c8/HackerNews_6
+      repeat: null
+      validate_hash: null
+    stream_31:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/HackerNews_7
+      proportion: 0.0078125
+      remote: c8/HackerNews_7
+      repeat: null
+      validate_hash: null
+    stream_32:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_0
+      proportion: 0.0078125
+      remote: c8/PubMed Central_0
+      repeat: null
+      validate_hash: null
+    stream_33:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_1
+      proportion: 0.0078125
+      remote: c8/PubMed Central_1
+      repeat: null
+      validate_hash: null
+    stream_34:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_2
+      proportion: 0.0078125
+      remote: c8/PubMed Central_2
+      repeat: null
+      validate_hash: null
+    stream_35:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_3
+      proportion: 0.0078125
+      remote: c8/PubMed Central_3
+      repeat: null
+      validate_hash: null
+    stream_36:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_4
+      proportion: 0.0078125
+      remote: c8/PubMed Central_4
+      repeat: null
+      validate_hash: null
+    stream_37:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_5
+      proportion: 0.0078125
+      remote: c8/PubMed Central_5
+      repeat: null
+      validate_hash: null
+    stream_38:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_6
+      proportion: 0.0078125
+      remote: c8/PubMed Central_6
+      repeat: null
+      validate_hash: null
+    stream_39:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PubMed Central_7
+      proportion: 0.0078125
+      remote: c8/PubMed Central_7
+      repeat: null
+      validate_hash: null
+    stream_4:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_4
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_4
+      repeat: null
+      validate_hash: null
+    stream_40:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_0
+      proportion: 0.0078125
+      remote: c8/FreeLaw_0
+      repeat: null
+      validate_hash: null
+    stream_41:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_1
+      proportion: 0.0078125
+      remote: c8/FreeLaw_1
+      repeat: null
+      validate_hash: null
+    stream_42:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_2
+      proportion: 0.0078125
+      remote: c8/FreeLaw_2
+      repeat: null
+      validate_hash: null
+    stream_43:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_3
+      proportion: 0.0078125
+      remote: c8/FreeLaw_3
+      repeat: null
+      validate_hash: null
+    stream_44:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_4
+      proportion: 0.0078125
+      remote: c8/FreeLaw_4
+      repeat: null
+      validate_hash: null
+    stream_45:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_5
+      proportion: 0.0078125
+      remote: c8/FreeLaw_5
+      repeat: null
+      validate_hash: null
+    stream_46:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_6
+      proportion: 0.0078125
+      remote: c8/FreeLaw_6
+      repeat: null
+      validate_hash: null
+    stream_47:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/FreeLaw_7
+      proportion: 0.0078125
+      remote: c8/FreeLaw_7
+      repeat: null
+      validate_hash: null
+    stream_48:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_0
+      proportion: 0.0078125
+      remote: c8/PhilPapers_0
+      repeat: null
+      validate_hash: null
+    stream_49:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_1
+      proportion: 0.0078125
+      remote: c8/PhilPapers_1
+      repeat: null
+      validate_hash: null
+    stream_5:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_5
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_5
+      repeat: null
+      validate_hash: null
+    stream_50:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_2
+      proportion: 0.0078125
+      remote: c8/PhilPapers_2
+      repeat: null
+      validate_hash: null
+    stream_51:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_3
+      proportion: 0.0078125
+      remote: c8/PhilPapers_3
+      repeat: null
+      validate_hash: null
+    stream_52:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_4
+      proportion: 0.0078125
+      remote: c8/PhilPapers_4
+      repeat: null
+      validate_hash: null
+    stream_53:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_5
+      proportion: 0.0078125
+      remote: c8/PhilPapers_5
+      repeat: null
+      validate_hash: null
+    stream_54:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_6
+      proportion: 0.0078125
+      remote: c8/PhilPapers_6
+      repeat: null
+      validate_hash: null
+    stream_55:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/PhilPapers_7
+      proportion: 0.0078125
+      remote: c8/PhilPapers_7
+      repeat: null
+      validate_hash: null
+    stream_56:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_0
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_0
+      repeat: null
+      validate_hash: null
+    stream_57:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_1
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_1
+      repeat: null
+      validate_hash: null
+    stream_58:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_2
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_2
+      repeat: null
+      validate_hash: null
+    stream_59:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_3
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_3
+      repeat: null
+      validate_hash: null
+    stream_6:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_6
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_6
+      repeat: null
+      validate_hash: null
+    stream_60:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_4
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_4
+      repeat: null
+      validate_hash: null
+    stream_61:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_5
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_5
+      repeat: null
+      validate_hash: null
+    stream_62:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_6
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_6
+      repeat: null
+      validate_hash: null
+    stream_63:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/DM Mathematics_7
+      proportion: 0.0078125
+      remote: c8/DM Mathematics_7
+      repeat: null
+      validate_hash: null
+    stream_64:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_0
+      proportion: 0.0078125
+      remote: c8/Enron Emails_0
+      repeat: null
+      validate_hash: null
+    stream_65:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_1
+      proportion: 0.0078125
+      remote: c8/Enron Emails_1
+      repeat: null
+      validate_hash: null
+    stream_66:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_2
+      proportion: 0.0078125
+      remote: c8/Enron Emails_2
+      repeat: null
+      validate_hash: null
+    stream_67:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_3
+      proportion: 0.0078125
+      remote: c8/Enron Emails_3
+      repeat: null
+      validate_hash: null
+    stream_68:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_4
+      proportion: 0.0078125
+      remote: c8/Enron Emails_4
+      repeat: null
+      validate_hash: null
+    stream_69:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_5
+      proportion: 0.0078125
+      remote: c8/Enron Emails_5
+      repeat: null
+      validate_hash: null
+    stream_7:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Wikipedia (en)_7
+      proportion: 0.0078125
+      remote: c8/Wikipedia (en)_7
+      repeat: null
+      validate_hash: null
+    stream_70:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_6
+      proportion: 0.0078125
+      remote: c8/Enron Emails_6
+      repeat: null
+      validate_hash: null
+    stream_71:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Enron Emails_7
+      proportion: 0.0078125
+      remote: c8/Enron Emails_7
+      repeat: null
+      validate_hash: null
+    stream_72:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_0
+      proportion: 0.0078125
+      remote: c8/EuroParl_0
+      repeat: null
+      validate_hash: null
+    stream_73:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_1
+      proportion: 0.0078125
+      remote: c8/EuroParl_1
+      repeat: null
+      validate_hash: null
+    stream_74:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_2
+      proportion: 0.0078125
+      remote: c8/EuroParl_2
+      repeat: null
+      validate_hash: null
+    stream_75:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_3
+      proportion: 0.0078125
+      remote: c8/EuroParl_3
+      repeat: null
+      validate_hash: null
+    stream_76:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_4
+      proportion: 0.0078125
+      remote: c8/EuroParl_4
+      repeat: null
+      validate_hash: null
+    stream_77:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_5
+      proportion: 0.0078125
+      remote: c8/EuroParl_5
+      repeat: null
+      validate_hash: null
+    stream_78:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_6
+      proportion: 0.0078125
+      remote: c8/EuroParl_6
+      repeat: null
+      validate_hash: null
+    stream_79:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/EuroParl_7
+      proportion: 0.0078125
+      remote: c8/EuroParl_7
+      repeat: null
+      validate_hash: null
+    stream_8:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_0
+      proportion: 0.0078125
+      remote: c8/ArXiv_0
+      repeat: null
+      validate_hash: null
+    stream_80:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_0
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_0
+      repeat: null
+      validate_hash: null
+    stream_81:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_1
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_1
+      repeat: null
+      validate_hash: null
+    stream_82:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_2
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_2
+      repeat: null
+      validate_hash: null
+    stream_83:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_3
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_3
+      repeat: null
+      validate_hash: null
+    stream_84:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_4
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_4
+      repeat: null
+      validate_hash: null
+    stream_85:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_5
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_5
+      repeat: null
+      validate_hash: null
+    stream_86:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_6
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_6
+      repeat: null
+      validate_hash: null
+    stream_87:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/NIH ExPorter_7
+      proportion: 0.0078125
+      remote: c8/NIH ExPorter_7
+      repeat: null
+      validate_hash: null
+    stream_88:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_0
+      proportion: 0.0078125
+      remote: c8/Github_0
+      repeat: null
+      validate_hash: null
+    stream_89:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_1
+      proportion: 0.0078125
+      remote: c8/Github_1
+      repeat: null
+      validate_hash: null
+    stream_9:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/ArXiv_1
+      proportion: 0.0078125
+      remote: c8/ArXiv_1
+      repeat: null
+      validate_hash: null
+    stream_90:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_2
+      proportion: 0.0078125
+      remote: c8/Github_2
+      repeat: null
+      validate_hash: null
+    stream_91:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_3
+      proportion: 0.0078125
+      remote: c8/Github_3
+      repeat: null
+      validate_hash: null
+    stream_92:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_4
+      proportion: 0.0078125
+      remote: c8/Github_4
+      repeat: null
+      validate_hash: null
+    stream_93:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_5
+      proportion: 0.0078125
+      remote: c8/Github_5
+      repeat: null
+      validate_hash: null
+    stream_94:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_6
+      proportion: 0.0078125
+      remote: c8/Github_6
+      repeat: null
+      validate_hash: null
+    stream_95:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Github_7
+      proportion: 0.0078125
+      remote: c8/Github_7
+      repeat: null
+      validate_hash: null
+    stream_96:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_0
+      proportion: 0.0078125
+      remote: c8/Pile-CC_0
+      repeat: null
+      validate_hash: null
+    stream_97:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_1
+      proportion: 0.0078125
+      remote: c8/Pile-CC_1
+      repeat: null
+      validate_hash: null
+    stream_98:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_2
+      proportion: 0.0078125
+      remote: c8/Pile-CC_2
+      repeat: null
+      validate_hash: null
+    stream_99:
+      choose: null
+      download_retry: null
+      download_timeout: null
+      keep_zip: null
+      local: c8/Pile-CC_3
+      proportion: 0.0078125
+      remote: c8/Pile-CC_3
+      repeat: null
+      validate_hash: null

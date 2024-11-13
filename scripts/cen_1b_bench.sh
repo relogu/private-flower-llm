@@ -46,7 +46,7 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.optimizer.lr=2.0e-4"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.global_train_batch_size=$BATCH_SIZE"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.device_train_microbatch_size=auto"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.precision=amp_bf16"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=NO_SHARD" # DDP
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ~llm_config.fsdp_config" # DDP
 # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=FULL_SHARD" # FSDP (full shard)
 # export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.fsdp_config.sharding_strategy=SHARD_GRAD_OP" # FSDP (shard grad op)
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.strategy_kwargs.server_learning_rate=1.0"
@@ -59,6 +59,10 @@ export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS ++llm_config.device_eval_microbatch_s
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${TOTAL_STEPS}ba"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS fl.reset_optimizer=false"
 export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.save_interval=${EVAL_FREQ}ba"
-export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_interval=${EVAL_FREQ}ba"
+export EXTERNAL_CONFIGS="$EXTERNAL_CONFIGS llm_config.eval_first=false"
+
+export NCCL_P2P_DISABLE=0
+export NCCL_IB_DISABLE=0
+export NCCL_DEBUG="INFO"
 
 bash $HOME/projects/flower_llm/scripts/centralised_training.sh 1B

@@ -111,6 +111,14 @@ pile_constants.splits["validation"] = DataSplitConstants(
     raw_samples=214670,
     truncated_samples=None,
 )
+pile_constants.splits["val"] = DataSplitConstants(
+    path="",
+    name="",
+    split="validation",
+    folder_split="val",
+    raw_samples=214670,
+    truncated_samples=None,
+)
 pile_constants.splits["val_small"] = DataSplitConstants(
     path="",
     name="",
