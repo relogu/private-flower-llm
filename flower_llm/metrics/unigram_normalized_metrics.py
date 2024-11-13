@@ -74,6 +74,15 @@ class PureUnigramCrossEntropy(Metric):
         return self.sum_loss / self.total_items
 
 
+class PureUnigramPerplexity(PureUnigramCrossEntropy):
+    """Implements unigram-normalized perplexity."""
+
+    def compute(self) -> Tensor:
+        """Return torch.exp() of the UnigramNormalizedLanguageCrossEntropy."""
+        avg_loss = super().compute()
+        return torch.exp(avg_loss)
+
+
 class UnigramNormalizedLanguageCrossEntropy(Metric):
     """Torchmetric that computes cross entropy on language modeling outputs.
 

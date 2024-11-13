@@ -44,6 +44,7 @@ from llmfoundry.utils.config_utils import (
 from llmfoundry.registry import metrics
 from flower_llm.metrics.unigram_normalized_metrics import (
     PureUnigramCrossEntropy,
+    PureUnigramPerplexity,
     UnigramNormalizedLanguageCrossEntropy,
     UnigramNormalizedLanguagePerplexity,
     create_wrapped_subclass,
@@ -730,6 +731,14 @@ def _get_trainer_object(
             )
 
             metrics.register(
+                "pure_unigram_perplexity",
+                func=create_wrapped_subclass(
+                    base_class=PureUnigramPerplexity,
+                    unigram_probabilities=unigram_probabilities,
+                ),
+            )
+
+            metrics.register(
                 "unigram_normalized_language_cross_entropy",
                 func=create_wrapped_subclass(
                     base_class=UnigramNormalizedLanguageCrossEntropy,
@@ -842,6 +851,7 @@ def _get_trainer_object(
             "unigram_normalized_language_cross_entropy",
             "unigram_normalized_language_perplexity",
             "pure_unigram_cross_entropy",
+            "pure_unigram_perplexity",
         ])
 
     model = build_composer_model(
