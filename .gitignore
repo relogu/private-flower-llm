@@ -178,9 +178,6 @@ slurm-*.out
 # NVIDIA Nsight Systems output
 *_nvidia_nsight.nsys-rep
 
-# Images
-*.pdf
-
 # Experiments results
 results/*
 
@@ -223,9 +220,3 @@ flower_llm_checkpoints
 
 # Exclude tokenizers
 tokenizer_*
-
-# # Keep .pkl from wandb for plotting
-# !/notebooks/*.pkl
-
-# # Keep .pdf from plotting
-# !/notebooks/*.pdf
