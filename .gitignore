@@ -220,3 +220,7 @@ flower_llm_checkpoints
 
 # Exclude tokenizers
 tokenizer_*
+
+# Exclude large files
+*.pdf
+*.pkl
