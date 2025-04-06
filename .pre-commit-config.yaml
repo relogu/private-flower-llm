@@ -45,7 +45,7 @@ repos:
         entry: poetry run mypy --incremental --show-traceback
         language: system
         types: [file, python]
-        stages: [commit, manual]
+        stages: [pre-commit, manual]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0 # Use the ref you want to point at
     hooks:
